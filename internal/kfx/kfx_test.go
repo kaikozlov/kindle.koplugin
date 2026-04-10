@@ -68,6 +68,134 @@ func TestClassifyRecognizesDRMFixtures(t *testing.T) {
 	}
 }
 
+func TestClassifyRecognizesDecryptedKFXZipFixtures(t *testing.T) {
+	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "decrypted", "Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip")
+
+	mode, reason, err := Classify(input)
+	if err != nil {
+		t.Fatalf("Classify(KFX-ZIP) error = %v", err)
+	}
+	if mode != "convert" || reason != "" {
+		t.Fatalf("Classify(KFX-ZIP) = %q %q", mode, reason)
+	}
+}
+
+func TestConvertFileFromKFXZipMatchesMonolithicConversion(t *testing.T) {
+	inputZip := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "decrypted", "Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip")
+	inputMono := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "monolithic_kfx", "Elvis and the Underdogs_B009NG3090_decrypted.kfx")
+	outputZip := filepath.Join(t.TempDir(), "elvis-zip.epub")
+	outputMono := filepath.Join(t.TempDir(), "elvis-mono.epub")
+
+	if err := ConvertFile(inputZip, outputZip); err != nil {
+		t.Fatalf("ConvertFile(KFX-ZIP) error = %v", err)
+	}
+	if err := ConvertFile(inputMono, outputMono); err != nil {
+		t.Fatalf("ConvertFile(monolithic KFX) error = %v", err)
+	}
+
+	gotFiles := unzipFiles(t, outputZip)
+	wantFiles := unzipFiles(t, outputMono)
+	gotNames := comparableArchiveNames(gotFiles)
+	wantNames := comparableArchiveNames(wantFiles)
+	if !equalStringSlices(gotNames, wantNames) {
+		t.Fatalf("comparable archive names = %v, want %v", gotNames, wantNames)
+	}
+
+	for _, name := range gotNames {
+		gotData := gotFiles[name]
+		wantData := wantFiles[name]
+		if isTextArchiveFile(name) {
+			gotText := normalizeReferenceText(name, string(gotData))
+			wantText := normalizeReferenceText(name, string(wantData))
+			if gotText != wantText {
+				t.Fatalf("%s text mismatch", name)
+			}
+			continue
+		}
+		if !bytes.Equal(gotData, wantData) {
+			t.Fatalf("%s binary mismatch", name)
+		}
+	}
+}
+
+func TestConvertFileFromKFXZipPreservesResolvedPageAnchors(t *testing.T) {
+	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "decrypted", "The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip")
+	output := filepath.Join(t.TempDir(), "hunger.epub")
+
+	if err := ConvertFile(input, output); err != nil {
+		t.Fatalf("ConvertFile(KFX-ZIP) error = %v", err)
+	}
+
+	archive, err := zip.OpenReader(output)
+	if err != nil {
+		t.Fatalf("OpenReader() error = %v", err)
+	}
+	defer archive.Close()
+
+	files := map[string]*zip.File{}
+	for _, file := range archive.File {
+		files[file.Name] = file
+	}
+
+	contents := readZipFile(t, files["OEBPS/c1H.xhtml"])
+	packageDoc := readZipFile(t, files["OEBPS/content.opf"])
+	if !strings.Contains(packageDoc, `<dc:language>en-US</dc:language>`) {
+		t.Fatalf("content.opf should preserve content-derived en-US language selection")
+	}
+	if !strings.Contains(contents, `href="cCS.xhtml#a7AD"`) {
+		t.Fatalf("c1H.xhtml should preserve resolved fragment links for TOC entries")
+	}
+	if !strings.Contains(contents, `href="c1C8.xhtml"`) {
+		t.Fatalf("c1H.xhtml should preserve section-level fallback links for unresolved start-of-section anchors")
+	}
+	if !strings.Contains(contents, `id="page_6"`) {
+		t.Fatalf("c1H.xhtml should preserve emitted page marker anchors")
+	}
+}
+
+func TestConvertFileFromKFXZipPreservesInlinePageMarkerAnchors(t *testing.T) {
+	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "decrypted", "The Familiars_B003VIWNQW_decrypted.kfx-zip")
+	output := filepath.Join(t.TempDir(), "familiars.epub")
+
+	if err := ConvertFile(input, output); err != nil {
+		t.Fatalf("ConvertFile(KFX-ZIP) error = %v", err)
+	}
+
+	archive, err := zip.OpenReader(output)
+	if err != nil {
+		t.Fatalf("OpenReader() error = %v", err)
+	}
+	defer archive.Close()
+
+	files := map[string]*zip.File{}
+	for _, file := range archive.File {
+		files[file.Name] = file
+	}
+
+	chapter := readZipFile(t, files["OEBPS/c103.xhtml"])
+	if !strings.Contains(chapter, `<h1 class="heading_s6H-0"><a href="c1M.xhtml#a2D1">9</a></h1>`) {
+		t.Fatalf("c103.xhtml should promote nav heading entries into h1 elements")
+	}
+	if !strings.Contains(chapter, `<h1 class="heading_s3V">THE TREE FROGS OF DAKU</h1>`) {
+		t.Fatalf("c103.xhtml should preserve heading-level title promotion from navigation")
+	}
+	if !strings.Contains(chapter, `href="c1M.xhtml#a2D1"`) {
+		t.Fatalf("c103.xhtml should preserve chapter back-links with resolved fragments")
+	}
+	if !strings.Contains(chapter, `id="page_160"`) {
+		t.Fatalf("c103.xhtml should preserve inline page marker spans")
+	}
+}
+
+func TestNormalizeLanguagePreservesBareEnglish(t *testing.T) {
+	if got := normalizeLanguage("en"); got != "en" {
+		t.Fatalf("normalizeLanguage(en) = %q, want en", got)
+	}
+	if got := normalizeLanguage("en_US"); got != "en-US" {
+		t.Fatalf("normalizeLanguage(en_US) = %q, want en-US", got)
+	}
+}
+
 func TestConvertFilePhase1PreservesCoverAndPackageResources(t *testing.T) {
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
 	output := filepath.Join(t.TempDir(), "martyr.epub")
