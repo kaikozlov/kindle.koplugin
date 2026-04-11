@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -784,4 +785,190 @@ func addColorOpacityStr(color, opacity string) string {
 		return color
 	}
 	return color // simplified; full implementation would handle rgba()
+}
+
+// CSS unit conversion constants, ported from Python yj_to_epub_properties.py.
+const (
+	// lineHeightScaleFactor is LINE_HEIGHT_SCALE_FACTOR = 1.2 (Python decimal.Decimal("1.2")).
+	lineHeightScaleFactor = 1.2
+	// minimumLineHeight is MINIMUM_LINE_HEIGHT = 1.0 (Python decimal.Decimal("1.0")).
+	minimumLineHeight = 1.0
+	// useNormalLineHeight is USE_NORMAL_LINE_HEIGHT = True in Python.
+	useNormalLineHeight = true
+)
+
+// splitCSSValue splits a CSS value string into its numeric quantity and unit parts.
+// Ported from Python split_value in epub_output.py.
+// Returns (nil, val) if the value is not numeric.
+func splitCSSValue(val string) (*float64, string) {
+	if val == "" {
+		return nil, val
+	}
+	// Match optional sign, then digits with optional decimal point
+	i := 0
+	if i < len(val) && (val[i] == '+' || val[i] == '-') {
+		i++
+	}
+	digitStart := i
+	hasDot := false
+	hasDigit := false
+	for i < len(val) {
+		c := val[i]
+		if c >= '0' && c <= '9' {
+			hasDigit = true
+			i++
+		} else if c == '.' && !hasDot {
+			hasDot = true
+			i++
+		} else {
+			break
+		}
+	}
+	if !hasDigit {
+		return nil, val
+	}
+	numStr := val[digitStart:i]
+	unit := val[i:]
+	quantity, err := strconv.ParseFloat(numStr, 64)
+	if err != nil {
+		return nil, val
+	}
+	// Handle leading sign
+	if digitStart > 0 && val[0] == '-' {
+		quantity = -quantity
+	}
+	return &quantity, unit
+}
+
+// formatCSSQuantity formats a float64 for CSS output, rounding to avoid
+// floating-point artifacts. Python uses decimal.Decimal which doesn't have
+// these issues; in Go we round to 6 significant decimal digits to match Python.
+func formatCSSQuantity(q float64) string {
+	if q == 0 {
+		return "0"
+	}
+	// Use strconv.FormatFloat with 'f' format at sufficient precision,
+	// then strip trailing zeros and trailing decimal point.
+	s := strconv.FormatFloat(q, 'f', 10, 64)
+	// Strip trailing zeros
+	i := len(s) - 1
+	for i >= 0 && s[i] == '0' {
+		i--
+	}
+	if i >= 0 && s[i] == '.' {
+		i--
+	}
+	s = s[:i+1]
+	// Now check if we have too many decimal digits after potential
+	// floating-point noise (more than 6 significant digits after decimal)
+	if dot := strings.Index(s, "."); dot >= 0 {
+		decimals := s[dot+1:]
+		if len(decimals) > 6 {
+			s = s[:dot+7]
+			// Re-strip trailing zeros
+			i = len(s) - 1
+			for i >= 0 && s[i] == '0' {
+				i--
+			}
+			if i >= 0 && s[i] == '.' {
+				i--
+			}
+			s = s[:i+1]
+		}
+	}
+	return s
+}
+
+// convertStyleUnits converts lh and rem CSS units to em/unitless in a style map.
+// Ported from Python yj_to_epub_properties.py simplify_styles lines 1713-1752.
+// This conversion happens in simplifyStylesElementFull BEFORE the comparison/stripping loop,
+// so that lh/rem values are normalized to em before being compared against heritableDefaultProperties.
+//
+// lh conversion:
+//   - For line-height: if USE_NORMAL_LINE_HEIGHT and value in [0.99, 1.01], set to "normal"
+//   - Otherwise: multiply by LINE_HEIGHT_SCALE_FACTOR (1.2), clamp to MINIMUM_LINE_HEIGHT (1.0)
+//   - For line-height: emit unitless value (e.g., "1.2")
+//   - For other properties: emit em value (e.g., "1.2em")
+//
+// rem conversion:
+//   - Convert rem to em based on the base font-size units
+//   - If base font-size is in rem: divide quantity by base_font_size_quantity
+//   - If base font-size is in em: keep quantity, change unit to em
+//   - For line-height: also apply MINIMUM_LINE_HEIGHT clamping
+func convertStyleUnits(sty map[string]string, inherited map[string]string) {
+	// Save original font-size for rem conversion (need it before we modify sty).
+	origFontSize, hasOrigFontSize := sty["font-size"]
+
+	for name, val := range sty {
+		quantity, unit := splitCSSValue(val)
+		if quantity == nil {
+			continue
+		}
+
+		if unit == "lh" {
+			q := *quantity
+			if name == "line-height" {
+				if useNormalLineHeight && q >= 0.99 && q <= 1.01 {
+					sty[name] = "normal"
+				} else {
+					q = q * lineHeightScaleFactor
+					if q < minimumLineHeight {
+						q = minimumLineHeight
+					}
+					sty[name] = formatCSSQuantity(q)
+				}
+			} else {
+				q = q * lineHeightScaleFactor
+				sty[name] = formatCSSQuantity(q) + "em"
+			}
+		}
+
+		// Re-parse in case lh conversion changed the value
+		quantity2, unit2 := splitCSSValue(sty[name])
+		if quantity2 != nil {
+			quantity = quantity2
+			unit = unit2
+		} else {
+			// Value is "normal" or non-numeric; skip rem conversion
+			continue
+		}
+
+		if unit == "rem" {
+			q := *quantity
+			var baseFontSize string
+			if name == "font-size" {
+				// Use inherited font-size
+				baseFontSize = inherited["font-size"]
+			} else {
+				// Use the element's own original font-size
+				if hasOrigFontSize {
+					baseFontSize = origFontSize
+				} else {
+					baseFontSize = sty["font-size"]
+				}
+			}
+
+			baseQuantity, baseUnit := splitCSSValue(baseFontSize)
+			if baseQuantity != nil {
+				if baseUnit == "rem" {
+					q = q / *baseQuantity
+					unit = "em"
+				} else if baseUnit == "em" {
+					unit = "em"
+				}
+				// else: log error in Python; we silently skip
+			}
+
+			if name == "line-height" && q < minimumLineHeight {
+				q = minimumLineHeight
+			}
+
+			if unit == "em" {
+				sty[name] = formatCSSQuantity(q) + "em"
+			} else {
+				// Keep as-is if we couldn't convert
+				sty[name] = formatCSSQuantity(q) + unit
+			}
+		}
+	}
 }

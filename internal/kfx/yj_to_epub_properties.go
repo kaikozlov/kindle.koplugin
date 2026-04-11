@@ -1168,6 +1168,19 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 		sty[name] = val
 	}
 
+	// Convert lh/rem units to em before anything else.
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1713-1752).
+	// Must happen before parentStyle computation so children receive converted units.
+	// Convert the full sty map (inherited + explicit) so that inherited lh/rem values
+	// are also normalized before being passed to children.
+	convertStyleUnits(sty, inherited)
+	// Sync explicitStyle with the converted values of properties that were explicitly set.
+	for name := range explicitStyle {
+		if val, ok := sty[name]; ok {
+			explicitStyle[name] = val
+		}
+	}
+
 	parentStyle := map[string]string{}
 	for name, val := range sty {
 		if heritableProperties[name] {
