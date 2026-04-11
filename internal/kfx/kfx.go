@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image/jpeg"
+	"math"
+	"math/big"
 	"os"
 	"reflect"
 	"regexp"
@@ -491,6 +493,11 @@ func normalizeIon(value interface{}, resolver *symbolResolver) interface{} {
 			return resolver.Resolve(uint32(typed.LocalSID))
 		}
 		return fmt.Sprintf("$%d", typed.LocalSID)
+	case *ion.Decimal:
+		if typed == nil {
+			return float64(0)
+		}
+		return ionDecimalToFloat64(typed)
 	case map[string]interface{}:
 		result := make(map[string]interface{}, len(typed))
 		for key, item := range typed {
@@ -506,6 +513,20 @@ func normalizeIon(value interface{}, resolver *symbolResolver) interface{} {
 	default:
 		return typed
 	}
+}
+
+// ionDecimalToFloat64 converts an ion.Decimal to float64 using big.Float
+// for maximum precision. CSS values don't require arbitrary precision,
+// but we use big.Float to avoid unnecessary rounding artifacts.
+func ionDecimalToFloat64(d *ion.Decimal) float64 {
+	coeff, exp := d.CoEx()
+	bf := new(big.Float).SetInt(coeff)
+	if exp != 0 {
+		pow := new(big.Float).SetFloat64(math.Pow10(int(exp)))
+		bf.Mul(bf, pow)
+	}
+	result, _ := bf.Float64()
+	return result
 }
 
 // Port of Python process_reading_order reading order iteration (yj_to_epub_content.py L105+).
