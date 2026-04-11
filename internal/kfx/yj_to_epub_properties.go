@@ -4,6 +4,7 @@ package kfx
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -759,6 +760,12 @@ var blockLevelTags = map[string]bool{
 	"section": true, "article": true, "header": true, "footer": true, "nav": true,
 }
 
+// Inline element tags per Python INLINE_ELEMENTS in yj_to_epub_properties.py.
+var inlineElementTags = map[string]bool{
+	"a": true, "bdo": true, "br": true, "img": true,
+	"object": true, "rp": true, "ruby": true, "span": true,
+}
+
 // Heritable CSS properties per Python (yj_to_epub_properties.py HERITABLE_PROPERTIES).
 var heritableProperties = map[string]bool{
 	"font-family": true, "font-size": true, "font-style": true, "font-weight": true,
@@ -1122,6 +1129,50 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 			for _, individualProp := range individualProps {
 				delete(explicitStyle, individualProp)
 			}
+		}
+	}
+
+	// Ineffective property warning logging for inline elements.
+	// Ported from Python add_composite_and_equivalent_styles (yj_to_epub_properties.py lines 1995-2016).
+	// modify=False — log only, never remove properties.
+	display := sty["display"]
+	isInline := display == "inline" || (inlineElementTags[elem.Tag] && display != "block" && display != "inline-block")
+	if isInline {
+		var ineffectiveProps []string
+		for _, name := range []string{
+			"list-style-image", "list-style-position", "list-style-type",
+			"column-count", "text-align", "text-align-last", "text-indent",
+		} {
+			if _, ok := sty[name]; ok {
+				ineffectiveProps = append(ineffectiveProps, name)
+			}
+		}
+		if elem.Tag != "img" {
+			for _, name := range []string{
+				"height", "width", "max-height", "max-width",
+				"-amzn-page-align", "-amzn-page-footer", "-amzn-page-header",
+			} {
+				if _, ok := sty[name]; ok {
+					ineffectiveProps = append(ineffectiveProps, name)
+				}
+			}
+			if sty["white-space"] != "nowrap" {
+				if _, ok := sty["overflow"]; ok {
+					ineffectiveProps = append(ineffectiveProps, "overflow")
+				}
+			}
+		}
+		if len(ineffectiveProps) > 0 {
+			styleName := sty["-kfx-style-name"]
+			if styleName == "" {
+				styleName = "?"
+			}
+			var propParts []string
+			for _, name := range ineffectiveProps {
+				propParts = append(propParts, name+": "+sty[name])
+			}
+			fmt.Fprintf(os.Stderr, "kfx: warning: ineffective properties in %s element for kfx-style %s: %s\n",
+				elem.Tag, styleName, strings.Join(propParts, "; "))
 		}
 	}
 
