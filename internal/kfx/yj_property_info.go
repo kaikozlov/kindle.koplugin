@@ -575,10 +575,14 @@ func convertYJProperties(yjProperties map[string]interface{}) map[string]string 
 		y := popMap(declarations, "-kfx-background-sizey", "auto")
 		declarations["background-size"] = x + " " + y
 	}
-	if _, ok := declarations["-kfx-fill-color"]; ok {
+	if _, okFC := declarations["-kfx-fill-color"]; okFC {
 		fillColor := popMap(declarations, "-kfx-fill-color", "#ffffff")
 		fillOpacity := popMap(declarations, "-kfx-fill-opacity", "")
 		declarations["background-color"] = addColorOpacityStr(fillColor, fillOpacity)
+	} else if _, okFO := declarations["-kfx-fill-opacity"]; okFO {
+		// Ported from Python: also triggers on fill-opacity alone (using default #ffffff fill color).
+		fillOpacity := popMap(declarations, "-kfx-fill-opacity", "")
+		declarations["background-color"] = addColorOpacityStr("#ffffff", fillOpacity)
 	}
 	if _, ok := declarations["-kfx-text-emphasis-position-horizontal"]; ok {
 		h := popMap(declarations, "-kfx-text-emphasis-position-horizontal", "")
@@ -791,10 +795,21 @@ func fixColorValue(v interface{}) string {
 	}
 	// Extract RGBA components (ARGB packed as 32-bit)
 	i := uint32(n)
+	alphaInt := (i >> 24) & 0xFF
 	r := (i >> 16) & 0xFF
 	g := (i >> 8) & 0xFF
 	b := i & 0xFF
-	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+
+	// Ported from Python int_to_alpha / color_str: when alpha < 2, treat as 0.0;
+	// when alpha > 253, treat as 1.0; otherwise compute float value.
+	if alphaInt < 2 {
+		return fmt.Sprintf("rgba(%d,%d,%d,0)", r, g, b)
+	}
+	if alphaInt > 253 {
+		return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+	}
+	alpha := math.Max(math.Min(float64(alphaInt+1)/256.0, 1.0), 0.0)
+	return fmt.Sprintf("rgba(%d,%d,%d,%.3g)", r, g, b, alpha)
 }
 
 // addColorOpacityStr is the string-argument version of addColorOpacity.
@@ -802,7 +817,30 @@ func addColorOpacityStr(color, opacity string) string {
 	if opacity == "" || opacity == "1" {
 		return color
 	}
-	return color // simplified; full implementation would handle rgba()
+	// Ported from Python add_color_opacity: parse opacity, extract RGB from color,
+	// produce rgba(r,g,b,alpha) string.
+	op, err := strconv.ParseFloat(opacity, 64)
+	if err != nil {
+		return color
+	}
+	if op >= 0.999 {
+		return color
+	}
+	// Parse the color to extract r, g, b.
+	// Handle #rrggbb format (most common from fixColorValue).
+	if strings.HasPrefix(color, "#") && len(color) == 7 {
+		r, err1 := strconv.ParseUint(color[1:3], 16, 8)
+		g, err2 := strconv.ParseUint(color[3:5], 16, 8)
+		b, err3 := strconv.ParseUint(color[5:7], 16, 8)
+		if err1 == nil && err2 == nil && err3 == nil {
+			if op <= 0.001 {
+				return fmt.Sprintf("rgba(%d,%d,%d,0)", r, g, b)
+			}
+			return fmt.Sprintf("rgba(%d,%d,%d,%.3g)", r, g, b, op)
+		}
+	}
+	// Fallback for other color formats: just return color (shouldn't happen for fill-color).
+	return color
 }
 
 // CSS unit conversion constants, ported from Python yj_to_epub_properties.py.
