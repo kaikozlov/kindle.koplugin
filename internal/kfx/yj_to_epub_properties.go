@@ -1181,6 +1181,19 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 		}
 	}
 
+	// Link color handling — ported from Python simplify_styles (yj_to_epub_properties.py lines 1828-1831).
+	// When an <a> tag has no color set but has -kfx-link-color == -kfx-visited-color, set color to that value.
+	if elem.Tag == "a" {
+		if _, hasColor := sty["color"]; !hasColor {
+			linkColor, hasLink := sty["-kfx-link-color"]
+			visitedColor, hasVisited := sty["-kfx-visited-color"]
+			if hasLink && hasVisited && linkColor == visitedColor {
+				sty["color"] = linkColor
+				explicitStyle["color"] = linkColor
+			}
+		}
+	}
+
 	parentStyle := map[string]string{}
 	for name, val := range sty {
 		if heritableProperties[name] {
@@ -1352,6 +1365,18 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 				elem.Tag, styleName, strings.Join(propParts, "; "))
 		}
 	}
+
+	// Remove -kfx-link-color and -kfx-visited-color from final styles.
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1916-1918).
+	// For <a> tags, remove from inherited (so children don't inherit them).
+	// For other tags, remove from sty (so they don't appear in the output).
+	// In both cases, also remove from explicitStyle so they don't end up in the style attribute.
+	if elem.Tag == "a" {
+		delete(inherited, "-kfx-link-color")
+		delete(inherited, "-kfx-visited-color")
+	}
+	delete(explicitStyle, "-kfx-link-color")
+	delete(explicitStyle, "-kfx-visited-color")
 
 	setElementStyleString(elem, styleStringFromMap(explicitStyle))
 
