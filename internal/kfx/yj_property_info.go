@@ -608,6 +608,24 @@ func convertYJProperties(yjProperties map[string]interface{}) map[string]string 
 		}
 	}
 
+	// Post-processing: -kfx-table-vertical-align → vertical-align
+	// Ported from Python fix_vertical_align_properties (yj_to_epub_content.py ~L1497).
+	// In Python, -kfx-table-vertical-align is renamed to vertical-align at content rendering time.
+	// Since Go emits -kfx-table-vertical-align from YJ property mapping, we convert it here.
+	if val := popMap(declarations, "-kfx-table-vertical-align", ""); val != "" {
+		if _, exists := declarations["vertical-align"]; !exists {
+			declarations["vertical-align"] = val
+		}
+	}
+
+	// Post-processing: -kfx-baseline-shift → vertical-align
+	// Part of Python's fix_vertical_align_properties handling for baseline-shift.
+	if val := popMap(declarations, "-kfx-baseline-shift", ""); val != "" {
+		if _, exists := declarations["vertical-align"]; !exists {
+			declarations["vertical-align"] = val
+		}
+	}
+
 	return declarations
 }
 

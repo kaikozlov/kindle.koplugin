@@ -373,6 +373,17 @@ func declarationListFromStyleMap(style map[string]string) []string {
 	if len(style) == 0 {
 		return nil
 	}
+
+	// Apply alternate equivalent properties (-webkit- prefixed equivalents).
+	// Ported from Python ALTERNATE_EQUIVALENT_PROPERTIES in add_composite_and_equivalent_styles.
+	for name, altName := range alternateEquivalentProperties {
+		if val, ok := style[name]; ok && val != "" {
+			if _, exists := style[altName]; !exists {
+				style[altName] = val
+			}
+		}
+	}
+
 	declarations := make([]string, 0, len(style))
 	for name, value := range style {
 		if strings.TrimSpace(value) == "" {
@@ -753,6 +764,19 @@ var compositeSideStyles = [][2]string{
 	{"border-width", "border-bottom-width border-left-width border-right-width border-top-width"},
 	{"margin", "margin-bottom margin-left margin-right margin-top"},
 	{"padding", "padding-bottom padding-left padding-right padding-top"},
+}
+
+// alternateEquivalentProperties maps CSS properties to their vendor-prefixed equivalents.
+// When a property has a value, its alternate equivalent is also added with the same value.
+// Ported from Python ALTERNATE_EQUIVALENT_PROPERTIES in yj_to_epub_properties.py.
+var alternateEquivalentProperties = map[string]string{
+	"box-decoration-break":   "-webkit-box-decoration-break",
+	"hyphens":                "-webkit-hyphens",
+	"line-break":             "-webkit-line-break",
+	"ruby-position":          "-webkit-ruby-position",
+	"text-combine-upright":   "-webkit-text-combine",
+	"text-emphasis-color":    "-webkit-text-emphasis-color",
+	"text-emphasis-position": "-webkit-text-emphasis-position",
 }
 
 // Block-level element tags per Python simplify_styles contains_block_elem check.
@@ -1323,12 +1347,38 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 			delete(comparisonInherited, "margin-left")
 			delete(comparisonInherited, "margin-right")
 		}
+
+		// In Python, sty is the merged style (inherited + explicit). When heading conversion
+		// pops font-size and font-weight from inherited_properties, any inherited font-size and
+		// font-weight values in sty survive the stripping because they no longer match inherited.
+		// In Go, explicitStyle only contains explicitly set properties, not inherited ones.
+		// So we need to add inherited font-weight to explicitStyle for headings so it survives
+		// the stripping (matching Python's behavior).
+		// Note: font-size is NOT added here because Python re-adds font-size to inherited_properties
+		// at line 1948 (inherited_properties["font-size"] = "1em"), causing it to be stripped again.
+		if _, ok := explicitStyle["font-weight"]; !ok {
+			if val, ok := sty["font-weight"]; ok && val != "" {
+				explicitStyle["font-weight"] = val
+			}
+		}
 	}
 	for name, val := range explicitStyle {
 		if name == "-kfx-style-name" || name == "-kfx-layout-hints" {
 			continue
 		}
 		if comparisonInherited[name] == val {
+			delete(explicitStyle, name)
+		}
+	}
+
+	// Strip background-* properties when background-color is transparent and background-image is none.
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1951-1953).
+	if (sty["background-color"] == "transparent" || sty["background-color"] == "") &&
+		(sty["background-image"] == "none" || sty["background-image"] == "") {
+		for _, name := range []string{
+			"background-clip", "background-origin", "background-position",
+			"background-repeat", "background-size",
+		} {
 			delete(explicitStyle, name)
 		}
 	}
