@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -587,15 +588,15 @@ func TestRenderNodePromotesInlineOnlyContainersToParagraphs(t *testing.T) {
 
 func TestRenderNodeDoesNotPromoteMultiParagraphContainersToParagraph(t *testing.T) {
 	renderer := storylineRenderer{
-		contentFragments: map[string][]string{"content": {"Contents", "Cover"}},
-		resourceHrefByID: map[string]string{},
-		anchorToFilename: map[string]string{},
+		contentFragments:  map[string][]string{"content": {"Contents", "Cover"}},
+		resourceHrefByID:  map[string]string{},
+		anchorToFilename:  map[string]string{},
 		positionToSection: map[int]string{},
-		positionAnchors: map[int]map[int][]string{},
-		positionAnchorID: map[int]map[int]string{},
-		emittedAnchorIDs: map[string]bool{},
-		styleFragments: map[string]map[string]interface{}{},
-		styles:         newStyleCatalog(),
+		positionAnchors:   map[int]map[int][]string{},
+		positionAnchorID:  map[int]map[int]string{},
+		emittedAnchorIDs:  map[string]bool{},
+		styleFragments:    map[string]map[string]interface{}{},
+		styles:            newStyleCatalog(),
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
@@ -614,7 +615,9 @@ func TestRenderNodeDoesNotPromoteMultiParagraphContainersToParagraph(t *testing.
 	}, 0)
 	got := renderHTMLPart(node)
 
-	if got != "<div><h1>Contents</h1><p>Cover</p></div>" {
+	// Python parity: $790 alone (without "heading" in layout hints) does NOT promote to <h1>.
+	// Calibre simplify_styles only promotes <div> to heading when layout hints include "heading".
+	if got != "<div><p>Contents</p><p>Cover</p></div>" {
 		t.Fatalf("multi-paragraph container html = %q", got)
 	}
 }
@@ -809,6 +812,103 @@ func TestPruneUnusedStylesheetRulesKeepsPseudoClassRulesForUsedBaseClass(t *test
 	}
 }
 
+func TestSimplifyStylesFullUnwrapsSpanWhenStyleIsFullyInherited(t *testing.T) {
+	catalog := newStyleCatalog()
+	italicParent := catalog.bind("class_italic", []string{"font-style: italic"})
+	italicSpan := catalog.bind("class_italic", []string{"font-style: italic"})
+	book := &decodedBook{
+		RenderedSections: []renderedSection{{
+			Root: &htmlElement{
+				Attrs: map[string]string{},
+				Children: []htmlPart{
+					&htmlElement{
+						Tag:   "ul",
+						Attrs: map[string]string{},
+						Children: []htmlPart{
+							&htmlElement{
+								Tag:   "li",
+								Attrs: map[string]string{"class": italicParent},
+								Children: []htmlPart{
+									&htmlElement{
+										Tag:      "span",
+										Attrs:    map[string]string{"class": italicSpan},
+										Children: []htmlPart{htmlText{Text: "A tree"}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}},
+	}
+
+	simplifyStylesFull(book, catalog)
+	got := renderedSectionBodyHTML(book.RenderedSections[0])
+
+	if strings.Contains(got, "<span") {
+		t.Fatalf("expected inherited span wrapper to be removed, got %q", got)
+	}
+	if !strings.Contains(got, "A tree</li>") {
+		t.Fatalf("unexpected simplified html %q", got)
+	}
+}
+
+func TestSimplifyStylesFullRunsBeforeCSSEmission(t *testing.T) {
+	catalog := newStyleCatalog()
+	italicParent := catalog.bind("class_italic", []string{"font-style: italic"})
+	italicSpan := catalog.bind("class_italic", []string{"font-style: italic"})
+	book := &decodedBook{
+		RenderedSections: []renderedSection{{
+			Root: &htmlElement{
+				Attrs: map[string]string{},
+				Children: []htmlPart{
+					&htmlElement{
+						Tag:   "div",
+						Attrs: map[string]string{"class": italicParent},
+						Children: []htmlPart{
+							&htmlElement{Tag: "span", Attrs: map[string]string{"class": italicSpan}, Children: []htmlPart{htmlText{Text: "W"}}},
+							&htmlElement{Tag: "span", Attrs: map[string]string{"class": italicSpan}, Children: []htmlPart{htmlText{Text: "H"}}},
+							&htmlElement{Tag: "span", Attrs: map[string]string{"class": italicSpan}, Children: []htmlPart{htmlText{Text: "I"}}},
+							&htmlElement{Tag: "span", Attrs: map[string]string{"class": italicSpan}, Children: []htmlPart{htmlText{Text: "P"}}},
+							htmlText{Text: "plain"},
+						},
+					},
+					&htmlElement{
+						Tag:      "div",
+						Attrs:    map[string]string{},
+						Children: []htmlPart{htmlText{Text: "other"}},
+					},
+				},
+			},
+		}},
+	}
+
+	simplifyStylesFull(book, catalog)
+	for i := range book.RenderedSections {
+		catalog.markReferenced(renderedSectionBodyHTML(book.RenderedSections[i]))
+	}
+	replacer := catalog.replacer()
+	for i := range book.RenderedSections {
+		replaceSectionDOMClassTokens(&book.RenderedSections[i], replacer)
+	}
+	createCSSFiles(book, catalog)
+
+	gotHTML := renderedSectionBodyHTML(book.RenderedSections[0])
+	if strings.Contains(gotHTML, "<span") {
+		t.Fatalf("expected reverse inheritance to remove child span wrappers, got %q", gotHTML)
+	}
+	if !strings.Contains(gotHTML, "<p class=") {
+		t.Fatalf("expected simplified visible paragraph class, got %q", gotHTML)
+	}
+	if strings.Contains(gotHTML, "__STYLE_") {
+		t.Fatalf("unexpected unresolved style token in html %q", gotHTML)
+	}
+	if strings.Count(book.Stylesheet, "font-style: italic") != 1 {
+		t.Fatalf("expected a single emitted italic rule after simplification, stylesheet = %q", book.Stylesheet)
+	}
+}
+
 func TestRenderNodeAddsMathRoleForClassifiedContent(t *testing.T) {
 	renderer := storylineRenderer{
 		contentFragments:  map[string][]string{"content": {"x+y"}},
@@ -932,6 +1032,7 @@ func TestBuildResourcesKeepsNonImageResources(t *testing.T) {
 			"plugin-entry": []byte("<html><body>plugin</body></html>"),
 		},
 		nil,
+		symOriginal,
 	)
 
 	if len(resources) != 1 {
@@ -1190,6 +1291,67 @@ func TestConvertFileMatchesReferenceStructureIgnoringImages(t *testing.T) {
 	if !equalStringSlices(gotImages, wantImages) {
 		t.Fatalf("image names = %v, want %v", gotImages, wantImages)
 	}
+}
+
+// Second non-Martyr gate: same non-image path list as Calibre for Three Below (Floors #2).
+// Full byte-for-byte text parity vs calibre_epubs is still Phase D work (manifest/spine ordering, OPF metadata).
+func TestConvertFileThreeBelowKFXZipMatchesCalibreComparableArchivePaths(t *testing.T) {
+	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "decrypted", "Three Below (Floors #2)_B008PL1YQ0_decrypted.kfx-zip")
+	output := filepath.Join(t.TempDir(), "three-below.epub")
+	reference := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "Three Below (Floors #2)_B008PL1YQ0_decrypted.epub")
+
+	if err := ConvertFile(input, output); err != nil {
+		t.Fatalf("ConvertFile() error = %v", err)
+	}
+
+	gotFiles := unzipFiles(t, output)
+	wantFiles := unzipFiles(t, reference)
+	gotNames := comparableArchiveNames(gotFiles)
+	wantNames := comparableArchiveNames(wantFiles)
+	if !equalStringSlices(gotNames, wantNames) {
+		t.Fatalf("comparable archive names = %v, want %v", gotNames, wantNames)
+	}
+}
+
+// Path-list gate for additional titles (same tier as Three Below). Full Martyr-style text+OPF parity
+// for these fixtures remains Phase D until manifests align with Calibre.
+func testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T, input, reference string) {
+	t.Helper()
+	if _, err := os.Stat(input); err != nil {
+		t.Skip("input not found:", input)
+	}
+	if _, err := os.Stat(reference); err != nil {
+		t.Skip("reference epub not found:", reference)
+	}
+	output := filepath.Join(t.TempDir(), filepath.Base(input)+".epub")
+	if err := ConvertFile(input, output); err != nil {
+		t.Fatalf("ConvertFile() error = %v", err)
+	}
+	gotFiles := unzipFiles(t, output)
+	wantFiles := unzipFiles(t, reference)
+	gotNames := comparableArchiveNames(gotFiles)
+	wantNames := comparableArchiveNames(wantFiles)
+	if !equalStringSlices(gotNames, wantNames) {
+		t.Fatalf("comparable archive names = %v, want %v", gotNames, wantNames)
+	}
+}
+
+func TestConvertFileElvisKFXZipMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T) {
+	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "decrypted", "Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip")
+	reference := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "Elvis and the Underdogs_B009NG3090_decrypted.epub")
+	testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t, input, reference)
+}
+
+func TestConvertFileHungerGamesKFXZipMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T) {
+	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "decrypted", "The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip")
+	reference := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "The Hunger Games Trilogy_B004XJRQUQ_decrypted.epub")
+	testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t, input, reference)
+}
+
+func TestConvertFileFamiliarsKFXZipMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T) {
+	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "decrypted", "The Familiars_B003VIWNQW_decrypted.kfx-zip")
+	reference := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "The Familiars_B003VIWNQW_decrypted.epub")
+	testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t, input, reference)
 }
 
 func referenceFragmentSnapshot(t *testing.T, input string) fragmentSnapshot {

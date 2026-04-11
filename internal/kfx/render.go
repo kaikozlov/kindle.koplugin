@@ -25,13 +25,14 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	positionAliases := state.Fragments.PositionAliases
 	rawBlobOrder := state.Fragments.RawBlobOrder
 	sectionOrder := append([]string(nil), state.Fragments.SectionOrder...)
+	symFmt := state.BookSymbolFormat
 
 	fontFixer := newFontNameFixer()
 	currentFontFixer = fontFixer
 	defer func() {
 		currentFontFixer = nil
 	}()
-	book.Resources, book.CoverImageHref, book.Stylesheet, book.ResourceHrefByID = buildResources(book, resourceFragments, fontFragments, rawFragments, rawBlobOrder)
+	book.Resources, book.CoverImageHref, book.Stylesheet, book.ResourceHrefByID = buildResources(book, resourceFragments, fontFragments, rawFragments, rawBlobOrder, symFmt)
 	book.Language = inferBookLanguage(book.Language, contentFragments, storylines, styleFragments)
 
 	positionToSectionID := map[int]string{}
@@ -80,7 +81,7 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 			directAnchorURI[anchorID] = anchor.URI
 		} else if anchor.PositionID != 0 {
 			if sectionID := positionToSectionID[anchor.PositionID]; sectionID != "" {
-				fallbackAnchorURI[anchorID] = sectionFilename(sectionID)
+				fallbackAnchorURI[anchorID] = sectionFilename(sectionID, symFmt)
 			}
 			registerNamedPositionAnchor(navState.positionAnchors, anchorID, navTarget{PositionID: anchor.PositionID})
 		}
@@ -94,21 +95,22 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	}
 
 	renderer := storylineRenderer{
-		contentFragments:  contentFragments,
-		rubyGroups:        rubyGroups,
-		rubyContents:      rubyContents,
-		resourceHrefByID:  book.ResourceHrefByID,
-		resourceFragments: resourceFragments,
-		directAnchorURI:   directAnchorURI,
-		fallbackAnchorURI: fallbackAnchorURI,
-		positionToSection: positionToSectionID,
-		positionAnchors:   navState.positionAnchors,
-		positionAnchorID:  buildPositionAnchorIDs(navState.positionAnchors),
-		anchorNamesByID:   map[string][]string{},
+		contentFragments:   contentFragments,
+		rubyGroups:         rubyGroups,
+		rubyContents:       rubyContents,
+		resourceHrefByID:   book.ResourceHrefByID,
+		resourceFragments:  resourceFragments,
+		directAnchorURI:    directAnchorURI,
+		fallbackAnchorURI:  fallbackAnchorURI,
+		positionToSection:  positionToSectionID,
+		positionAnchors:    navState.positionAnchors,
+		positionAnchorID:   buildPositionAnchorIDs(navState.positionAnchors),
+		anchorNamesByID:    map[string][]string{},
 		anchorHeadingLevel: navState.anchorHeadingLevel,
-		emittedAnchorIDs:  map[string]bool{},
-		styleFragments:    styleFragments,
-		styles:            newStyleCatalog(),
+		emittedAnchorIDs:   map[string]bool{},
+		styleFragments:     styleFragments,
+		styles:             newStyleCatalog(),
+		symFmt:             symFmt,
 		conditionEvaluator: conditionEvaluator{
 			orientationLock:   book.OrientationLock,
 			fixedLayout:       book.FixedLayout,
@@ -129,65 +131,25 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 			fmt.Fprintf(os.Stderr, "anchor ids pos=%d offsets=%v raw=%v\n", pos, renderer.positionAnchorID[pos], renderer.positionAnchors[pos])
 		}
 	}
+	// Merge navigation-referenced sections (guide entries, TOC entries) into the reading order.
 	if navOrder := orderedSectionIDsFromNavigation(selectedNav, positionToSectionID); len(navOrder) > 0 {
 		sectionOrder = mergeSectionOrder(navOrder, sectionOrder)
 	}
+	// Port of epub_output.py identify_cover: if a cover guide entry points to a section,
+	// ensure that section is first in the spine (Python expects cover to be first in reading order).
+	sectionOrder = promoteCoverSectionFromGuide(sectionOrder, navState.guide, positionToSectionID)
 	debugSectionMappings(sectionFragments, navTitles, sectionOrder)
 
-	for index, sectionID := range sectionOrder {
-		section, ok := sectionFragments[sectionID]
-		if !ok {
-			continue
-		}
-		rendered, paragraphs, ok := renderSectionFragments(sectionID, section, storylines, contentFragments, &renderer)
-		if !ok {
-			continue
-		}
-		if debugSection := os.Getenv("KFX_DEBUG_SECTION_CLASS"); debugSection != "" {
-			for _, wanted := range strings.Split(debugSection, ",") {
-				if strings.TrimSpace(wanted) == sectionID {
-					fmt.Fprintf(os.Stderr, "section=%s bodyClass=%q properties=%q\n", sectionID, rendered.BodyClass, rendered.Properties)
-				}
-			}
-		}
-		if len(paragraphs) == 0 && rendered.BodyHTML == "" {
-			continue
-		}
-		title := navTitles[sectionID]
-		if title == "" {
-			title = deriveSectionTitle(paragraphs, index+1)
-		}
-		book.RenderedSections = append(book.RenderedSections, renderedSection{
-			Filename:   sectionFilename(sectionID),
-			Title:      title,
-			PageTitle:  sectionID,
-			Language:   normalizeLanguage(book.Language),
-			BodyClass:  rendered.BodyClass,
-			Paragraphs: paragraphs,
-			Properties: rendered.Properties,
-			Root:       rendered.Root,
-		})
-	}
+	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, &renderer, navTitles, symFmt)
 	cleanupRenderedSections(book.RenderedSections)
-
-	for _, section := range book.RenderedSections {
-		renderer.styles.markReferenced(section.BodyClass)
-		renderer.styles.markReferenced(renderedSectionBodyHTML(section))
-	}
-	replacer := renderer.styles.replacer()
-	for index := range book.RenderedSections {
-		book.RenderedSections[index].BodyClass = replacer.Replace(book.RenderedSections[index].BodyClass)
-		replaceSectionDOMClassTokens(&book.RenderedSections[index], replacer)
-	}
 	attachSectionAliasAnchors(book.RenderedSections, &renderer)
 	resolvedAnchorURI := resolveRenderedAnchorURIs(book.RenderedSections, &renderer)
-	replaceRenderedAnchorPlaceholders(book.RenderedSections, resolvedAnchorURI)
-	if css := renderer.styles.String(); css != "" {
-		if book.Stylesheet != "" {
-			book.Stylesheet += "\n"
-		}
-		book.Stylesheet += css
-	}
+	fixupAnchorsAndHrefs(book.RenderedSections, resolvedAnchorURI)
+	fixupIllustratedLayoutAnchors(book, book.RenderedSections)
+	updateDefaultFontAndLanguage(book)
+	setHTMLDefaults(book)
+	fixupStylesAndClasses(book, renderer.styles)
+	createCSSFiles(book, renderer.styles)
 	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
 
 	targetHref := func(target navTarget) string {
@@ -201,7 +163,7 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 		if sectionID == "" {
 			return ""
 		}
-		return sectionFilename(sectionID)
+		return sectionFilename(sectionID, symFmt)
 	}
 	navHref := func(target navTarget) string {
 		if target.PositionID == 0 {
@@ -214,7 +176,7 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 		if sectionID == "" {
 			return ""
 		}
-		return sectionFilename(sectionID)
+		return sectionFilename(sectionID, symFmt)
 	}
 
 	book.Navigation = navigationToEPUB(selectedNav, navHref)
@@ -227,8 +189,12 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 		}
 	}
 	book.PageList = pagesToEPUB(navState.pages, targetHref)
+	prepareBookParts(book)
+	reportMissingPositions(navState.positionAnchors)
+	reportDuplicateAnchors(navState, resolvedAnchorURI)
 	book.Sections = materializeRenderedSections(book.RenderedSections)
 	applyCoverSVGPromotion(book)
+	pruneUnusedResources(book)
 	book.Stylesheet = pruneUnusedStylesheetRules(book.Stylesheet, collectReferencedClasses(book))
 	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
 	book.Identifier = normalizeBookIdentifier(book.Identifier)
@@ -439,81 +405,6 @@ func replaceAnchorPlaceholdersInParts(parts []htmlPart, resolved map[string]stri
 	}
 }
 
-func renderSectionFragments(sectionID string, section sectionFragment, storylines map[string]map[string]interface{}, contentFragments map[string][]string, renderer *storylineRenderer) (renderedStoryline, []string, bool) {
-	templates := section.PageTemplates
-	if len(templates) == 0 {
-		templates = []pageTemplateFragment{{
-			PositionID:         section.PositionID,
-			Storyline:          section.Storyline,
-			PageTemplateStyle:  section.PageTemplateStyle,
-			PageTemplateValues: section.PageTemplateValues,
-		}}
-	}
-	if renderer != nil && renderer.conditionEvaluator.fixedLayout && pageTemplatesHaveConditions(templates) {
-		active := make([]pageTemplateFragment, 0, len(templates))
-		for _, template := range templates {
-			if template.Condition == nil || renderer.conditionEvaluator.evaluateBinary(template.Condition) {
-				active = append(active, template)
-			}
-		}
-		if len(active) == 0 {
-			return renderedStoryline{}, nil, false
-		}
-		templates = active
-	}
-
-	mainIndex := len(templates) - 1
-	mainTemplate := templates[mainIndex]
-	storyline := storylines[mainTemplate.Storyline]
-	if storyline == nil {
-		return renderedStoryline{}, nil, false
-	}
-	nodes, _ := asSlice(storyline["$146"])
-	paragraphs := flattenParagraphs(nodes, contentFragments)
-	debugStorylineNodes(sectionID, nodes, 0)
-	if os.Getenv("KFX_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "render section=%s pageStyle=%s storyStyle=%s\n", sectionID, mainTemplate.PageTemplateStyle, asStringDefault(storyline["$157"]))
-	}
-	rendered := renderer.renderStoryline(mainTemplate.PositionID, mainTemplate.PageTemplateStyle, mainTemplate.PageTemplateValues, storyline, nodes)
-
-	for _, template := range templates[:mainIndex] {
-		overlayStoryline := storylines[template.Storyline]
-		if overlayStoryline == nil {
-			continue
-		}
-		overlayNodes, _ := asSlice(overlayStoryline["$146"])
-		overlayParagraphs := flattenParagraphs(overlayNodes, contentFragments)
-		paragraphs = append(paragraphs, overlayParagraphs...)
-		debugStorylineNodes(sectionID, overlayNodes, 0)
-		if os.Getenv("KFX_DEBUG") != "" {
-			fmt.Fprintf(os.Stderr, "render overlay section=%s pageStyle=%s storyStyle=%s conditional=%v\n", sectionID, template.PageTemplateStyle, asStringDefault(overlayStoryline["$157"]), template.HasCondition)
-		}
-		overlayRendered := renderer.renderStoryline(template.PositionID, template.PageTemplateStyle, template.PageTemplateValues, overlayStoryline, overlayNodes)
-		if rendered.BodyClass == "" {
-			rendered.BodyClass = overlayRendered.BodyClass
-		}
-		if overlayRendered.Root != nil {
-			if rendered.Root == nil {
-				rendered.Root = &htmlElement{Attrs: map[string]string{}}
-			}
-			rendered.Root.Children = append(rendered.Root.Children, overlayRendered.Root.Children...)
-			rendered.BodyHTML = renderHTMLParts(rendered.Root.Children, true)
-		}
-		rendered.Properties = mergeSectionProperties(rendered.Properties, overlayRendered.Properties)
-	}
-
-	return rendered, paragraphs, len(paragraphs) > 0 || rendered.BodyHTML != ""
-}
-
-func pageTemplatesHaveConditions(templates []pageTemplateFragment) bool {
-	for _, template := range templates {
-		if template.Condition != nil || template.HasCondition {
-			return true
-		}
-	}
-	return false
-}
-
 func renderedSectionBodyHTML(section renderedSection) string {
 	if section.Root == nil {
 		return ""
@@ -591,6 +482,38 @@ func cleanupHTMLParts(parts []htmlPart) []htmlPart {
 	return cleaned
 }
 
+// promoteCoverSectionFromGuide moves the cover section to the front of the section order.
+// Port of epub_output.py identify_cover which expects the cover page to be first in the book.
+func promoteCoverSectionFromGuide(sections []string, guideEntries []guideEntry, positionToSection map[int]string) []string {
+	if len(sections) == 0 || len(guideEntries) == 0 {
+		return sections
+	}
+	// Find cover section from guide entry.
+	var coverSectionID string
+	for _, entry := range guideEntries {
+		if entry.Type == "cover" && entry.Target.PositionID != 0 {
+			coverSectionID = positionToSection[entry.Target.PositionID]
+			break
+		}
+	}
+	if coverSectionID == "" {
+		return sections
+	}
+	// Check if already first.
+	if len(sections) > 0 && sections[0] == coverSectionID {
+		return sections
+	}
+	// Move cover section to front.
+	result := make([]string, 0, len(sections))
+	result = append(result, coverSectionID)
+	for _, id := range sections {
+		if id != coverSectionID {
+			result = append(result, id)
+		}
+	}
+	return result
+}
+
 func isEmptyWrapper(element *htmlElement) bool {
 	if element == nil {
 		return true
@@ -610,17 +533,4 @@ func shouldCollapseNestedDiv(element *htmlElement) bool {
 		return false
 	}
 	return true
-}
-
-func mergeSectionProperties(left string, right string) string {
-	seen := map[string]bool{}
-	merged := make([]string, 0, 2)
-	for _, raw := range strings.Fields(strings.TrimSpace(left + " " + right)) {
-		if raw == "" || seen[raw] {
-			continue
-		}
-		seen[raw] = true
-		merged = append(merged, raw)
-	}
-	return strings.Join(merged, " ")
 }

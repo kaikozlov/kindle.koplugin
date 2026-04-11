@@ -23,32 +23,36 @@ type containerSource struct {
 }
 
 type fragmentCatalog struct {
-	ContentFeatures   map[string]interface{}
-	DocumentData      map[string]interface{}
-	ContentFragments  map[string][]string
-	Storylines        map[string]map[string]interface{}
-	StyleFragments    map[string]map[string]interface{}
-	RubyGroups        map[string]map[string]interface{}
-	RubyContents      map[string]map[string]interface{}
-	SectionFragments  map[string]sectionFragment
-	AnchorFragments   map[string]anchorFragment
-	NavContainers     map[string]map[string]interface{}
-	NavRoots          []map[string]interface{}
-	ResourceFragments map[string]resourceFragment
-	FontFragments     map[string]fontFragment
-	RawFragments      map[string][]byte
-	PositionAliases   map[int]string
-	RawBlobOrder      []rawBlob
-	SectionOrder      []string
-	FragmentIDsByType map[string][]string
+	TitleMetadata         map[string]interface{} // $490; applied in applyKFXEPUBInitMetadataAfterOrganize (yj_to_epub.py L77–80 order).
+	ContentFeatures       map[string]interface{}
+	DocumentData          map[string]interface{}
+	ReadingOrderMetadata  map[string]interface{} // $258 top-level; applied in applyKFXEPUBInitMetadataAfterOrganize.
+	ContentFragments      map[string][]string
+	Storylines            map[string]map[string]interface{}
+	StyleFragments        map[string]map[string]interface{}
+	RubyGroups            map[string]map[string]interface{}
+	RubyContents          map[string]map[string]interface{}
+	SectionFragments      map[string]sectionFragment
+	AnchorFragments       map[string]anchorFragment
+	NavContainers         map[string]map[string]interface{}
+	NavRoots              []map[string]interface{}
+	ResourceFragments     map[string]resourceFragment
+	FontFragments         map[string]fontFragment
+	RawFragments          map[string][]byte
+	PositionAliases       map[int]string
+	RawBlobOrder          []rawBlob
+	SectionOrder          []string
+	FragmentIDsByType     map[string][]string
 }
 
 type bookState struct {
-	Path      string
-	Source    *containerSource
-	Sources   []*containerSource
-	Book      *decodedBook
-	Fragments fragmentCatalog
+	Path             string
+	Source           *containerSource
+	Sources          []*containerSource
+	Book             *decodedBook
+	Fragments        fragmentCatalog
+	BookSymbols      map[string]struct{}
+	BookSymbolFormat symType
 }
 
 type containerBlob struct {
@@ -289,6 +293,36 @@ func loadContainerSourceData(path string, data []byte) (*containerSource, error)
 	}, nil
 }
 
+// mergeContentFragmentStringSymbols records string IDs from $145 content bundles into bookSymbols
+// (Calibre replace_ion_data walks Ion; Go content fragments are already resolved strings).
+func mergeContentFragmentStringSymbols(frag map[string][]string, bookSymbols map[string]struct{}) {
+	for _, ids := range frag {
+		for _, id := range ids {
+			if id != "" {
+				bookSymbols[id] = struct{}{}
+			}
+		}
+	}
+}
+
+func mergeIonReferencedStringSymbols(value interface{}, bookSymbols map[string]struct{}) {
+	switch t := value.(type) {
+	case map[string]interface{}:
+		for k, v := range t {
+			if strings.HasPrefix(k, "$") {
+				if s, ok := v.(string); ok && s != "" {
+					bookSymbols[s] = struct{}{}
+				}
+			}
+			mergeIonReferencedStringSymbols(v, bookSymbols)
+		}
+	case []interface{}:
+		for _, v := range t {
+			mergeIonReferencedStringSymbols(v, bookSymbols)
+		}
+	}
+}
+
 func combineContainerDocSymbols(sources []*containerSource) []byte {
 	var combined []byte
 	for _, source := range sources {
@@ -300,8 +334,11 @@ func combineContainerDocSymbols(sources []*containerSource) []byte {
 	return combined
 }
 
+// Port of KFX_EPUB.organize_fragments_by_type (yj_to_epub.py) adapted to the Go fragmentCatalog layout.
+// replace_ion_data symbol collection is approximated by recording resolved fragment IDs during the index walk.
 func organizeFragments(bookPath string, sources []*containerSource) (*bookState, error) {
 	fragments := fragmentCatalog{
+		TitleMetadata:     nil,
 		ContentFeatures:   map[string]interface{}{},
 		DocumentData:      map[string]interface{}{},
 		ContentFragments:  map[string][]string{},
@@ -330,6 +367,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 		return nil, err
 	}
 
+	bookSymbols := map[string]struct{}{}
 	fontCount := 0
 	for _, source := range sources {
 		lastContainerID := ""
@@ -346,6 +384,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 
 			entityData := source.Data[start:end]
 			fragmentID := resolver.Resolve(idID)
+			bookSymbols[fragmentID] = struct{}{}
 			fragmentType := fmt.Sprintf("$%d", typeID)
 			payload, err := entityPayload(entityData)
 			if err != nil {
@@ -402,6 +441,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 						fragments.StyleFragments[id] = value
 					}
 				case "$164":
+					mergeIonReferencedStringSymbols(value, bookSymbols)
 					resource := parseResourceFragment(fragmentID, value)
 					if resource.Location != "" {
 						fragments.ResourceFragments[resource.ID] = resource
@@ -411,6 +451,8 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 					if len(order) > 0 {
 						fragments.SectionOrder = order
 					}
+					// Store $258 for applyReadingOrderMetadata (Python process_metadata L103: book_data.pop("$258", {})).
+					fragments.ReadingOrderMetadata = value
 				case "$259":
 					id := chooseFragmentIdentity(fragmentID, value["$176"])
 					if id != "" {
@@ -427,6 +469,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 						fragments.FontFragments[font.Location] = font
 					}
 				case "$266":
+					mergeIonReferencedStringSymbols(value, bookSymbols)
 					anchor := parseAnchorFragment(fragmentID, value)
 					if anchor.ID != "" && (anchor.PositionID != 0 || anchor.URI != "") {
 						fragments.AnchorFragments[anchor.ID] = anchor
@@ -437,13 +480,11 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 						fragments.NavContainers[id] = value
 					}
 				case "$490":
-					applyMetadata(book, value)
+					fragments.TitleMetadata = value
 				case "$538":
 					fragments.DocumentData = value
-					applyDocumentData(book, value)
 				case "$585":
 					fragments.ContentFeatures = value
-					applyContentFeatures(book, value)
 				case "$608":
 					id := chooseFragmentIdentity(fragmentID, value["$758"])
 					if id == "" {
@@ -490,6 +531,43 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 		}
 	}
 
+	// Port of replace_ion_data string-symbol discovery (yj_to_epub.py): collect YJ field string values into bookSymbols.
+	mergeIonReferencedStringSymbols(fragments.TitleMetadata, bookSymbols)
+	mergeIonReferencedStringSymbols(fragments.DocumentData, bookSymbols)
+	mergeIonReferencedStringSymbols(fragments.ContentFeatures, bookSymbols)
+	for _, m := range fragments.StyleFragments {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	for _, m := range fragments.Storylines {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	for _, m := range fragments.NavContainers {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	for _, m := range fragments.NavRoots {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	mergeContentFragmentStringSymbols(fragments.ContentFragments, bookSymbols)
+	for _, m := range fragments.RubyGroups {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	for _, m := range fragments.RubyContents {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	for _, sec := range fragments.SectionFragments {
+		mergeIonReferencedStringSymbols(sec.PageTemplateValues, bookSymbols)
+		for _, t := range sec.PageTemplates {
+			mergeIonReferencedStringSymbols(t.PageTemplateValues, bookSymbols)
+			mergeIonReferencedStringSymbols(t.Condition, bookSymbols)
+		}
+	}
+
+	// Port of Python process_document_data reading_orders: $169 from $538 document data.
+	if len(fragments.SectionOrder) == 0 {
+		if docOrder := readSectionOrder(fragments.DocumentData); len(docOrder) > 0 {
+			fragments.SectionOrder = docOrder
+		}
+	}
 	if len(fragments.SectionOrder) == 0 {
 		for sectionID := range fragments.SectionFragments {
 			fragments.SectionOrder = append(fragments.SectionOrder, sectionID)
@@ -505,12 +583,18 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 		primarySource = sources[0]
 	}
 
+	symbolFormat := determineBookSymbolFormat(bookSymbols, fragments.DocumentData, resolver)
+	// KFX_EPUB.__init__ L77–80 after determine_book_symbol_format (L76).
+	applyKFXEPUBInitMetadataAfterOrganize(book, &fragments)
+
 	return &bookState{
-		Path:      bookPath,
-		Source:    primarySource,
-		Sources:   sources,
-		Book:      book,
-		Fragments: fragments,
+		Path:             bookPath,
+		Source:           primarySource,
+		Sources:          sources,
+		Book:             book,
+		Fragments:        fragments,
+		BookSymbols:      bookSymbols,
+		BookSymbolFormat: symbolFormat,
 	}, nil
 }
 

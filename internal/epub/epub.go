@@ -1,3 +1,6 @@
+// Package epub implements EPUB3 zip emission for the Kindle helper. Calibre’s EPUB_Output
+// (epub_output.py) remains the behavioral superset (manifest item order, NCX depth, guide/landmarks);
+// extend here when driving diffs to zero vs calibre_epubs fixtures.
 package epub
 
 import (
@@ -17,6 +20,8 @@ type Book struct {
 	Language            string
 	Authors             []string
 	Published           string
+	Description         string
+	Publisher           string
 	Modified            string
 	OverrideKindleFonts bool
 	Stylesheet          string
@@ -182,7 +187,7 @@ func navXHTML(book Book) string {
 			if entry.Type != "" {
 				body.WriteString(` epub:type="` + xmlEscape(epubTypeForGuide(entry.Type)) + `"`)
 			}
-			body.WriteString(` href="` + xmlEscape(entry.Href) + `">` + xmlEscape(entry.Title) + `</a></li>`)
+			body.WriteString(` href="` + xmlEscape(entry.Href) + `">` + ncxTextEscape(entry.Title) + `</a></li>`)
 		}
 		body.WriteString(`</ol></nav>`)
 	}
@@ -208,7 +213,7 @@ func navXHTML(book Book) string {
 func navPointListHTML(points []NavPoint) string {
 	var items strings.Builder
 	for _, point := range points {
-		items.WriteString(`<li><a href="` + xmlEscape(point.Href) + `">` + xmlEscape(point.Title) + `</a>`)
+		items.WriteString(`<li><a href="` + xmlEscape(point.Href) + `">` + ncxTextEscape(point.Title) + `</a>`)
 		if len(point.Children) > 0 {
 			items.WriteString(`<ol>` + navPointListHTML(point.Children) + `</ol>`)
 		}
@@ -273,7 +278,7 @@ func appendNCXPoints(out *strings.Builder, points []NavPoint, indent int, navID 
 		*navID = *navID + 1
 		out.WriteString(prefix + `<navPoint id="` + id + `">` + "\n")
 		out.WriteString(prefix + `  <navLabel>` + "\n")
-		out.WriteString(prefix + `    <text>` + xmlEscape(point.Title) + `</text>` + "\n")
+		out.WriteString(prefix + `    <text>` + ncxTextEscape(point.Title) + `</text>` + "\n")
 		out.WriteString(prefix + `  </navLabel>` + "\n")
 		out.WriteString(prefix + `  <content src="` + xmlEscape(point.Href) + `"/>` + "\n")
 		if len(point.Children) > 0 {
@@ -296,6 +301,12 @@ func contentOPF(book Book) string {
 		out.WriteString(`    <meta refines="#` + id + `" property="role" scheme="marc:relators">aut</meta>` + "\n")
 	}
 	out.WriteString(`    <dc:language>` + xmlEscape(book.Language) + `</dc:language>` + "\n")
+	if book.Publisher != "" {
+		out.WriteString(`    <dc:publisher>` + xmlEscape(book.Publisher) + `</dc:publisher>` + "\n")
+	}
+	if book.Description != "" {
+		out.WriteString(`    <dc:description>` + xmlEscape(book.Description) + `</dc:description>` + "\n")
+	}
 	if book.Published != "" {
 		out.WriteString(`    <dc:date>` + xmlEscape(book.Published) + `</dc:date>` + "\n")
 	}
@@ -304,39 +315,78 @@ func contentOPF(book Book) string {
 		out.WriteString(`    <meta name="Override-Kindle-Fonts" content="true"/>` + "\n")
 	}
 	if book.CoverImageHref != "" {
-		out.WriteString(`    <meta name="cover" content="` + xmlEscape(book.CoverImageHref) + `"/>` + "\n")
+		// Use truncated manifest ID for cover meta (Python: fix_html_id basename[:64]).
+		coverID := makeManifestID(book.CoverImageHref, map[string]bool{})
+		out.WriteString(`    <meta name="cover" content="` + xmlEscape(coverID) + `"/>` + "\n")
 	}
 	out.WriteString(`  </metadata>` + "\n")
 	out.WriteString(`  <manifest>` + "\n")
-	for _, section := range sortedSectionsByFilename(book.Sections) {
-		out.WriteString(`    <item href="` + xmlEscape(section.Filename) + `" id="` + xmlEscape(section.Filename) + `" media-type="application/xhtml+xml"`)
-		if section.Properties != "" {
-			out.WriteString(` properties="` + xmlEscape(section.Properties) + `"`)
-		}
-		out.WriteString(`/>` + "\n")
+	// Calibre sorts all manifest items together by filename (natural sort).
+	// Port of epub_output.py generate_opf manifest ordering.
+	type manifestItem struct {
+		href        string
+		id          string
+		mediaType   string
+		properties  string
+		sortKey     string
 	}
-	for _, resource := range sortedResourcesByFilename(book.Resources) {
+	items := make([]manifestItem, 0, len(book.Sections)+len(book.Resources)+3)
+	usedIDs := map[string]bool{}
+	sectionIDs := map[string]string{} // filename → manifest ID for spine
+	for _, section := range book.Sections {
+		if section.Filename == "" {
+			continue
+		}
+		id := makeManifestID(section.Filename, usedIDs)
+		sectionIDs[section.Filename] = id
+		items = append(items, manifestItem{
+			href:       section.Filename,
+			id:         id,
+			mediaType:  "application/xhtml+xml",
+			properties: section.Properties,
+			sortKey:    naturalSortKeyEpub(section.Filename),
+		})
+	}
+	for _, resource := range book.Resources {
 		if resource.Filename == "" || resource.MediaType == "" {
 			continue
 		}
-		out.WriteString(`    <item href="` + xmlEscape(resource.Filename) + `" id="` + xmlEscape(resource.Filename) + `" media-type="` + xmlEscape(resource.MediaType) + `"`)
-		if resource.Properties != "" {
-			out.WriteString(` properties="` + xmlEscape(resource.Properties) + `"`)
+		id := makeManifestID(resource.Filename, usedIDs)
+		items = append(items, manifestItem{
+			href:       resource.Filename,
+			id:         id,
+			mediaType:  resource.MediaType,
+			properties: resource.Properties,
+			sortKey:    naturalSortKeyEpub(resource.Filename),
+		})
+	}
+	// nav, stylesheet, toc.ncx added at the end
+	items = append(items, manifestItem{href: "nav.xhtml", id: "nav.xhtml", mediaType: "application/xhtml+xml", properties: "nav", sortKey: naturalSortKeyEpub("nav.xhtml")})
+	if book.Stylesheet != "" {
+		items = append(items, manifestItem{href: "stylesheet.css", id: "stylesheet.css", mediaType: "text/css", sortKey: naturalSortKeyEpub("stylesheet.css")})
+	}
+	items = append(items, manifestItem{href: "toc.ncx", id: "toc.ncx", mediaType: "application/x-dtbncx+xml", sortKey: naturalSortKeyEpub("toc.ncx")})
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].href < items[j].href
+	})
+	for _, item := range items {
+		out.WriteString(`    <item href="` + xmlEscape(item.href) + `" id="` + xmlEscape(item.id) + `" media-type="` + xmlEscape(item.mediaType) + `"`)
+		if item.properties != "" {
+			out.WriteString(` properties="` + xmlEscape(item.properties) + `"`)
 		}
 		out.WriteString(`/>` + "\n")
 	}
-	out.WriteString(`    <item href="nav.xhtml" id="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>` + "\n")
-	if book.Stylesheet != "" {
-		out.WriteString(`    <item href="stylesheet.css" id="stylesheet.css" media-type="text/css"/>` + "\n")
-	}
-	out.WriteString(`    <item href="toc.ncx" id="toc.ncx" media-type="application/x-dtbncx+xml"/>` + "\n")
 	out.WriteString(`  </manifest>` + "\n")
 	out.WriteString(`  <spine toc="toc.ncx">` + "\n")
 	for _, section := range book.Sections {
 		if section.Filename == "" {
 			continue
 		}
-		out.WriteString(`    <itemref idref="` + xmlEscape(section.Filename) + `"/>` + "\n")
+		id := sectionIDs[section.Filename]
+		if id == "" {
+			id = section.Filename
+		}
+		out.WriteString(`    <itemref idref="` + xmlEscape(id) + `"/>` + "\n")
 	}
 	out.WriteString(`  </spine>` + "\n")
 	if len(book.Guide) > 0 {
@@ -443,6 +493,82 @@ func xmlEscape(text string) string {
 	return html.EscapeString(text)
 }
 
+// ncxTextEscape escapes XML text content but preserves double quotes (Calibre behavior).
+// In XML text nodes, " doesn't need escaping; html.EscapeString converts it to &#34; unnecessarily.
+func ncxTextEscape(text string) string {
+	escaped := html.EscapeString(text)
+	escaped = strings.ReplaceAll(escaped, "&#34;", `"`)
+	return escaped
+}
+
+// naturalSortKeyEpub returns a sort key that sorts filenames naturally (numbers by value).
+func naturalSortKeyEpub(value string) string {
+	lower := strings.ToLower(value)
+	var out strings.Builder
+	for index := 0; index < len(lower); {
+		if lower[index] < '0' || lower[index] > '9' {
+			out.WriteByte(lower[index])
+			index++
+			continue
+		}
+		start := index
+		for index < len(lower) && lower[index] >= '0' && lower[index] <= '9' {
+			index++
+		}
+		digits := lower[start:index]
+		if pad := 8 - len(digits); pad > 0 {
+			out.WriteString(strings.Repeat("0", pad))
+		}
+		out.WriteString(digits)
+	}
+	return out.String()
+}
+
+// makeManifestID produces a unique manifest ID from a filename.
+// Port of Python epub_output.py manifest_resource: fix_html_id(filename.rpartition("/")[2][:64])
+// + make_unique_name deduplication.
+func makeManifestID(filename string, used map[string]bool) string {
+	// Get basename, truncate to 64 chars like Python.
+	base := filename
+	if idx := strings.LastIndex(filename, "/"); idx >= 0 {
+		base = filename[idx+1:]
+	}
+	if len(base) > 64 {
+		base = base[:64]
+	}
+	// Sanitize: replace non-alphanumeric (except _ . -) with _
+	id := sanitizeManifestID(base)
+	// Ensure starts with letter
+	if len(id) == 0 || !((id[0] >= 'A' && id[0] <= 'Z') || (id[0] >= 'a' && id[0] <= 'z')) {
+		id = "id_" + id
+	}
+	// Deduplicate
+	if !used[id] {
+		used[id] = true
+		return id
+	}
+	for i := 0; ; i++ {
+		candidate := fmt.Sprintf("%s_%d", id, i)
+		if !used[candidate] {
+			used[candidate] = true
+			return candidate
+		}
+	}
+}
+
+func sanitizeManifestID(id string) string {
+	var b strings.Builder
+	b.Grow(len(id))
+	for _, r := range id {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
 func EnsureDir(path string) error {
 	return os.MkdirAll(filepath.Dir(path), 0o755)
 }
@@ -451,6 +577,8 @@ func epubTypeForGuide(guideType string) string {
 	switch guideType {
 	case "cover":
 		return "cover"
+	case "text":
+		return "bodymatter"
 	case "toc":
 		return "toc"
 	default:

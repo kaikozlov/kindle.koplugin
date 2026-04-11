@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"image/jpeg"
 	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -16,44 +15,17 @@ import (
 
 	"github.com/amazon-ion/ion-go/ion"
 	"github.com/kaikozlov/kindle-koplugin/internal/epub"
-	"github.com/kaikozlov/kindle-koplugin/internal/jxr"
 )
 
 var (
-	contSignature     = []byte("CONT")
-	drmionSignature   = []byte{0xea, 'D', 'R', 'M', 'I', 'O', 'N', 0xee}
-	ionVersionMarker  = []byte{0xe0, 0x01, 0x00, 0xea}
-	yjPreludeOnce     sync.Once
-	yjPreludeData     []byte
-	yjPreludeErr      error
-	cssIdentPattern   = regexp.MustCompile(`^[-_a-zA-Z0-9]*$`)
-	styleTokenPattern = regexp.MustCompile(`__STYLE_\d+__`)
+	contSignature    = []byte("CONT")
+	drmionSignature  = []byte{0xea, 'D', 'R', 'M', 'I', 'O', 'N', 0xee}
+	ionVersionMarker = []byte{0xe0, 0x01, 0x00, 0xea}
+	yjPreludeOnce    sync.Once
+	yjPreludeData    []byte
+	yjPreludeErr     error
+	cssIdentPattern  = regexp.MustCompile(`^[-_a-zA-Z0-9]*$`)
 )
-
-var listTagByMarker = map[string]string{
-	"$346": "ol",
-	"$347": "ol",
-	"$342": "ul",
-	"$340": "ul",
-	"$271": "ul",
-	"$349": "ul",
-	"$343": "ol",
-	"$344": "ol",
-	"$345": "ol",
-	"$341": "ul",
-}
-
-var classificationEPUBType = map[string]string{
-	"$618": "footnote",
-	"$619": "endnote",
-	"$281": "footnote",
-}
-
-var layoutHintElementNames = map[string]string{
-	"$453": "caption",
-	"$282": "figure",
-	"$760": "heading",
-}
 
 const ionSystemSymbolCount = 9
 
@@ -80,31 +52,38 @@ func (e *UnsupportedError) Error() string {
 }
 
 type decodedBook struct {
-	Title               string
-	Language            string
-	Authors             []string
-	Identifier          string
-	Published           string
-	OrientationLock     string
-	FixedLayout         bool
-	IllustratedLayout   bool
-	OverrideKindleFonts bool
-	CoverImageID        string
-	CoverImageHref      string
-	Stylesheet          string
-	ResourceHrefByID    map[string]string
-	RenderedSections    []renderedSection
-	Sections            []epub.Section
-	Resources           []epub.Resource
-	Navigation          []epub.NavPoint
-	Guide               []epub.GuideEntry
-	PageList            []epub.PageTarget
+	Title                    string
+	Language                 string
+	Authors                  []string
+	Identifier               string
+	Published                string
+	Description              string
+	Publisher                string
+	BookID                   string
+	ASIN                     string
+	OrientationLock          string
+	WritingMode              string
+	PageProgressionDirection string
+	FixedLayout              bool
+	IllustratedLayout        bool
+	OverrideKindleFonts      bool
+	CoverImageID             string
+	CoverImageHref           string
+	Stylesheet               string
+	ResourceHrefByID         map[string]string
+	RenderedSections         []renderedSection
+	Sections                 []epub.Section
+	Resources                []epub.Resource
+	Navigation               []epub.NavPoint
+	Guide                    []epub.GuideEntry
+	PageList                 []epub.PageTarget
 }
 
 type renderedStoryline struct {
 	Root       *htmlElement
 	BodyHTML   string
 	BodyClass  string
+	BodyStyle  string
 	Properties string
 }
 
@@ -114,6 +93,7 @@ type renderedSection struct {
 	PageTitle  string
 	Language   string
 	BodyClass  string
+	BodyStyle  string
 	Paragraphs []string
 	Properties string
 	Root       *htmlElement
@@ -202,53 +182,34 @@ type pageEntry struct {
 }
 
 type storylineRenderer struct {
-	contentFragments   map[string][]string
-	rubyGroups         map[string]map[string]interface{}
-	rubyContents       map[string]map[string]interface{}
-	resourceHrefByID   map[string]string
-	resourceFragments  map[string]resourceFragment
-	anchorToFilename   map[string]string
-	directAnchorURI    map[string]string
-	fallbackAnchorURI  map[string]string
-	positionToSection  map[int]string
-	positionAnchors    map[int]map[int][]string
-	positionAnchorID   map[int]map[int]string
-	anchorNamesByID    map[string][]string
-	anchorHeadingLevel map[string]int
-	emittedAnchorIDs   map[string]bool
-	styleFragments     map[string]map[string]interface{}
-	styles             *styleCatalog
-	activeBodyClass    string
-	activeBodyDefaults map[string]bool
-	firstVisibleSeen   bool
+	contentFragments    map[string][]string
+	rubyGroups          map[string]map[string]interface{}
+	rubyContents        map[string]map[string]interface{}
+	resourceHrefByID    map[string]string
+	resourceFragments   map[string]resourceFragment
+	anchorToFilename    map[string]string
+	directAnchorURI     map[string]string
+	fallbackAnchorURI   map[string]string
+	positionToSection   map[int]string
+	positionAnchors     map[int]map[int][]string
+	positionAnchorID    map[int]map[int]string
+	anchorNamesByID     map[string][]string
+	anchorHeadingLevel  map[string]int
+	emittedAnchorIDs    map[string]bool
+	styleFragments      map[string]map[string]interface{}
+	styles              *styleCatalog
+	activeBodyClass     string
+	activeBodyDefaults  map[string]bool
+	firstVisibleSeen    bool
 	lastKFXHeadingLevel int
-	conditionEvaluator conditionEvaluator
+	symFmt              symType
+	conditionEvaluator  conditionEvaluator
 }
 
 type conditionEvaluator struct {
 	orientationLock   string
 	fixedLayout       bool
 	illustratedLayout bool
-}
-
-type styleCatalog struct {
-	staticRules  map[string]string
-	entries      []*styleEntry
-	byKey        map[string]*styleEntry
-	byToken      map[string]*styleEntry
-	finalized    bool
-	replacements []string
-	css          string
-}
-
-type styleEntry struct {
-	token        string
-	baseName     string
-	declarations string
-	count        int
-	order        int
-	finalName    string
-	referenced   bool
 }
 
 type fontNameFixer struct {
@@ -307,6 +268,8 @@ func ConvertFile(inputPath, outputPath string) error {
 		Language:            book.Language,
 		Authors:             book.Authors,
 		Published:           book.Published,
+		Description:         book.Description,
+		Publisher:           book.Publisher,
 		OverrideKindleFonts: book.OverrideKindleFonts,
 		CoverImageHref:      book.CoverImageHref,
 		Stylesheet:          book.Stylesheet,
@@ -389,6 +352,27 @@ func (r *symbolResolver) isLocalSID(sid uint32) bool {
 	}
 	offset := sid - r.localStart
 	return sid >= r.localStart && int(offset) < len(r.locals)
+}
+
+// isSharedSymbolText mirrors symtab.is_shared_symbol for text form "$<sid>" (yj_structure.py / Ion locals).
+func (r *symbolResolver) isSharedSymbolText(name string) bool {
+	if r == nil || name == "" || name[0] != '$' {
+		return false
+	}
+	for _, ch := range name[1:] {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	sid64, err := strconv.ParseUint(name[1:], 10, 32)
+	if err != nil || sid64 == 0 {
+		return false
+	}
+	sid := uint32(sid64)
+	if r.isLocalSID(sid) {
+		return false
+	}
+	return sid < r.localStart
 }
 
 func entityPayload(data []byte) ([]byte, error) {
@@ -524,11 +508,15 @@ func normalizeIon(value interface{}, resolver *symbolResolver) interface{} {
 	}
 }
 
+// Port of Python process_reading_order reading order iteration (yj_to_epub_content.py L105+).
+// Python iterates all reading orders; Go merges all section lists.
 func readSectionOrder(value map[string]interface{}) []string {
 	entries, ok := asSlice(value["$169"])
 	if !ok {
 		return nil
 	}
+	seen := map[string]bool{}
+	var result []string
 	for _, entry := range entries {
 		entryMap, ok := asMap(entry)
 		if !ok {
@@ -538,17 +526,14 @@ func readSectionOrder(value map[string]interface{}) []string {
 		if !ok {
 			continue
 		}
-		result := make([]string, 0, len(sections))
 		for _, item := range sections {
-			if text, ok := asString(item); ok {
+			if text, ok := asString(item); ok && text != "" && !seen[text] {
+				seen[text] = true
 				result = append(result, text)
 			}
 		}
-		if len(result) > 0 {
-			return result
-		}
 	}
-	return nil
+	return result
 }
 
 func parsePositionMapSectionID(fragmentID string, value map[string]interface{}) string {
@@ -787,6 +772,13 @@ func defaultBodyDeclarations(bodyClass string) []string {
 	}
 }
 
+// defaultBodyFontDeclarations returns additional font-family declarations for the body that
+// should be used for inheritance filtering. Not needed since defaultBodyDeclarations already
+// includes font-family.
+func defaultBodyFontDeclarations(bodyClass string) []string {
+	return nil
+}
+
 func isStaticBodyClass(bodyClass string) bool {
 	switch bodyClass {
 	case "class-0", "class-1", "class-2", "class-3", "class-7", "class-8":
@@ -883,546 +875,6 @@ func deriveSectionTitle(paragraphs []string, sectionNumber int) string {
 	return fmt.Sprintf("Section %d", sectionNumber)
 }
 
-func parseResourceFragment(fragmentID string, value map[string]interface{}) resourceFragment {
-	resourceID, _ := asString(value["$175"])
-	if resourceID == "" {
-		resourceID = fragmentID
-	}
-	location, _ := asString(value["$165"])
-	mediaType, _ := asString(value["$162"])
-
-	return resourceFragment{
-		ID:        resourceID,
-		Location:  location,
-		MediaType: mediaType,
-	}
-}
-
-func parseFontFragment(value map[string]interface{}) fontFragment {
-	location, _ := asString(value["$165"])
-	family, _ := asString(value["$11"])
-
-	return fontFragment{
-		Location: location,
-		Family:   family,
-		Style:    mapFontStyle(value["$12"]),
-		Weight:   mapFontWeight(value["$13"]),
-		Stretch:  mapFontStretch(value["$15"]),
-	}
-}
-
-func buildResources(book *decodedBook, resources map[string]resourceFragment, fonts map[string]fontFragment, raw map[string][]byte, rawOrder []rawBlob) ([]epub.Resource, string, string, map[string]string) {
-	var output []epub.Resource
-	imagePool, fontPool := partitionRawBlobs(rawOrder)
-	imageCursor := 0
-	fontCursor := 0
-
-	resourceIDs := make([]string, 0, len(resources))
-	for resourceID := range resources {
-		resourceIDs = append(resourceIDs, resourceID)
-	}
-	sort.Strings(resourceIDs)
-
-	resourceFilenameByID := map[string]string{}
-	firstImageFilename := ""
-	for _, resourceID := range resourceIDs {
-		resource := resources[resourceID]
-		data := raw[resource.Location]
-		isImage := strings.HasPrefix(strings.ToLower(resource.MediaType), "image/")
-		if isImage && !blobMatchesImageMediaType(data, resource.MediaType) {
-			data = nil
-		}
-		if len(data) == 0 && isImage {
-			data, imageCursor = nextMatchingBlob(imagePool, imageCursor, resource.MediaType)
-		}
-		if len(data) == 0 {
-			continue
-		}
-		mediaType := resource.MediaType
-		if strings.EqualFold(mediaType, "image/jpg") {
-			mediaType = "image/jpeg"
-		}
-		if strings.EqualFold(mediaType, "image/jxr") {
-			convertedData, convertedType, err := convertJXRResource(data)
-			if err == nil {
-				data = convertedData
-				mediaType = convertedType
-			}
-		}
-		filename := resourceFilename(resourceFragment{
-			ID:        resource.ID,
-			Location:  resource.Location,
-			MediaType: mediaType,
-		})
-		output = append(output, epub.Resource{
-			Filename:  filename,
-			MediaType: mediaType,
-			Data:      data,
-		})
-		resourceFilenameByID[resourceID] = filename
-		if firstImageFilename == "" {
-			firstImageFilename = filename
-		}
-	}
-
-	fontLocations := make([]string, 0, len(fonts))
-	for location := range fonts {
-		fontLocations = append(fontLocations, location)
-	}
-	sort.Strings(fontLocations)
-
-	var stylesheet strings.Builder
-	fontFaceLines := make([]string, 0, len(fontLocations))
-	for _, location := range fontLocations {
-		font := fonts[location]
-		data := raw[location]
-		if detectFontExtension(data) == ".bin" {
-			data = nil
-		}
-		if len(data) == 0 {
-			data, fontCursor = nextFontBlob(fontPool, fontCursor)
-		}
-		if len(data) == 0 {
-			continue
-		}
-		filename := fontFilename(location, data)
-		output = append(output, epub.Resource{
-			Filename:  filename,
-			MediaType: fontMediaType(filename),
-			Data:      data,
-		})
-
-		family := font.Family
-		if currentFontFixer != nil {
-			family = currentFontFixer.fixFontName(family, true, false)
-		}
-		declarations := []string{"font-family: " + quoteFontName(family)}
-		if font.Style != "" && font.Style != "normal" {
-			declarations = append(declarations, "font-style: "+font.Style)
-		}
-		if font.Weight != "" && font.Weight != "normal" {
-			declarations = append(declarations, "font-weight: "+font.Weight)
-		}
-		if font.Stretch != "" && font.Stretch != "normal" {
-			declarations = append(declarations, "font-stretch: "+font.Stretch)
-		}
-		declarations = append(declarations, "src: url("+filename+")")
-		fontFaceLines = append(fontFaceLines, "@font-face {"+strings.Join(canonicalDeclarations(declarations), "; ")+"}")
-	}
-	sort.Strings(fontFaceLines)
-	for index, line := range fontFaceLines {
-		if index > 0 {
-			stylesheet.WriteByte('\n')
-		}
-		stylesheet.WriteString(line)
-	}
-
-	coverImageHref := resourceFilenameByID[book.CoverImageID]
-	if coverImageHref == "" && book.CoverImageID != "" {
-		coverImageHref = firstImageFilename
-	}
-	for index := range output {
-		if output[index].Filename == coverImageHref && coverImageHref != "" {
-			output[index].Properties = "cover-image"
-			break
-		}
-	}
-	return output, coverImageHref, strings.TrimSpace(stylesheet.String()), resourceFilenameByID
-}
-
-func applyMetadata(book *decodedBook, value map[string]interface{}) {
-	categories, ok := asSlice(value["$491"])
-	if !ok {
-		return
-	}
-	for _, category := range categories {
-		categoryMap, ok := asMap(category)
-		if !ok {
-			continue
-		}
-		name, _ := asString(categoryMap["$495"])
-		entries, ok := asSlice(categoryMap["$258"])
-		if !ok {
-			continue
-		}
-		for _, rawEntry := range entries {
-			entry, ok := asMap(rawEntry)
-			if !ok {
-				continue
-			}
-			key, _ := asString(entry["$492"])
-			catKey := name + "/" + key
-			switch catKey {
-			case "kindle_title_metadata/title":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
-					book.Title = value
-				}
-			case "kindle_title_metadata/author":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
-					book.Authors = append(book.Authors, value)
-				}
-			case "kindle_title_metadata/language":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
-					book.Language = value
-				}
-			case "kindle_title_metadata/issue_date":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
-					book.Published = value
-				}
-			case "kindle_title_metadata/cover_image":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
-					book.CoverImageID = value
-				}
-			case "kindle_title_metadata/override_kindle_font":
-				if value, ok := asBool(entry["$307"]); ok {
-					book.OverrideKindleFonts = value
-				}
-			case "kindle_title_metadata/content_id", "kindle_title_metadata/ASIN":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
-					book.Identifier = value
-				}
-			case "kindle_ebook_metadata/book_orientation_lock":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
-					book.OrientationLock = value
-				}
-			case "kindle_capability_metadata/yj_fixed_layout":
-				if value, ok := asInt(entry["$307"]); ok && value > 0 {
-					book.FixedLayout = true
-				}
-			case "kindle_capability_metadata/yj_illustrated_layout":
-				if value, ok := asBool(entry["$307"]); ok && value {
-					book.IllustratedLayout = true
-				}
-			case "kindle_title_metadata/support_landscape":
-				if value, ok := asBool(entry["$307"]); ok && !value && book.OrientationLock == "" {
-					book.OrientationLock = "portrait"
-				}
-			case "kindle_title_metadata/support_portrait":
-				if value, ok := asBool(entry["$307"]); ok && !value && book.OrientationLock == "" {
-					book.OrientationLock = "landscape"
-				}
-			}
-		}
-	}
-}
-
-func applyDocumentData(book *decodedBook, value map[string]interface{}) {
-	if book == nil || value == nil {
-		return
-	}
-	if raw, ok := asString(value["$433"]); ok {
-		switch raw {
-		case "$385":
-			book.OrientationLock = "portrait"
-		case "$386":
-			book.OrientationLock = "landscape"
-		case "$349":
-			book.OrientationLock = "none"
-		}
-	}
-}
-
-func applyContentFeatures(book *decodedBook, value map[string]interface{}) {
-	if book == nil || value == nil {
-		return
-	}
-	if hasNamedFeature(value, "yj.illustrated_layout") {
-		book.IllustratedLayout = true
-	}
-	if hasNamedFeature(value, "yj_fixed_layout") || hasNamedFeature(value, "yj_non_pdf_fixed_layout") || hasNamedFeature(value, "yj_pdf_backed_fixed_layout") {
-		book.FixedLayout = true
-	}
-}
-
-func hasNamedFeature(value interface{}, name string) bool {
-	switch typed := value.(type) {
-	case map[string]interface{}:
-		if _, ok := typed[name]; ok {
-			return true
-		}
-		for _, child := range typed {
-			if hasNamedFeature(child, name) {
-				return true
-			}
-		}
-	case []interface{}:
-		for _, child := range typed {
-			if hasNamedFeature(child, name) {
-				return true
-			}
-		}
-	case string:
-		return typed == name
-	}
-	return false
-}
-
-var knownSupportedFeatures = map[string]bool{
-	"$826":              true,
-	"$827":              true,
-	"$660":              true,
-	"$751":              true,
-	"$664|crop_bleed|1": true,
-}
-
-func featureKey(args []interface{}) string {
-	parts := make([]string, 0, len(args))
-	for _, arg := range args {
-		switch typed := arg.(type) {
-		case string:
-			parts = append(parts, typed)
-		case int:
-			parts = append(parts, strconv.Itoa(typed))
-		case int64:
-			parts = append(parts, strconv.FormatInt(typed, 10))
-		case float64:
-			parts = append(parts, strconv.FormatFloat(typed, 'f', -1, 64))
-		default:
-			parts = append(parts, fmt.Sprint(typed))
-		}
-	}
-	return strings.Join(parts, "|")
-}
-
-func (e conditionEvaluator) screenSize() (int, int) {
-	if e.orientationLock == "landscape" {
-		return 1920, 1200
-	}
-	return 1200, 1920
-}
-
-func (e conditionEvaluator) evaluateBinary(condition interface{}) bool {
-	value := e.evaluate(condition)
-	typed, ok := value.(bool)
-	return ok && typed
-}
-
-func (e conditionEvaluator) evaluate(condition interface{}) interface{} {
-	switch typed := condition.(type) {
-	case []interface{}:
-		if len(typed) == 0 {
-			return false
-		}
-		op, _ := asString(typed[0])
-		args := typed[1:]
-		width, height := e.screenSize()
-		switch op {
-		case "$293":
-			return !e.evaluateBinary(firstArg(args))
-		case "$266":
-			return 0
-		case "$750":
-			arg, _ := asString(firstArg(args))
-			switch arg {
-			case "$752":
-				return true
-			case "$753":
-				return false
-			default:
-				return false
-			}
-		case "$659":
-			return knownSupportedFeatures[featureKey(args)]
-		case "$292":
-			return e.evaluateBinary(firstArg(args)) && e.evaluateBinary(secondArg(args))
-		case "$291":
-			return e.evaluateBinary(firstArg(args)) || e.evaluateBinary(secondArg(args))
-		case "$294":
-			return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) == 0
-		case "$295":
-			return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) != 0
-		case "$296":
-			return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) > 0
-		case "$297":
-			return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) >= 0
-		case "$298":
-			return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) < 0
-		case "$299":
-			return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) <= 0
-		case "$516":
-			return numericConditionValue(e.evaluate(firstArg(args))) + numericConditionValue(e.evaluate(secondArg(args)))
-		case "$517":
-			return numericConditionValue(e.evaluate(firstArg(args))) - numericConditionValue(e.evaluate(secondArg(args)))
-		case "$518":
-			return numericConditionValue(e.evaluate(firstArg(args))) * numericConditionValue(e.evaluate(secondArg(args)))
-		case "$519":
-			divisor := numericConditionValue(e.evaluate(secondArg(args)))
-			if divisor == 0 {
-				return 0
-			}
-			return numericConditionValue(e.evaluate(firstArg(args))) / divisor
-		case "$305", "$303":
-			return height
-		case "$304", "$302":
-			return width
-		case "$300", "$301":
-			return true
-		case "$183":
-			return 0
-		case "$525":
-			return width > height
-		case "$526":
-			return width < height
-		case "$660":
-			return true
-		default:
-			return false
-		}
-	case string:
-		return e.evaluate([]interface{}{typed})
-	case bool:
-		return typed
-	case int, int64, float64:
-		return typed
-	default:
-		return false
-	}
-}
-
-func firstArg(args []interface{}) interface{} {
-	if len(args) > 0 {
-		return args[0]
-	}
-	return nil
-}
-
-func secondArg(args []interface{}) interface{} {
-	if len(args) > 1 {
-		return args[1]
-	}
-	return nil
-}
-
-func numericConditionValue(value interface{}) float64 {
-	switch typed := value.(type) {
-	case int:
-		return float64(typed)
-	case int64:
-		return float64(typed)
-	case float64:
-		return typed
-	case bool:
-		if typed {
-			return 1
-		}
-		return 0
-	default:
-		return 0
-	}
-}
-
-func compareConditionValues(left interface{}, right interface{}) int {
-	switch l := left.(type) {
-	case bool:
-		lv, rv := 0, 0
-		if l {
-			lv = 1
-		}
-		if rb, ok := right.(bool); ok && rb {
-			rv = 1
-		}
-		switch {
-		case lv < rv:
-			return -1
-		case lv > rv:
-			return 1
-		default:
-			return 0
-		}
-	case string:
-		rs, _ := right.(string)
-		switch {
-		case l < rs:
-			return -1
-		case l > rs:
-			return 1
-		default:
-			return 0
-		}
-	default:
-		lf := numericConditionValue(left)
-		rf := numericConditionValue(right)
-		switch {
-		case lf < rf:
-			return -1
-		case lf > rf:
-			return 1
-		default:
-			return 0
-		}
-	}
-}
-
-func asMap(value interface{}) (map[string]interface{}, bool) {
-	result, ok := value.(map[string]interface{})
-	return result, ok
-}
-
-func asSlice(value interface{}) ([]interface{}, bool) {
-	result, ok := value.([]interface{})
-	return result, ok
-}
-
-func asString(value interface{}) (string, bool) {
-	switch typed := value.(type) {
-	case string:
-		return typed, true
-	case ion.SymbolToken:
-		if typed.Text != nil {
-			return *typed.Text, true
-		}
-		return fmt.Sprintf("$%d", typed.LocalSID), true
-	case *ion.SymbolToken:
-		if typed == nil {
-			return "", false
-		}
-		if typed.Text != nil {
-			return *typed.Text, true
-		}
-		return fmt.Sprintf("$%d", typed.LocalSID), true
-	default:
-		return "", false
-	}
-}
-
-func asInt(value interface{}) (int, bool) {
-	switch typed := value.(type) {
-	case int:
-		return typed, true
-	case int32:
-		return int(typed), true
-	case int64:
-		return int(typed), true
-	case uint32:
-		return int(typed), true
-	case uint64:
-		return int(typed), true
-	case float64:
-		return int(typed), true
-	default:
-		return 0, false
-	}
-}
-
-func asBool(value interface{}) (bool, bool) {
-	typed, ok := value.(bool)
-	return typed, ok
-}
-
-func toStringSlice(value interface{}) []string {
-	items, ok := asSlice(value)
-	if !ok {
-		return nil
-	}
-	result := make([]string, 0, len(items))
-	for _, item := range items {
-		if text, ok := asString(item); ok {
-			result = append(result, text)
-		}
-	}
-	return result
-}
-
 func normalizeFontFamily(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -1433,61 +885,6 @@ func normalizeFontFamily(value string) string {
 		return "serif"
 	}
 	return families[0]
-}
-
-func mapFontStyle(value interface{}) string {
-	switch text, _ := asString(value); text {
-	case "$382":
-		return "italic"
-	case "$381":
-		return "oblique"
-	case "$350":
-		return "normal"
-	default:
-		return ""
-	}
-}
-
-func mapFontWeight(value interface{}) string {
-	switch text, _ := asString(value); text {
-	case "$361":
-		return "bold"
-	case "$363":
-		return "900"
-	case "$357":
-		return "300"
-	case "$359":
-		return "500"
-	case "$350":
-		return "normal"
-	case "$360":
-		return "600"
-	case "$355":
-		return "100"
-	case "$362":
-		return "800"
-	case "$356":
-		return "200"
-	default:
-		return ""
-	}
-}
-
-func mapFontStretch(value interface{}) string {
-	switch text, _ := asString(value); text {
-	case "$365":
-		return "condensed"
-	case "$368":
-		return "expanded"
-	case "$350":
-		return "normal"
-	case "$366":
-		return "semi-condensed"
-	case "$367":
-		return "semi-expanded"
-	default:
-		return ""
-	}
 }
 
 func mapHyphens(value interface{}) string {
@@ -1952,6 +1349,8 @@ func headingStyleDeclarations(style map[string]interface{}) []string {
 	}
 	if value := mapFontWeight(style["$13"]); value != "" {
 		declarations = append(declarations, "font-weight: "+value)
+	} else {
+		declarations = append(declarations, "font-weight: normal")
 	}
 	if value := mapFontVariant(style["$583"]); value != "" {
 		declarations = append(declarations, "font-variant: "+value)
@@ -1996,6 +1395,12 @@ func headingStyleDeclarations(style map[string]interface{}) []string {
 	return declarations
 }
 
+// defaultFontNames mirrors Python DEFAULT_FONT_NAMES (yj_to_epub_properties.py).
+var defaultFontNames = map[string]bool{
+	"default":                   true,
+	"$amzn_fixup_default_font$": true,
+}
+
 func cssFontFamily(value interface{}) string {
 	text, ok := asString(value)
 	if !ok || text == "" {
@@ -2004,6 +1409,20 @@ func cssFontFamily(value interface{}) string {
 	if text == "default,serif" {
 		return "FreeFontSerif,serif"
 	}
+	// Filter out default font names (Python simplify_styles strips these).
+	parts := strings.Split(text, ",")
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		trimmed = strings.Trim(trimmed, "'\"")
+		if !defaultFontNames[strings.ToLower(trimmed)] {
+			filtered = append(filtered, part)
+		}
+	}
+	if len(filtered) == 0 {
+		return ""
+	}
+	text = strings.Join(filtered, ",")
 	fixer := currentFontFixer
 	if fixer == nil {
 		fixer = newFontNameFixer()
@@ -2444,150 +1863,6 @@ func formatStyleNumber(value float64) string {
 	return strconv.FormatFloat(value, 'g', 6, 64)
 }
 
-func resourceFilename(resource resourceFragment) string {
-	base := filepath.Base(resource.Location)
-	ext := extensionForMediaType(resource.MediaType)
-	prefix := "resource_"
-	if strings.HasPrefix(strings.ToLower(resource.MediaType), "image/") {
-		prefix = "image_"
-	}
-	return prefix + base + ext
-}
-
-func fontFilename(location string, data []byte) string {
-	base := filepath.Base(location)
-	return "font_" + base + detectFontExtension(data)
-}
-
-func extensionForMediaType(mediaType string) string {
-	switch strings.ToLower(mediaType) {
-	case "plugin/kfx-html-article", "text/html":
-		return ".html"
-	case "application/xhtml+xml":
-		return ".xhtml"
-	case "image/jpg", "image/jpeg":
-		return ".jpg"
-	case "image/png":
-		return ".png"
-	case "image/gif":
-		return ".gif"
-	case "image/webp":
-		return ".webp"
-	case "image/jxr":
-		return ".jxr"
-	case "audio/mpeg":
-		return ".mp3"
-	case "audio/mp4":
-		return ".m4a"
-	case "audio/ogg":
-		return ".ogg"
-	case "video/mp4":
-		return ".mp4"
-	case "application/azn-plugin-object":
-		return ".pobject"
-	default:
-		return ".bin"
-	}
-}
-
-func detectFontExtension(data []byte) string {
-	if len(data) >= 4 {
-		switch string(data[:4]) {
-		case "OTTO":
-			return ".otf"
-		case "\x00\x01\x00\x00":
-			return ".ttf"
-		}
-	}
-	return ".bin"
-}
-
-func detectImageExtension(data []byte) string {
-	if len(data) >= 4 {
-		if bytes.HasPrefix(data, []byte{0xff, 0xd8, 0xff}) {
-			return ".jpg"
-		}
-		if bytes.HasPrefix(data, []byte{0x49, 0x49, 0xbc, 0x01}) {
-			return ".jxr"
-		}
-		if bytes.HasPrefix(data, []byte{0x89, 0x50, 0x4e, 0x47}) {
-			return ".png"
-		}
-	}
-	return ".bin"
-}
-
-func blobMatchesImageMediaType(data []byte, mediaType string) bool {
-	if len(data) == 0 {
-		return false
-	}
-	switch extensionForMediaType(mediaType) {
-	case ".jpg":
-		return detectImageExtension(data) == ".jpg"
-	case ".jxr":
-		return detectImageExtension(data) == ".jxr"
-	case ".png":
-		return detectImageExtension(data) == ".png"
-	default:
-		return detectImageExtension(data) != ".bin"
-	}
-}
-
-func partitionRawBlobs(rawOrder []rawBlob) ([]rawBlob, []rawBlob) {
-	imagePool := make([]rawBlob, 0, len(rawOrder))
-	fontPool := make([]rawBlob, 0, len(rawOrder))
-	for _, blob := range rawOrder {
-		switch {
-		case detectFontExtension(blob.Data) != ".bin":
-			fontPool = append(fontPool, blob)
-		case detectImageExtension(blob.Data) != ".bin":
-			imagePool = append(imagePool, blob)
-		}
-	}
-	return imagePool, fontPool
-}
-
-func nextMatchingBlob(blobs []rawBlob, start int, mediaType string) ([]byte, int) {
-	for index := start; index < len(blobs); index++ {
-		if blobMatchesImageMediaType(blobs[index].Data, mediaType) {
-			return blobs[index].Data, index + 1
-		}
-	}
-	return nil, start
-}
-
-func nextFontBlob(blobs []rawBlob, start int) ([]byte, int) {
-	for index := start; index < len(blobs); index++ {
-		if detectFontExtension(blobs[index].Data) != ".bin" {
-			return blobs[index].Data, index + 1
-		}
-	}
-	return nil, start
-}
-
-func fontMediaType(filename string) string {
-	switch strings.ToLower(filepath.Ext(filename)) {
-	case ".otf":
-		return "font/otf"
-	case ".ttf":
-		return "font/ttf"
-	default:
-		return "application/octet-stream"
-	}
-}
-
-func convertJXRResource(data []byte) ([]byte, string, error) {
-	img, err := jxr.DecodeGray8(data)
-	if err != nil {
-		return nil, "", err
-	}
-	var encoded bytes.Buffer
-	if err := jpeg.Encode(&encoded, img, &jpeg.Options{Quality: 95}); err != nil {
-		return nil, "", err
-	}
-	return encoded.Bytes(), "image/jpeg", nil
-}
-
 func minInt(a, b int) int {
 	if a < b {
 		return a
@@ -2654,418 +1929,6 @@ func truncateDebugText(ref map[string]interface{}) string {
 	return fmt.Sprintf("%s[%d]", name, index)
 }
 
-func resolveNavigationContainer(value interface{}, navContainers map[string]map[string]interface{}) map[string]interface{} {
-	if id, ok := asString(value); ok && id != "" {
-		return navContainers[id]
-	}
-	container, _ := asMap(value)
-	return container
-}
-
-func resolveNavigationUnit(value interface{}) map[string]interface{} {
-	unit, _ := asMap(value)
-	return unit
-}
-
-func collectNavigationContainers(navRoots []map[string]interface{}, navContainers map[string]map[string]interface{}) []map[string]interface{} {
-	var containers []map[string]interface{}
-	for _, root := range navRoots {
-		entries, ok := asSlice(root["$392"])
-		if !ok {
-			continue
-		}
-		for _, entry := range entries {
-			if container := resolveNavigationContainer(entry, navContainers); container != nil {
-				containers = append(containers, container)
-			}
-		}
-	}
-	return containers
-}
-
-func navigationType(value map[string]interface{}) string {
-	navType, _ := asString(value["$235"])
-	return navType
-}
-
-func parseNavTitle(value map[string]interface{}) string {
-	label, ok := asMap(value["$241"])
-	if !ok {
-		return ""
-	}
-	title, _ := asString(label["$244"])
-	return strings.TrimSpace(title)
-}
-
-func parseNavTarget(value map[string]interface{}) navTarget {
-	target, ok := asMap(value["$246"])
-	if !ok {
-		return navTarget{}
-	}
-	positionID, _ := asInt(target["$155"])
-	if positionID == 0 {
-		positionID, _ = asInt(target["$598"])
-	}
-	offset, _ := asInt(target["$143"])
-	return navTarget{PositionID: positionID, Offset: offset}
-}
-
-func countNavPoints(points []navPoint) int {
-	count := 0
-	for _, point := range points {
-		count++
-		count += countNavPoints(point.Children)
-	}
-	return count
-}
-
-func flattenNavigationTitles(points []navPoint, positionToSection map[int]string, titles map[string]string) {
-	for _, point := range points {
-		if sectionID, ok := positionToSection[point.Target.PositionID]; ok && titles[sectionID] == "" && point.Title != "" {
-			titles[sectionID] = point.Title
-		}
-		flattenNavigationTitles(point.Children, positionToSection, titles)
-	}
-}
-
-func orderedSectionIDsFromNavigation(points []navPoint, positionToSection map[int]string) []string {
-	var ordered []string
-	var walk func(items []navPoint)
-	walk = func(items []navPoint) {
-		for _, point := range items {
-			if sectionID, ok := positionToSection[point.Target.PositionID]; ok {
-				ordered = append(ordered, sectionID)
-			}
-			walk(point.Children)
-		}
-	}
-	walk(points)
-	return ordered
-}
-
-func navigationToEPUB(points []navPoint, targetHref func(navTarget) string) []epub.NavPoint {
-	output := make([]epub.NavPoint, 0, len(points))
-	for _, point := range points {
-		href := targetHref(point.Target)
-		if href == "" || point.Title == "" {
-			continue
-		}
-		output = append(output, epub.NavPoint{
-			Title:    point.Title,
-			Href:     href,
-			Children: navigationToEPUB(point.Children, targetHref),
-		})
-	}
-	return output
-}
-
-type navProcessor struct {
-	tocEntryCount   int
-	usedAnchorNames map[string]bool
-	positionAnchors map[int]map[int][]string
-	anchorHeadingLevel map[string]int
-	navContainers   map[string]map[string]interface{}
-	toc             []navPoint
-	guide           []guideEntry
-	pages           []pageEntry
-}
-
-func processNavigation(navRoots []map[string]interface{}, navContainers map[string]map[string]interface{}) navProcessor {
-	state := navProcessor{
-		usedAnchorNames: map[string]bool{},
-		positionAnchors: map[int]map[int][]string{},
-		anchorHeadingLevel: map[string]int{},
-		navContainers:   navContainers,
-	}
-	containers := collectNavigationContainers(navRoots, navContainers)
-	hasNavHeadings := false
-	for _, container := range containers {
-		if navigationType(container) == "$798" {
-			hasNavHeadings = true
-			break
-		}
-	}
-	for _, container := range containers {
-		state.processContainer(container, hasNavHeadings)
-	}
-	return state
-}
-
-func (p *navProcessor) processContainer(container map[string]interface{}, hasNavHeadings bool) {
-	navType := navigationType(container)
-	if imports, ok := asSlice(container["imports"]); ok {
-		for _, raw := range imports {
-			if imported := resolveNavigationContainer(raw, p.navContainers); imported != nil {
-				p.processContainer(imported, hasNavHeadings)
-			}
-		}
-	}
-	entries, ok := asSlice(container["$247"])
-	if !ok {
-		return
-	}
-	for _, raw := range entries {
-		entry := resolveNavigationUnit(raw)
-		if entry == nil {
-			continue
-		}
-		switch navType {
-		case "$212", "$213", "$214", "$798":
-			p.processNavUnit(navType, entry, &p.toc, navType == "$212" && !hasNavHeadings, nil)
-		case "$236":
-			p.processGuideUnit(entry)
-		case "$237":
-			p.processPageUnit(entry)
-		}
-	}
-}
-
-func (p *navProcessor) processGuideUnit(entry map[string]interface{}) {
-	label := parseNavTitle(entry)
-	target := parseNavTarget(entry)
-	if target.PositionID == 0 {
-		return
-	}
-	navUnitName, _ := asString(entry["$240"])
-	if navUnitName == "" {
-		navUnitName = label
-	}
-	guideType := guideTypeForLandmark(asStringDefault(entry["$238"]))
-	anchorName := p.uniqueAnchorName(navUnitName)
-	if anchorName == "" {
-		anchorName = p.uniqueAnchorName(guideType)
-	}
-	p.registerAnchor(anchorName, target, nil)
-	if label == "cover-nav-unit" {
-		label = ""
-	}
-	p.guide = append(p.guide, guideEntry{Type: guideType, Title: label, Target: target})
-}
-
-func (p *navProcessor) processPageUnit(entry map[string]interface{}) {
-	label := parseNavTitle(entry)
-	if debug := os.Getenv("KFX_DEBUG_PAGES"); debug != "" {
-		fmt.Fprintf(os.Stderr, "page unit label=%q entry=%#v\n", label, entry)
-	}
-	if label == "" {
-		return
-	}
-	target := parseNavTarget(entry)
-	if target.PositionID == 0 {
-		return
-	}
-	p.registerAnchor(p.uniqueAnchorName("page_"+label), target, nil)
-	p.pages = append(p.pages, pageEntry{Label: label, Target: target})
-}
-
-func (p *navProcessor) processNavUnit(navType string, entry map[string]interface{}, out *[]navPoint, defaultHeading bool, headingLevel *int) {
-	label := parseNavTitle(entry)
-	navUnitName, _ := asString(entry["$240"])
-	if navUnitName == "" {
-		navUnitName = label
-	}
-	nextHeading := (*int)(nil)
-	if navType == "$798" {
-		if level, ok := headingLevelForLandmark(asStringDefault(entry["$238"])); ok {
-			headingLevel = intPtr(level)
-			nextHeading = intPtr(level)
-		}
-		if label == "heading-nav-unit" {
-			label = ""
-		}
-		if navUnitName == "heading-nav-unit" {
-			navUnitName = ""
-		}
-	} else if defaultHeading {
-		if headingLevel == nil {
-			headingLevel = intPtr(1)
-		}
-		nextHeading = intPtr(2)
-	} else if headingLevel != nil && *headingLevel < 6 {
-		nextHeading = intPtr(*headingLevel + 1)
-	}
-
-	childrenRaw, _ := asSlice(entry["$247"])
-	children := make([]navPoint, 0, len(childrenRaw))
-	for _, raw := range childrenRaw {
-		child := resolveNavigationUnit(raw)
-		if child == nil {
-			continue
-		}
-		p.processNavUnit(navType, child, &children, false, nextHeading)
-	}
-
-	target := parseNavTarget(entry)
-	hasTarget := target.PositionID != 0
-	if hasTarget {
-		anchorName := fmt.Sprintf("%s_%d_%s", navType, p.tocEntryCount, navUnitName)
-		p.tocEntryCount++
-		p.registerAnchor(anchorName, target, headingLevel)
-	}
-	if navType == "$798" {
-		return
-	}
-	if label == "" && !hasTarget {
-		*out = append(*out, children...)
-		return
-	}
-	*out = append(*out, navPoint{Title: label, Target: target, Children: children})
-}
-
-func (p *navProcessor) uniqueAnchorName(name string) string {
-	if name == "" {
-		return ""
-	}
-	if !p.usedAnchorNames[name] {
-		p.usedAnchorNames[name] = true
-		return name
-	}
-	for index := 0; ; index++ {
-		candidate := fmt.Sprintf("%s:%d", name, index)
-		if !p.usedAnchorNames[candidate] {
-			p.usedAnchorNames[candidate] = true
-			return candidate
-		}
-	}
-}
-
-func (p *navProcessor) registerAnchor(name string, target navTarget, headingLevel *int) {
-	if name == "" || target.PositionID == 0 {
-		return
-	}
-	offsets := p.positionAnchors[target.PositionID]
-	if offsets == nil {
-		offsets = map[int][]string{}
-		p.positionAnchors[target.PositionID] = offsets
-	}
-	offsets[target.Offset] = append(offsets[target.Offset], name)
-	if headingLevel != nil && *headingLevel > 0 {
-		p.anchorHeadingLevel[name] = *headingLevel
-	}
-}
-
-func guideTypeForLandmark(value string) string {
-	switch value {
-	case "$233":
-		return "cover"
-	case "$396", "$269":
-		return "text"
-	case "$212":
-		return "toc"
-	default:
-		return value
-	}
-}
-
-func headingLevelForLandmark(value string) (int, bool) {
-	switch value {
-	case "$799":
-		return 1, true
-	case "$800":
-		return 2, true
-	case "$801":
-		return 3, true
-	case "$802":
-		return 4, true
-	case "$803":
-		return 5, true
-	case "$804":
-		return 6, true
-	default:
-		return 0, false
-	}
-}
-
-func guideToEPUB(entries []guideEntry, targetHref func(navTarget) string) []epub.GuideEntry {
-	out := make([]epub.GuideEntry, 0, len(entries))
-	for _, entry := range entries {
-		if entry.Type != "cover" && entry.Type != "toc" {
-			continue
-		}
-		href := targetHref(entry.Target)
-		if href == "" {
-			continue
-		}
-		title := entry.Title
-		if title == "" {
-			title = strings.Title(entry.Type)
-		}
-		out = append(out, epub.GuideEntry{Type: entry.Type, Title: title, Href: href})
-	}
-	return out
-}
-
-func pagesToEPUB(entries []pageEntry, targetHref func(navTarget) string) []epub.PageTarget {
-	out := make([]epub.PageTarget, 0, len(entries))
-	for _, entry := range entries {
-		href := targetHref(entry.Target)
-		if href == "" {
-			continue
-		}
-		out = append(out, epub.PageTarget{Label: entry.Label, Href: href})
-	}
-	return out
-}
-
-func buildPositionAnchorIDs(positionAnchors map[int]map[int][]string) map[int]map[int]string {
-	seen := map[string]bool{}
-	result := map[int]map[int]string{}
-	positionIDs := make([]int, 0, len(positionAnchors))
-	for positionID := range positionAnchors {
-		positionIDs = append(positionIDs, positionID)
-	}
-	sort.Ints(positionIDs)
-	for _, positionID := range positionIDs {
-		offsets := positionAnchors[positionID]
-		offsetIDs := make([]int, 0, len(offsets))
-		for offset := range offsets {
-			offsetIDs = append(offsetIDs, offset)
-		}
-		sort.Ints(offsetIDs)
-		result[positionID] = map[int]string{}
-		for _, offset := range offsetIDs {
-			names := offsets[offset]
-			if len(names) == 0 {
-				continue
-			}
-			id := makeUniqueHTMLID(names[0], seen)
-			seen[id] = true
-			result[positionID][offset] = id
-		}
-	}
-	return result
-}
-
-func makeUniqueHTMLID(name string, seen map[string]bool) string {
-	base := fixHTMLID(name)
-	if !seen[base] {
-		return base
-	}
-	for index := 0; ; index++ {
-		candidate := fmt.Sprintf("%s%d", base, index)
-		if !seen[candidate] {
-			return candidate
-		}
-	}
-}
-
-func fixHTMLID(id string) string {
-	var out strings.Builder
-	for _, r := range id {
-		switch {
-		case (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-':
-			out.WriteRune(r)
-		default:
-			out.WriteByte('_')
-		}
-	}
-	fixed := out.String()
-	if fixed == "" || !((fixed[0] >= 'A' && fixed[0] <= 'Z') || (fixed[0] >= 'a' && fixed[0] <= 'z')) {
-		fixed = "id_" + fixed
-	}
-	return fixed
-}
-
 func asStringDefault(value interface{}) string {
 	result, _ := asString(value)
 	return result
@@ -3075,28 +1938,12 @@ func intPtr(value int) *int {
 	return &value
 }
 
-func mergeSectionOrder(primary []string, fallback []string) []string {
-	seen := map[string]bool{}
-	merged := make([]string, 0, len(primary)+len(fallback))
-	for _, sectionID := range primary {
-		if sectionID == "" || seen[sectionID] {
-			continue
-		}
-		seen[sectionID] = true
-		merged = append(merged, sectionID)
+func sectionFilename(sectionID string, format symType) string {
+	u := uniquePartOfLocalSymbol(sectionID, format)
+	if u == "" {
+		u = sectionID
 	}
-	for _, sectionID := range fallback {
-		if sectionID == "" || seen[sectionID] {
-			continue
-		}
-		seen[sectionID] = true
-		merged = append(merged, sectionID)
-	}
-	return merged
-}
-
-func sectionFilename(sectionID string) string {
-	return sectionID + ".xhtml"
+	return u + ".xhtml"
 }
 
 func chooseFragmentIdentity(fragmentID string, rawValue interface{}) string {
@@ -3132,188 +1979,6 @@ func isPlaceholderSymbol(value string) bool {
 	return true
 }
 
-func newStyleCatalog() *styleCatalog {
-	return &styleCatalog{
-		staticRules: map[string]string{},
-		byKey:       map[string]*styleEntry{},
-		byToken:     map[string]*styleEntry{},
-	}
-}
-
-func (c *styleCatalog) addStatic(selector string, declarations []string) {
-	if c == nil || selector == "" || len(declarations) == 0 {
-		return
-	}
-	if !strings.HasPrefix(selector, ".") {
-		selector = "." + selector
-	}
-	if _, ok := c.staticRules[selector]; ok {
-		return
-	}
-	c.staticRules[selector] = strings.Join(canonicalDeclarations(declarations), "; ")
-}
-
-func (c *styleCatalog) bind(baseName string, declarations []string) string {
-	if c == nil || baseName == "" || len(declarations) == 0 {
-		return ""
-	}
-	baseName = strings.TrimPrefix(baseName, ".")
-	declarations = canonicalDeclarations(declarations)
-	key := baseName + "\x00" + strings.Join(declarations, "; ")
-	if entry, ok := c.byKey[key]; ok {
-		entry.count++
-		return entry.token
-	}
-	entry := &styleEntry{
-		token:        fmt.Sprintf("__STYLE_%d__", len(c.entries)),
-		baseName:     baseName,
-		declarations: strings.Join(declarations, "; "),
-		count:        1,
-		order:        len(c.entries),
-	}
-	c.entries = append(c.entries, entry)
-	c.byKey[key] = entry
-	c.byToken[entry.token] = entry
-	c.finalized = false
-	c.css = ""
-	c.replacements = nil
-	return entry.token
-}
-
-func (c *styleCatalog) reserveClass(baseName string) string {
-	if c == nil || baseName == "" {
-		return ""
-	}
-	baseName = strings.TrimPrefix(baseName, ".")
-	for index := 0; ; index++ {
-		candidate := baseName
-		if index > 0 {
-			candidate = fmt.Sprintf("%s-%d", baseName, index)
-		}
-		if _, ok := c.staticRules["."+candidate]; ok {
-			continue
-		}
-		conflict := false
-		for _, entry := range c.entries {
-			if entry.baseName == candidate || entry.finalName == candidate {
-				conflict = true
-				break
-			}
-		}
-		if !conflict {
-			return candidate
-		}
-	}
-}
-
-func (c *styleCatalog) finalize() {
-	if c == nil || c.finalized {
-		return
-	}
-	c.finalized = true
-	if len(c.entries) == 0 && len(c.staticRules) == 0 {
-		c.css = ""
-		return
-	}
-	usedEntries := make([]*styleEntry, 0, len(c.entries))
-	groupSizes := map[string]int{}
-	for _, entry := range c.entries {
-		if !entry.referenced {
-			continue
-		}
-		usedEntries = append(usedEntries, entry)
-		groupSizes[entry.baseName]++
-	}
-	sortedEntries := append([]*styleEntry(nil), usedEntries...)
-	sort.SliceStable(sortedEntries, func(i, j int) bool {
-		if sortedEntries[i].count == sortedEntries[j].count {
-			return sortedEntries[i].order < sortedEntries[j].order
-		}
-		return sortedEntries[i].count > sortedEntries[j].count
-	})
-	nextIndex := map[string]int{}
-	usedNames := map[string]bool{}
-	for selector := range c.staticRules {
-		usedNames[strings.TrimPrefix(selector, ".")] = true
-	}
-	usedNames["class_s8"] = true
-	for _, entry := range sortedEntries {
-		finalName := entry.baseName
-		if entry.baseName == "class" {
-			for {
-				finalName = fmt.Sprintf("%s-%d", entry.baseName, nextIndex[entry.baseName])
-				nextIndex[entry.baseName]++
-				if !usedNames[finalName] {
-					break
-				}
-			}
-		} else if groupSizes[entry.baseName] > 1 || usedNames[finalName] {
-			for {
-				finalName = fmt.Sprintf("%s-%d", entry.baseName, nextIndex[entry.baseName])
-				nextIndex[entry.baseName]++
-				if !usedNames[finalName] {
-					break
-				}
-			}
-		}
-		entry.finalName = finalName
-		usedNames[finalName] = true
-		c.replacements = append(c.replacements, entry.token, finalName)
-	}
-	rules := map[string]string{}
-	selectors := make([]string, 0, len(c.staticRules)+len(c.entries))
-	for selector, declarations := range c.staticRules {
-		rules[selector] = declarations
-		selectors = append(selectors, selector)
-	}
-	for _, entry := range usedEntries {
-		selector := "." + entry.finalName
-		if _, ok := rules[selector]; ok {
-			continue
-		}
-		rules[selector] = entry.declarations
-		selectors = append(selectors, selector)
-	}
-	sort.Slice(selectors, func(i, j int) bool {
-		return naturalSortKey(selectors[i]) < naturalSortKey(selectors[j])
-	})
-	lines := make([]string, 0, len(selectors))
-	for _, selector := range selectors {
-		lines = append(lines, selector+" {"+rules[selector]+"}")
-	}
-	c.css = strings.Join(lines, "\n")
-}
-
-func (c *styleCatalog) replacer() *strings.Replacer {
-	if c == nil {
-		return strings.NewReplacer()
-	}
-	c.finalize()
-	if len(c.replacements) == 0 {
-		return strings.NewReplacer()
-	}
-	return strings.NewReplacer(c.replacements...)
-}
-
-func (c *styleCatalog) markReferenced(content string) {
-	if c == nil || content == "" {
-		return
-	}
-	for _, token := range styleTokenPattern.FindAllString(content, -1) {
-		if entry, ok := c.byToken[token]; ok {
-			entry.referenced = true
-		}
-	}
-}
-
-func (c *styleCatalog) String() string {
-	if c == nil {
-		return ""
-	}
-	c.finalize()
-	return c.css
-}
-
 func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID string, bodyStyleValues map[string]interface{}, storyline map[string]interface{}, nodes []interface{}) renderedStoryline {
 	result := renderedStoryline{}
 	contentNodes := nodes
@@ -3340,7 +2005,6 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	if os.Getenv("KFX_DEBUG_BODY") != "" {
 		fmt.Fprintf(os.Stderr, "body infer styleID=%s values=%#v\n", bodyStyleID, bodyStyleValues)
 	}
-	r.activeBodyClass = ""
 	r.activeBodyDefaults = nil
 	r.firstVisibleSeen = false
 	r.lastKFXHeadingLevel = 1
@@ -3357,31 +2021,17 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 		bodyDeclarations = bodyStyleDeclarations(bodyStyle)
 	}
 	if len(bodyDeclarations) > 0 {
-		if bodyClass := staticBodyClassForDeclarations(bodyDeclarations); bodyClass != "" {
-			result.BodyClass = bodyClass
-		} else if bodyStyleID != "" || len(bodyStyleValues) > 0 {
-			if className := r.bodyClass(bodyStyleID, bodyStyleValues); className != "" {
-				result.BodyClass = className
-			}
+		baseName := "class"
+		if bodyStyleID != "" {
+			baseName = r.styleBaseName(bodyStyleID)
 		}
+		result.BodyStyle = styleStringFromDeclarations(baseName, nil, bodyDeclarations)
 	}
 	if os.Getenv("KFX_DEBUG_BODY") != "" {
-		fmt.Fprintf(os.Stderr, "body resolved styleID=%s decls=%v class=%s\n", bodyStyleID, bodyDeclarations, result.BodyClass)
+		fmt.Fprintf(os.Stderr, "body resolved styleID=%s decls=%v style=%s\n", bodyStyleID, bodyDeclarations, result.BodyStyle)
 	}
 	if len(bodyDeclarations) > 0 {
-		if isStaticBodyClass(result.BodyClass) {
-			r.activeBodyDefaults = inheritedDefaultSet(defaultBodyDeclarations(result.BodyClass))
-		} else {
-			r.activeBodyDefaults = inheritedDefaultSet(bodyDeclarations)
-		}
-	}
-	if result.BodyClass != "" {
-		r.activeBodyClass = result.BodyClass
-	}
-	if styleID, _ := asString(storyline["$157"]); styleID != "" && result.BodyClass == "" {
-		if className := r.bodyClass(styleID, nil); className != "" {
-			result.BodyClass = className
-		}
+		r.activeBodyDefaults = inheritedDefaultSet(bodyDeclarations)
 	}
 	bodyParts := make([]htmlPart, 0, len(contentNodes))
 	for _, node := range contentNodes {
@@ -3391,26 +2041,10 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 		}
 	}
 	root := &htmlElement{Attrs: map[string]string{}, Children: bodyParts}
-	r.promoteCommonChildStyles(root)
 	normalizeHTMLWhitespace(root)
 	r.applyPositionAnchors(root, sectionPositionID, false)
 	result.Root = root
 	result.BodyHTML = renderHTMLParts(root.Children, true)
-	if result.BodyClass == "" && len(bodyDeclarations) > 0 {
-		if bodyClass := staticBodyClassForDeclarations(bodyDeclarations); bodyClass != "" {
-			result.BodyClass = bodyClass
-		} else {
-			result.BodyClass = r.styles.bind("class", bodyDeclarations)
-		}
-	}
-	switch result.BodyClass {
-	case "class-0", "class-1", "class-2", "class-3", "class-7", "class-8":
-		r.styles.addStatic(result.BodyClass, defaultBodyDeclarations(result.BodyClass))
-	}
-	r.activeBodyClass = result.BodyClass
-	if isStaticBodyClass(result.BodyClass) {
-		r.activeBodyDefaults = inheritedDefaultSet(defaultBodyDeclarations(result.BodyClass))
-	}
 	if strings.Contains(result.BodyHTML, "<svg ") {
 		result.Properties = "svg"
 	}
@@ -3532,6 +2166,20 @@ func (r *storylineRenderer) dynamicClassStyle(className string) (string, map[str
 	return entry.baseName, parseDeclarationString(entry.declarations), true
 }
 
+// styleBaseName returns a simplified class base name from a style ID, applying
+// uniquePartOfLocalSymbol to strip the symbol-format prefix (ORIGINAL: V_N_N-PARA-…, etc.)
+// matching Calibre's simplify_styles class naming behavior.
+func (r *storylineRenderer) styleBaseName(styleID string) string {
+	if styleID == "" {
+		return "class"
+	}
+	simplified := uniquePartOfLocalSymbol(styleID, r.symFmt)
+	if simplified == "" {
+		return "class"
+	}
+	return "class_" + simplified
+}
+
 func (r *storylineRenderer) setDynamicClassStyle(element *htmlElement, baseName string, style map[string]string) {
 	if element == nil {
 		return
@@ -3546,6 +2194,13 @@ func (r *storylineRenderer) setDynamicClassStyle(element *htmlElement, baseName 
 		return
 	}
 	element.Attrs["class"] = r.styles.bind(baseName, declarations)
+}
+
+func (r *storylineRenderer) setDynamicStyle(element *htmlElement, baseName string, layoutHints []string, declarations []string) {
+	if element == nil {
+		return
+	}
+	setElementStyleString(element, mergeStyleStrings(element.Attrs["style"], styleStringFromDeclarations(baseName, layoutHints, declarations)))
 }
 
 func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
@@ -3620,8 +2275,8 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 	if !ok {
 		if hasRenderableContainer(node) {
 			element := &htmlElement{Tag: "div", Attrs: map[string]string{}}
-			if className := r.containerClass(node); className != "" {
-				element.Attrs["class"] = className
+			if styleAttr := r.containerClass(node); styleAttr != "" {
+				element.Attrs["style"] = styleAttr
 			}
 			r.applyStructuralNodeAttrs(element, node, "")
 			return r.wrapNodeLink(node, element)
@@ -3640,8 +2295,8 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 			}
 		}
 		if len(element.Children) > 0 {
-			if className := r.containerClass(node); className != "" {
-				element.Attrs["class"] = className
+			if styleAttr := r.containerClass(node); styleAttr != "" {
+				element.Attrs["style"] = styleAttr
 			}
 			r.applyStructuralNodeAttrs(element, node, "")
 			if positionID, _ := asInt(node["$155"]); positionID != 0 {
@@ -3667,8 +2322,8 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 	if len(container.Children) == 0 {
 		return nil
 	}
-	if className := r.containerClass(node); className != "" {
-		container.Attrs["class"] = className
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		container.Attrs["style"] = styleAttr
 	}
 	r.applyStructuralNodeAttrs(container, node, "")
 	if positionID, _ := asInt(node["$155"]); positionID != 0 {
@@ -3683,8 +2338,8 @@ func (r *storylineRenderer) renderListNode(node map[string]interface{}, depth in
 		tag = "ul"
 	}
 	list := &htmlElement{Tag: tag, Attrs: map[string]string{}}
-	if className := r.containerClass(node); className != "" {
-		list.Attrs["class"] = className
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		list.Attrs["style"] = styleAttr
 	}
 	if start, ok := asInt(node["$104"]); ok && start > 0 && tag == "ol" && start != 1 {
 		list.Attrs["start"] = strconv.Itoa(start)
@@ -3707,8 +2362,8 @@ func (r *storylineRenderer) renderListNode(node map[string]interface{}, depth in
 
 func (r *storylineRenderer) renderListItemNode(node map[string]interface{}, depth int) htmlPart {
 	item := &htmlElement{Tag: "li", Attrs: map[string]string{}}
-	if className := r.containerClass(node); className != "" {
-		item.Attrs["class"] = className
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		item.Attrs["style"] = styleAttr
 	}
 	if value, ok := asInt(node["$104"]); ok && value > 0 {
 		item.Attrs["value"] = strconv.Itoa(value)
@@ -3741,8 +2396,8 @@ func (r *storylineRenderer) renderListItemNode(node map[string]interface{}, dept
 
 func (r *storylineRenderer) renderRuleNode(node map[string]interface{}) htmlPart {
 	rule := &htmlElement{Tag: "hr", Attrs: map[string]string{}}
-	if className := r.containerClass(node); className != "" {
-		rule.Attrs["class"] = className
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		rule.Attrs["style"] = styleAttr
 	}
 	r.applyStructuralNodeAttrs(rule, node, "")
 	if positionID, _ := asInt(node["$155"]); positionID != 0 {
@@ -3753,11 +2408,11 @@ func (r *storylineRenderer) renderRuleNode(node map[string]interface{}) htmlPart
 
 func (r *storylineRenderer) renderHiddenNode(node map[string]interface{}, depth int) htmlPart {
 	element := &htmlElement{Tag: "div", Attrs: map[string]string{}}
-	if className := r.containerClass(node); className != "" {
-		element.Attrs["class"] = className
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		element.Attrs["style"] = styleAttr
 	}
-	if hiddenClass := r.styles.bind("class", []string{"display: none"}); hiddenClass != "" {
-		element.Attrs["class"] = appendClassNames(element.Attrs["class"], hiddenClass)
+	if hiddenStyle := styleStringFromDeclarations("class", nil, []string{"display: none"}); hiddenStyle != "" {
+		element.Attrs["style"] = mergeStyleStrings(element.Attrs["style"], hiddenStyle)
 	}
 	if children, ok := asSlice(node["$146"]); ok {
 		for _, child := range children {
@@ -3786,8 +2441,8 @@ func (r *storylineRenderer) renderFittedContainer(node map[string]interface{}, d
 		return nil
 	}
 	outer := &htmlElement{Tag: "div", Attrs: map[string]string{}}
-	if className := r.containerClass(node); className != "" {
-		outer.Attrs["class"] = className
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		outer.Attrs["style"] = styleAttr
 	}
 	inner := &htmlElement{Tag: "div", Attrs: map[string]string{}}
 	children, _ := asSlice(node["$146"])
@@ -3803,10 +2458,10 @@ func (r *storylineRenderer) renderFittedContainer(node map[string]interface{}, d
 	styleID, _ := asString(node["$157"])
 	baseName := "class"
 	if styleID != "" {
-		baseName = "class_" + styleID
+		baseName = r.styleBaseName(styleID)
 	}
-	if className := r.styles.bind(baseName, []string{"display: inline-block"}); className != "" {
-		inner.Attrs["class"] = className
+	if styleAttr := styleStringFromDeclarations(baseName, nil, []string{"display: inline-block"}); styleAttr != "" {
+		inner.Attrs["style"] = styleAttr
 	}
 	outer.Children = []htmlPart{inner}
 	r.applyStructuralNodeAttrs(outer, node, "")
@@ -3833,15 +2488,15 @@ func (r *storylineRenderer) renderPluginNode(node map[string]interface{}) htmlPa
 			Tag:   "iframe",
 			Attrs: map[string]string{"src": href},
 		}
-		if className := r.styles.bind("class", []string{
+		if styleAttr := styleStringFromDeclarations("class", nil, []string{
 			"border-bottom-style: none",
 			"border-left-style: none",
 			"border-right-style: none",
 			"border-top-style: none",
 			"height: 100%",
 			"width: 100%",
-		}); className != "" {
-			element.Attrs["class"] = className
+		}); styleAttr != "" {
+			element.Attrs["style"] = styleAttr
 		}
 		r.applyStructuralNodeAttrs(element, node, "")
 		return element
@@ -3903,8 +2558,8 @@ func (r *storylineRenderer) renderSVGNode(node map[string]interface{}) htmlPart 
 
 func (r *storylineRenderer) renderTableNode(node map[string]interface{}, depth int) htmlPart {
 	table := &htmlElement{Tag: "table", Attrs: map[string]string{}}
-	if className := r.tableClass(node); className != "" {
-		table.Attrs["class"] = className
+	if styleAttr := r.tableClass(node); styleAttr != "" {
+		table.Attrs["style"] = styleAttr
 	}
 	if cols, ok := asSlice(node["$152"]); ok && len(cols) > 0 {
 		colgroup := &htmlElement{Tag: "colgroup", Attrs: map[string]string{}}
@@ -3917,8 +2572,8 @@ func (r *storylineRenderer) renderTableNode(node map[string]interface{}, depth i
 			if span, ok := asInt(colMap["$118"]); ok && span > 1 {
 				col.Attrs["span"] = strconv.Itoa(span)
 			}
-			if className := r.tableColumnClass(colMap); className != "" {
-				col.Attrs["class"] = className
+			if styleAttr := r.tableColumnClass(colMap); styleAttr != "" {
+				col.Attrs["style"] = styleAttr
 			}
 			colgroup.Children = append(colgroup.Children, col)
 		}
@@ -3949,8 +2604,8 @@ func (r *storylineRenderer) renderTableNode(node map[string]interface{}, depth i
 
 func (r *storylineRenderer) renderStructuredContainer(node map[string]interface{}, tag string, depth int) htmlPart {
 	element := &htmlElement{Tag: tag, Attrs: map[string]string{}}
-	if className := r.structuredContainerClass(node); className != "" {
-		element.Attrs["class"] = className
+	if styleAttr := r.structuredContainerClass(node); styleAttr != "" {
+		element.Attrs["style"] = styleAttr
 	}
 	if children, ok := asSlice(node["$146"]); ok {
 		for _, child := range children {
@@ -3973,8 +2628,8 @@ func (r *storylineRenderer) renderStructuredContainer(node map[string]interface{
 func (r *storylineRenderer) renderTableRow(node map[string]interface{}, depth int) htmlPart {
 	row := &htmlElement{Tag: "tr", Attrs: map[string]string{}}
 	if styleID, _ := asString(node["$157"]); styleID != "" {
-		if className := r.structuredContainerClass(node); className != "" {
-			row.Attrs["class"] = className
+		if styleAttr := r.structuredContainerClass(node); styleAttr != "" {
+			row.Attrs["style"] = styleAttr
 		}
 	}
 	children, _ := asSlice(node["$146"])
@@ -4006,8 +2661,8 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 	if rowspan, ok := asInt(node["$149"]); ok && rowspan > 1 {
 		cell.Attrs["rowspan"] = strconv.Itoa(rowspan)
 	}
-	if className := r.tableCellClass(node); className != "" {
-		cell.Attrs["class"] = className
+	if styleAttr := r.tableCellClass(node); styleAttr != "" {
+		cell.Attrs["style"] = styleAttr
 	}
 	if ref, ok := asMap(node["$145"]); ok {
 		text := r.resolveText(ref)
@@ -4068,8 +2723,8 @@ func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPar
 			return content[0]
 		}
 		element := &htmlElement{Tag: "span", Attrs: map[string]string{}, Children: content}
-		if className := r.spanClass(styleID); className != "" {
-			element.Attrs["class"] = className
+		if styleAttr := r.spanClass(styleID); styleAttr != "" {
+			element.Attrs["style"] = styleAttr
 		}
 		r.applyStructuralNodeAttrs(element, node, "")
 		if positionID != 0 {
@@ -4091,8 +2746,8 @@ func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPar
 	if len(container.Children) == 0 {
 		return nil
 	}
-	if className := r.inlineContainerClass(styleID, node); className != "" {
-		container.Attrs["class"] = className
+	if styleAttr := r.inlineContainerClass(styleID, node); styleAttr != "" {
+		container.Attrs["style"] = styleAttr
 	}
 	r.applyStructuralNodeAttrs(container, node, "")
 	if positionID, _ := asInt(node["$155"]); positionID != 0 {
@@ -4121,7 +2776,7 @@ func (r *storylineRenderer) renderImageNode(node map[string]interface{}) htmlPar
 	}
 	wrapperClass, imageClass := r.imageClasses(node)
 	if imageClass != "" {
-		image.Attrs["class"] = imageClass
+		image.Attrs["style"] = imageClass
 	}
 	if wrapperClass == "" {
 		firstVisible := r.consumeVisibleElement()
@@ -4133,7 +2788,7 @@ func (r *storylineRenderer) renderImageNode(node map[string]interface{}) htmlPar
 	}
 	wrapper := &htmlElement{
 		Tag:      "div",
-		Attrs:    map[string]string{"class": wrapperClass},
+		Attrs:    map[string]string{"style": wrapperClass},
 		Children: []htmlPart{image},
 	}
 	r.applyStructuralNodeAttrs(wrapper, node, "")
@@ -4171,9 +2826,18 @@ func (r *storylineRenderer) renderTextNode(node map[string]interface{}, depth in
 	if level == 0 {
 		level = r.headingLevelForPosition(positionID, 0)
 	}
+	// Port of Python simplify_styles heading tag selection (yj_to_epub_properties.py ~L1928):
+	// Only promote to <h1>-<h6> when layout hints include "heading" AND not fixed/illustrated layout.
+	// Python: "heading" in kfx_layout_hints and not contains_block_elem → elem.tag = "h" + level
+	isHeading := layoutHintsInclude(r.nodeLayoutHints(node), "heading")
 	if level > 0 {
 		r.lastKFXHeadingLevel = level
-	} else if layoutHintsInclude(r.nodeLayoutHints(node), "heading") {
+		if !isHeading {
+			// Heading level stored in CSS ($790) but layout hints don't confirm heading;
+			// render as <p> like Python does (simplify_styles won't promote this <div>).
+			level = 0
+		}
+	} else if isHeading {
 		level = r.lastKFXHeadingLevel
 	}
 	if level > 0 {
@@ -4187,8 +2851,8 @@ func (r *storylineRenderer) renderTextNode(node map[string]interface{}, depth in
 			Children: content,
 		}
 		if styleID != "" {
-			if className := r.headingClass(styleID); className != "" {
-				element.Attrs["class"] = className
+			if styleAttr := r.headingClass(styleID); styleAttr != "" {
+				element.Attrs["style"] = styleAttr
 			}
 		}
 		r.applyStructuralNodeAttrs(element, node, "")
@@ -4203,8 +2867,8 @@ func (r *storylineRenderer) renderTextNode(node map[string]interface{}, depth in
 		Children: content,
 	}
 	if styleID != "" {
-		if className := r.paragraphClass(styleID, annotationStyleID); className != "" {
-			element.Attrs["class"] = className
+		if styleAttr := r.paragraphClass(styleID, annotationStyleID); styleAttr != "" {
+			element.Attrs["style"] = styleAttr
 		}
 	}
 	r.applyFirstLineStyle(element, node)
@@ -4222,6 +2886,7 @@ func removeSingleFullTextLinkClass(parts []htmlPart) {
 		return
 	}
 	delete(link.Attrs, "class")
+	delete(link.Attrs, "style")
 }
 
 func (r *storylineRenderer) applyStructuralAttrsToPart(part htmlPart, node map[string]interface{}, parentTag string) {
@@ -4397,8 +3062,8 @@ func (r *storylineRenderer) applyStructuralNodeAttrs(element *htmlElement, node 
 	}
 	switch asStringDefault(node["$156"]) {
 	case "$324", "$325":
-		if className := r.styles.bind("class", []string{"position: fixed"}); className != "" {
-			element.Attrs["class"] = appendClassNames(element.Attrs["class"], className)
+		if styleAttr := styleStringFromDeclarations("class", nil, []string{"position: fixed"}); styleAttr != "" {
+			element.Attrs["style"] = mergeStyleStrings(element.Attrs["style"], styleAttr)
 		}
 	}
 }
@@ -4474,8 +3139,8 @@ func (r *storylineRenderer) renderInlineParagraphContainer(node map[string]inter
 	if len(element.Children) == 0 {
 		return nil
 	}
-	if className := r.containerClass(node); className != "" {
-		element.Attrs["class"] = className
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		element.Attrs["style"] = styleAttr
 	}
 	r.applyFirstLineStyle(element, node)
 	r.applyStructuralNodeAttrs(element, node, "")
@@ -4502,8 +3167,8 @@ func (r *storylineRenderer) renderInlineRenderContainer(node map[string]interfac
 	if len(element.Children) == 0 {
 		return nil
 	}
-	if className := r.inlineContainerClass(styleID, node); className != "" {
-		element.Attrs["class"] = className
+	if styleAttr := r.inlineContainerClass(styleID, node); styleAttr != "" {
+		element.Attrs["style"] = styleAttr
 	}
 	r.applyStructuralNodeAttrs(element, node, "")
 	if positionID, _ := asInt(node["$155"]); positionID != 0 {
@@ -4531,8 +3196,8 @@ func (r *storylineRenderer) renderFigureHintContainer(node map[string]interface{
 	if len(element.Children) == 0 || !htmlPartContainsImage(element) {
 		return nil
 	}
-	if className := r.containerClass(node); className != "" {
-		element.Attrs["class"] = className
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		element.Attrs["style"] = styleAttr
 	}
 	r.applyStructuralNodeAttrs(element, node, "")
 	if positionID, _ := asInt(node["$155"]); positionID != 0 {
@@ -4619,19 +3284,15 @@ func (r *storylineRenderer) bodyClass(styleID string, values map[string]interfac
 	}
 	baseName := "class"
 	if styleID != "" {
-		baseName = "class_" + styleID
+		baseName = r.styleBaseName(styleID)
 	}
-	return r.styles.bind(baseName, declarations)
+	return styleStringFromDeclarations(baseName, nil, declarations)
 }
 
 func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 	styleID, _ := asString(node["$157"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
-	if hasRenderableContainer(node) && style["$11"] == nil && style["$42"] != nil &&
-		(style["$84"] != nil || style["$89"] != nil || style["$94"] != nil || style["$52"] != nil) {
-		style = mergeStyleValues(style, map[string]interface{}{"$11": "default,serif"})
-	}
 	if len(style) == 0 {
 		return ""
 	}
@@ -4644,9 +3305,9 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 	}
 	baseName := "class"
 	if styleID != "" {
-		baseName = "class_" + styleID
+		baseName = r.styleBaseName(styleID)
 	}
-	return r.styles.bind(baseName, declarations)
+	return styleStringFromDeclarations(baseName, r.nodeLayoutHints(node), declarations)
 }
 
 func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
@@ -4658,9 +3319,9 @@ func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
 	}
 	baseName := "class"
 	if styleID != "" {
-		baseName = "class_" + styleID
+		baseName = r.styleBaseName(styleID)
 	}
-	return r.styles.bind(baseName, declarations)
+	return styleStringFromDeclarations(baseName, nil, declarations)
 }
 
 func (r *storylineRenderer) tableColumnClass(node map[string]interface{}) string {
@@ -4669,7 +3330,7 @@ func (r *storylineRenderer) tableColumnClass(node map[string]interface{}) string
 	if len(declarations) == 0 {
 		return ""
 	}
-	return r.styles.bind("class", declarations)
+	return styleStringFromDeclarations("class", nil, declarations)
 }
 
 func (r *storylineRenderer) structuredContainerClass(node map[string]interface{}) string {
@@ -4682,9 +3343,9 @@ func (r *storylineRenderer) structuredContainerClass(node map[string]interface{}
 	}
 	baseName := "class"
 	if styleID != "" {
-		baseName = "class_" + styleID
+		baseName = r.styleBaseName(styleID)
 	}
-	return r.styles.bind(baseName, declarations)
+	return styleStringFromDeclarations(baseName, nil, declarations)
 }
 
 func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
@@ -4703,9 +3364,9 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 	}
 	baseName := "class"
 	if styleID != "" {
-		baseName = "class_" + styleID
+		baseName = r.styleBaseName(styleID)
 	}
-	return r.styles.bind(baseName, declarations)
+	return styleStringFromDeclarations(baseName, nil, declarations)
 }
 
 func (r *storylineRenderer) inlineContainerClass(styleID string, node map[string]interface{}) string {
@@ -4716,9 +3377,9 @@ func (r *storylineRenderer) inlineContainerClass(styleID string, node map[string
 	}
 	baseName := "class"
 	if styleID != "" {
-		baseName = "class_" + styleID
+		baseName = r.styleBaseName(styleID)
 	}
-	return r.styles.bind(baseName, declarations)
+	return styleStringFromDeclarations(baseName, nil, declarations)
 }
 
 func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, string) {
@@ -4732,17 +3393,15 @@ func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, s
 	imageDecls := imageStyleDeclarations(style)
 	baseName := "class"
 	if styleID != "" {
-		baseName = "class_" + styleID
+		baseName = r.styleBaseName(styleID)
 	}
 	switch {
 	case len(wrapperDecls) > 0 && len(imageDecls) > 0:
-		wrapperClass := r.styles.bind(baseName, wrapperDecls)
-		imageClass := r.styles.bind(baseName, imageDecls)
-		return wrapperClass, imageClass
+		return styleStringFromDeclarations(baseName, nil, wrapperDecls), styleStringFromDeclarations(baseName, nil, imageDecls)
 	case len(wrapperDecls) > 0:
-		return r.styles.bind(baseName, wrapperDecls), ""
+		return styleStringFromDeclarations(baseName, nil, wrapperDecls), ""
 	case len(imageDecls) > 0:
-		return "", r.styles.bind(baseName, imageDecls)
+		return "", styleStringFromDeclarations(baseName, nil, imageDecls)
 	default:
 		return "", ""
 	}
@@ -4766,7 +3425,7 @@ func (r *storylineRenderer) headingClass(styleID string) string {
 	if len(style) == 0 {
 		return ""
 	}
-	className := headingClassName(styleID, style)
+	className := r.headingClassName(styleID, style)
 	declarations := filterBodyDefaultDeclarations(headingStyleDeclarations(style), r.activeBodyDefaults)
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
@@ -4777,7 +3436,7 @@ func (r *storylineRenderer) headingClass(styleID string) string {
 	if len(declarations) == 0 {
 		return ""
 	}
-	return r.styles.bind(className, declarations)
+	return styleStringFromDeclarations(className, []string{"heading"}, declarations)
 }
 
 func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID string) string {
@@ -4801,9 +3460,9 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 	if len(declarations) > 0 {
 		baseName := "class"
 		if styleID != "" {
-			baseName = "class_" + styleID
+			baseName = r.styleBaseName(styleID)
 		}
-		className = r.styles.bind(baseName, declarations)
+		className = styleStringFromDeclarations(baseName, nil, declarations)
 	}
 	if annotationStyleID != "" {
 		_ = r.linkClass(annotationStyleID, true)
@@ -4822,9 +3481,9 @@ func (r *storylineRenderer) linkClass(styleID string, suppressColor bool) string
 	}
 	baseName := "class"
 	if styleID != "" {
-		baseName = "class_" + styleID
+		baseName = r.styleBaseName(styleID)
 	}
-	return r.styles.bind(baseName, declarations)
+	return styleStringFromDeclarations(baseName, nil, declarations)
 }
 
 func (r *storylineRenderer) spanClass(styleID string) string {
@@ -4838,9 +3497,9 @@ func (r *storylineRenderer) spanClass(styleID string) string {
 	}
 	baseName := "class"
 	if styleID != "" {
-		baseName = "class_" + styleID
+		baseName = r.styleBaseName(styleID)
 	}
-	return r.styles.bind(baseName, declarations)
+	return styleStringFromDeclarations(baseName, nil, declarations)
 }
 
 func (r *storylineRenderer) resolveText(ref map[string]interface{}) string {
@@ -5187,7 +3846,11 @@ func storylineContainsParagraph(nodes []interface{}) bool {
 	return false
 }
 
-func headingClassName(styleID string, style map[string]interface{}) string {
+func (r *storylineRenderer) headingClassName(styleID string, style map[string]interface{}) string {
+	simplified := uniquePartOfLocalSymbol(styleID, r.symFmt)
+	if simplified != "" {
+		return "heading_" + simplified
+	}
 	return "heading_" + styleID
 }
 
@@ -5383,128 +4046,6 @@ func quoteFontName(value string) string {
 	return value
 }
 
-func finalizeStylesheet(stylesheet string) string {
-	stylesheet = strings.TrimSpace(stylesheet)
-	if stylesheet == "" {
-		return ""
-	}
-	lines := strings.Split(stylesheet, "\n")
-	fontFaces := make([]string, 0, len(lines))
-	rules := make([]string, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "@charset ") {
-			continue
-		}
-		if strings.HasPrefix(line, "@font-face ") {
-			fontFaces = append(fontFaces, line)
-			continue
-		}
-		rules = append(rules, line)
-	}
-	sort.Strings(fontFaces)
-	sort.SliceStable(rules, func(i, j int) bool {
-		selectorI := rules[i]
-		if idx := strings.Index(selectorI, " {"); idx >= 0 {
-			selectorI = selectorI[:idx]
-		}
-		selectorJ := rules[j]
-		if idx := strings.Index(selectorJ, " {"); idx >= 0 {
-			selectorJ = selectorJ[:idx]
-		}
-		return naturalSortKey(selectorI) < naturalSortKey(selectorJ)
-	})
-	out := make([]string, 0, 1+len(fontFaces)+len(rules))
-	out = append(out, `@charset "UTF-8";`)
-	out = append(out, fontFaces...)
-	out = append(out, rules...)
-	return strings.Join(out, "\n")
-}
-
-func collectReferencedClasses(book *decodedBook) map[string]bool {
-	used := map[string]bool{}
-	if book == nil {
-		return used
-	}
-	addClasses := func(value string) {
-		for _, className := range strings.Fields(strings.TrimSpace(value)) {
-			if className != "" {
-				used[className] = true
-			}
-		}
-	}
-	for _, section := range book.Sections {
-		addClasses(section.BodyClass)
-		for _, match := range regexp.MustCompile(`class="([^"]+)"`).FindAllStringSubmatch(section.BodyHTML, -1) {
-			if len(match) > 1 {
-				addClasses(match[1])
-			}
-		}
-	}
-	return used
-}
-
-func pruneUnusedStylesheetRules(stylesheet string, used map[string]bool) string {
-	if stylesheet == "" || len(used) == 0 {
-		return stylesheet
-	}
-	lines := strings.Split(stylesheet, "\n")
-	filtered := make([]string, 0, len(lines))
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, ".") {
-			selector := trimmed[1:]
-			if idx := strings.Index(selector, " {"); idx >= 0 {
-				selector = selector[:idx]
-			}
-			baseSelector := selector
-			for _, sep := range []string{"::", ":", " ", "["} {
-				if idx := strings.Index(baseSelector, sep); idx >= 0 {
-					baseSelector = baseSelector[:idx]
-				}
-			}
-			if baseSelector != "" && !used[baseSelector] {
-				continue
-			}
-		}
-		filtered = append(filtered, line)
-	}
-	return strings.Join(filtered, "\n")
-}
-
-func parseDeclarationString(value string) map[string]string {
-	style := map[string]string{}
-	for _, declaration := range strings.Split(value, ";") {
-		declaration = strings.TrimSpace(declaration)
-		if declaration == "" {
-			continue
-		}
-		name, rawValue, ok := strings.Cut(declaration, ":")
-		if !ok {
-			continue
-		}
-		style[strings.TrimSpace(name)] = strings.TrimSpace(rawValue)
-	}
-	return style
-}
-
-func declarationListFromStyleMap(style map[string]string) []string {
-	if len(style) == 0 {
-		return nil
-	}
-	declarations := make([]string, 0, len(style))
-	for name, value := range style {
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
-		declarations = append(declarations, name+": "+value)
-	}
-	return canonicalDeclarations(declarations)
-}
-
 func canonicalDeclarations(declarations []string) []string {
 	if len(declarations) == 0 {
 		return declarations
@@ -5627,15 +4168,17 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 				continue
 			}
 			if href != "" {
-				className := r.linkClass(styleID, annotationCoversWholeText(annotationMap, len(runes)))
-				className = appendClassNames(className, dropcapClass)
+				styleAttr := mergeStyleStrings(
+					r.linkClass(styleID, annotationCoversWholeText(annotationMap, len(runes))),
+					dropcapClass,
+				)
 				events = append(events, event{
 					start: start,
 					end:   end,
 					open: func(parent *htmlElement) *htmlElement {
 						attrs := map[string]string{"href": href}
-						if className != "" {
-							attrs["class"] = className
+						if styleAttr != "" {
+							attrs["style"] = styleAttr
 						}
 						element := &htmlElement{Tag: "a", Attrs: attrs}
 						parent.Children = append(parent.Children, element)
@@ -5644,12 +4187,12 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 				})
 				continue
 			}
-			if className := appendClassNames(r.spanClass(styleID), dropcapClass); className != "" {
+			if styleAttr := mergeStyleStrings(r.spanClass(styleID), dropcapClass); styleAttr != "" {
 				events = append(events, event{
 					start: start,
 					end:   end,
 					open: func(parent *htmlElement) *htmlElement {
-						element := &htmlElement{Tag: "span", Attrs: map[string]string{"class": className}}
+						element := &htmlElement{Tag: "span", Attrs: map[string]string{"style": styleAttr}}
 						parent.Children = append(parent.Children, element)
 						return element
 					},
@@ -5777,7 +4320,7 @@ func (r *storylineRenderer) dropcapClass(lines int) string {
 	if lines <= 0 {
 		return ""
 	}
-	return r.styles.bind("class", []string{
+	return styleStringFromDeclarations("class", nil, []string{
 		"float: left",
 		fmt.Sprintf("font-size: %dem", lines),
 		"line-height: 100%",
@@ -6286,10 +4829,21 @@ func applyCoverSVGPromotion(book *decodedBook) {
 	}
 	for index := range book.Sections {
 		section := &book.Sections[index]
-		if section.Title != "Cover" || !strings.Contains(section.BodyHTML, `src="`+book.CoverImageHref+`"`) {
+		// Match cover section by either title or containing the cover image.
+		// Calibre identifies cover in process_section via layout + image, not title alone.
+		if !strings.Contains(section.BodyHTML, `src="`+book.CoverImageHref+`"`) {
 			continue
 		}
-		section.BodyClass = "class_s8"
+		// Only promote sections that are primarily a cover image (not mixed content).
+		if section.Title != "Cover" && !isCoverImageSection(section.BodyHTML) {
+			continue
+		}
+		// Calibre adds class_s8 for SVG cover sections that are titled "Cover".
+		if section.Title == "Cover" {
+			section.BodyClass = "class_s8"
+		} else {
+			section.BodyClass = ""
+		}
 		section.Properties = "svg"
 		section.BodyHTML = fmt.Sprintf(
 			`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" preserveAspectRatio="xMidYMid meet" viewBox="0 0 %d %d" height="100%%" width="100%%"><image xlink:href="%s" height="%d" width="%d"/></svg>`,
@@ -6325,6 +4879,17 @@ func coverImageDimensions(resources []epub.Resource, href string) (int, int) {
 		return cfg.Width, cfg.Height
 	}
 	return 0, 0
+}
+
+// isCoverImageSection returns true if the body HTML is primarily just an image
+// (possibly wrapped in a div), suitable for SVG cover promotion.
+func isCoverImageSection(bodyHTML string) bool {
+	stripped := strings.TrimSpace(bodyHTML)
+	// Remove opening/closing div wrapper
+	stripped = strings.TrimPrefix(stripped, "<div>")
+	stripped = strings.TrimSuffix(stripped, "</div>")
+	stripped = strings.TrimSpace(stripped)
+	return strings.HasPrefix(stripped, "<img") && !strings.Contains(stripped, "<p>") && !strings.Contains(stripped, "<h")
 }
 
 func normalizeBookIdentifier(identifier string) string {
