@@ -790,6 +790,42 @@ var heritableDefaultProperties = map[string]string{
 	"writing-mode":   "horizontal-tb",
 }
 
+// Non-heritable CSS properties with their default values, used in simplify_styles for comparison.
+// When an element's non-heritable property matches its default value, it can be stripped.
+// Ported from Python NON_HERITABLE_DEFAULT_PROPERTIES in yj_to_epub_properties.py.
+var nonHeritableDefaultProperties = map[string]string{
+	"background-clip":     "border-box",
+	"background-color":    "transparent",
+	"background-image":    "none",
+	"background-origin":   "padding-box",
+	"background-position": "0% 0%",
+	"background-repeat":   "repeat",
+	"background-size":     "auto auto",
+	"box-decoration-break": "slice",
+	"box-sizing":          "content-box",
+	"column-count":        "auto",
+	"float":               "none",
+	"margin-bottom":       "0",
+	"margin-left":         "0",
+	"margin-right":        "0",
+	"margin-top":          "0",
+	"overflow":            "visible",
+	"padding-bottom":      "0",
+	"padding-left":        "0",
+	"padding-right":       "0",
+	"padding-top":         "0",
+	"page-break-after":    "auto",
+	"page-break-before":   "auto",
+	"page-break-inside":   "auto",
+	"position":            "static",
+	"text-decoration":     "none",
+	"text-emphasis-position": "over right",
+	"transform":           "none",
+	"transform-origin":    "50% 50% 0",
+	"vertical-align":      "baseline",
+	"z-index":             "auto",
+}
+
 func isReverseHeritableProperty(name string) bool {
 	return heritableProperties[name] && name != "font-size" && name != "line-height"
 }
@@ -1069,6 +1105,14 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 		newChildren = append(newChildren, ch)
 	}
 	elem.Children = newChildren
+
+	// Merge non-heritable defaults into inherited before comparison/stripping.
+	// Ported from Python: inherited_properties.update(self.non_heritable_default_properties)
+	// This ensures the stripping loop at the end also removes non-heritable properties
+	// that match their default values (e.g. margin: 0, padding: 0, box-sizing: content-box).
+	for name, val := range nonHeritableDefaultProperties {
+		inherited[name] = val
+	}
 
 	tagChangedToParagraph := false
 	tagChangedToFigure := false
