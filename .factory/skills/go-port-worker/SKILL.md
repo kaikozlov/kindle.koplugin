@@ -1,6 +1,6 @@
 ---
 name: go-port-worker
-description: Ports a specific CSS simplification feature from Python to Go, with strict diff/test verification
+description: Ports CSS simplification features from Python to Go, with strict multi-file diff/test verification
 ---
 
 # Go Port Worker
@@ -9,11 +9,7 @@ NOTE: Startup and cleanup are handled by `worker-base`. This skill defines the W
 
 ## When to Use This Skill
 
-Use this worker for each of the 4 sequential porting steps:
-1. Port filterDefaultParagraphMargins to simplifyStylesFull
-2. Port COMPOSITE_SIDE_STYLES merging to simplifyStylesFull
-3. Port ineffective property stripping to simplifyStylesFull
-4. Batch 2 swap: replace *StyleDeclarations with processContentProperties
+Use for all features in this mission: dead code cleanup, diff auditing, precision fixes, missing feature ports, and iterative diff reduction.
 
 ## Required Skills
 
@@ -21,91 +17,105 @@ None. This is a code-level Go porting task using file editing tools and shell co
 
 ## Work Procedure
 
-### Step 1: Read the Python Reference
+### Step 1: Understand the Feature
 
-Read the specific Python function you're porting from `/home/kai/gitrepos/kobo.koplugin/REFERENCE/Calibre_KFX_Input/kfxlib/yj_to_epub_properties.py`. Understand every line. The Python code is the source of truth.
-
-### Step 2: Read the Current Go Code
+Read the feature description carefully. If it references Python code, read it from `/home/kai/gitrepos/kobo.koplugin/REFERENCE/Calibre_KFX_Input/kfxlib/yj_to_epub_properties.py` (or other files in that directory).
 
 Read the target Go files:
-- `internal/kfx/yj_to_epub_properties.go` — contains `simplifyStylesFull` and `simplifyStylesElementFull`
-- `internal/kfx/kfx.go` — contains `*StyleDeclarations` functions and `filterDefaultParagraphMargins`
-- `internal/kfx/yj_property_info.go` — contains `processContentProperties` and `convertYJProperties`
+- `internal/kfx/yj_to_epub_properties.go` — `simplifyStylesFull`, `simplifyStylesElementFull`
+- `internal/kfx/kfx.go` — rendering pipeline, *StyleDeclarations (dead code)
+- `internal/kfx/yj_property_info.go` — `processContentProperties`, `convertYJProperties`, `convertStyleUnits`
 
-### Step 3: Save Baseline
+### Step 2: Save Baseline Diffs
 
-Before making ANY changes, run the diff check and save the output:
+Before making ANY changes, run diff checks on ALL 4 test files and save the counts:
+
 ```bash
-cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin && go build ./internal/kfx/... && tmpdir=$(mktemp -d) && go run ./cmd/kindle-helper convert --input ../REFERENCE/kfx_examples/Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx --output "$tmpdir/out.epub" 2>/dev/null && diff -u <(unzip -p ../REFERENCE/martyr_calibre.epub OEBPS/stylesheet.css) <(unzip -p "$tmpdir/out.epub" OEBPS/stylesheet.css) | grep '^[+-]' | grep -v '^---\|^+++' | head -60
+cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin && for pair in "../REFERENCE/kfx_examples/Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx /tmp/martyr_python_ref.epub" "../REFERENCE/KFX_DRM/decrypted/Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip /tmp/Elvis and the Underdogs_B009NG3090_calibre.epub" "../REFERENCE/KFX_DRM/decrypted/The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip /tmp/The Hunger Games Trilogy_B004XJRQUQ_calibre.epub" "../REFERENCE/KFX_DRM/decrypted/Three Below (Floors #2)_B008PL1YQ0_decrypted.kfx-zip /tmp/Three Below (Floors #2)_B008PL1YQ0_calibre.epub"; do
+  input=$(echo "$pair" | cut -d' ' -f1)
+  ref=$(echo "$pair" | cut -d' ' -f2-)
+  bn=$(basename "$input" | sed 's/_decrypted.*//' | sed 's/\..*//')
+  tmpdir=$(mktemp -d)
+  count=$(go run ./cmd/kindle-helper convert --input "$input" --output "$tmpdir/out.epub" 2>/dev/null && diff -u <(unzip -p "$ref" OEBPS/stylesheet.css) <(unzip -p "$tmpdir/out.epub" OEBPS/stylesheet.css) | grep '^[+-]' | grep -v '^---\|^+++' | wc -l)
+  echo "BASELINE $bn: $count diffs"
+  rm -rf "$tmpdir"
+done
 ```
 
-### Step 4: Implement
+### Step 3: Implement
 
-Make the minimal changes needed to port the Python feature. Key constraints:
+Make the minimal changes needed. Key constraints:
 - Do NOT add unit conversion to `propertyValue()`
-- Do NOT add properties one-by-one to `*StyleDeclarations` functions
 - Do NOT change HTML structure for image wrappers
 - Do NOT modify Python reference code
 
-### Step 5: Verify
+### Step 4: Verify Against ALL Test Files
 
-Run BOTH verification gates:
+1. **Build:** `go build ./internal/kfx/...`
+2. **Test:** `go test ./internal/kfx/... -count=1 -timeout 120s` — must be exactly 12 FAIL lines
+3. **Multi-file diff check:** Run the diff count command from Step 2 on ALL 4 test files
+   - Compare counts to baseline — diffs must NOT increase on any file
+   - Diffs should decrease or stay the same on all files
+   - **Cosmetic diffs are acceptable**: class renumbering, gray vs #808080, -webkit- prefix ordering, whitespace
 
-1. **Build:** `cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin && go build ./internal/kfx/...`
-2. **Test:** `cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin && go test ./internal/kfx/... -count=1 -timeout 120s`
-   - Count FAIL lines: must be exactly 12
-3. **Diff check:** Run the diff check command from Step 3
-   - Compare output to baseline — functionally new diffs are NOT acceptable
-   - **Cosmetic diffs ARE acceptable**: floating-point precision (3.200004em vs 3.2em), missing explicit margin defaults (margin-bottom: 0 absent vs present), class name renumbering, gray vs #808080, -webkit- prefix ordering, orphans/widows additions, properties matching defaults being absent
+### Step 5: Commit or Revert
 
-### Step 6: Commit or Revert
-
-**If clean or only cosmetic diffs** (12 failures, no functionally new diffs):
+**If clean or improved** (12 failures, no increased diffs on any file):
 ```bash
-git add -A && git commit -m "<step commit message from feature description>"
+git add -A && git commit -m "<commit message>"
 ```
 
-**If functionally new diffs exist** (wrong property values, missing properties that affect rendering):
+**If diffs increased on any file, or new test failures:**
 ```bash
 git checkout -- .
 git add -A && git commit -m "revert: <step name> attempt failed"
 ```
-Then stop and report — do NOT try to fix it.
+Then stop and report.
 
-### Step 7: Use KFX_DUMP_STYLES if Ambiguous
+### Step 6: Use KFX_DUMP_STYLES if Ambiguous
 
-If the diff check output is ambiguous (you're not sure if a diff is cosmetic or meaningful), use:
 ```bash
-KFX_DUMP_STYLES=1 go run ./cmd/kindle-helper convert --input ../REFERENCE/kfx_examples/Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx --output /tmp/test.epub 2>/dev/null
+KFX_DUMP_STYLES=1 go run ./cmd/kindle-helper convert --input <INPUT> --output /tmp/test.epub 2>/dev/null
 ```
-This dumps intermediate style checkpoints for comparison.
+
+## Reference EPUB Generation
+
+If reference EPUBs are missing from /tmp/, regenerate them:
+```bash
+cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin
+python3 scripts/convert_kfx_python.py --input <INPUT> --output <OUTPUT>
+```
+
+Test files:
+- Martyr: `../REFERENCE/kfx_examples/Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx`
+- Elvis: `../REFERENCE/KFX_DRM/decrypted/Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip`
+- Hunger Games: `../REFERENCE/KFX_DRM/decrypted/The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip`
+- Three Below: `../REFERENCE/KFX_DRM/decrypted/Three Below (Floors #2)_B008PL1YQ0_decrypted.kfx-zip`
 
 ## Example Handoff
 
 ```json
 {
-  "salientSummary": "Ported filterDefaultParagraphMargins from paragraphClass into simplifyStylesElementFull's inheritance-based approach. When div→p conversion happens, margin-top/margin-bottom: 1em are now recorded as inherited defaults and stripped by the existing comparison logic. Removed the explicit filterDefaultParagraphMargins call from paragraphClass.",
-  "whatWasImplemented": "Modified simplifyStylesElementFull to record margin-top: 1em and margin-bottom: 1em as inherited when converting <div> to <p>. Removed filterDefaultParagraphMargins call from paragraphClass in kfx.go:3449. The filterDefaultParagraphMargins function is now dead code but left in place for reference.",
-  "whatWasLeftUndone": "The filterDefaultParagraphMargins function in kfx.go:3886 is now unused but was not deleted to keep the diff minimal.",
+  "salientSummary": "Removed dead code (paragraphStyleDeclarations, linkStyleDeclarations, imageWrapperStyleDeclarations, imageStyleDeclarations, filterDefaultParagraphMargins). Verified all 4 test files unchanged.",
+  "whatWasImplemented": "Deleted 5 unused functions from kfx.go. No functional changes. Build and tests pass with 12 baseline failures.",
+  "whatWasLeftUndone": "",
   "verification": {
     "commandsRun": [
       {"command": "go build ./internal/kfx/...", "exitCode": 0, "observation": "Build succeeded"},
-      {"command": "go test ./internal/kfx/... -count=1 -timeout 120s 2>&1 | grep -c '^--- FAIL'", "exitCode": 0, "observation": "12 failures (baseline maintained)"},
-      {"command": "diff check vs reference martyr_calibre.epub", "exitCode": 0, "observation": "No new diff lines vs baseline"}
+      {"command": "go test ./internal/kfx/... -count=1 -timeout 120s", "exitCode": 0, "observation": "12 failures (baseline)"},
+      {"command": "diff count all 4 files", "exitCode": 0, "observation": "Martyr:273 Elvis:165 HG:127 3B:105 — unchanged from baseline"}
     ],
     "interactiveChecks": []
   },
-  "tests": {
-    "added": []
-  },
+  "tests": {"added": []},
   "discoveredIssues": []
 }
 ```
 
 ## When to Return to Orchestrator
 
-- New test failures introduced (count > 12)
-- New CSS diffs that are NOT cosmetic
-- The Python feature cannot be cleanly ported without architectural changes
-- Uncertainty about whether a diff is cosmetic or meaningful — stop and ask
-- The step was reverted — report the failure and await instructions
+- New test failures (count != 12)
+- Diffs increased on any test file
+- Python feature cannot be cleanly ported
+- Uncertainty about whether a diff is cosmetic or meaningful
+- Step was reverted — report failure and await instructions
