@@ -1115,109 +1115,6 @@ skipBodyIndent:
 	return declarations
 }
 
-func paragraphStyleDeclarations(style map[string]interface{}, linkStyle map[string]interface{}) []string {
-	var declarations []string
-	if value := colorDeclarations(style, linkStyle); value != "" {
-		declarations = append(declarations, "color: "+value)
-	}
-	if value := cssFontFamily(style["$11"]); value != "" {
-		declarations = append(declarations, "font-family: "+value)
-	}
-	if value := mapFontStyle(style["$12"]); value != "" && value != "normal" {
-		declarations = append(declarations, "font-style: "+value)
-	}
-	if value := mapFontWeight(style["$13"]); value != "" && value != "normal" {
-		declarations = append(declarations, "font-weight: "+value)
-	}
-	if value := mapFontVariant(style["$583"]); value != "" && value != "normal" {
-		declarations = append(declarations, "font-variant: "+value)
-	}
-	if value := cssLengthProperty(style["$16"], "$16"); value != "" && value != "1em" {
-		declarations = append(declarations, "font-size: "+value)
-	}
-	if value := cssLineHeight(style["$42"]); value != "" && value != "1.2" {
-		declarations = append(declarations, "line-height: "+value)
-	}
-	if value := cssLengthProperty(style["$49"], "$49"); value != "" {
-		declarations = append(declarations, "margin-bottom: "+value)
-	} else {
-		declarations = append(declarations, "margin-bottom: 0")
-	}
-	if value := cssLengthProperty(style["$48"], "$48"); value != "" {
-		declarations = append(declarations, "margin-left: "+value)
-	}
-	if value := cssLengthProperty(style["$50"], "$50"); value != "" {
-		declarations = append(declarations, "margin-right: "+value)
-	}
-	if value := cssLengthProperty(style["$47"], "$47"); value != "" {
-		declarations = append(declarations, "margin-top: "+value)
-	} else {
-		declarations = append(declarations, "margin-top: 0")
-	}
-	if value := mapBoxAlign(style["$34"]); value != "" {
-		declarations = append(declarations, "text-align: "+value)
-	}
-	if value := cssLengthProperty(style["$36"], "$36"); value != "" {
-		declarations = append(declarations, "text-indent: "+value)
-	}
-	if value := fillColor(style); value != "" {
-		declarations = append(declarations, "background-color: "+value)
-	}
-	if value := mapTextTransform(style["$41"]); value != "" && value != "none" {
-		declarations = append(declarations, "text-transform: "+value)
-	}
-	if value := mapTextDecoration(style["$23"]); value != "" {
-		declarations = append(declarations, "text-decoration: "+value)
-	}
-	if value := mapPageBreak(style["$135"]); value != "" {
-		declarations = append(declarations, "page-break-inside: "+value)
-	}
-	if linkStyle != nil {
-		if _, ok := style["$11"]; !ok {
-			if value := cssFontFamily(linkStyle["$11"]); value != "" {
-				declarations = append(declarations, "font-family: "+value)
-			}
-		}
-		if _, ok := style["$12"]; !ok {
-			if value := mapFontStyle(linkStyle["$12"]); value != "" && value != "normal" {
-				declarations = append(declarations, "font-style: "+value)
-			}
-		}
-		if _, ok := style["$13"]; !ok {
-			if value := mapFontWeight(linkStyle["$13"]); value != "" && value != "normal" {
-				declarations = append(declarations, "font-weight: "+value)
-			}
-		}
-		if _, ok := style["$583"]; !ok {
-			if value := mapFontVariant(linkStyle["$583"]); value != "" && value != "normal" {
-				declarations = append(declarations, "font-variant: "+value)
-			}
-		}
-		if _, ok := style["$41"]; !ok {
-			if value := mapTextTransform(linkStyle["$41"]); value != "" && value != "none" {
-				declarations = append(declarations, "text-transform: "+value)
-			}
-		}
-	}
-	return declarations
-}
-
-func linkStyleDeclarations(style map[string]interface{}, suppressColor bool) []string {
-	var declarations []string
-	if !suppressColor {
-		if value := colorDeclarations(style, nil); value != "" {
-			declarations = append(declarations, "color: "+value)
-		}
-	}
-	if value := cssLengthProperty(style["$16"], "$16"); value != "" && value != "1em" {
-		declarations = append(declarations, "font-size: "+value)
-	}
-	if value := mapTextDecoration(style["$23"]); value != "" {
-		declarations = append(declarations, "text-decoration: "+value)
-	}
-	return declarations
-}
-
 func spanStyleDeclarations(style map[string]interface{}) []string {
 	var declarations []string
 	if value := cssLengthProperty(style["$16"], "$16"); value != "" && value != "1em" {
@@ -1247,36 +1144,11 @@ func spanStyleDeclarations(style map[string]interface{}) []string {
 	return declarations
 }
 
-func imageWrapperStyleDeclarations(style map[string]interface{}) []string {
-	var declarations []string
-	if value := cssLengthProperty(style["$47"], "$47"); value != "" {
-		declarations = append(declarations, "margin-top: "+value)
-	}
-	if value := mapBoxAlign(style["$580"]); value != "" {
-		declarations = append(declarations, "text-align: "+value)
-	}
-	return declarations
-}
-
 func styleClassName(prefix string, styleID string) string {
 	if strings.HasSuffix(prefix, "_") && strings.HasPrefix(styleID, "-") {
 		return strings.TrimSuffix(prefix, "_") + styleID
 	}
 	return prefix + styleID
-}
-
-func imageStyleDeclarations(style map[string]interface{}) []string {
-	var declarations []string
-	if value := cssLineHeight(style["$42"]); value != "" && value != "1.2" {
-		declarations = append(declarations, "line-height: "+value)
-	}
-	if value := cssLengthProperty(style["$56"], "$56"); value != "" {
-		declarations = append(declarations, "width: "+value)
-	}
-	if value := cssLengthProperty(style["$57"], "$57"); value != "" {
-		declarations = append(declarations, "height: "+value)
-	}
-	return declarations
 }
 
 func tableStyleDeclarations(style map[string]interface{}) []string {
@@ -3950,20 +3822,6 @@ func filterBodyDefaultDeclarations(declarations []string, bodyDefaults map[strin
 	filtered := make([]string, 0, len(declarations))
 	for _, declaration := range declarations {
 		if bodyDefaults != nil && bodyDefaults[declaration] {
-			continue
-		}
-		filtered = append(filtered, declaration)
-	}
-	return filtered
-}
-
-func filterDefaultParagraphMargins(declarations []string) []string {
-	if len(declarations) == 0 {
-		return declarations
-	}
-	filtered := make([]string, 0, len(declarations))
-	for _, declaration := range declarations {
-		if declaration == "margin-top: 1em" || declaration == "margin-bottom: 1em" {
 			continue
 		}
 		filtered = append(filtered, declaration)
