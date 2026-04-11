@@ -841,40 +841,36 @@ func splitCSSValue(val string) (*float64, string) {
 }
 
 // formatCSSQuantity formats a float64 for CSS output, rounding to avoid
-// floating-point artifacts. Python uses decimal.Decimal which doesn't have
-// these issues; in Go we round to 6 significant decimal digits to match Python.
+// floating-point artifacts. Python uses decimal.Decimal with prec=6, so all
+// arithmetic results are automatically rounded to 6 significant digits.
+// In Go we replicate this by:
+//  1. Rounding to 6 significant digits using strconv.FormatFloat with 'g' format
+//  2. Stripping trailing zeros and trailing decimal point (matching Python's value_str)
 func formatCSSQuantity(q float64) string {
 	if q == 0 {
 		return "0"
 	}
-	// Use strconv.FormatFloat with 'f' format at sufficient precision,
-	// then strip trailing zeros and trailing decimal point.
-	s := strconv.FormatFloat(q, 'f', 10, 64)
-	// Strip trailing zeros
-	i := len(s) - 1
-	for i >= 0 && s[i] == '0' {
-		i--
-	}
-	if i >= 0 && s[i] == '.' {
-		i--
-	}
-	s = s[:i+1]
-	// Now check if we have too many decimal digits after potential
-	// floating-point noise (more than 6 significant digits after decimal)
-	if dot := strings.Index(s, "."); dot >= 0 {
-		decimals := s[dot+1:]
-		if len(decimals) > 6 {
-			s = s[:dot+7]
-			// Re-strip trailing zeros
-			i = len(s) - 1
-			for i >= 0 && s[i] == '0' {
-				i--
-			}
-			if i >= 0 && s[i] == '.' {
-				i--
-			}
-			s = s[:i+1]
+	// Round to 6 significant digits, matching Python's decimal.getcontext().prec = 6.
+	// strconv.FormatFloat with 'g' format uses the specified precision as total
+	// significant digits and applies round-half-even matching Python's default rounding.
+	s := strconv.FormatFloat(q, 'g', 6, 64)
+	// 'g' format strips trailing zeros by spec, but verify and handle any edge cases.
+	if strings.Contains(s, "e") || strings.Contains(s, "E") {
+		// Scientific notation from very small/large values — convert to decimal.
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			s = strconv.FormatFloat(f, 'f', -1, 64)
 		}
+	}
+	// Strip trailing zeros and trailing decimal point.
+	if dot := strings.Index(s, "."); dot >= 0 {
+		i := len(s) - 1
+		for i >= 0 && s[i] == '0' {
+			i--
+		}
+		if i >= 0 && s[i] == '.' {
+			i--
+		}
+		s = s[:i+1]
 	}
 	return s
 }
