@@ -767,27 +767,133 @@ var inlineElementTags = map[string]bool{
 }
 
 // Heritable CSS properties per Python (yj_to_epub_properties.py HERITABLE_PROPERTIES).
+// Heritable CSS properties — the set of all properties that inherit from parent to child in CSS.
+// Ported from Python HERITABLE_PROPERTIES (derived from HERITABLE_DEFAULT_PROPERTIES keys) in yj_to_epub_properties.py.
 var heritableProperties = map[string]bool{
-	"font-family": true, "font-size": true, "font-style": true, "font-weight": true,
-	"font-variant": true, "line-height": true, "color": true,
-	"text-align": true, "text-indent": true, "text-transform": true,
-	"-webkit-hyphens": true, "-webkit-line-break": true, "-webkit-text-combine": true,
+	"-amzn-page-align": true,
+	"-kfx-attrib-xml-lang": true,
+	"-kfx-link-color": true,
+	"-kfx-user-margin-bottom-percentage": true,
+	"-kfx-user-margin-left-percentage": true,
+	"-kfx-user-margin-right-percentage": true,
+	"-kfx-user-margin-top-percentage": true,
+	"-kfx-visited-color": true,
+	"-webkit-border-horizontal-spacing": true,
+	"-webkit-border-vertical-spacing": true,
+	"-webkit-text-stroke-color": true,
+	"-webkit-text-stroke-width": true,
+	"border-collapse": true,
+	"border-spacing": true,
+	"caption-side": true,
+	"color": true,
+	"cursor": true,
+	"direction": true,
+	"empty-cells": true,
+	"font": true,
+	"font-family": true,
+	"font-feature-settings": true,
+	"font-language-override": true,
+	"font-kerning": true,
+	"font-size": true,
+	"font-size-adjust": true,
+	"font-stretch": true,
+	"font-style": true,
+	"font-synthesis": true,
+	"font-variant": true,
+	"font-weight": true,
+	"hanging-punctuation": true,
+	"hyphens": true,
+	"letter-spacing": true,
+	"line-break": true,
+	"line-height": true,
+	"list-style": true,
+	"list-style-image": true,
+	"list-style-position": true,
+	"list-style-type": true,
+	"orphans": true,
+	"overflow-wrap": true,
+	"quotes": true,
+	"ruby-align": true,
+	"ruby-merge": true,
+	"ruby-position": true,
+	"tab-size": true,
+	"text-align": true,
+	"text-align-last": true,
+	"text-combine-upright": true,
+	"text-indent": true,
+	"text-justify": true,
+	"text-orientation": true,
+	"text-shadow": true,
+	"text-transform": true,
+	"text-underline-position": true,
+	"unicode-bidi": true,
+	"visibility": true,
+	"white-space": true,
+	"widows": true,
+	"word-break": true,
+	"word-spacing": true,
+	"word-wrap": true,
 	"writing-mode": true,
 }
 
 // Comparison defaults for simplify_styles. These are intentionally not the same as the emitted
 // body defaults set in setHTMLDefaults; Python compares body styles against generic document
 // defaults, then keeps only residual body differences such as the chosen font family.
+// Ported from Python HERITABLE_DEFAULT_PROPERTIES in yj_to_epub_properties.py.
+// Only non-None entries are included (matching Python's HERITABLE_DEFAULTS_FILTERED).
 var heritableDefaultProperties = map[string]string{
-	"font-family":    "serif",
-	"font-size":      "1em",
-	"font-style":     "normal",
-	"font-weight":    "normal",
-	"font-variant":   "normal",
-	"line-height":    "normal",
-	"text-indent":    "0",
-	"text-transform": "none",
-	"writing-mode":   "horizontal-tb",
+	"-amzn-page-align":                "none",
+	"-kfx-user-margin-bottom-percentage": "100",
+	"-kfx-user-margin-left-percentage":   "100",
+	"-kfx-user-margin-right-percentage":  "100",
+	"-kfx-user-margin-top-percentage":    "100",
+	"-webkit-border-horizontal-spacing":  "2px",
+	"-webkit-border-vertical-spacing":    "2px",
+	"-webkit-text-stroke-width":          "0",
+	"border-collapse":                   "separate",
+	"border-spacing":                    "2px 2px",
+	"caption-side":                      "top",
+	"cursor":                            "auto",
+	"direction":                         "ltr",
+	"empty-cells":                       "show",
+	"font-family":                       "serif",
+	"font-kerning":                      "auto",
+	"font-size":                         "1em",
+	"font-size-adjust":                  "none",
+	"font-stretch":                      "normal",
+	"font-style":                        "normal",
+	"font-synthesis":                    "weight style",
+	"font-variant":                      "normal",
+	"font-weight":                       "normal",
+	"hanging-punctuation":               "none",
+	"letter-spacing":                    "normal",
+	"line-break":                        "auto",
+	"line-height":                       "normal",
+	"list-style-image":                  "none",
+	"list-style-position":               "outside",
+	"list-style-type":                   "disc",
+	"orphans":                           "2",
+	"overflow-wrap":                     "normal",
+	"ruby-align":                        "space-around",
+	"ruby-merge":                        "separate",
+	"ruby-position":                     "over",
+	"tab-size":                          "8",
+	"text-align-last":                   "auto",
+	"text-combine-upright":              "none",
+	"text-indent":                       "0",
+	"text-justify":                      "auto",
+	"text-orientation":                  "mixed",
+	"text-shadow":                       "none",
+	"text-transform":                    "none",
+	"text-underline-position":           "auto",
+	"unicode-bidi":                      "normal",
+	"visibility":                        "visible",
+	"white-space":                       "normal",
+	"widows":                            "2",
+	"word-break":                        "normal",
+	"word-spacing":                      "normal",
+	"word-wrap":                         "normal",
+	"writing-mode":                      "horizontal-tb",
 }
 
 // Non-heritable CSS properties with their default values, used in simplify_styles for comparison.
@@ -827,7 +933,21 @@ var nonHeritableDefaultProperties = map[string]string{
 }
 
 func isReverseHeritableProperty(name string) bool {
-	return heritableProperties[name] && name != "font-size" && name != "line-height"
+	if !heritableProperties[name] {
+		return false
+	}
+	// Ported from Python REVERSE_HERITABLE_PROPERTIES exclusions.
+	switch name {
+	case "-amzn-page-align",
+		"-kfx-user-margin-bottom-percentage",
+		"-kfx-user-margin-left-percentage",
+		"-kfx-user-margin-right-percentage",
+		"-kfx-user-margin-top-percentage",
+		"font-size",
+		"line-height":
+		return false
+	}
+	return true
 }
 
 func allowsReverseInheritance(tag string) bool {
