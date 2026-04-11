@@ -147,8 +147,8 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	fixupAnchorsAndHrefs(book.RenderedSections, resolvedAnchorURI)
 	fixupIllustratedLayoutAnchors(book, book.RenderedSections)
 	updateDefaultFontAndLanguage(book)
-	setHTMLDefaults(book)
-	fixupStylesAndClasses(book, renderer.styles)
+	fontFamilyAddedByDefaults := setHTMLDefaults(book)
+	fixupStylesAndClasses(book, renderer.styles, fontFamilyAddedByDefaults)
 	createCSSFiles(book, renderer.styles)
 	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
 

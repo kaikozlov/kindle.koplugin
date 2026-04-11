@@ -502,15 +502,17 @@ func updateDefaultFontAndLanguage(book *decodedBook) {
 
 // Port of KFX_EPUB_Properties.set_html_defaults (yj_to_epub_properties.py ~L1652+).
 // Go emits per-section Language in epub.sectionXHTML; ensure each rendered section inherits book language when unset.
-func setHTMLDefaults(book *decodedBook) {
+func setHTMLDefaults(book *decodedBook) map[int]bool {
 	if book == nil {
-		return
+		return nil
 	}
+	fontFamilyAddedByDefaults := map[int]bool{}
 	lang := normalizeLanguage(book.Language)
 	for i := range book.RenderedSections {
 		bodyStyle := parseDeclarationString(book.RenderedSections[i].BodyStyle)
 		if bodyStyle["font-family"] == "" {
 			bodyStyle["font-family"] = "FreeFontSerif,serif"
+			fontFamilyAddedByDefaults[i] = true
 		}
 		if bodyStyle["font-size"] == "" {
 			bodyStyle["font-size"] = "1em"
@@ -530,16 +532,17 @@ func setHTMLDefaults(book *decodedBook) {
 			book.RenderedSections[i].Language = lang
 		}
 	}
+	return fontFamilyAddedByDefaults
 }
 
 // Port of KFX_EPUB_Properties.fixup_styles_and_classes (yj_to_epub_properties.py ~L1388+).
-func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog) {
+func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyAddedByDefaults map[int]bool) {
 	if book == nil || catalog == nil {
 		return
 	}
 
 	addStaticBodyClasses(catalog)
-	simplifyStylesFull(book, catalog)
+	simplifyStylesFull(book, catalog, fontFamilyAddedByDefaults)
 
 	type countedStyle struct {
 		style string
@@ -722,7 +725,7 @@ func createCSSFiles(book *decodedBook, catalog *styleCatalog) {
 // Note: Full Python simplify_styles has additional features (reverse inheritance, composite styles,
 // ineffective property stripping, rem unit conversion) that require the style catalog to be mutable.
 // This implementation covers the most impactful transformations that can be done post-rendering.
-func simplifyStylesFull(book *decodedBook, catalog *styleCatalog) {
+func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAddedByDefaults map[int]bool) {
 	if book == nil {
 		return
 	}
@@ -750,6 +753,16 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog) {
 			if heritableDefaultProperties[prop] == val {
 				delete(bodyStyle, prop)
 			}
+		}
+		// Strip font-family that was added by setHTMLDefaults as a fallback.
+		// Python's set_html_defaults uses self.default_font_family (dynamically determined from
+		// the document's content), which often resolves to "serif" — matching the heritable default
+		// and getting stripped. Go hardcodes "FreeFontSerif,serif" which doesn't match "serif",
+		// so the standard stripping above fails. Strip it here only for bodies where font-family
+		// was added by setHTMLDefaults (not from KFX rendering), since those bodies would get
+		// "serif" in Python (matching the heritable default and being stripped).
+		if fontFamilyAddedByDefaults[i] && bodyStyle["font-family"] == "FreeFontSerif,serif" {
+			delete(bodyStyle, "font-family")
 		}
 		book.RenderedSections[i].BodyStyle = styleStringFromMap(bodyStyle)
 	}
