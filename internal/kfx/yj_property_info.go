@@ -381,7 +381,7 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 				unit = "px"
 			}
 		}
-		return valueStr(mag) + unit
+		return formatCSSQuantity(mag) + unit
 	}
 
 	// Color: {$19: int}
