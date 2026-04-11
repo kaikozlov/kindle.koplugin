@@ -738,6 +738,17 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog) {
 	}
 }
 
+// compositeSideStyles lists CSS shorthand properties and their corresponding individual side properties.
+// When all individual sides have the same value, they can be collapsed into the shorthand.
+// Ported from Python COMPOSITE_SIDE_STYLES in yj_to_epub_properties.py.
+var compositeSideStyles = [][2]string{
+	{"border-color", "border-bottom-color border-left-color border-right-color border-top-color"},
+	{"border-style", "border-bottom-style border-left-style border-right-style border-top-style"},
+	{"border-width", "border-bottom-width border-left-width border-right-width border-top-width"},
+	{"margin", "margin-bottom margin-left margin-right margin-top"},
+	{"padding", "padding-bottom padding-left padding-right padding-top"},
+}
+
 // Block-level element tags per Python simplify_styles contains_block_elem check.
 var blockLevelTags = map[string]bool{
 	"aside": true, "caption": true, "div": true, "figure": true,
@@ -1088,6 +1099,32 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 			delete(explicitStyle, name)
 		}
 	}
+
+	// Collapse composite side: when all 4 individual sides of margin/padding/border-width/etc
+	// are equal, collapse them into the shorthand property.
+	// Ported from Python add_composite_and_equivalent_styles COMPOSITE_SIDE_STYLES loop.
+	for _, entry := range compositeSideStyles {
+		combinedProp := entry[0]
+		individualProps := strings.Fields(entry[1])
+		val, ok := explicitStyle[individualProps[0]]
+		if !ok {
+			continue
+		}
+		allEqual := true
+		for _, individualProp := range individualProps[1:] {
+			if explicitStyle[individualProp] != val {
+				allEqual = false
+				break
+			}
+		}
+		if allEqual {
+			explicitStyle[combinedProp] = val
+			for _, individualProp := range individualProps {
+				delete(explicitStyle, individualProp)
+			}
+		}
+	}
+
 	setElementStyleString(elem, styleStringFromMap(explicitStyle))
 
 	containsBlock = containsBlock || blockLevelTags[elem.Tag]
