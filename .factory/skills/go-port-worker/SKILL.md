@@ -55,17 +55,17 @@ Run BOTH verification gates:
 2. **Test:** `cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin && go test ./internal/kfx/... -count=1 -timeout 120s`
    - Count FAIL lines: must be exactly 12
 3. **Diff check:** Run the diff check command from Step 3
-   - Compare output to baseline — there must be NO new diff lines
-   - Ignore cosmetic diffs: class renumbering, gray vs #808080, -webkit- prefix ordering
+   - Compare output to baseline — functionally new diffs are NOT acceptable
+   - **Cosmetic diffs ARE acceptable**: floating-point precision (3.200004em vs 3.2em), missing explicit margin defaults (margin-bottom: 0 absent vs present), class name renumbering, gray vs #808080, -webkit- prefix ordering, orphans/widows additions, properties matching defaults being absent
 
 ### Step 6: Commit or Revert
 
-**If clean** (12 failures, no new diffs):
+**If clean or only cosmetic diffs** (12 failures, no functionally new diffs):
 ```bash
 git add -A && git commit -m "<step commit message from feature description>"
 ```
 
-**If NOT clean** (new failures or new diffs):
+**If functionally new diffs exist** (wrong property values, missing properties that affect rendering):
 ```bash
 git checkout -- .
 git add -A && git commit -m "revert: <step name> attempt failed"
