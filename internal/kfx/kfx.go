@@ -3389,12 +3389,37 @@ func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, s
 	if len(style) == 0 {
 		return "", ""
 	}
-	wrapperDecls := imageWrapperStyleDeclarations(style)
-	imageDecls := imageStyleDeclarations(style)
+	cssMap := processContentProperties(style)
 	baseName := "class"
 	if styleID != "" {
 		baseName = r.styleBaseName(styleID)
 	}
+
+	// Handle -kfx-box-align → text-align conversion.
+	// The old imageWrapperStyleDeclarations used mapBoxAlign to convert $580/$34
+	// directly to text-align. processContentProperties outputs -kfx-box-align instead.
+	// Convert it to text-align for CSS output, matching the old behavior.
+	if boxAlign, ok := cssMap["-kfx-box-align"]; ok {
+		if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" || boxAlign == "justify" {
+			cssMap["text-align"] = boxAlign
+		}
+		delete(cssMap, "-kfx-box-align")
+	}
+
+	// Determine wrapper properties (margin-top, text-align) vs image properties (line-height, width, height)
+	// to preserve the same HTML structure as before (wrapper class + image class).
+	wrapperProps := map[string]string{}
+	imageProps := map[string]string{}
+	for prop, val := range cssMap {
+		if prop == "margin-top" || prop == "text-align" {
+			wrapperProps[prop] = val
+		} else if prop == "line-height" || prop == "width" || prop == "height" {
+			imageProps[prop] = val
+		}
+	}
+	wrapperDecls := cssDeclarationsFromMap(wrapperProps)
+	imageDecls := cssDeclarationsFromMap(imageProps)
+
 	switch {
 	case len(wrapperDecls) > 0 && len(imageDecls) > 0:
 		return styleStringFromDeclarations(baseName, nil, wrapperDecls), styleStringFromDeclarations(baseName, nil, imageDecls)
@@ -3444,8 +3469,40 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 	if len(style) == 0 {
 		return ""
 	}
+	// Merge link style inheritance: when paragraph doesn't have certain properties,
+	// inherit them from the link (annotation) style. This preserves the behavior of
+	// the old paragraphStyleDeclarations link inheritance block (kfx.go:1164-1201).
 	linkStyle := effectiveStyle(r.styleFragments[annotationStyleID], nil)
-	declarations := filterBodyDefaultDeclarations(paragraphStyleDeclarations(style, linkStyle), r.activeBodyDefaults)
+	if linkStyle != nil {
+		// Merge link color properties ($576=visited-color, $577=link-color) for color resolution
+		for _, yjProp := range []string{"$576", "$577"} {
+			if _, ok := style[yjProp]; !ok {
+				if val, ok := linkStyle[yjProp]; ok {
+					style[yjProp] = val
+				}
+			}
+		}
+		// Merge link font/typographic properties when paragraph doesn't have them
+		for _, yjProp := range []string{"$11", "$12", "$13", "$583", "$41"} {
+			if _, ok := style[yjProp]; !ok {
+				if val, ok := linkStyle[yjProp]; ok {
+					style[yjProp] = val
+				}
+			}
+		}
+	}
+	cssMap := processContentProperties(style)
+	// Resolve link color: if no explicit color but -kfx-link-color == -kfx-visited-color,
+	// set color to that value. This preserves what colorDeclarations(style, linkStyle) did
+	// in the old paragraphStyleDeclarations, and matches simplifyStylesElementFull's <a> tag logic.
+	if _, hasColor := cssMap["color"]; !hasColor {
+		linkColor, hasLink := cssMap["-kfx-link-color"]
+		visitedColor, hasVisited := cssMap["-kfx-visited-color"]
+		if hasLink && hasVisited && linkColor == visitedColor {
+			cssMap["color"] = linkColor
+		}
+	}
+	declarations := filterBodyDefaultDeclarations(cssDeclarationsFromMap(cssMap), r.activeBodyDefaults)
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
@@ -3474,7 +3531,25 @@ func (r *storylineRenderer) linkClass(styleID string, suppressColor bool) string
 	if len(style) == 0 {
 		return ""
 	}
-	declarations := linkStyleDeclarations(style, suppressColor)
+	cssMap := processContentProperties(style)
+	// When suppressColor is true, remove color properties (used when paragraph
+	// already handles color via link style inheritance).
+	if suppressColor {
+		delete(cssMap, "color")
+		delete(cssMap, "-kfx-link-color")
+		delete(cssMap, "-kfx-visited-color")
+	} else {
+		// Resolve link color: if no explicit color but -kfx-link-color == -kfx-visited-color,
+		// set color to that value (matches simplifyStylesElementFull's <a> tag logic).
+		if _, hasColor := cssMap["color"]; !hasColor {
+			linkColor, hasLink := cssMap["-kfx-link-color"]
+			visitedColor, hasVisited := cssMap["-kfx-visited-color"]
+			if hasLink && hasVisited && linkColor == visitedColor {
+				cssMap["color"] = linkColor
+			}
+		}
+	}
+	declarations := cssDeclarationsFromMap(cssMap)
 	if len(declarations) == 0 {
 		return ""
 	}
