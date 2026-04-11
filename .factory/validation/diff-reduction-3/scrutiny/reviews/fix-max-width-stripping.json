@@ -1,0 +1,33 @@
+{
+  "featureId": "fix-max-width-stripping",
+  "reviewedAt": "2026-04-11T22:30:00.000Z",
+  "commitId": "8311d33",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix adds max-width, min-width, max-height, and min-height to the imageProps bucket in the imageClasses() function. Previously, these properties were silently dropped because the property-splitting logic only included width, height, and line-height. The change is minimal and correct: only 6 lines added (2 of actual logic). The Python reference confirms these properties are valid CSS properties that process_content_properties can output (yj_to_epub_properties.py lines 334-337 map $64→max-height, $65→max-width, $62→min-height, $63→min-width). The fix correctly preserves them on <img> elements, matching Python's behavior.",
+    "issues": [
+      {
+        "file": "internal/kfx/kfx.go",
+        "line": 3309,
+        "severity": "non_blocking",
+        "description": "Properties in cssMap that don't match either wrapperProps or imageProps conditions are silently dropped (not assigned to either map). This pre-existing design means any new CSS properties added to processContentProperties in the future would be lost unless someone also updates this function. This is not a bug introduced by this change, but it's worth noting the pattern is fragile. The alternative would be a catch-all else clause assigning remaining properties to imageProps, but that could have unintended side effects and is out of scope for this fix."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md states the test baseline is '12 pre-existing test failures', but the handoff reports the actual baseline is now 10 FAIL lines. The skill file also references '12 FAIL lines'. This discrepancy should be updated in AGENTS.md and the skill file to prevent confusion for future workers.",
+      "evidence": "AGENTS.md says 'Baseline: 12 pre-existing test failures'. Handoff skillFeedback.suggestedChanges says: 'The SKILL.md mentions 12 FAIL lines as the expected baseline, but actual baseline is 10 FAIL lines.' Handoff verification shows: '10 FAIL lines (baseline, no regression)'."
+    },
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md baseline diff counts are stale. It says 'Baseline diff counts (as of e70b703): Martyr=273, Elvis=165, HungerGames=127, ThreeBelow=105'. The handoff reports Martyr=10, Elvis=80, HG=56, ThreeBelow=20. These are dramatically different, suggesting significant progress has been made since e70b703. AGENTS.md should track the current baseline diff counts.",
+      "evidence": "AGENTS.md section 'Testing & Validation Guidance' shows old baseline counts. Handoff verification shows: Martyr=10, Elvis=80, HG=56 (down from 60), ThreeBelow=20."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Clean, minimal fix that correctly adds max-width/min-width/max-height/min-height to the imageProps list in imageClasses(). The change is well-targeted: Python's process_content_properties outputs these properties on img elements, but Go's imageClasses() was dropping them because they weren't in either the wrapper or image property buckets. The fix reduced HG diffs from 60 to 56 with no regressions on other test files. Build passes, test baseline of 10 failures is maintained. One non-blocking observation about the property-splitting pattern being fragile (any unlisted property is silently dropped), but this is a pre-existing design issue. Two shared state observations about stale baseline numbers in AGENTS.md."
+}
