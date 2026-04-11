@@ -1206,9 +1206,25 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 
 	explicitStyle := parseDeclarationString(elem.Attrs["style"])
 	sty := cloneStyleMap(inherited)
+
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1678-1679):
+	// If inherited font-size is in em units, normalize it to "1em" so that relative
+	// font-size values are not double-scaled. Without this, a nested element with
+	// font-size: 0.75rem inside a parent with font-size: 0.75em would incorrectly
+	// compute 0.75*0.75 instead of 0.75.
+	if fsQty, fsUnit := splitCSSValue(inherited["font-size"]); fsQty != nil && fsUnit == "em" {
+		inherited["font-size"] = "1em"
+		sty["font-size"] = "1em"
+	}
+
 	for name, val := range explicitStyle {
 		sty[name] = val
 	}
+
+	// Save pre-conversion font-size for parentStyle (Python: orig_sty["font-size"]).
+	// Python passes the pre-conversion font-size to children via parent_sty so that
+	// children doing rem→em conversion can use it as the base (in rem units).
+	origFontSize, hasOrigFontSize := sty["font-size"]
 
 	// Convert lh/rem units to em before anything else.
 	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1713-1752).
@@ -1241,6 +1257,14 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 		if heritableProperties[name] {
 			parentStyle[name] = val
 		}
+	}
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1847-1849):
+	// Override font-size in parentStyle with the pre-conversion value so that children
+	// doing rem→em conversion use the correct base. If we pass the converted value (e.g.,
+	// "0.75em"), children's rem conversion would use that as the base and produce wrong
+	// results (e.g., 0.75*0.75=0.5625 instead of 0.75).
+	if hasOrigFontSize {
+		parentStyle["font-size"] = origFontSize
 	}
 
 	childElements := []*htmlElement{}
