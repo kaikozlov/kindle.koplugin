@@ -1260,6 +1260,27 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 		inherited[name] = val
 	}
 
+	// For div elements (and elements that would have been divs in Python but are
+	// already p/heading/figure in Go), add non-heritable defaults to the explicit style
+	// when not already present. Ported from Python simplify_styles:
+	//   if elem.tag == "div": sty.update(self.non_heritable_default_properties, replace=False)
+	// In Python, headings and paragraphs start as divs and get these defaults added before
+	// being converted. In Go, they start as their final tag, so we need to add the defaults
+	// for these tags too. This ensures margin-top: 0 and margin-bottom: 0 are present in
+	// the style for comparison against paragraph (1em) or heading (popped) inherited values.
+	needsNonHeritableDefaults := elem.Tag == "div" || elem.Tag == "p" ||
+		elem.Tag == "h1" || elem.Tag == "h2" || elem.Tag == "h3" ||
+		elem.Tag == "h4" || elem.Tag == "h5" || elem.Tag == "h6" ||
+		elem.Tag == "figure"
+	if needsNonHeritableDefaults {
+		for name, val := range nonHeritableDefaultProperties {
+			if _, ok := explicitStyle[name]; !ok {
+				explicitStyle[name] = val
+				sty[name] = val
+			}
+		}
+	}
+
 	tagChangedToParagraph := false
 	tagChangedToFigure := false
 	if elem.Tag == "div" {
@@ -1287,6 +1308,16 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 		comparisonInherited = cloneStyleMap(inherited)
 		delete(comparisonInherited, "font-size")
 		delete(comparisonInherited, "font-weight")
+		// Ported from Python simplify_styles: for heading conversion, pop margin-top/margin-bottom
+		// (or margin-left/margin-right for vertical writing mode) from inherited so that
+		// explicit zero margins are NOT stripped (they don't match the empty/nonexistent inherited value).
+		if sty["writing-mode"] == "horizontal-tb" || sty["writing-mode"] == "" {
+			delete(comparisonInherited, "margin-top")
+			delete(comparisonInherited, "margin-bottom")
+		} else {
+			delete(comparisonInherited, "margin-left")
+			delete(comparisonInherited, "margin-right")
+		}
 	}
 	for name, val := range explicitStyle {
 		if name == "-kfx-style-name" || name == "-kfx-layout-hints" {
