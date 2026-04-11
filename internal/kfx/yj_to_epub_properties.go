@@ -1052,15 +1052,29 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	}
 	elem.Children = newChildren
 
+	tagChangedToParagraph := false
+	tagChangedToFigure := false
 	if elem.Tag == "div" {
 		if strings.Contains(sty["-kfx-layout-hints"], "figure") && containsImage {
 			elem.Tag = "figure"
+			tagChangedToFigure = true
 		} else if containsText && !containsBlock && !containsImage {
 			elem.Tag = "p"
+			tagChangedToParagraph = true
 		}
 	}
 
 	comparisonInherited := inherited
+	if tagChangedToParagraph || tagChangedToFigure || elem.Tag == "p" {
+		comparisonInherited = cloneStyleMap(inherited)
+		if sty["writing-mode"] == "horizontal-tb" || sty["writing-mode"] == "" {
+			comparisonInherited["margin-top"] = "1em"
+			comparisonInherited["margin-bottom"] = "1em"
+		} else {
+			comparisonInherited["margin-left"] = "1em"
+			comparisonInherited["margin-right"] = "1em"
+		}
+	}
 	if elem.Tag == "h1" || elem.Tag == "h2" || elem.Tag == "h3" || elem.Tag == "h4" || elem.Tag == "h5" || elem.Tag == "h6" {
 		comparisonInherited = cloneStyleMap(inherited)
 		delete(comparisonInherited, "font-size")

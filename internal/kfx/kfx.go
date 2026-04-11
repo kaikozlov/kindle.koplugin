@@ -3446,7 +3446,6 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 	}
 	linkStyle := effectiveStyle(r.styleFragments[annotationStyleID], nil)
 	declarations := filterBodyDefaultDeclarations(paragraphStyleDeclarations(style, linkStyle), r.activeBodyDefaults)
-	declarations = filterDefaultParagraphMargins(declarations)
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
