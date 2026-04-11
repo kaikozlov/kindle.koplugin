@@ -2012,13 +2012,13 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 		bodyStyleID, _ = asString(storyline["$157"])
 	}
 	bodyStyle := effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
-	bodyDeclarations := bodyStyleDeclarations(bodyStyle)
+	bodyDeclarations := cssDeclarationsFromMap(processContentProperties(bodyStyle))
 	if bodyStyleID == "" && len(bodyDeclarations) == 0 {
 		bodyStyleValues = map[string]interface{}{
 			"$11": defaultInheritedBodyStyle()["$11"],
 		}
 		bodyStyle = effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
-		bodyDeclarations = bodyStyleDeclarations(bodyStyle)
+		bodyDeclarations = cssDeclarationsFromMap(processContentProperties(bodyStyle))
 	}
 	if len(bodyDeclarations) > 0 {
 		baseName := "class"
@@ -2911,7 +2911,7 @@ func (r *storylineRenderer) applyFirstLineStyle(element *htmlElement, node map[s
 	}
 	delete(style, "$173")
 	delete(style, "$625")
-	declarations := spanStyleDeclarations(style)
+	declarations := cssDeclarationsFromMap(processContentProperties(style))
 	if len(declarations) == 0 {
 		return
 	}
@@ -3275,7 +3275,7 @@ func (r *storylineRenderer) bodyClass(styleID string, values map[string]interfac
 	if len(style) == 0 {
 		return ""
 	}
-	declarations := bodyStyleDeclarations(style)
+	declarations := cssDeclarationsFromMap(processContentProperties(style))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -3296,7 +3296,7 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 	if len(style) == 0 {
 		return ""
 	}
-	declarations := filterBodyDefaultDeclarations(containerStyleDeclarations(style), r.activeBodyDefaults)
+	declarations := filterBodyDefaultDeclarations(cssDeclarationsFromMap(processContentProperties(style)), r.activeBodyDefaults)
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
@@ -3313,7 +3313,7 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
 	styleID, _ := asString(node["$157"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
-	declarations := tableStyleDeclarations(style)
+	declarations := cssDeclarationsFromMap(processContentProperties(style))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -3326,7 +3326,7 @@ func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
 
 func (r *storylineRenderer) tableColumnClass(node map[string]interface{}) string {
 	style := effectiveStyle(nil, node)
-	declarations := tableColumnStyleDeclarations(style)
+	declarations := cssDeclarationsFromMap(processContentProperties(style))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -3337,7 +3337,7 @@ func (r *storylineRenderer) structuredContainerClass(node map[string]interface{}
 	styleID, _ := asString(node["$157"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
-	declarations := structuredContainerDeclarations(style)
+	declarations := cssDeclarationsFromMap(processContentProperties(style))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -3358,7 +3358,7 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 			style = mergeStyleValues(style, effectiveStyle(r.styleFragments[childStyleID], child))
 		}
 	}
-	declarations := tableCellStyleDeclarations(style)
+	declarations := cssDeclarationsFromMap(processContentProperties(style))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -3371,7 +3371,7 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 
 func (r *storylineRenderer) inlineContainerClass(styleID string, node map[string]interface{}) string {
 	style := effectiveStyle(r.styleFragments[styleID], node)
-	declarations := spanStyleDeclarations(style)
+	declarations := cssDeclarationsFromMap(processContentProperties(style))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -3426,7 +3426,7 @@ func (r *storylineRenderer) headingClass(styleID string) string {
 		return ""
 	}
 	className := r.headingClassName(styleID, style)
-	declarations := filterBodyDefaultDeclarations(headingStyleDeclarations(style), r.activeBodyDefaults)
+	declarations := filterBodyDefaultDeclarations(cssDeclarationsFromMap(processContentProperties(style)), r.activeBodyDefaults)
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
@@ -3491,7 +3491,7 @@ func (r *storylineRenderer) spanClass(styleID string) string {
 	if len(style) == 0 {
 		return ""
 	}
-	declarations := spanStyleDeclarations(style)
+	declarations := cssDeclarationsFromMap(processContentProperties(style))
 	if len(declarations) == 0 {
 		return ""
 	}
