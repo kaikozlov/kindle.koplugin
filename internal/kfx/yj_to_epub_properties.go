@@ -726,6 +726,11 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog) {
 				bodyInherited[prop] = val
 			}
 		}
+
+		// Convert lh/rem units in body style to em/unitless, matching Python's
+		// simplify_styles which is called on the body element itself (line 1404).
+		convertStyleUnits(bodyStyle, heritableDefaultProperties)
+
 		simplifyStylesElementFull(book.RenderedSections[i].Root, catalog, bodyInherited)
 		for prop, val := range bodyStyle {
 			if prop == "-kfx-style-name" || prop == "-kfx-layout-hints" {
