@@ -735,6 +735,7 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 		}
 		bodyStyle := parseDeclarationString(book.RenderedSections[i].BodyStyle)
 		bodyInherited := cloneStyleMap(heritableDefaultProperties)
+
 		for prop, val := range bodyStyle {
 			if heritableProperties[prop] {
 				bodyInherited[prop] = val
@@ -746,6 +747,24 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 		convertStyleUnits(bodyStyle, heritableDefaultProperties)
 
 		simplifyStylesElementFull(book.RenderedSections[i].Root, catalog, bodyInherited)
+
+		// Merge heritable properties from Root into BodyStyle.
+		// In Python, simplify_styles is called on the <body> element itself, so reverse
+		// inheritance promotes common child properties (e.g. font-style, font-weight)
+		// directly into the body's sty. In Go, the body is split into BodyStyle (CSS class)
+		// and Root (wrapper element). Reverse inheritance adds properties to Root's style,
+		// but BodyStyle doesn't see them. We need to merge Root's heritable properties
+		// into BodyStyle so that properties promoted via reverse inheritance appear in
+		// the body's CSS class output.
+		rootStyle := parseDeclarationString(book.RenderedSections[i].Root.Attrs["style"])
+		for prop, val := range rootStyle {
+			if heritableProperties[prop] && val != "" {
+				if bodyStyle[prop] == "" || bodyStyle[prop] == heritableDefaultProperties[prop] {
+					bodyStyle[prop] = val
+				}
+			}
+		}
+
 		for prop, val := range bodyStyle {
 			if prop == "-kfx-style-name" || prop == "-kfx-layout-hints" {
 				continue
