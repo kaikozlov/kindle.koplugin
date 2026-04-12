@@ -775,7 +775,26 @@ func asFloat64(v interface{}) (float64, bool) {
 	return 0, false
 }
 
-// fixColorValue converts a numeric color to #rrggbb hex string.
+// colorName maps hex colors to CSS named colors, ported from Python COLOR_NAME.
+var colorName = map[string]string{
+	"#000000": "black",
+	"#000080": "navy",
+	"#0000ff": "blue",
+	"#008000": "green",
+	"#008080": "teal",
+	"#00ff00": "lime",
+	"#00ffff": "cyan",
+	"#800000": "maroon",
+	"#800080": "purple",
+	"#808000": "olive",
+	"#808080": "gray",
+	"#ff0000": "red",
+	"#ff00ff": "magenta",
+	"#ffff00": "yellow",
+	"#ffffff": "white",
+}
+
+// fixColorValue converts a numeric color to #rrggbb hex string (or named color).
 func fixColorValue(v interface{}) string {
 	var n float64
 	switch val := v.(type) {
@@ -806,7 +825,11 @@ func fixColorValue(v interface{}) string {
 		return fmt.Sprintf("rgba(%d,%d,%d,0)", r, g, b)
 	}
 	if alphaInt > 253 {
-		return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+		hexColor := fmt.Sprintf("#%02x%02x%02x", r, g, b)
+		if name, ok := colorName[hexColor]; ok {
+			return name
+		}
+		return hexColor
 	}
 	alpha := math.Max(math.Min(float64(alphaInt+1)/256.0, 1.0), 0.0)
 	return fmt.Sprintf("rgba(%d,%d,%d,%.3g)", r, g, b, alpha)
