@@ -154,7 +154,7 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	updateDefaultFontAndLanguage(book)
 	resolvedDefaultFont := fontFixer.resolvedDefaultFontFamily()
 	fontFamilyAddedByDefaults := setHTMLDefaults(book, resolvedDefaultFont)
-	fixupStylesAndClasses(book, renderer.styles, fontFamilyAddedByDefaults)
+	fixupStylesAndClasses(book, renderer.styles, fontFamilyAddedByDefaults, resolvedDefaultFont)
 	createCSSFiles(book, renderer.styles)
 	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
 

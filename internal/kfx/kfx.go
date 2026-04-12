@@ -797,6 +797,44 @@ func defaultBodyDeclarations(bodyClass string) []string {
 	}
 }
 
+// defaultBodyDeclarationsWithFont returns the CSS declarations for a static body class,
+// using the resolved default font family. When the resolved font is "serif" (the CSS default),
+// font-family is omitted from the declarations since it would be stripped by simplify_styles.
+// When the resolved font is something else (e.g. "FreeFontSerif,serif" for Martyr), it is included.
+func defaultBodyDeclarationsWithFont(bodyClass string, resolvedFont string) []string {
+	switch bodyClass {
+	case "class-0":
+		if resolvedFont != "" && resolvedFont != "serif" {
+			return []string{"font-family: " + resolvedFont, "text-align: center"}
+		}
+		return []string{"text-align: center"}
+	case "class-1":
+		if resolvedFont != "" && resolvedFont != "serif" {
+			return []string{"font-family: " + resolvedFont}
+		}
+		return []string{"font-family: serif"}
+	case "class-2":
+		if resolvedFont != "" && resolvedFont != "serif" {
+			return []string{"font-family: " + resolvedFont, "text-align: justify", "text-indent: 1.44em"}
+		}
+		return []string{"text-align: justify", "text-indent: 1.44em"}
+	case "class-3":
+		if resolvedFont != "" && resolvedFont != "serif" {
+			return []string{"font-family: " + resolvedFont, "text-align: justify"}
+		}
+		return []string{"text-align: justify"}
+	case "class-7":
+		if resolvedFont != "" && resolvedFont != "serif" {
+			return []string{"font-family: " + resolvedFont, "font-style: italic", "text-align: justify", "text-indent: 1.44em"}
+		}
+		return []string{"font-style: italic", "text-align: justify", "text-indent: 1.44em"}
+	case "class-8":
+		return []string{"font-family: Shift Light,Palatino,Palatino Linotype,Palatino LT Std,Book Antiqua,Georgia,serif"}
+	default:
+		return nil
+	}
+}
+
 // defaultBodyFontDeclarations returns additional font-family declarations for the body that
 // should be used for inheritance filtering. Not needed since defaultBodyDeclarations already
 // includes font-family.
@@ -814,12 +852,20 @@ func isStaticBodyClass(bodyClass string) bool {
 }
 
 func staticBodyClassForDeclarations(declarations []string) string {
+	// Alternates: declarations without font-family (for books where font-family is "serif"
+	// and gets stripped by simplify_styles), plus any variant with a non-"serif" font.
 	alternates := map[string][][]string{
 		"class-0": {
 			{"text-align: center"},
 		},
+		"class-2": {
+			{"text-align: justify", "text-indent: 1.44em"},
+		},
 		"class-3": {
 			{"text-align: justify"},
+		},
+		"class-7": {
+			{"font-style: italic", "text-align: justify", "text-indent: 1.44em"},
 		},
 	}
 	for _, bodyClass := range []string{"class-0", "class-1", "class-2", "class-3", "class-7", "class-8"} {

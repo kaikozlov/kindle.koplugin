@@ -536,12 +536,12 @@ func setHTMLDefaults(book *decodedBook, defaultFontFamily string) map[int]bool {
 }
 
 // Port of KFX_EPUB_Properties.fixup_styles_and_classes (yj_to_epub_properties.py ~L1388+).
-func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyAddedByDefaults map[int]bool) {
+func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyAddedByDefaults map[int]bool, resolvedDefaultFont string) {
 	if book == nil || catalog == nil {
 		return
 	}
 
-	addStaticBodyClasses(catalog)
+	addStaticBodyClasses(catalog, resolvedDefaultFont)
 	simplifyStylesFull(book, catalog, fontFamilyAddedByDefaults)
 
 	type countedStyle struct {
@@ -673,12 +673,12 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 	}
 }
 
-func addStaticBodyClasses(catalog *styleCatalog) {
+func addStaticBodyClasses(catalog *styleCatalog, resolvedDefaultFont string) {
 	if catalog == nil {
 		return
 	}
 	for _, bodyClass := range []string{"class-0", "class-1", "class-2", "class-3", "class-7", "class-8"} {
-		catalog.addStatic(bodyClass, defaultBodyDeclarations(bodyClass))
+		catalog.addStatic(bodyClass, defaultBodyDeclarationsWithFont(bodyClass, resolvedDefaultFont))
 	}
 }
 
