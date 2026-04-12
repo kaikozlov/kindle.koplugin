@@ -1635,6 +1635,19 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 
 	setElementStyleString(elem, styleStringFromMap(explicitStyle))
 
+	// If a span has no remaining explicit style (all properties were inherited/stripped),
+	// clear its class attribute so the parent's span unwrapping pass will remove it.
+	// This matches Python behavior where simplify_styles strips inherited properties and
+	// the resulting empty-styled spans are effectively no-ops.
+	if elem.Tag == "span" && len(explicitStyle) == 0 {
+		if elem.Attrs != nil {
+			delete(elem.Attrs, "class")
+			if len(elem.Attrs) == 0 {
+				elem.Attrs = nil
+			}
+		}
+	}
+
 	containsBlock = containsBlock || blockLevelTags[elem.Tag]
 	containsImage = containsImage || elem.Tag == "img" || elem.Tag == "svg"
 	return containsBlock, containsText, containsImage
