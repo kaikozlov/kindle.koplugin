@@ -843,7 +843,7 @@ func TestSimplifyStylesFullUnwrapsSpanWhenStyleIsFullyInherited(t *testing.T) {
 		}},
 	}
 
-	simplifyStylesFull(book, catalog, nil)
+	simplifyStylesFull(book, catalog, nil, "serif")
 	got := renderedSectionBodyHTML(book.RenderedSections[0])
 
 	if strings.Contains(got, "<span") {
@@ -884,7 +884,7 @@ func TestSimplifyStylesFullRunsBeforeCSSEmission(t *testing.T) {
 		}},
 	}
 
-	simplifyStylesFull(book, catalog, nil)
+	simplifyStylesFull(book, catalog, nil, "serif")
 	for i := range book.RenderedSections {
 		catalog.markReferenced(renderedSectionBodyHTML(book.RenderedSections[i]))
 	}

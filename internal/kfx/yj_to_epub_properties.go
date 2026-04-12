@@ -542,7 +542,7 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 	}
 
 	addStaticBodyClasses(catalog, resolvedDefaultFont)
-	simplifyStylesFull(book, catalog, fontFamilyAddedByDefaults)
+	simplifyStylesFull(book, catalog, fontFamilyAddedByDefaults, resolvedDefaultFont)
 
 	type countedStyle struct {
 		style string
@@ -725,7 +725,7 @@ func createCSSFiles(book *decodedBook, catalog *styleCatalog) {
 // Note: Full Python simplify_styles has additional features (reverse inheritance, composite styles,
 // ineffective property stripping, rem unit conversion) that require the style catalog to be mutable.
 // This implementation covers the most impactful transformations that can be done post-rendering.
-func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAddedByDefaults map[int]bool) {
+func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAddedByDefaults map[int]bool, resolvedDefaultFont string) {
 	if book == nil {
 		return
 	}
@@ -742,11 +742,47 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 			}
 		}
 
+		// Override bodyInherited font-family with resolved default when it differs.
+		// In Python, the body element's inline style is set from the page template content
+		// rendering, which does NOT include inferred font-family from content nodes.
+		// Python's set_html_defaults then adds self.default_font_family (e.g., "FreeFontSerif,serif")
+		// to the body, and children inherit this via parent_sty in simplify_styles.
+		// In Go, the body style is computed from inferBodyStyleValues which includes font-family
+		// inferred from content nodes (e.g., "Shift Light,..."). setHTMLDefaults sees the body
+		// already has font-family and doesn't add the resolved default. This means children
+		// inherit the inferred font-family instead of the resolved default.
+		// The fix: when the body has an inferred font-family that differs from the resolved
+		// default, override bodyInherited so children inherit the resolved default (matching
+		// Python's set_html_defaults behavior). The body's CSS class keeps its actual
+		// font-family; reverse inheritance will handle promoting the correct value.
+		if resolvedDefaultFont != "" && resolvedDefaultFont != "serif" {
+			bodyFF := bodyInherited["font-family"]
+			if bodyFF != "" && bodyFF != resolvedDefaultFont && !fontFamilyAddedByDefaults[i] {
+				bodyInherited["font-family"] = resolvedDefaultFont
+			}
+		}
+
 		// Convert lh/rem units in body style to em/unitless, matching Python's
 		// simplify_styles which is called on the body element itself (line 1404).
 		convertStyleUnits(bodyStyle, heritableDefaultProperties)
 
 		simplifyStylesElementFull(book.RenderedSections[i].Root, catalog, bodyInherited)
+
+		// Add resolved default font-family to empty structural containers.
+		// In Python, the rendering pipeline preserves font-family from KFX style fragments
+		// on all elements. For section c35Y in Martyr, children have font-family: "Shift Light,..."
+		// from their style fragments. Python's simplify_styles then runs reverse inheritance:
+		// "Shift Light,..." is promoted to the body, and elements without font-family (like s36C)
+		// get the body's pre-reverse-inheritance value ("FreeFontSerif,serif" from set_html_defaults).
+		// In Go, filterBodyDefaultDeclarations strips "Shift Light,..." from children during rendering
+		// (because it matches the body default), so reverse inheritance has no font-family to promote.
+		// The fix: when the body's inherited font-family was overridden to the resolved default,
+		// and a child element is an empty structural container (no text, no children) without
+		// font-family, add the resolved default font. This matches Python's reverse inheritance
+		// behavior for such elements.
+		if resolvedDefaultFont != "" && resolvedDefaultFont != "serif" && !fontFamilyAddedByDefaults[i] {
+			overrideFFForEmptyContainers(book.RenderedSections[i].Root, resolvedDefaultFont)
+		}
 
 		// Merge heritable properties from Root into BodyStyle.
 		// In Python, simplify_styles is called on the <body> element itself, so reverse
@@ -1063,6 +1099,70 @@ func equalStringLists(left []string, right []string) bool {
 		}
 	}
 	return true
+}
+
+// overrideFFForEmptyContainers adds the resolved default font-family to empty structural
+// container elements (divs with no text and no children) that don't already have font-family.
+// This matches Python's reverse inheritance behavior where elements like s36C (a self-closing
+// separator div) receive font-family from the body's pre-reverse-inheritance style when other
+// children's font-family was promoted to the parent.
+func overrideFFForEmptyContainers(root *htmlElement, resolvedDefaultFont string) {
+	if root == nil {
+		return
+	}
+	for _, child := range root.Children {
+		elem, ok := child.(*htmlElement)
+		if !ok || elem == nil {
+			continue
+		}
+		// Only process empty structural containers: div/p with no text and no child elements
+		if elem.Tag != "div" && elem.Tag != "p" {
+			continue
+		}
+		hasChildren := false
+		hasText := false
+		for _, c := range elem.Children {
+			switch ch := c.(type) {
+			case *htmlElement:
+				hasChildren = true
+			case htmlText:
+				if strings.TrimSpace(ch.Text) != "" {
+					hasText = true
+				}
+			case *htmlText:
+				if strings.TrimSpace(ch.Text) != "" {
+					hasText = true
+				}
+			}
+		}
+		if hasChildren || hasText {
+			continue
+		}
+		// Check if element doesn't have font-family in its style
+		style := parseDeclarationString(elem.Attrs["style"])
+		if _, hasFF := style["font-family"]; hasFF {
+			continue
+		}
+		// Only add font-family to elements that already have non-trivial style properties
+		// (border, margin, padding, etc.). Skip elements with only metadata properties
+		// like -kfx-style-name or completely unstyled elements.
+		if len(style) == 0 {
+			continue
+		}
+		hasRealProperty := false
+		for name := range style {
+			if !strings.HasPrefix(name, "-kfx-") {
+				hasRealProperty = true
+				break
+			}
+		}
+		if !hasRealProperty {
+			continue
+		}
+		// Add the resolved default font-family
+		style["font-family"] = resolvedDefaultFont
+		setElementStyleString(elem, styleStringFromMap(style))
+	}
 }
 
 func directChildElements(elem *htmlElement) []*htmlElement {
