@@ -1,0 +1,26 @@
+--- /dev/fd/63	2026-04-12 16:24:01.080948791 -0500
++++ /dev/fd/62	2026-04-12 16:24:01.080948791 -0500
+@@ -1,9 +1,9 @@
+ @charset "UTF-8";
+-.class-0 {text-indent: 1.522em}
+-.class-1 {text-align: center}
+-.class-2 {font-style: italic; margin-bottom: 1.5996em; margin-top: 1.5996em; text-indent: 0}
+-.class_bold-0 {font-size: 0.75em; line-height: 1.6}
+-.class_bold-1 {font-size: 1.2em; font-weight: bold; line-height: 1; margin-bottom: 0; margin-top: 3.6em; text-align: center}
++.class-0 {text-align: center}
++.class-4 {text-indent: 1.522em}
++.class-6 {font-style: italic; margin-bottom: 1.5996em; margin-top: 1.5996em; text-indent: 0}
++.class_bold-1 {font-size: 0.75em; line-height: 1.6}
++.class_bold-2 {font-size: 1.2em; font-weight: bold; line-height: 1; margin-bottom: 0; margin-top: 3.6em; text-align: center}
+ .class_centerImage-0 {margin-bottom: 3.2004em; margin-top: 0.3em; text-align: center; text-indent: 0}
+ .class_centerImage-1 {margin-bottom: 3.2004em; margin-top: 0.3em}
+ .class_centerImage-2 {width: 52.617%}
+@@ -39,7 +39,7 @@
+ .class_extractVerse-1 {margin-bottom: 0; margin-right: 4.756%; margin-top: 0.3em; text-indent: 0}
+ .class_italic-0 {font-style: italic}
+ .class_italic-1 {font-style: italic; margin-bottom: 0; margin-top: 0}
+-.class_italic-2 {font-size: 0.75em; line-height: 1.6}
++.class_italic-3 {font-size: 0.75em; line-height: 1.6}
+ .class_listItem {margin-top: 0.3204em}
+ .class_para-0 {margin-bottom: 0; margin-top: 0}
+ .class_para-1 {margin-bottom: 0; margin-top: 1.9476em}

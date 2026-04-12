@@ -1,0 +1,40 @@
+{
+  "milestone": "final-fixes",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "blocked": 0
+  },
+  "passedAssertions": [],
+  "failedAssertions": [
+    {
+      "id": "VAL-CROSS-002",
+      "reason": "7 structural CSS diffs remain in Hunger Games output: .class_s79F (margin-top/bottom:0 replaced with text-align:center), .class_s78V (missing text-align:center), .class_s77D (entire class missing/renumbered), .class_s772-1/.class_s772-2 (variant split differences around text-align:center). Martyr, Elvis, Three Below have only cosmetic diffs."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance section with isolation rules, boundaries, cosmetic vs structural diff classification criteria, and test KFX file paths",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null,
+  "evidenceSummary": {
+    "testSuite": {
+      "failCount": 10,
+      "baseline": 10,
+      "regression": false
+    },
+    "diffCounts": {
+      "Martyr": { "total": 0, "cosmetic": 0, "structural": 0 },
+      "Elvis": { "total": 72, "cosmetic": 72, "structural": 0 },
+      "HungerGames": { "total": 45, "cosmetic": 38, "structural": 7 },
+      "ThreeBelow": { "total": 12, "cosmetic": 12, "structural": 0 }
+    }
+  }
+}
