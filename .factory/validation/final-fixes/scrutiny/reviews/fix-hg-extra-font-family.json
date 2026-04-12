@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-hg-extra-font-family",
+  "reviewedAt": "2026-04-12T17:30:00Z",
+  "commitId": "1f5a6c9",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix correctly addresses the issue where HG's `.class_s8` had an extra `font-family: FreeFontSerif,serif` that Python doesn't emit. The root cause was that `applyCoverSVGPromotion` hardcoded `FreeFontSerif,serif` instead of using the resolved default font. The fix passes `resolvedDefaultFont` to the function and conditionally emits the class_s8 CSS rule and body class only when the resolved default is not the generic 'serif' — matching Python's `set_html_defaults` behavior which skips cover pages entirely (cover pages never get font-family added because `is_cover_page` is true). For HG, where the resolved default is 'serif', no class_s8 rule is emitted. For Martyr, where the resolved default is 'FreeFontSerif,serif', class_s8 is correctly preserved.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Clean, minimal fix that correctly aligns Go's cover SVG promotion with Python's behavior. The change makes `applyCoverSVGPromotion` use the already-resolved default font instead of hardcoding `FreeFontSerif,serif`, and conditionally omits the class_s8 body class and CSS rule when the resolved font is the generic 'serif'. This matches Python's `set_html_defaults` which skips cover pages via `is_cover_page`. Verified: HG diffs decreased from 48 to 47, all other test files unchanged, build and tests pass at baseline (10 failures). No regressions introduced."
+}

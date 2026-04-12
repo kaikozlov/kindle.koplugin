@@ -1,0 +1,55 @@
+{
+  "milestone": "final-fixes",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin && go test ./internal/kfx/... -count=1 -timeout 120s", "exitCode": 1, "note": "10 FAIL lines = baseline. Exit code 1 is expected due to pre-existing failures." },
+    "typecheck": { "passed": true, "command": "cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin && go build ./internal/kfx/...", "exitCode": 0 },
+    "lint": { "passed": true, "command": "", "note": "No separate lint command configured for Go project" }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "fix-hg-s2T-missing-styles",
+      "severity": "non_blocking",
+      "description": "allowsReverseInheritance() is defined (line 1063 of yj_to_epub_properties.go) but never called anywhere in the codebase. Dead code.",
+      "file": "internal/kfx/yj_to_epub_properties.go",
+      "line": 1063
+    },
+    {
+      "featureId": "fix-martyr-s36C-font-family",
+      "severity": "non_blocking",
+      "description": "htmlText type is matched twice in a type switch (htmlText and *htmlText). The *htmlText case is likely dead code since htmlText is always used as a value type.",
+      "file": "internal/kfx/yj_to_epub_properties.go",
+      "line": 1138
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Update the 'Structural Diffs' section to reflect current state: (1) Mark Martyr .class_s36C as RESOLVED (fixed by commit 4677d42). (2) Mark HG .class_s79F as TRIAGED/ACCEPTED with reference to .factory/library/s79F-analysis.md. (3) Update diff counts from dd94a88 baseline to current master (4677d42): Martyr=0, Elvis=42, HG=35, ThreeBelow=10 (total=87).",
+      "evidence": "Reviews of fix-martyr-s36C-font-family and fix-hg-s79F-property-redistribution both flagged that AGENTS.md structural diffs list and diff counts are stale. Multiple reviewers noted the same issue independently.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Remove or connect the dead code function allowsReverseInheritance() at line 1063 of yj_to_epub_properties.go, or add a comment explaining why it exists.",
+      "evidence": "Review of fix-hg-s2T-missing-styles found the function is never called.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Body promotion pipeline architectural difference (promotedBodyContainer) should be documented in architecture.md",
+      "reason": "The knowledge is already captured in .factory/library/s79F-analysis.md. Adding it to architecture.md would be over-documentation at this stage; the library entry is sufficient for discoverability."
+    }
+  ],
+  "previousRound": null
+}

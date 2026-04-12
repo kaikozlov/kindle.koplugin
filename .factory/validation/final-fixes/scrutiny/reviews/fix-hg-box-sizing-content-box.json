@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-hg-box-sizing-content-box",
+  "reviewedAt": "2026-04-12T21:30:00Z",
+  "commitId": "bd96ef2",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix adds a stripping loop for non-heritable default properties on body styles, matching Python's simplify_styles behavior. The change is minimal (10 lines), well-commented, and correctly addresses the root cause: Go's body styles were only stripped against heritableDefaultProperties but Python's pipeline also strips non-heritable defaults (box-sizing: content-box, margin: 0, etc.) via inherited_properties.update(non_heritable_default_properties). The fix is placed after the existing heritable-defaults stripping loop and before font-family special-case handling, which is the correct position.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Clean fix for HG .class_s790 extra box-sizing: content-box. The root cause was that body styles were only stripped against heritable default properties, but Python's simplify_styles also merges non-heritable defaults into inherited_properties before stripping. The fix adds a parallel stripping loop for nonHeritableDefaultProperties on body styles at the correct position in the pipeline. HG diff count improved from 50→48, no regressions on other test files, test suite unchanged at 10 baseline failures. The implementation is minimal, well-documented, and correctly mirrors the Python behavior."
+}
