@@ -52,7 +52,7 @@ Make the minimal changes needed. Key constraints:
 ### Step 4: Verify Against ALL Test Files
 
 1. **Build:** `go build ./internal/kfx/...`
-2. **Test:** `go test ./internal/kfx/... -count=1 -timeout 120s` — must be exactly 12 FAIL lines
+2. **Test:** `go test ./internal/kfx/... -count=1 -timeout 120s` — must be 10 FAIL lines or fewer
 3. **Multi-file diff check:** Run the diff count command from Step 2 on ALL 4 test files
    - Compare counts to baseline — diffs must NOT increase on any file
    - Diffs should decrease or stay the same on all files
@@ -60,7 +60,7 @@ Make the minimal changes needed. Key constraints:
 
 ### Step 5: Commit or Revert
 
-**If clean or improved** (12 failures, no increased diffs on any file):
+**If clean or improved** (10 failures or fewer, no increased diffs on any file):
 ```bash
 git add -A && git commit -m "<commit message>"
 ```
@@ -102,8 +102,8 @@ Test files:
   "verification": {
     "commandsRun": [
       {"command": "go build ./internal/kfx/...", "exitCode": 0, "observation": "Build succeeded"},
-      {"command": "go test ./internal/kfx/... -count=1 -timeout 120s", "exitCode": 0, "observation": "12 failures (baseline)"},
-      {"command": "diff count all 4 files", "exitCode": 0, "observation": "Martyr:273 Elvis:165 HG:127 3B:105 — unchanged from baseline"}
+      {"command": "go test ./internal/kfx/... -count=1 -timeout 120s", "exitCode": 0, "observation": "10 failures (baseline)"},
+      {"command": "diff count all 4 files", "exitCode": 0, "observation": "Martyr:1 Elvis:42 HG:38 3B:10 — unchanged from baseline"}
     ],
     "interactiveChecks": []
   },
@@ -114,7 +114,7 @@ Test files:
 
 ## When to Return to Orchestrator
 
-- New test failures (count != 12)
+- New test failures (count > 10)
 - Diffs increased on any test file
 - Python feature cannot be cleanly ported
 - Uncertainty about whether a diff is cosmetic or meaningful

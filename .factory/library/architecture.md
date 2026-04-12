@@ -56,8 +56,15 @@ KFX binary → decode → decodedBook → storylineRenderer → HTML + CSS class
 
 1. **Unit conversion location**: lh→em, rem→em, pt→px conversions happen in `simplifyStylesElementFull` via `convertStyleUnits()`, NOT in `propertyValue()`
 2. **Two-phase styling**: Properties are set at render time, then simplified post-render in `simplifyStylesFull`
-3. **Batch 1 already swapped**: body, container, structuredContainer, table, tableColumn, tableCell, span, heading — all use `processContentProperties`
-4. **Batch 2 NOT yet swapped**: paragraph, linkStyle, imageWrapper, imageStyle — still use per-element-type `*StyleDeclarations` functions
+3. **All batches swapped**: ALL element types now use `processContentProperties` — the old per-element-type `*StyleDeclarations` functions have been removed (dead code cleanup in commit 147c47a)
+
+## Current State (as of dd94a88)
+
+- **Test failures**: 10 (improved from 12 baseline)
+- **Diff counts**: Martyr=1, Elvis=42, HG=38, 3B=10 (total=91)
+- **Of 91 diffs, ~84 are cosmetic**: class index renumbering due to different encounter ordering in Go vs Python during `fixupStylesAndClasses`. Both produce the same CSS property values; only the `.class-N` indices differ.
+- **Root cause of cosmetic diffs**: Go and Python both sort styles by count descending, using stable sort that preserves encounter order as tiebreaker. Different rendering pipelines produce different encounter orders, causing equal-count styles to get different indices.
+- **~7 structural diffs remain**: font-family handling edge cases (Martyr, HG), box-sizing extra property (HG), missing font-style/font-weight (HG), property redistribution on specific classes
 
 ## Python Reference Architecture
 
