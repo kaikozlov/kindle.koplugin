@@ -754,6 +754,16 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 				delete(bodyStyle, prop)
 			}
 		}
+		// Strip non-heritable defaults from body styles. Python's simplify_styles is called
+		// on the body element itself and strips all properties matching inherited_properties,
+		// which includes non_heritable_default_properties merged at line ~1919.
+		// Go's body style is handled separately (not through simplifyStylesElementFull),
+		// so we need to explicitly strip non-heritable defaults here too.
+		for prop, val := range bodyStyle {
+			if nonHeritableDefaultProperties[prop] == val {
+				delete(bodyStyle, prop)
+			}
+		}
 		// Strip font-family that was added by setHTMLDefaults as a fallback.
 		// Python's set_html_defaults uses self.default_font_family (dynamically determined from
 		// the document's content), which for books where the document default is "serif" results
