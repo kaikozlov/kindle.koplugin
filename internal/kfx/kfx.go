@@ -3198,7 +3198,26 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
 	styleID, _ := asString(node["$157"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
-	declarations := cssDeclarationsFromMap(processContentProperties(style))
+	cssMap := processContentProperties(style)
+
+	// Handle -kfx-box-align → margin auto conversion for tables.
+	// Ported from Python yj_to_epub_content.py (~L1390-1404):
+	// For tables with box-align left/right/center, set the appropriate
+	// margin-left/margin-right to auto (replacing any explicit value).
+	// Tables always have a known width, so auto margins are appropriate.
+	if boxAlign, ok := cssMap["-kfx-box-align"]; ok {
+		delete(cssMap, "-kfx-box-align")
+		if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" {
+			if boxAlign != "left" {
+				cssMap["margin-left"] = "auto"
+			}
+			if boxAlign != "right" {
+				cssMap["margin-right"] = "auto"
+			}
+		}
+	}
+
+	declarations := cssDeclarationsFromMap(cssMap)
 	if len(declarations) == 0 {
 		return ""
 	}
