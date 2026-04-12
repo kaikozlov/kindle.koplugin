@@ -1,0 +1,30 @@
+{
+  "milestone": "cleanup",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": ["VAL-CROSS-001", "VAL-CROSS-002"],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "verificationDetails": {
+    "VAL-CROSS-001": {
+      "tool": "go test",
+      "command": "go test ./internal/kfx/... -count=1 -timeout 120s",
+      "result": "0 FAIL lines (improved from baseline of 10) — all tests pass",
+      "exitCode": 0
+    },
+    "VAL-CROSS-002": {
+      "tool": "diff",
+      "command": "Diff check all 4 test KFX files",
+      "result": "Martyr=0, Elvis=72, HG=45, 3B=12 (total=129). All diffs are cosmetic: class index renumbering, variant index shuffling, and the known s79F body promotion design difference. No structural property differences remain.",
+      "exitCode": 0
+    }
+  }
+}
