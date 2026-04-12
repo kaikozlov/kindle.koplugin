@@ -502,7 +502,7 @@ func updateDefaultFontAndLanguage(book *decodedBook) {
 
 // Port of KFX_EPUB_Properties.set_html_defaults (yj_to_epub_properties.py ~L1652+).
 // Go emits per-section Language in epub.sectionXHTML; ensure each rendered section inherits book language when unset.
-func setHTMLDefaults(book *decodedBook) map[int]bool {
+func setHTMLDefaults(book *decodedBook, defaultFontFamily string) map[int]bool {
 	if book == nil {
 		return nil
 	}
@@ -511,7 +511,7 @@ func setHTMLDefaults(book *decodedBook) map[int]bool {
 	for i := range book.RenderedSections {
 		bodyStyle := parseDeclarationString(book.RenderedSections[i].BodyStyle)
 		if bodyStyle["font-family"] == "" {
-			bodyStyle["font-family"] = "FreeFontSerif,serif"
+			bodyStyle["font-family"] = defaultFontFamily
 			fontFamilyAddedByDefaults[i] = true
 		}
 		if bodyStyle["font-size"] == "" {
@@ -756,13 +756,16 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 		}
 		// Strip font-family that was added by setHTMLDefaults as a fallback.
 		// Python's set_html_defaults uses self.default_font_family (dynamically determined from
-		// the document's content), which often resolves to "serif" — matching the heritable default
-		// and getting stripped. Go hardcodes "FreeFontSerif,serif" which doesn't match "serif",
-		// so the standard stripping above fails. Strip it here only for bodies where font-family
-		// was added by setHTMLDefaults (not from KFX rendering), since those bodies would get
-		// "serif" in Python (matching the heritable default and being stripped).
-		if fontFamilyAddedByDefaults[i] && bodyStyle["font-family"] == "FreeFontSerif,serif" {
-			delete(bodyStyle, "font-family")
+		// the document's content), which for books where the document default is "serif" results
+		// in font-family: "serif" — matching the heritable default and getting stripped.
+		// For books like Martyr where the document default is "FreeFontSerif,serif", it survives.
+		// The standard stripping loop above already handles this correctly when setHTMLDefaults
+		// uses the resolved default font. The special case below handles any remaining edge cases
+		// where the font-family was added by defaults but didn't match the heritable default.
+		if fontFamilyAddedByDefaults[i] {
+			if ff := bodyStyle["font-family"]; ff != "" && ff == heritableDefaultProperties["font-family"] {
+				delete(bodyStyle, "font-family")
+			}
 		}
 		book.RenderedSections[i].BodyStyle = styleStringFromMap(bodyStyle)
 	}

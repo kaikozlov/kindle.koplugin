@@ -79,6 +79,10 @@ type decodedBook struct {
 	Navigation               []epub.NavPoint
 	Guide                    []epub.GuideEntry
 	PageList                 []epub.PageTarget
+	// DefaultFontFamily is the resolved font-family from document metadata ($538),
+	// used to resolve "default" font names in KFX data. Port of Python
+	// KFX_EPUB_Properties.default_font_family (yj_to_epub_metadata.py L110).
+	DefaultFontFamily string
 }
 
 type renderedStoryline struct {
@@ -1299,23 +1303,11 @@ func cssFontFamily(value interface{}) string {
 	if !ok || text == "" {
 		return ""
 	}
-	if text == "default,serif" {
-		return "FreeFontSerif,serif"
-	}
-	// Filter out default font names (Python simplify_styles strips these).
-	parts := strings.Split(text, ",")
-	filtered := make([]string, 0, len(parts))
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		trimmed = strings.Trim(trimmed, "'\"")
-		if !defaultFontNames[strings.ToLower(trimmed)] {
-			filtered = append(filtered, part)
-		}
-	}
-	if len(filtered) == 0 {
-		return ""
-	}
-	text = strings.Join(filtered, ",")
+	// Port of Python fix_and_quote_font_family_list: split by comma, fix each name via fixFontName.
+	// Python's fixFontName resolves "default" through font_name_replacements, which maps
+	// "default" → the book's actual default font family (from document metadata $538).
+	// Go previously hardcoded "default,serif" → "FreeFontSerif,serif", which caused
+	// font-family to appear in element classes where Python strips it.
 	fixer := currentFontFixer
 	if fixer == nil {
 		fixer = newFontNameFixer()
@@ -3878,6 +3870,83 @@ func newFontNameFixer() *fontNameFixer {
 		fixedNames:       map[string]string{},
 		nameReplacements: map[string]string{},
 	}
+}
+
+// setDefaultFontFamily sets up the default font name replacement map, matching Python's
+// process_document_data (yj_to_epub_metadata.py L100-116):
+//   self.font_name_replacements["default"] = DEFAULT_DOCUMENT_FONT_FAMILY  # "serif"
+//   for default_name in DEFAULT_FONT_NAMES:
+//       for font_family in self.default_font_family.split(","):
+//           self.font_name_replacements[default_name] = self.strip_font_name(font_family)
+// This ensures that "default" and "$amzn_fixup_default_font$" in KFX font-family lists
+// resolve to the book's actual default font (e.g., "serif") instead of being kept as "default".
+// registerFontFamilies should be called first so that @font-face names are available
+// for proper case resolution.
+// defaultFontFamily is the raw $11 value from document data, which may contain font names
+// like "akba_9780593537626_epub3_cvi_r1-freefontserif" that need prefix stripping and
+// case resolution through registered font names.
+func (f *fontNameFixer) setDefaultFontFamily(defaultFontFamily string) {
+	if defaultFontFamily == "" {
+		defaultFontFamily = "serif"
+	}
+	// Resolve the raw default font family through fixFontName to get proper case.
+	// This handles cases like "akba_9780593537626_epub3_cvi_r1-freefontserif" → "FreeFontSerif"
+	// when @font-face has registered the name with proper case.
+	resolvedFamily := f.splitAndFixFontFamilyList(defaultFontFamily)
+	if len(resolvedFamily) > 0 {
+		defaultFontFamily = strings.Join(resolvedFamily, ",")
+	}
+	// Python: self.font_name_replacements["default"] = DEFAULT_DOCUMENT_FONT_FAMILY
+	f.nameReplacements["default"] = "serif"
+	// Python: for default_name in DEFAULT_FONT_NAMES:
+	//   for font_family in self.default_font_family.split(","):
+	//     self.font_name_replacements[default_name] = self.strip_font_name(font_family)
+	for _, defaultName := range []string{"default", "$amzn_fixup_default_font$"} {
+		for _, fontFamily := range strings.Split(defaultFontFamily, ",") {
+			f.nameReplacements[strings.ToLower(defaultName)] = stripFontName(fontFamily)
+		}
+	}
+}
+
+// registerFontFamilies registers @font-face font names with add=true, matching Python's
+// process_fonts (yj_to_epub_resources.py) which calls fix_font_name(font["$11"], add=True).
+// This registers each font with its proper case so that subsequent lookups (e.g., when
+// resolving "default" from KFX metadata) find the properly-cased name.
+// Must be called before setDefaultFontFamily to ensure proper case resolution.
+func (f *fontNameFixer) registerFontFamilies(fonts map[string]fontFragment) {
+	for _, font := range fonts {
+		if font.Family == "" {
+			continue
+		}
+		// Register the raw font name (may have prefix like "akba_...-freefontserif").
+		// This handles prefix-stripped names with the "?-" key convention.
+		resolved := f.fixFontName(font.Family, true, false)
+		// Also ensure the resolved name is registered without the "?-" prefix.
+		// This handles lookups of the resolved name directly (e.g., "FreeFontSerif").
+		// When the raw name had a prefix, the resolved name was stored with "?-" key,
+		// but subsequent lookups use the plain lowercase key.
+		if resolved != "" && !cssGenericFontNames[strings.ToLower(resolved)] {
+			key := strings.ToLower(resolved)
+			if _, ok := f.nameReplacements[key]; !ok {
+				f.nameReplacements[key] = resolved
+			}
+			if _, ok := f.fixedNames[key]; !ok {
+				f.fixedNames[key] = resolved
+			}
+		}
+	}
+}
+
+// resolvedDefaultFontFamily returns the resolved default font family for use in
+// setHTMLDefaults. This is the properly-cased, quoted font family string that
+// Python would use for self.default_font_family. For books where the document
+// default is just "serif", this returns "serif". For books like Martyr where the
+// document default resolves to "FreeFontSerif", this returns "FreeFontSerif,serif".
+func (f *fontNameFixer) resolvedDefaultFontFamily() string {
+	if replacement, ok := f.nameReplacements["default"]; ok && replacement != "serif" {
+		return f.fixAndQuoteFontFamilyList(replacement + ",serif")
+	}
+	return "serif"
 }
 
 func (f *fontNameFixer) fixAndQuoteFontFamilyList(value string) string {

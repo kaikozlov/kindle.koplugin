@@ -143,6 +143,18 @@ func applyDocumentData(book *decodedBook, value map[string]interface{}) {
 	if book.PageProgressionDirection == "" {
 		book.PageProgressionDirection = "ltr"
 	}
+	// Port of Python process_document_data (yj_to_epub_metadata.py L110):
+	//   doc_style = self.process_content_properties(document_data)
+	//   self.default_font_family = doc_style.pop("font-family", DEFAULT_DOCUMENT_FONT_FAMILY)
+	// Python also sets font_name_replacements["default"] to the first font family name.
+	// We store the raw font-family value here (or fallback to "serif").
+	// The actual resolution happens in renderBookState via the font name fixer,
+	// because @font-face fonts must be registered first for proper case resolution.
+	if rawFF, ok := asString(value["$11"]); ok && rawFF != "" {
+		book.DefaultFontFamily = rawFF
+	} else {
+		book.DefaultFontFamily = "serif"
+	}
 }
 
 func applyContentFeatures(book *decodedBook, value map[string]interface{}) {

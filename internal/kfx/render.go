@@ -28,6 +28,11 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	symFmt := state.BookSymbolFormat
 
 	fontFixer := newFontNameFixer()
+	// Register @font-face font names first (Python: process_fonts runs before process_document_data).
+	// This ensures font names like "FreeFontSerif" are registered with proper case before
+	// setDefaultFontFamily resolves "default" → the document's default font family.
+	fontFixer.registerFontFamilies(fontFragments)
+	fontFixer.setDefaultFontFamily(book.DefaultFontFamily)
 	currentFontFixer = fontFixer
 	defer func() {
 		currentFontFixer = nil
@@ -147,7 +152,8 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	fixupAnchorsAndHrefs(book.RenderedSections, resolvedAnchorURI)
 	fixupIllustratedLayoutAnchors(book, book.RenderedSections)
 	updateDefaultFontAndLanguage(book)
-	fontFamilyAddedByDefaults := setHTMLDefaults(book)
+	resolvedDefaultFont := fontFixer.resolvedDefaultFontFamily()
+	fontFamilyAddedByDefaults := setHTMLDefaults(book, resolvedDefaultFont)
 	fixupStylesAndClasses(book, renderer.styles, fontFamilyAddedByDefaults)
 	createCSSFiles(book, renderer.styles)
 	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
