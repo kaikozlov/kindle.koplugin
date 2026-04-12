@@ -3291,15 +3291,17 @@ func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, s
 		delete(cssMap, "-kfx-box-align")
 	}
 
-	// Determine wrapper properties (margin-top, text-align) vs image properties (line-height, width, height, max-width, min-width, max-height, min-height)
+	// Determine wrapper properties (margin-top, margin-bottom, text-align, text-indent) vs image properties
+	// (line-height, width, height, max-width, min-width, max-height, min-height)
 	// to preserve the same HTML structure as before (wrapper class + image class).
 	// max-width/min-width/max-height/min-height must be included in imageProps so they are
 	// preserved on <img> elements, matching Python's behavior where all CSS properties are
 	// set directly on the img element via process_content_properties.
+	// margin-bottom and text-indent are wrapper properties matching Python's image wrapper class output.
 	wrapperProps := map[string]string{}
 	imageProps := map[string]string{}
 	for prop, val := range cssMap {
-		if prop == "margin-top" || prop == "text-align" {
+		if prop == "margin-top" || prop == "margin-bottom" || prop == "text-align" || prop == "text-indent" {
 			wrapperProps[prop] = val
 		} else if prop == "line-height" || prop == "width" || prop == "height" ||
 			prop == "max-width" || prop == "min-width" || prop == "max-height" || prop == "min-height" {
