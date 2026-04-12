@@ -3262,7 +3262,38 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 			style = mergeStyleValues(style, effectiveStyle(r.styleFragments[childStyleID], child))
 		}
 	}
-	declarations := cssDeclarationsFromMap(processContentProperties(style))
+
+	cssMap := processContentProperties(style)
+
+	// Handle -kfx-box-align → text-align conversion for table cells.
+	// In Python's process_content (yj_to_epub_content.py), -kfx-box-align is popped from
+	// td element styles. Since cssDeclarationsFromMap strips -kfx- prefixed properties,
+	// we convert it to text-align here to preserve alignment information, matching the old
+	// tableCellStyleDeclarations which used mapBoxAlign to convert $580/$34 values to text-align.
+	if boxAlign, ok := cssMap["-kfx-box-align"]; ok {
+		if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" || boxAlign == "justify" {
+			if _, exists := cssMap["text-align"]; !exists {
+				cssMap["text-align"] = boxAlign
+			}
+		}
+		delete(cssMap, "-kfx-box-align")
+	}
+
+	// Remove width/height properties that belong on child elements, not table cells.
+	// In Python, the td content node's process_content_properties includes these, but they
+	// are either stripped by simplify_styles (for non-matching inherited values) or end up
+	// on separate child elements. In Go, the child style merge brings these into the cell's
+	// CSS map, creating extra property variants that don't match Python's class splits.
+	// The old tableCellStyleDeclarations only included margin-right, text-align, and
+	// vertical-align — never width/height properties.
+	for _, prop := range []string{
+		"width", "max-width", "min-width",
+		"height", "max-height", "min-height",
+	} {
+		delete(cssMap, prop)
+	}
+
+	declarations := cssDeclarationsFromMap(cssMap)
 	if len(declarations) == 0 {
 		return ""
 	}
