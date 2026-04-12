@@ -4943,7 +4943,7 @@ func escapeHTML(text string) string {
 	return replacer.Replace(text)
 }
 
-func applyCoverSVGPromotion(book *decodedBook) {
+func applyCoverSVGPromotion(book *decodedBook, resolvedDefaultFont string) {
 	if book == nil || book.CoverImageHref == "" {
 		return
 	}
@@ -4951,6 +4951,7 @@ func applyCoverSVGPromotion(book *decodedBook) {
 	if width == 0 || height == 0 {
 		return
 	}
+	coverFound := false
 	for index := range book.Sections {
 		section := &book.Sections[index]
 		// Match cover section by either title or containing the cover image.
@@ -4962,29 +4963,42 @@ func applyCoverSVGPromotion(book *decodedBook) {
 		if section.Title != "Cover" && !isCoverImageSection(section.BodyHTML) {
 			continue
 		}
-		// Calibre adds class_s8 for SVG cover sections that are titled "Cover".
-		if section.Title == "Cover" {
-			section.BodyClass = "class_s8"
-		} else {
-			section.BodyClass = ""
-		}
+		coverFound = true
 		section.Properties = "svg"
 		section.BodyHTML = fmt.Sprintf(
 			`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" preserveAspectRatio="xMidYMid meet" viewBox="0 0 %d %d" height="100%%" width="100%%"><image xlink:href="%s" height="%d" width="%d"/></svg>`,
 			width, height, escapeHTML(book.CoverImageHref), height, width,
 		)
+		// Python adds class_s8 with font-family only when the resolved default font is
+		// not "serif" (the CSS heritable default). When the default is just "serif",
+		// Python's set_html_defaults skips cover pages and no font-family is emitted.
+		// Match Python behavior: only add class_s8 when a non-generic font is used.
+		if resolvedDefaultFont != "serif" {
+			section.BodyClass = "class_s8"
+		} else {
+			section.BodyClass = ""
+		}
 		break
 	}
+	if !coverFound {
+		return
+	}
+	// Add the class_s8 CSS rule only when using a non-generic default font.
+	// Python's cover sections only get font-family when the resolved default is not "serif".
+	if resolvedDefaultFont == "serif" {
+		return
+	}
+	classS8Rule := ".class_s8 {font-family: " + resolvedDefaultFont + "}"
 	if !strings.Contains(book.Stylesheet, ".class_s8 {") {
 		if book.Stylesheet != "" {
 			book.Stylesheet += "\n"
 		}
-		book.Stylesheet += ".class_s8 {font-family: FreeFontSerif,serif}"
+		book.Stylesheet += classS8Rule
 	} else {
 		lines := strings.Split(book.Stylesheet, "\n")
 		for index, line := range lines {
 			if strings.HasPrefix(strings.TrimSpace(line), ".class_s8 {") {
-				lines[index] = ".class_s8 {font-family: FreeFontSerif,serif}"
+				lines[index] = classS8Rule
 			}
 		}
 		book.Stylesheet = strings.Join(lines, "\n")

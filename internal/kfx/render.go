@@ -199,7 +199,7 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	reportMissingPositions(navState.positionAnchors)
 	reportDuplicateAnchors(navState, resolvedAnchorURI)
 	book.Sections = materializeRenderedSections(book.RenderedSections)
-	applyCoverSVGPromotion(book)
+	applyCoverSVGPromotion(book, resolvedDefaultFont)
 	pruneUnusedResources(book)
 	book.Stylesheet = pruneUnusedStylesheetRules(book.Stylesheet, collectReferencedClasses(book))
 	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
