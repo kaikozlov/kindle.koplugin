@@ -814,9 +814,37 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 		// which includes non_heritable_default_properties merged at line ~1919.
 		// Go's body style is handled separately (not through simplifyStylesElementFull),
 		// so we need to explicitly strip non-heritable defaults here too.
+		//
+		// When the body was created via container promotion (has -kfx-style-name), the body
+		// may act like a paragraph element. In Python, promoted containers stay as <p> children
+		// of the body, where simplify_styles adds non-heritable defaults including margin: 0,
+		// and paragraph-level comparison preserves them (0 != 1em default). To match this for
+		// promoted bodies that have NO margin properties AND no block-level children (matching
+		// Python's div→p conversion condition):
+		// 1. Add margin defaults (0) to the promoted body style
+		// 2. Compare margins against paragraph default (1em) instead of div default (0)
+		// This way margin:0 survives (0 != 1em), matching Python's paragraph comparison.
+		// We check for block-level children to avoid adding margins to promoted bodies like
+		// s790 that contain tables and divs (Python keeps these as <div>, not <p>).
+		bodyIsPromoted := bodyStyle["-kfx-style-name"] != ""
+		_, hasMarginTop := bodyStyle["margin-top"]
+		_, hasMarginBottom := bodyStyle["margin-bottom"]
+		rootHasBlock := rootHasBlockChildren(book.RenderedSections[i].Root)
+		if bodyIsPromoted && !hasMarginTop && !hasMarginBottom && !rootHasBlock {
+			bodyStyle["margin-top"] = "0"
+			bodyStyle["margin-bottom"] = "0"
+		}
 		for prop, val := range bodyStyle {
 			if nonHeritableDefaultProperties[prop] == val {
-				delete(bodyStyle, prop)
+				if bodyIsPromoted && (prop == "margin-top" || prop == "margin-bottom") {
+					// Compare against paragraph default (1em) instead of div default (0).
+					// margin:0 survives because 0 != 1em, matching Python's paragraph comparison.
+					if val == "1em" {
+						delete(bodyStyle, prop)
+					}
+				} else {
+					delete(bodyStyle, prop)
+				}
 			}
 		}
 		// Strip font-family that was added by setHTMLDefaults as a fallback.
@@ -1663,6 +1691,30 @@ func walkHTMLElement(root *htmlElement, visit func(*htmlElement)) {
 			walkHTMLElement(elem, visit)
 		}
 	}
+}
+
+// rootHasBlockChildren returns true if the root element has any direct children
+// that are block-level elements (div, table, p, h1-h6, figure, aside, li, td).
+// Used to determine whether a promoted body should get paragraph-level margins:
+// bodies with block children stay as <div> in Python (no margins), while bodies
+// with only inline children get converted to <p> (margins preserved).
+func rootHasBlockChildren(root *htmlElement) bool {
+	if root == nil {
+		return false
+	}
+	blockTags := map[string]bool{
+		"div": true, "table": true, "p": true,
+		"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+		"figure": true, "aside": true, "li": true, "td": true,
+	}
+	for _, child := range root.Children {
+		if elem, ok := child.(*htmlElement); ok {
+			if blockTags[elem.Tag] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func sanitizeCSSClassComponent(value string) string {
