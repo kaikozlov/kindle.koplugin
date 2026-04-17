@@ -2620,9 +2620,6 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 			}
 		}
 	}
-	if len(cell.Children) == 0 {
-		return nil
-	}
 	r.applyStructuralNodeAttrs(cell, node, "")
 	if positionID, _ := asInt(node["$155"]); positionID != 0 {
 		r.applyPositionAnchors(cell, positionID, false)
@@ -3387,13 +3384,9 @@ func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, s
 		delete(cssMap, "-kfx-box-align")
 	}
 
-	// Determine wrapper properties (margin-top, margin-bottom, text-align, text-indent) vs image properties
-	// (line-height, width, height, max-width, min-width, max-height, min-height)
-	// to preserve the same HTML structure as before (wrapper class + image class).
-	// max-width/min-width/max-height/min-height must be included in imageProps so they are
-	// preserved on <img> elements, matching Python's behavior where all CSS properties are
-	// set directly on the img element via process_content_properties.
-	// margin-bottom and text-indent are wrapper properties matching Python's image wrapper class output.
+	// Determine wrapper properties vs image properties.
+	// Wrapper gets: margin-top, margin-bottom, text-align, text-indent.
+	// Image gets: line-height, width, height, max-width, min-width, max-height, min-height.
 	wrapperProps := map[string]string{}
 	imageProps := map[string]string{}
 	for prop, val := range cssMap {
