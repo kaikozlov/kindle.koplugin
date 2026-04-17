@@ -541,7 +541,6 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 		return
 	}
 
-	addStaticBodyClasses(catalog, resolvedDefaultFont)
 	simplifyStylesFull(book, catalog, fontFamilyAddedByDefaults, resolvedDefaultFont)
 
 	type countedStyle struct {
@@ -565,14 +564,13 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 	}
 
 	for i := range book.RenderedSections {
+		// Count body style first (matching Python's body.iter("*") which encounters body before children).
+		// Python has no static body classes — all body styles go through the normal counting pipeline.
 		if book.RenderedSections[i].BodyStyle != "" {
-			if bodyClass := staticBodyClassForDeclarations(declarationListFromStyleMap(stripStyleMetadata(parseDeclarationString(book.RenderedSections[i].BodyStyle)))); bodyClass != "" {
-				book.RenderedSections[i].BodyClass = bodyClass
-				book.RenderedSections[i].BodyStyle = ""
-			} else {
-				countStyle(book.RenderedSections[i].BodyStyle)
-			}
+			countStyle(book.RenderedSections[i].BodyStyle)
 		}
+		// Walk all child elements. Python counts via body.iter("*") which yields body first,
+		// then children depth-first.
 		walkHTMLElement(book.RenderedSections[i].Root, func(elem *htmlElement) {
 			if elem != nil && elem.Attrs != nil && elem.Attrs["style"] != "" {
 				countStyle(elem.Attrs["style"])
@@ -673,15 +671,6 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 	}
 }
 
-func addStaticBodyClasses(catalog *styleCatalog, resolvedDefaultFont string) {
-	if catalog == nil {
-		return
-	}
-	for _, bodyClass := range []string{"class-0", "class-1", "class-2", "class-3", "class-7", "class-8"} {
-		catalog.addStatic(bodyClass, defaultBodyDeclarationsWithFont(bodyClass, resolvedDefaultFont))
-	}
-}
-
 func fixupEmptyClassAttributes(root *htmlElement) {
 	if root == nil {
 		return
@@ -733,134 +722,57 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 		if book.RenderedSections[i].Root == nil {
 			continue
 		}
-		bodyStyle := parseDeclarationString(book.RenderedSections[i].BodyStyle)
+
+		// Build inherited properties matching Python's heritable_default_properties.
+		// Python passes HERITABLE_DEFAULTS_FILTERED to simplify_styles(body_element).
+		// The body's own style is on the body element itself (not merged into inherited).
+		// The body's font-family (set by set_html_defaults) is on the element,
+		// so it survives stripping against the default "serif" inherited value.
+		// Children inherit the body's actual font-family via parent_sty (built from sty).
 		bodyInherited := cloneStyleMap(heritableDefaultProperties)
 
-		for prop, val := range bodyStyle {
-			if heritableProperties[prop] {
-				bodyInherited[prop] = val
-			}
+		// Convert lh/rem units in body style before putting it on the virtual body element.
+		// Python's simplify_styles is called on the body element and converts units as part
+		// of its processing. Since the body's style string comes from the rendering pipeline
+		// (not from simplifyStylesElementFull), we need to convert here.
+		bodyStyleMap := parseDeclarationString(book.RenderedSections[i].BodyStyle)
+		convertStyleUnits(bodyStyleMap, heritableDefaultProperties)
+
+		// Create a virtual body element wrapping Root, matching Python's architecture where
+		// simplify_styles is called on the actual <body> element.
+		// Python: self.simplify_styles(book_part.body(), book_part, heritable_default_properties)
+		// The body element has its own inline style and Root as its child content.
+		bodyElem := &htmlElement{
+			Tag:      "body",
+			Attrs:    map[string]string{"style": styleStringFromMap(bodyStyleMap)},
+			Children: []htmlPart{book.RenderedSections[i].Root},
 		}
 
-		// Override bodyInherited font-family with resolved default when it differs.
-		// In Python, the body element's inline style is set from the page template content
-		// rendering, which does NOT include inferred font-family from content nodes.
-		// Python's set_html_defaults then adds self.default_font_family (e.g., "FreeFontSerif,serif")
-		// to the body, and children inherit this via parent_sty in simplify_styles.
-		// In Go, the body style is computed from inferBodyStyleValues which includes font-family
-		// inferred from content nodes (e.g., "Shift Light,..."). setHTMLDefaults sees the body
-		// already has font-family and doesn't add the resolved default. This means children
-		// inherit the inferred font-family instead of the resolved default.
-		// The fix: when the body has an inferred font-family that differs from the resolved
-		// default, override bodyInherited so children inherit the resolved default (matching
-		// Python's set_html_defaults behavior). The body's CSS class keeps its actual
-		// font-family; reverse inheritance will handle promoting the correct value.
-		if resolvedDefaultFont != "" && resolvedDefaultFont != "serif" {
-			bodyFF := bodyInherited["font-family"]
-			if bodyFF != "" && bodyFF != resolvedDefaultFont && !fontFamilyAddedByDefaults[i] {
-				bodyInherited["font-family"] = resolvedDefaultFont
+		simplifyStylesElementFull(bodyElem, catalog, bodyInherited)
+
+		// Extract the updated Root and BodyStyle from the virtual body element.
+		// The body's style was processed by simplifyStylesElementFull: reverse inheritance,
+		// unit conversion, property stripping, etc.
+		if len(bodyElem.Children) > 0 {
+			if root, ok := bodyElem.Children[0].(*htmlElement); ok {
+				book.RenderedSections[i].Root = root
 			}
 		}
-
-		// Convert lh/rem units in body style to em/unitless, matching Python's
-		// simplify_styles which is called on the body element itself (line 1404).
-		convertStyleUnits(bodyStyle, heritableDefaultProperties)
-
-		simplifyStylesElementFull(book.RenderedSections[i].Root, catalog, bodyInherited)
+		book.RenderedSections[i].BodyStyle = ""
+		if bodyElem.Attrs != nil {
+			book.RenderedSections[i].BodyStyle = bodyElem.Attrs["style"]
+		}
 
 		// Add resolved default font-family to empty structural containers.
 		// In Python, the rendering pipeline preserves font-family from KFX style fragments
-		// on all elements. For section c35Y in Martyr, children have font-family: "Shift Light,..."
-		// from their style fragments. Python's simplify_styles then runs reverse inheritance:
-		// "Shift Light,..." is promoted to the body, and elements without font-family (like s36C)
-		// get the body's pre-reverse-inheritance value ("FreeFontSerif,serif" from set_html_defaults).
-		// In Go, filterBodyDefaultDeclarations strips "Shift Light,..." from children during rendering
-		// (because it matches the body default), so reverse inheritance has no font-family to promote.
-		// The fix: when the body's inherited font-family was overridden to the resolved default,
-		// and a child element is an empty structural container (no text, no children) without
-		// font-family, add the resolved default font. This matches Python's reverse inheritance
-		// behavior for such elements.
+		// on all elements. Python's simplify_styles then runs reverse inheritance which promotes
+		// font-family to the body. Elements without font-family (like empty structural containers)
+		// get the body's pre-reverse-inheritance value from set_html_defaults.
+		// In Go, filterBodyDefaultDeclarations strips font-family from children during rendering,
+		// so reverse inheritance has no font-family to promote. Add it explicitly.
 		if resolvedDefaultFont != "" && resolvedDefaultFont != "serif" && !fontFamilyAddedByDefaults[i] {
 			overrideFFForEmptyContainers(book.RenderedSections[i].Root, resolvedDefaultFont)
 		}
-
-		// Merge heritable properties from Root into BodyStyle.
-		// In Python, simplify_styles is called on the <body> element itself, so reverse
-		// inheritance promotes common child properties (e.g. font-style, font-weight)
-		// directly into the body's sty. In Go, the body is split into BodyStyle (CSS class)
-		// and Root (wrapper element). Reverse inheritance adds properties to Root's style,
-		// but BodyStyle doesn't see them. We need to merge Root's heritable properties
-		// into BodyStyle so that properties promoted via reverse inheritance appear in
-		// the body's CSS class output.
-		rootStyle := parseDeclarationString(book.RenderedSections[i].Root.Attrs["style"])
-		for prop, val := range rootStyle {
-			if heritableProperties[prop] && val != "" {
-				if bodyStyle[prop] == "" || bodyStyle[prop] == heritableDefaultProperties[prop] {
-					bodyStyle[prop] = val
-				}
-			}
-		}
-
-		for prop, val := range bodyStyle {
-			if prop == "-kfx-style-name" || prop == "-kfx-layout-hints" {
-				continue
-			}
-			if heritableDefaultProperties[prop] == val {
-				delete(bodyStyle, prop)
-			}
-		}
-		// Strip non-heritable defaults from body styles. Python's simplify_styles is called
-		// on the body element itself and strips all properties matching inherited_properties,
-		// which includes non_heritable_default_properties merged at line ~1919.
-		// Go's body style is handled separately (not through simplifyStylesElementFull),
-		// so we need to explicitly strip non-heritable defaults here too.
-		//
-		// When the body was created via container promotion (has -kfx-style-name), the body
-		// may act like a paragraph element. In Python, promoted containers stay as <p> children
-		// of the body, where simplify_styles adds non-heritable defaults including margin: 0,
-		// and paragraph-level comparison preserves them (0 != 1em default). To match this for
-		// promoted bodies that have NO margin properties AND no block-level children (matching
-		// Python's div→p conversion condition):
-		// 1. Add margin defaults (0) to the promoted body style
-		// 2. Compare margins against paragraph default (1em) instead of div default (0)
-		// This way margin:0 survives (0 != 1em), matching Python's paragraph comparison.
-		// We check for block-level children to avoid adding margins to promoted bodies like
-		// s790 that contain tables and divs (Python keeps these as <div>, not <p>).
-		bodyIsPromoted := bodyStyle["-kfx-style-name"] != ""
-		_, hasMarginTop := bodyStyle["margin-top"]
-		_, hasMarginBottom := bodyStyle["margin-bottom"]
-		rootHasBlock := rootHasBlockChildren(book.RenderedSections[i].Root)
-		if bodyIsPromoted && !hasMarginTop && !hasMarginBottom && !rootHasBlock {
-			bodyStyle["margin-top"] = "0"
-			bodyStyle["margin-bottom"] = "0"
-		}
-		for prop, val := range bodyStyle {
-			if nonHeritableDefaultProperties[prop] == val {
-				if bodyIsPromoted && (prop == "margin-top" || prop == "margin-bottom") {
-					// Compare against paragraph default (1em) instead of div default (0).
-					// margin:0 survives because 0 != 1em, matching Python's paragraph comparison.
-					if val == "1em" {
-						delete(bodyStyle, prop)
-					}
-				} else {
-					delete(bodyStyle, prop)
-				}
-			}
-		}
-		// Strip font-family that was added by setHTMLDefaults as a fallback.
-		// Python's set_html_defaults uses self.default_font_family (dynamically determined from
-		// the document's content), which for books where the document default is "serif" results
-		// in font-family: "serif" — matching the heritable default and getting stripped.
-		// For books like Martyr where the document default is "FreeFontSerif,serif", it survives.
-		// The standard stripping loop above already handles this correctly when setHTMLDefaults
-		// uses the resolved default font. The special case below handles any remaining edge cases
-		// where the font-family was added by defaults but didn't match the heritable default.
-		if fontFamilyAddedByDefaults[i] {
-			if ff := bodyStyle["font-family"]; ff != "" && ff == heritableDefaultProperties["font-family"] {
-				delete(bodyStyle, "font-family")
-			}
-		}
-		book.RenderedSections[i].BodyStyle = styleStringFromMap(bodyStyle)
 	}
 }
 
