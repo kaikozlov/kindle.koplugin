@@ -2253,6 +2253,30 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 	if len(container.Children) == 0 {
 		return nil
 	}
+	// Python's COMBINE_NESTED_DIVS: if the container wraps a single image wrapper div
+	// (<div><img/></div>), merge them into one div. The image wrapper (from imageClasses)
+	// already partitioned properties. containerClass includes properties promoted from
+	// children via inferPromotedStyleValues. Merge with wrapper taking precedence for
+	// overlapping properties (matching Python's content_style.update(child_sty, replace=False)
+	// which keeps the inner's values).
+	if wrapper := singleImageWrapperChild(container); wrapper != nil {
+		containerStyle := r.containerClass(node)
+		wrapperStyle := ""
+		if wrapper.Attrs != nil {
+			wrapperStyle = wrapper.Attrs["style"]
+		}
+		mergedStyle := mergeStyleStrings(containerStyle, wrapperStyle)
+		if mergedStyle != "" {
+			wrapper.Attrs["style"] = mergedStyle
+		} else {
+			delete(wrapper.Attrs, "style")
+		}
+		r.applyStructuralNodeAttrs(wrapper, node, "")
+		if positionID, _ := asInt(node["$155"]); positionID != 0 {
+			r.applyPositionAnchors(wrapper, positionID, false)
+		}
+		return r.wrapNodeLink(node, wrapper)
+	}
 	if styleAttr := r.containerClass(node); styleAttr != "" {
 		container.Attrs["style"] = styleAttr
 	}
@@ -2261,6 +2285,26 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 		r.applyPositionAnchors(container, positionID, false)
 	}
 	return r.wrapNodeLink(node, container)
+}
+
+// singleImageWrapperChild returns the <div> wrapper if the container has exactly one child
+// that is a <div> containing a single <img>. Returns nil otherwise.
+func singleImageWrapperChild(container *htmlElement) *htmlElement {
+	if len(container.Children) != 1 {
+		return nil
+	}
+	div, ok := container.Children[0].(*htmlElement)
+	if !ok || div.Tag != "div" {
+		return nil
+	}
+	if len(div.Children) != 1 {
+		return nil
+	}
+	img, ok := div.Children[0].(*htmlElement)
+	if !ok || img.Tag != "img" {
+		return nil
+	}
+	return div
 }
 
 func (r *storylineRenderer) renderListNode(node map[string]interface{}, depth int) htmlPart {
@@ -3123,6 +3167,25 @@ func (r *storylineRenderer) renderFigureHintContainer(node map[string]interface{
 	}
 	if len(element.Children) == 0 || !htmlPartContainsImage(element) {
 		return nil
+	}
+	// Python's COMBINE_NESTED_DIVS for figure containers.
+	if wrapper := singleImageWrapperChild(element); wrapper != nil {
+		containerStyle := r.containerClass(node)
+		wrapperStyle := ""
+		if wrapper.Attrs != nil {
+			wrapperStyle = wrapper.Attrs["style"]
+		}
+		mergedStyle := mergeStyleStrings(containerStyle, wrapperStyle)
+		if mergedStyle != "" {
+			wrapper.Attrs["style"] = mergedStyle
+		} else {
+			delete(wrapper.Attrs, "style")
+		}
+		r.applyStructuralNodeAttrs(wrapper, node, "")
+		if positionID, _ := asInt(node["$155"]); positionID != 0 {
+			r.applyPositionAnchors(wrapper, positionID, false)
+		}
+		return wrapper
 	}
 	if styleAttr := r.containerClass(node); styleAttr != "" {
 		element.Attrs["style"] = styleAttr
