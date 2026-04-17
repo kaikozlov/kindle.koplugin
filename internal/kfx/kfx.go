@@ -3360,6 +3360,42 @@ func (r *storylineRenderer) inlineContainerClass(styleID string, node map[string
 	return styleStringFromDeclarations(baseName, nil, declarations)
 }
 
+// blockAlignedContainerProperties matches Python's BLOCK_ALIGNED_CONTAINER_PROPERTIES
+// (yj_to_epub_content.py:49-55).
+var blockAlignedContainerProperties = map[string]bool{
+	"-kfx-attrib-colspan": true, "-kfx-attrib-rowspan": true,
+	"-kfx-box-align": true, "-kfx-heading-level": true, "-kfx-layout-hints": true,
+	"-kfx-table-vertical-align": true,
+	"float": true,
+	"margin-left": true, "margin-right": true, "margin-top": true, "margin-bottom": true,
+	"overflow": true,
+	"page-break-after": true, "page-break-before": true, "page-break-inside": true,
+	"text-indent": true,
+	"transform": true, "transform-origin": true,
+}
+
+// reverseHeritablePropertiesExcludes are removed from heritableProperties to produce
+// REVERSE_HERITABLE_PROPERTIES (yj_to_epub_properties.py:994).
+var reverseHeritablePropertiesExcludes = map[string]bool{
+	"-amzn-page-align":                   true,
+	"-kfx-user-margin-bottom-percentage": true,
+	"-kfx-user-margin-left-percentage":   true,
+	"-kfx-user-margin-right-percentage":  true,
+	"-kfx-user-margin-top-percentage":    true,
+	"font-size":  true,
+	"line-height": true,
+}
+
+// isBlockContainerProperty returns true if the CSS property belongs on the wrapper container
+// rather than the image element. Matches Python's BLOCK_CONTAINER_PROPERTIES partition
+// (yj_to_epub_content.py:57): REVERSE_HERITABLE_PROPERTIES | BLOCK_ALIGNED_CONTAINER_PROPERTIES | {"display"}.
+func isBlockContainerProperty(prop string) bool {
+	if blockAlignedContainerProperties[prop] || prop == "display" {
+		return true
+	}
+	return heritableProperties[prop] && !reverseHeritablePropertiesExcludes[prop]
+}
+
 func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, string) {
 	styleID, _ := asString(node["$157"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
@@ -3384,16 +3420,16 @@ func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, s
 		delete(cssMap, "-kfx-box-align")
 	}
 
-	// Determine wrapper properties vs image properties.
-	// Wrapper gets: margin-top, margin-bottom, text-align, text-indent.
-	// Image gets: line-height, width, height, max-width, min-width, max-height, min-height.
+	// Partition properties between wrapper div and image element, matching Python's
+	// create_container(BLOCK_CONTAINER_PROPERTIES) in yj_to_epub_content.py:1324.
+	// Container gets: REVERSE_HERITABLE_PROPERTIES | BLOCK_ALIGNED_CONTAINER_PROPERTIES | {"display"}.
+	// Image keeps everything else. No properties are dropped.
 	wrapperProps := map[string]string{}
 	imageProps := map[string]string{}
 	for prop, val := range cssMap {
-		if prop == "margin-top" || prop == "margin-bottom" || prop == "text-align" || prop == "text-indent" {
+		if isBlockContainerProperty(prop) {
 			wrapperProps[prop] = val
-		} else if prop == "line-height" || prop == "width" || prop == "height" ||
-			prop == "max-width" || prop == "min-width" || prop == "max-height" || prop == "min-height" {
+		} else {
 			imageProps[prop] = val
 		}
 	}
