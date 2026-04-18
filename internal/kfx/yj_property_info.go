@@ -1041,8 +1041,20 @@ func convertStyleUnits(sty map[string]string, inherited map[string]string) {
 			if unit == "em" {
 				sty[name] = formatCSSQuantity(q) + "em"
 			} else {
-				// Keep as-is if we couldn't convert
 				sty[name] = formatCSSQuantity(q) + unit
+			}
+		}
+
+		// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1753-1785):
+		// Convert vh/vw viewport units to percentages for page-aligned content.
+		// Python does full cross-conversion for images with wrong-axis units (e.g. height in vw),
+		// which requires image dimension knowledge. We handle the simple case (direct conversion)
+		// and skip the complex cross-conversion.
+		if (unit == "vh" || unit == "vw") && quantity != nil {
+			if pageAlignVal, hasAlign := sty["-amzn-page-align"]; hasAlign && pageAlignVal != "none" {
+				if name == "height" || name == "width" {
+					sty[name] = formatCSSQuantity(*quantity) + "%"
+				}
 			}
 		}
 	}

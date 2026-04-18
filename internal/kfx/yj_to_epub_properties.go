@@ -1372,6 +1372,55 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	// children doing rem→em conversion can use it as the base (in rem units).
 	origFontSize, hasOrigFontSize := sty["font-size"]
 
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1690-1697):
+	// Strip positioning properties (top/bottom/left/right) when position is static
+	// and the value is "0". Non-zero values with static position are logged as warnings.
+	if sty["position"] == "static" || sty["position"] == "" {
+		for _, positioning := range []string{"top", "bottom", "left", "right"} {
+			if val, ok := sty[positioning]; ok {
+				if val == "0" {
+					delete(sty, positioning)
+				}
+			}
+		}
+	}
+
+	// Ported from Python simplify_styles (yj_to_epub_properties.py line 1699):
+	// Synthesize border-spacing from -webkit-border-horizontal-spacing and
+	// -webkit-border-vertical-spacing.
+	hSpacing := sty["-webkit-border-horizontal-spacing"]
+	vSpacing := sty["-webkit-border-vertical-spacing"]
+	if hSpacing != "" && vSpacing != "" {
+		sty["border-spacing"] = hSpacing + " " + vSpacing
+	}
+
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1701-1706):
+	// Convert -kfx-user-margin-*-percentage to -amzn-page-align.
+	var pageAlignSides []string
+	for _, side := range []string{"top", "bottom", "left", "right"} {
+		key := "-kfx-user-margin-" + side + "-percentage"
+		if sty[key] == "-100" {
+			pageAlignSides = append(pageAlignSides, side)
+		}
+	}
+	pageAlign := "none"
+	if len(pageAlignSides) > 0 {
+		if len(pageAlignSides) >= 4 {
+			pageAlign = "all"
+		} else {
+			pageAlign = strings.Join(pageAlignSides, ",")
+		}
+	}
+	sty["-amzn-page-align"] = pageAlign
+
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1708-1711):
+	// Discard invalid negative padding values.
+	for _, name := range []string{"padding", "padding-top", "padding-bottom", "padding-left", "padding-right"} {
+		if val, ok := sty[name]; ok && strings.HasPrefix(val, "-") {
+			delete(sty, name)
+		}
+	}
+
 	// Convert lh/rem units to em before anything else.
 	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1713-1752).
 	// Must happen before parentStyle computation so children receive converted units.
@@ -1382,6 +1431,41 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	for name := range explicitStyle {
 		if val, ok := sty[name]; ok {
 			explicitStyle[name] = val
+		}
+	}
+
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1801-1802):
+	// Remove outline-width when outline-style is none.
+	if _, hasOutlineWidth := sty["outline-width"]; hasOutlineWidth {
+		if sty["outline-style"] == "none" || sty["outline-style"] == "" {
+			delete(sty, "outline-width")
+		}
+	}
+
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1804-1827):
+	// OL/UL start attribute management.
+	if elem.Tag == "ol" {
+		if startStr, ok := elem.Attrs["start"]; ok {
+			if startStr == "1" {
+				delete(elem.Attrs, "start")
+			}
+		}
+	} else if elem.Tag == "ul" {
+		if _, ok := elem.Attrs["start"]; ok {
+			delete(elem.Attrs, "start")
+		}
+	}
+
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1832-1838):
+	// Convert background-image + -amzn-max-crop-percentage to background-size.
+	if sty["background-image"] != "" && sty["background-image"] != "none" {
+		cropVal := sty["-amzn-max-crop-percentage"]
+		if cropVal == "0 0 0 0" {
+			delete(sty, "-amzn-max-crop-percentage")
+			sty["background-size"] = "contain"
+		} else if cropVal == "0 100 100 0" {
+			delete(sty, "-amzn-max-crop-percentage")
+			sty["background-size"] = "cover"
 		}
 	}
 
