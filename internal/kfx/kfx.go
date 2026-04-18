@@ -3290,7 +3290,27 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 	if len(style) == 0 {
 		return ""
 	}
-	declarations := filterBodyDefaultDeclarations(cssDeclarationsFromMap(processContentProperties(style)), r.activeBodyDefaults)
+	cssMap := processContentProperties(style)
+
+	// Handle -kfx-box-align → margin auto conversion, matching Python
+	// yj_to_epub_content.py:1390-1404. Container elements get margin-auto
+	// only when they have a width property (or are tables).
+	if boxAlign, ok := cssMap["-kfx-box-align"]; ok {
+		delete(cssMap, "-kfx-box-align")
+		if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" {
+			_, hasWidth := cssMap["width"]
+			if hasWidth {
+				if boxAlign != "left" {
+					cssMap["margin-left"] = "auto"
+				}
+				if boxAlign != "right" {
+					cssMap["margin-right"] = "auto"
+				}
+			}
+		}
+	}
+
+	declarations := filterBodyDefaultDeclarations(cssDeclarationsFromMap(cssMap), r.activeBodyDefaults)
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
