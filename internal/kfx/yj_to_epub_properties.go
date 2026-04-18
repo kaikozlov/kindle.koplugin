@@ -863,6 +863,11 @@ var alternateEquivalentProperties = map[string]string{
 	"text-combine-upright":   "-webkit-text-combine",
 	"text-emphasis-color":    "-webkit-text-emphasis-color",
 	"text-emphasis-position": "-webkit-text-emphasis-position",
+	"text-emphasis-style":    "-webkit-text-emphasis-style",
+	"text-orientation":       "-webkit-text-orientation",
+	"transform":              "-webkit-transform",
+	"transform-origin":       "-webkit-transform-origin",
+	"writing-mode":           "-webkit-writing-mode",
 }
 
 // Block-level element tags per Python simplify_styles contains_block_elem check.
