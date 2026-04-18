@@ -3362,10 +3362,37 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 	styleID, _ := asString(node["$157"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
+
+	// Replicate Python's COMBINE_NESTED_DIVS for table cells.
+	// In Python, process_content creates nested divs for cell + content, then
+	// COMBINE_NESTED_DIVS merges them when parent has no text, single child div,
+	// block display, static position, no float, no overlapping properties.
+	// content_style.update(child_sty, replace=False) adds child-only properties.
+	// We check overlap against the parent's own CSS properties (before inference),
+	// since inferred properties are reverse-inherited from children.
 	if children, ok := asSlice(node["$146"]); ok && len(children) == 1 {
 		if child, ok := asMap(children[0]); ok {
 			childStyleID, _ := asString(child["$157"])
-			style = mergeStyleValues(style, effectiveStyle(r.styleFragments[childStyleID], child))
+			if childStyleID != "" {
+				ownStyle := effectiveStyle(r.styleFragments[styleID], node)
+				parentCSS := processContentProperties(ownStyle)
+				childStyle := effectiveStyle(r.styleFragments[childStyleID], child)
+				childCSS := processContentProperties(childStyle)
+				// Python excludes -kfx-style-name from overlap check
+				hasOverlap := false
+				for prop := range parentCSS {
+					if prop == "-kfx-style-name" {
+						continue
+					}
+					if _, exists := childCSS[prop]; exists {
+						hasOverlap = true
+						break
+					}
+				}
+				if !hasOverlap {
+					style = mergeStyleValues(style, childStyle)
+				}
+			}
 		}
 	}
 
@@ -3383,20 +3410,6 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 			}
 		}
 		delete(cssMap, "-kfx-box-align")
-	}
-
-	// Remove width/height properties that belong on child elements, not table cells.
-	// In Python, the td content node's process_content_properties includes these, but they
-	// are either stripped by simplify_styles (for non-matching inherited values) or end up
-	// on separate child elements. In Go, the child style merge brings these into the cell's
-	// CSS map, creating extra property variants that don't match Python's class splits.
-	// The old tableCellStyleDeclarations only included margin-right, text-align, and
-	// vertical-align — never width/height properties.
-	for _, prop := range []string{
-		"width", "max-width", "min-width",
-		"height", "max-height", "min-height",
-	} {
-		delete(cssMap, prop)
 	}
 
 	declarations := cssDeclarationsFromMap(cssMap)
