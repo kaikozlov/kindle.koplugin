@@ -3513,6 +3513,16 @@ func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, s
 			imageProps[prop] = val
 		}
 	}
+
+	// Python yj_to_epub_content.py:1328-1331: when container has float, move % width
+	// from inner image to container and set image width to 100%.
+	if _, hasFloat := wrapperProps["float"]; hasFloat {
+		if w, ok := imageProps["width"]; ok && strings.HasSuffix(w, "%") {
+			wrapperProps["width"] = w
+			imageProps["width"] = "100%"
+		}
+	}
+
 	wrapperDecls := cssDeclarationsFromMap(wrapperProps)
 	imageDecls := cssDeclarationsFromMap(imageProps)
 
