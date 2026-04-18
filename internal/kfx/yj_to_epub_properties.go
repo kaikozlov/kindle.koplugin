@@ -543,6 +543,37 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 
 	simplifyStylesFull(book, catalog, fontFamilyAddedByDefaults, resolvedDefaultFont)
 
+	// Ported from Python REMOVE_EMPTY_NAMED_CLASSES (yj_to_epub_properties.py:1499-1505):
+	// If an element's style has ONLY -kfx-style-name and/or -kfx-layout-hints
+	// (no real CSS properties), remove the style attr entirely so no class is assigned.
+	for i := range book.RenderedSections {
+		walkHTMLElement(book.RenderedSections[i].Root, func(elem *htmlElement) {
+			if elem == nil || elem.Attrs == nil || elem.Attrs["style"] == "" {
+				return
+			}
+			style := parseDeclarationString(elem.Attrs["style"])
+			hasOther := false
+			for name := range style {
+				if name != "-kfx-style-name" && name != "-kfx-layout-hints" {
+					hasOther = true
+					break
+				}
+			}
+			if !hasOther {
+				delete(elem.Attrs, "style")
+				if len(elem.Attrs) == 0 {
+					elem.Attrs = nil
+				}
+			}
+		})
+	}
+
+	// Ported from Python beautify_html (epub_output.py:783-789):
+	// Strip spans with no attributes (left over after REMOVE_EMPTY_NAMED_CLASSES).
+	for i := range book.RenderedSections {
+		beautifyHTML(book.RenderedSections[i].Root)
+	}
+
 	type countedStyle struct {
 		style string
 		count int
@@ -688,6 +719,40 @@ func fixupEmptyClassAttributes(root *htmlElement) {
 			fixupEmptyClassAttributes(el)
 		}
 	}
+}
+
+// beautifyHTML strips spans with no attributes, matching Python's epub_output.py
+// beautify_html (lines 783-789). Called after REMOVE_EMPTY_NAMED_CLASSES.
+func beautifyHTML(root *htmlElement) {
+	if root == nil {
+		return
+	}
+	var walk func(elem *htmlElement)
+	walk = func(elem *htmlElement) {
+		if elem == nil {
+			return
+		}
+		newChildren := make([]htmlPart, 0, len(elem.Children))
+		for _, child := range elem.Children {
+			ch, ok := child.(*htmlElement)
+			if !ok {
+				newChildren = append(newChildren, child)
+				continue
+			}
+			if ch.Tag == "span" && len(ch.Attrs) == 0 {
+				newChildren = append(newChildren, ch.Children...)
+			} else {
+				newChildren = append(newChildren, child)
+			}
+		}
+		elem.Children = newChildren
+		for _, child := range elem.Children {
+			if el, ok := child.(*htmlElement); ok {
+				walk(el)
+			}
+		}
+	}
+	walk(root)
 }
 
 // Port of KFX_EPUB_Properties.create_css_files (yj_to_epub_properties.py L2239+).
