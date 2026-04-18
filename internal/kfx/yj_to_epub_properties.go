@@ -129,10 +129,7 @@ func (c *styleCatalog) finalize() {
 	}
 	sortedEntries := append([]*styleEntry(nil), usedEntries...)
 	sort.SliceStable(sortedEntries, func(i, j int) bool {
-		if sortedEntries[i].count == sortedEntries[j].count {
-			return sortedEntries[i].order < sortedEntries[j].order
-		}
-		return sortedEntries[i].count > sortedEntries[j].count
+		return sortedEntries[i].order < sortedEntries[j].order
 	})
 	nextIndex := map[string]int{}
 	usedNames := map[string]bool{}
