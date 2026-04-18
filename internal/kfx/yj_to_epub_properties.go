@@ -1448,7 +1448,8 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	}
 	if elem.Tag == "h1" || elem.Tag == "h2" || elem.Tag == "h3" || elem.Tag == "h4" || elem.Tag == "h5" || elem.Tag == "h6" {
 		comparisonInherited = cloneStyleMap(inherited)
-		delete(comparisonInherited, "font-size")
+		// Python pops font-size from inherited (line 1928) but then re-adds it as "1em" (line 1956).
+		// The net effect: font-size in sty matches inherited → stripped. Don't delete font-size.
 		delete(comparisonInherited, "font-weight")
 		// Ported from Python simplify_styles: for heading conversion, pop margin-top/margin-bottom
 		// (or margin-left/margin-right for vertical writing mode) from inherited so that
@@ -1460,29 +1461,37 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 			delete(comparisonInherited, "margin-left")
 			delete(comparisonInherited, "margin-right")
 		}
-
-		// In Python, sty is the merged style (inherited + explicit). When heading conversion
-		// pops font-size and font-weight from inherited_properties, any inherited font-size and
-		// font-weight values in sty survive the stripping because they no longer match inherited.
-		// In Go, explicitStyle only contains explicitly set properties, not inherited ones.
-		// So we need to add inherited font-weight to explicitStyle for headings so it survives
-		// the stripping (matching Python's behavior).
-		// Note: font-size is NOT added here because Python re-adds font-size to inherited_properties
-		// at line 1948 (inherited_properties["font-size"] = "1em"), causing it to be stripped again.
-		if _, ok := explicitStyle["font-weight"]; !ok {
-			if val, ok := sty["font-weight"]; ok && val != "" {
-				explicitStyle["font-weight"] = val
-			}
-		}
 	}
-	for name, val := range explicitStyle {
+
+	// Ported from Python simplify_styles (yj_to_epub_properties.py line 1956):
+	// After unit conversion and all processing, if sty's font-size is in em units,
+	// re-normalize inherited font-size to "1em" so the stripping loop will correctly
+	// strip font-size when it matches (e.g. inherited "1.125rem" → converted to "1em"
+	// in sty, but inherited still has "1.125rem" → mismatch → not stripped → wrong).
+	if fsQty, fsUnit := splitCSSValue(sty["font-size"]); fsQty != nil && fsUnit == "em" {
+		inherited["font-size"] = "1em"
+	}
+
+	// Python stripping loop (yj_to_epub_properties.py lines 1966-1968):
+	//   for name, val in list(sty.items()):
+	//       if val == inherited_properties.get(name, ""): sty.pop(name)
+	// This iterates the FULL merged sty (inherited + explicit + defaults),
+	// removing any property that matches the inherited value.
+	// Then self.set_style(elem, sty) stores the remaining properties.
+	for name, val := range sty {
 		if name == "-kfx-style-name" || name == "-kfx-layout-hints" {
 			continue
 		}
 		if comparisonInherited[name] == val {
-			delete(explicitStyle, name)
+			delete(sty, name)
 		}
 	}
+
+	// After stripping, store the remaining sty as the element's style string.
+	// Python does self.set_style(elem, sty) which stores the full remaining style.
+	// Keep all properties including -kfx-style-name and -kfx-layout-hints for class naming.
+	// Python's convert_styles_to_classes later pops these to derive the class name.
+	setElementStyleString(elem, styleStringFromMap(sty))
 
 	// Strip background-* properties when background-color is transparent and background-image is none.
 	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1951-1953).
@@ -1492,31 +1501,32 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 			"background-clip", "background-origin", "background-position",
 			"background-repeat", "background-size",
 		} {
-			delete(explicitStyle, name)
+			delete(sty, name)
 		}
 	}
 
 	// Collapse composite side: when all 4 individual sides of margin/padding/border-width/etc
 	// are equal, collapse them into the shorthand property.
 	// Ported from Python add_composite_and_equivalent_styles COMPOSITE_SIDE_STYLES loop.
+	// Operates on sty (post-stripping) matching Python which runs this after simplify_styles.
 	for _, entry := range compositeSideStyles {
 		combinedProp := entry[0]
 		individualProps := strings.Fields(entry[1])
-		val, ok := explicitStyle[individualProps[0]]
+		val, ok := sty[individualProps[0]]
 		if !ok {
 			continue
 		}
 		allEqual := true
 		for _, individualProp := range individualProps[1:] {
-			if explicitStyle[individualProp] != val {
+			if sty[individualProp] != val {
 				allEqual = false
 				break
 			}
 		}
 		if allEqual {
-			explicitStyle[combinedProp] = val
+			sty[combinedProp] = val
 			for _, individualProp := range individualProps {
-				delete(explicitStyle, individualProp)
+				delete(sty, individualProp)
 			}
 		}
 	}
@@ -1566,24 +1576,29 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	}
 
 	// Remove -kfx-link-color and -kfx-visited-color from final styles.
-	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1916-1918).
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1962-1964).
 	// For <a> tags, remove from inherited (so children don't inherit them).
 	// For other tags, remove from sty (so they don't appear in the output).
-	// In both cases, also remove from explicitStyle so they don't end up in the style attribute.
 	if elem.Tag == "a" {
 		delete(inherited, "-kfx-link-color")
 		delete(inherited, "-kfx-visited-color")
 	}
-	delete(explicitStyle, "-kfx-link-color")
-	delete(explicitStyle, "-kfx-visited-color")
+	delete(sty, "-kfx-link-color")
+	delete(sty, "-kfx-visited-color")
 
-	setElementStyleString(elem, styleStringFromMap(explicitStyle))
-
-	// If a span has no remaining explicit style (all properties were inherited/stripped),
+	// If a span has no remaining style after stripping (all properties were inherited/stripped),
 	// clear its class attribute so the parent's span unwrapping pass will remove it.
 	// This matches Python behavior where simplify_styles strips inherited properties and
 	// the resulting empty-styled spans are effectively no-ops.
-	if elem.Tag == "span" && len(explicitStyle) == 0 {
+	// Check for any non-metadata properties remaining in sty.
+	hasCSSProps := false
+	for name := range sty {
+		if !strings.HasPrefix(name, "-kfx-") {
+			hasCSSProps = true
+			break
+		}
+	}
+	if elem.Tag == "span" && !hasCSSProps {
 		if elem.Attrs != nil {
 			delete(elem.Attrs, "class")
 			if len(elem.Attrs) == 0 {
