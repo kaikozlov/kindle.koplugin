@@ -2256,16 +2256,18 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 	// Python's COMBINE_NESTED_DIVS: if the container wraps a single image wrapper div
 	// (<div><img/></div>), merge them into one div. The image wrapper (from imageClasses)
 	// already partitioned properties. containerClass includes properties promoted from
-	// children via inferPromotedStyleValues. Merge with wrapper taking precedence for
-	// overlapping properties (matching Python's content_style.update(child_sty, replace=False)
-	// which keeps the inner's values).
+	// children via inferPromotedStyleValues.
+	// Python: content_style.update(child_sty, replace=False) — parent keeps its values,
+	// child only adds properties not already present. So container overwrites wrapper.
 	if wrapper := singleImageWrapperChild(container); wrapper != nil {
 		containerStyle := r.containerClass(node)
 		wrapperStyle := ""
 		if wrapper.Attrs != nil {
 			wrapperStyle = wrapper.Attrs["style"]
 		}
-		mergedStyle := mergeStyleStrings(containerStyle, wrapperStyle)
+		// mergeStyleStrings processes in order: first arg's properties can be overwritten
+		// by second arg. We want container (parent) to win, so wrapper goes first.
+		mergedStyle := mergeStyleStrings(wrapperStyle, containerStyle)
 		if mergedStyle != "" {
 			wrapper.Attrs["style"] = mergedStyle
 		} else {
@@ -3175,7 +3177,8 @@ func (r *storylineRenderer) renderFigureHintContainer(node map[string]interface{
 		if wrapper.Attrs != nil {
 			wrapperStyle = wrapper.Attrs["style"]
 		}
-		mergedStyle := mergeStyleStrings(containerStyle, wrapperStyle)
+		// Parent (container) wins on conflicts, matching Python's replace=False
+		mergedStyle := mergeStyleStrings(wrapperStyle, containerStyle)
 		if mergedStyle != "" {
 			wrapper.Attrs["style"] = mergedStyle
 		} else {
@@ -3442,6 +3445,7 @@ var blockAlignedContainerProperties = map[string]bool{
 	"-kfx-attrib-colspan": true, "-kfx-attrib-rowspan": true,
 	"-kfx-box-align": true, "-kfx-heading-level": true, "-kfx-layout-hints": true,
 	"-kfx-table-vertical-align": true,
+	"box-sizing": true,
 	"float": true,
 	"margin-left": true, "margin-right": true, "margin-top": true, "margin-bottom": true,
 	"overflow": true,
