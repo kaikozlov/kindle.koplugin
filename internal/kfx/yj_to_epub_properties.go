@@ -1276,10 +1276,6 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 		return false, false, false
 	}
 
-	// Ported from Python simplify_styles (yj_to_epub_properties.py:1677):
-	// Clone inherited to prevent mutations from corrupting the caller's parentStyle map.
-	inherited = cloneStyleMap(inherited)
-
 	explicitStyle := parseDeclarationString(elem.Attrs["style"])
 	sty := cloneStyleMap(inherited)
 
