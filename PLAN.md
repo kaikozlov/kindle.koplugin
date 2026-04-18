@@ -1,7 +1,9 @@
 # KFX→EPUB Parity Plan: Python Reference vs Go Implementation
 
 **Generated:** 2026-04-18
+**Last updated:** 2026-04-18
 **Resolution order:** Structure → Function → Logic
+**Status:** COMPLETE
 
 ---
 
@@ -258,27 +260,45 @@ if -webkit-border-horizontal-spacing and -webkit-border-vertical-spacing present
 ## Execution Order
 
 ```
-Phase 1 (Structure)
-  ├── 1.1 Split kfx.go → 7 focused files
-  ├── 1.2 Complete ALTERNATE_EQUIVALENT_PROPERTIES
-  └── Run all tests after each step
+Phase 1 (Structure) — COMPLETE
+  ├── 1.1 Split kfx.go → 7 focused files                    ✅ DONE (decode.go, fragments.go, css_values.go, html.go, storyline.go, content_helpers.go)
+  ├── 1.2 Complete ALTERNATE_EQUIVALENT_PROPERTIES           ✅ DONE (6→12 entries)
+  └── All tests pass after each step
 
-Phase 2 (Functions)
-  ├── 2.1 find_or_create_style_event_element + locate_offset_in + split_span
-  ├── 2.2 create_container property partitioning
-  ├── 2.3 create_span_subcontainer
-  ├── 2.4 process_kvg_shape (if needed)
-  └── 2.5 CBZ/PDF output (if needed)
+Phase 2 (Functions) — COMPLETE
+  ├── 2.1 find_or_create_style_event_element                 ✅ DONE (style_events.go)
+  ├── 2.2 create_container property partitioning             ✅ DONE (container.go)
+  ├── 2.3 create_span_subcontainer                           ✅ DONE (container.go)
+  ├── 2.4 process_kvg_shape                                  ✅ DONE (svg.go)
+  └── 2.5 CBZ/PDF output                                     ⬚ SKIPPED (not needed for current scope)
 
-Phase 3 (Logic)
-  ├── 3.1 Complete data tables (already done in 1.2)
-  ├── 3.2 -webkit-border-spacing synthesis
-  ├── 3.3 vh/vw viewport unit conversion
-  ├── 3.4 -kfx-user-margin → -amzn-page-align
-  ├── 3.5 background-image crop → background-size
-  ├── 3.6 Low-impact simplify features
-  └── 3.7 Class index ordering (cosmetic)
+Phase 3 (Logic) — COMPLETE
+  ├── 3.1 Complete data tables                               ✅ DONE (in 1.2)
+  ├── 3.2 -webkit-border-spacing synthesis                   ✅ DONE
+  ├── 3.3 vh/vw viewport unit conversion                     ✅ DONE (basic: direct conversion to %)
+  ├── 3.4 -kfx-user-margin → -amzn-page-align                ✅ DONE
+  ├── 3.5 background-image crop → background-size            ✅ DONE
+  ├── 3.6 Low-impact simplify features                       ✅ DONE (neg padding, outline-width, position, OL/UL)
+  └── 3.7 Class index ordering (cosmetic)                    ✅ DONE (encounter-order matching Python)
 ```
+
+### New Files Created
+
+| File | Lines | Purpose |
+|---|---|---|
+| `internal/kfx/decode.go` | ~400 | ION decoding, symbol resolver, shared catalog |
+| `internal/kfx/fragments.go` | ~150 | Fragment parsing (sections, anchors, storylines) |
+| `internal/kfx/css_values.go` | ~800 | CSS value mapping, style declaration builders |
+| `internal/kfx/html.go` | ~380 | HTML types, serialization, whitespace normalization |
+| `internal/kfx/storyline.go` | ~2400 | storylineRenderer and all methods |
+| `internal/kfx/content_helpers.go` | ~900 | Font fixer, content helpers, utilities |
+| `internal/kfx/style_events.go` | ~325 | DOM-level style event handling |
+| `internal/kfx/container.go` | ~74 | Container creation with property partitioning |
+| `internal/kfx/svg.go` | ~275 | SVG/KVG shape processing |
+
+### kfx.go Reduction
+
+5200 lines → 361 lines (93% reduction)
 
 ---
 
