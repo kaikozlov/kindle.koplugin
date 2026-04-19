@@ -1,0 +1,34 @@
+{
+  "milestone": "m5-cleanup",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 11,
+    "passed": 11,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-M5-ION-001",
+    "VAL-M5-SYM-001",
+    "VAL-M5-SEC-001",
+    "VAL-M5-CTX-001",
+    "VAL-M5-POS-001",
+    "VAL-M5-VER-001",
+    "VAL-M5-PROP-001",
+    "VAL-M5-FRAG-001",
+    "VAL-M5-IB-001",
+    "VAL-M5-FMT-001",
+    "VAL-M5-CROSS-001"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added M5 cleanup test patterns to Flow Validator Guidance section",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}

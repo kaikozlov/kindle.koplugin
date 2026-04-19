@@ -1,0 +1,101 @@
+{
+  "groupId": "group-b-ctx-pos-ver-prop-frag",
+  "testedAt": "2026-04-19T17:08:30Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "sharedMutableState": "none",
+    "testData": "synthetic in-memory only",
+    "fileSystemWrites": "none outside test cache"
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-M5-CTX-001",
+      "title": "Context stack and connected_pagination default",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/... -count=1 -run TestConnectedPaginationDefault -v",
+          "expected": "All sub-tests pass: A4-2 push/pop context, A4-4 debug logging, A4-5 pop vs delete, A4-8 connected_pagination default True",
+          "observed": "All 4 sub-tests PASS in 0.00s"
+        }
+      ],
+      "evidence": {
+        "consoleErrors": "none",
+        "testOutput": "=== RUN   TestConnectedPaginationDefault\n=== RUN   TestConnectedPaginationDefault/A4-2_PushPopContext_InternalTracking\n=== RUN   TestConnectedPaginationDefault/A4-4_DebugLogging_Cosmetic\n=== RUN   TestConnectedPaginationDefault/A4-5_PopVsDelete_FunctionallyEquivalent\n=== RUN   TestConnectedPaginationDefault/A4-8_ConnectedPaginationDefault\n--- PASS: TestConnectedPaginationDefault (0.00s)\n    --- PASS: TestConnectedPaginationDefault/A4-2_PushPopContext_InternalTracking (0.00s)\n    --- PASS: TestConnectedPaginationDefault/A4-4_DebugLogging_Cosmetic (0.00s)\n    --- PASS: TestConnectedPaginationDefault/A4-5_PopVsDelete_FunctionallyEquivalent (0.00s)\n    --- PASS: TestConnectedPaginationDefault/A4-8_ConnectedPaginationDefault (0.00s)\nPASS\nok  github.com/kaikozlov/kindle-koplugin/internal/kfx  0.201s"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M5-POS-001",
+      "title": "Position/location internal representation differences",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/... -count=1 -run TestPositionLocationInternals -v",
+          "expected": "All sub-tests pass: A5-1 type comparison, A5-4 MatchReport bug (Go correct), A5-12 section name nil/empty, A5-13 log levels, A5-21 nil returns, A5-22 lazy init, A5-23 PosData, A5-24 REPORT constant",
+          "observed": "All 8 sub-tests PASS in 0.00s"
+        }
+      ],
+      "evidence": {
+        "consoleErrors": "none",
+        "testOutput": "=== RUN   TestPositionLocationInternals\n=== RUN   TestPositionLocationInternals/A5-1_TypeComparison_Adaptation\n=== RUN   TestPositionLocationInternals/A5-4_MatchReportBug_GoCorrect\n=== RUN   TestPositionLocationInternals/A5-12_SectionName_NilVsEmpty\n=== RUN   TestPositionLocationInternals/A5-13_LogLevels_Cosmetic\n=== RUN   TestPositionLocationInternals/A5-21_ReturnNilVsNone_Equivalent\n=== RUN   TestPositionLocationInternals/A5-22_LazyInitVsZeroValue\n=== RUN   TestPositionLocationInternals/A5-23_PosDataClassVsClosures_Adaptation\n=== RUN   TestPositionLocationInternals/A5-24_ReportConstantVsHardcoded\n--- PASS: TestPositionLocationInternals (0.00s)\n    --- PASS: TestPositionLocationInternals/A5-1_TypeComparison_Adaptation (0.00s)\n    --- PASS: TestPositionLocationInternals/A5-4_MatchReportBug_GoCorrect (0.00s)\n    --- PASS: TestPositionLocationInternals/A5-12_SectionName_NilVsEmpty (0.00s)\n    --- PASS: TestPositionLocationInternals/A5-13_LogLevels_Cosmetic (0.00s)\n    --- PASS: TestPositionLocationInternals/A5-21_ReturnNilVsNone_Equivalent (0.00s)\n    --- PASS: TestPositionLocationInternals/A5-22_LazyInitVsZeroValue (0.00s)\n    --- PASS: TestPositionLocationInternals/A5-23_PosDataClassVsClosures_Adaptation (0.00s)\n    --- PASS: TestPositionLocationInternals/A5-24_ReportConstantVsHardcoded (0.00s)\nPASS\nok  github.com/kaikozlov/kindle-koplugin/internal/kfx  0.178s"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M5-VER-001",
+      "title": "Version constants parity",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/... -count=1 -run TestVersionConstantsParity -v",
+          "expected": "All sub-tests pass: C1-1 trailing comma tuples, C1-2 dead constant, C1-3 IntVersionKey fallback, C1-5 heterogeneous types",
+          "observed": "All 4 sub-tests PASS in 0.00s"
+        }
+      ],
+      "evidence": {
+        "consoleErrors": "none",
+        "testOutput": "=== RUN   TestVersionConstantsParity\n=== RUN   TestVersionConstantsParity/C1-1_TrailingCommaTuples_GoCorrect\n=== RUN   TestVersionConstantsParity/C1-2_DeadConstant_NotNeeded\n=== RUN   TestVersionConstantsParity/C1-3_IntVersionKeyFallback_CorrectAdaptation\n=== RUN   TestVersionConstantsParity/C1-5_HeterogeneousVersionCapabilities_GoCorrect\n--- PASS: TestVersionConstantsParity (0.00s)\n    --- PASS: TestVersionConstantsParity/C1-1_TrailingCommaTuples_GoCorrect (0.00s)\n    --- PASS: TestVersionConstantsParity/C1-2_DeadConstant_NotNeeded (0.00s)\n    --- PASS: TestVersionConstantsParity/C1-3_IntVersionKeyFallback_CorrectAdaptation (0.00s)\n    --- PASS: TestVersionConstantsParity/C1-5_HeterogeneousVersionCapabilities_GoCorrect (0.00s)\nPASS\nok  github.com/kaikozlov/kindle-koplugin/internal/kfx  0.174s"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M5-PROP-001",
+      "title": "mapBoxAlign includes justify case",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/... -count=1 -run TestMapBoxAlign -v",
+          "expected": "PASS — \"$321\" maps to \"justify\"",
+          "observed": "PASS in 0.00s"
+        }
+      ],
+      "evidence": {
+        "consoleErrors": "none",
+        "testOutput": "=== RUN   TestMapBoxAlign\n--- PASS: TestMapBoxAlign (0.00s)\nPASS\nok  github.com/kaikozlov/kindle-koplugin/internal/kfx  0.161s"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M5-FRAG-001",
+      "title": "Rebuild architecture, error dedup, fragment type lookup",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/... -count=1 -run TestRebuildCallsAllSteps -v",
+          "expected": "All sub-tests pass: C3-7 rebuild split, C3-10 log_error_once, C3-12 CONTAINER_FRAGMENT_TYPES map",
+          "observed": "All 3 sub-tests PASS in 0.00s. C3-10 logged expected test error message to stderr (by design)."
+        }
+      ],
+      "evidence": {
+        "consoleErrors": "none (test emitted expected log output: 'kfx: error: test low-severity error message unique to m5 test')",
+        "testOutput": "=== RUN   TestRebuildCallsAllSteps\n=== RUN   TestRebuildCallsAllSteps/C3-7_RebuildSplit_ArchitecturalAdaptation\n=== RUN   TestRebuildCallsAllSteps/C3-10_LogErrorOnce_Deduplication\n=== RUN   TestRebuildCallsAllSteps/C3-12_ContainerFragmentTypes_Map\n--- PASS: TestRebuildCallsAllSteps (0.00s)\n    --- PASS: TestRebuildCallsAllSteps/C3-7_RebuildSplit_ArchitecturalAdaptation (0.00s)\n    --- PASS: TestRebuildCallsAllSteps/C3-10_LogErrorOnce_Deduplication (0.00s)\n    --- PASS: TestRebuildCallsAllSteps/C3-12_ContainerFragmentTypes_Map (0.00s)\nPASS\nok  github.com/kaikozlov/kindle-koplugin/internal/kfx  0.177s"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. VAL-M5-CTX-001 (4 sub-tests), VAL-M5-POS-001 (8 sub-tests), VAL-M5-VER-001 (4 sub-tests), VAL-M5-PROP-001 (1 test), VAL-M5-FRAG-001 (3 sub-tests). All Go tests passed with no errors or unexpected output."
+}

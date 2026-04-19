@@ -59,6 +59,21 @@ go test ./internal/kfx/... -count=1 -run "TestProcessNotebookContent|TestScribeN
 go test ./internal/kfx/... -count=1 -run "TestGetOrderedImages|TestConvertBookToCBZ|TestConvertBookToPDF|TestCropImage|TestCBZ|TestCombineImages|TestTOCPage|TestGetResourceImage" -v
 ```
 
+**M5 Cleanup - Ion/Symbol/Section (VAL-M5-ION-001, VAL-M5-SYM-001, VAL-M5-SEC-001):**
+```
+go test ./internal/kfx/... -count=1 -run "TestIonTypeParity|TestSymbolTableWritePathNotNeeded|TestSectionProcessingLogging" -v
+```
+
+**M5 Cleanup - Context/Position/Version/Prop/Frag (VAL-M5-CTX-001, VAL-M5-POS-001, VAL-M5-VER-001, VAL-M5-PROP-001, VAL-M5-FRAG-001):**
+```
+go test ./internal/kfx/... -count=1 -run "TestConnectedPaginationDefault|TestPositionLocationInternals|TestVersionConstantsParity|TestMapBoxAlign|TestRebuildCallsAllSteps" -v
+```
+
+**M5 Cleanup - Image Book/Format/Cross (VAL-M5-IB-001, VAL-M5-FMT-001, VAL-M5-CROSS-001):**
+```
+go test ./internal/kfx/... -count=1 -run "TestSuffixLocationParity|TestValueStrNilHandling|TestLowSeverityNonRegressive" -v
+```
+
 ### Boundaries
 
 - Do NOT modify any source files — only read and run tests
