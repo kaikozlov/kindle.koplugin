@@ -70,8 +70,19 @@ function BookInfoManagerExt:apply(BookInfoManager)
             return orig_getBookInfo(bim_self, filepath, get_cover)
         end
 
-        -- Return whatever's in the database under this virtual path
-        return orig_getBookInfo(bim_self, filepath, get_cover)
+        -- Try virtual path first
+        local info = orig_getBookInfo(bim_self, filepath, get_cover)
+        if info then
+            return info
+        end
+
+        -- For direct-mode books, try looking up the real source path
+        local book = vl:getBook(filepath)
+        if book and book.open_mode == "direct" and book.source_path then
+            return orig_getBookInfo(bim_self, book.source_path, get_cover)
+        end
+
+        return nil
     end
 
     -- Patch extractBookInfo: completely bypass original for virtual paths.
@@ -90,6 +101,13 @@ function BookInfoManagerExt:apply(BookInfoManager)
         if not book then
             logger.warn("KindlePlugin: book not found for virtual path:", filepath)
             return nil
+        end
+
+        -- For direct-mode books (AZW, PDF, etc.), let KOReader's native
+        -- extraction handle them by passing the real source path.
+        if book.open_mode == "direct" then
+            logger.info("KindlePlugin: delegating to native extraction for direct book:", book.source_path)
+            return orig_extract(bim_self, book.source_path, cover_specs)
         end
 
         -- First, insert a "in progress" row to prevent the original extractor

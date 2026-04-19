@@ -70,8 +70,9 @@ function ShowReaderExt:apply()
         -- Register the alias so DocumentRegistry/closeDocument can find it
         virtual_library:registerOpenAlias(real_file, file)
 
-        -- Use credocument provider for converted/DRM books
-        if not provider then
+        -- Use credocument provider for converted/DRM books.
+        -- Direct-mode books (AZW, PDF) keep their native provider.
+        if not provider and book.open_mode ~= "direct" then
             provider = require("document/credocument")
         end
 
