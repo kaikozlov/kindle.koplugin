@@ -164,29 +164,33 @@ function BookInfoManagerExt:buildBookInfoFromEpub(virtual_filepath, real_epub_pa
     end)
 
     if not ok or not document then
-        logger.warn("KindlePlugin: failed to open cached EPUB for metadata:", real_epub_path, document)
+        logger.warn("KindlePlugin: failed to open cached EPUB for metadata:", real_epub_path, ok, tostring(document))
         return bookinfo
     end
+    logger.info("KindlePlugin: opened EPUB for metadata:", real_epub_path)
 
     -- Load metadata (not full render)
     if document.loadDocument then
-        pcall(function() document:loadDocument(false) end)
+        local load_ok, load_err = pcall(function() document:loadDocument(false) end)
+        logger.info("KindlePlugin: loadDocument result:", load_ok, tostring(load_err))
     end
 
     local ok2, props = pcall(function()
-        local FileManagerBookInfo = require("apps/filemanager/filemanagerbookinfo")
-        return FileManagerBookInfo.extendProps(document:getProps(), real_epub_path)
+        return document:getProps()
     end)
 
-    if ok2 and props and next(props) then
-        bookinfo.has_meta = "Y"
-        for k, v in pairs(props) do
-            if bookinfo[k] ~= nil or k == "title" or k == "authors"
-                or k == "series" or k == "series_index"
-                or k == "language" or k == "keywords" or k == "description" then
+    if not ok2 then
+        logger.warn("KindlePlugin: getProps failed:", tostring(props))
+    elseif props then
+        logger.info("KindlePlugin: got props:", tostring(props.title), tostring(props.authors))
+        if next(props) then
+            bookinfo.has_meta = "Y"
+            for k, v in pairs(props) do
                 bookinfo[k] = v
             end
         end
+    else
+        logger.warn("KindlePlugin: getProps returned nil")
     end
 
     -- Extract cover image if requested
@@ -202,6 +206,9 @@ function BookInfoManagerExt:buildBookInfoFromEpub(virtual_filepath, real_epub_pa
             bookinfo.cover_w = cover_bb:getWidth()
             bookinfo.cover_h = cover_bb:getHeight()
             bookinfo.cover_sizetag = string.format("%dx%d", bookinfo.cover_w, bookinfo.cover_h)
+            logger.info("KindlePlugin: got cover:", bookinfo.cover_w, "x", bookinfo.cover_h)
+        else
+            logger.warn("KindlePlugin: cover extraction failed:", ok3, tostring(cover_bb))
         end
     end
 
@@ -226,49 +233,44 @@ function BookInfoManagerExt:writeBookInfoToDb(filepath, bookinfo)
 
     local directory, filename = util.splitFilePathName(filepath)
 
-    -- Build the row values in column order
+    -- Build the row values in column order.
+    -- Use explicit numeric keys to avoid Lua nil-hole issues with # and ipairs.
     local dbrow = {
-        directory,
-        filename,
-        bookinfo.filesize,
-        bookinfo.filemtime,
-        bookinfo.in_progress or 0,
-        bookinfo.unsupported,
-        bookinfo.cover_fetched,
-        bookinfo.has_meta,
-        bookinfo.has_cover,
-        bookinfo.cover_sizetag,
-        bookinfo.ignore_meta,
-        bookinfo.ignore_cover,
-        bookinfo.pages,
-        bookinfo.title,
-        bookinfo.authors,
-        bookinfo.series,
-        bookinfo.series_index,
-        bookinfo.language,
-        bookinfo.keywords,
-        bookinfo.description,
+        [1]  = directory,
+        [2]  = filename,
+        [3]  = bookinfo.filesize or 0,
+        [4]  = bookinfo.filemtime or 0,
+        [5]  = bookinfo.in_progress or 0,
+        [6]  = bookinfo.unsupported,
+        [7]  = bookinfo.cover_fetched or "N",
+        [8]  = bookinfo.has_meta,
+        [9]  = bookinfo.has_cover,
+        [10] = bookinfo.cover_sizetag,
+        [11] = bookinfo.ignore_meta,
+        [12] = bookinfo.ignore_cover,
+        [13] = bookinfo.pages,
+        [14] = bookinfo.title,
+        [15] = bookinfo.authors,
+        [16] = bookinfo.series,
+        [17] = bookinfo.series_index,
+        [18] = bookinfo.language,
+        [19] = bookinfo.keywords,
+        [20] = bookinfo.description,
     }
 
-    -- Handle cover blob compression
+    -- Handle cover blob compression (columns 21-25)
     if bookinfo.cover_bb then
         local cover_bb = bookinfo.cover_bb
         local cover_size = cover_bb.stride * cover_bb.h
         local ok, cover_zst_ptr, cover_zst_size = pcall(zstd.zstd_compress, cover_bb.data, cover_size)
         if ok and cover_zst_ptr then
-            table.insert(dbrow, cover_bb.w)
-            table.insert(dbrow, cover_bb.h)
-            table.insert(dbrow, cover_bb:getType())
-            table.insert(dbrow, tonumber(cover_bb.stride))
-            table.insert(dbrow, SQ3.blob(cover_zst_ptr, cover_zst_size))
-        else
-            -- Cover compression failed, add nil columns
-            for _ = 1, 5 do table.insert(dbrow, nil) end
+            dbrow[21] = cover_bb.w
+            dbrow[22] = cover_bb.h
+            dbrow[23] = cover_bb:getType()
+            dbrow[24] = tonumber(cover_bb.stride)
+            dbrow[25] = SQ3.blob(cover_zst_ptr, cover_zst_size)
         end
         cover_bb:free()
-    else
-        -- No cover, add nil columns for cover fields
-        for _ = 1, 5 do table.insert(dbrow, nil) end
     end
 
     local insert_sql = buildInsertSql()
@@ -279,8 +281,8 @@ function BookInfoManagerExt:writeBookInfoToDb(filepath, bookinfo)
         return false
     end
 
-    for num, val in ipairs(dbrow) do
-        stmt:bind1(num, val)
+    for num = 1, #BOOKINFO_COLS_SET do
+        stmt:bind1(num, dbrow[num])
     end
 
     local ok = pcall(function() stmt:step() end)
@@ -323,8 +325,9 @@ function BookInfoManagerExt:writeInProgressRow(filepath)
         local insert_sql = buildInsertSql()
         local insert_stmt = db_conn:prepare(insert_sql)
         if insert_stmt then
-            local dbrow = { directory, filename }
-            -- Fill remaining 23 columns with nil except in_progress=1
+            local dbrow = {}
+            dbrow[1] = directory
+            dbrow[2] = filename
             for i = 3, 25 do
                 if i == 5 then -- in_progress column
                     dbrow[i] = 1
@@ -334,8 +337,8 @@ function BookInfoManagerExt:writeInProgressRow(filepath)
                     dbrow[i] = nil
                 end
             end
-            for num, val in ipairs(dbrow) do
-                insert_stmt:bind1(num, val)
+            for num = 1, #BOOKINFO_COLS_SET do
+                insert_stmt:bind1(num, dbrow[num])
             end
             pcall(function() insert_stmt:step() end)
             insert_stmt:clearbind():reset()

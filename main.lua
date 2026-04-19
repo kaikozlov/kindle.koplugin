@@ -67,18 +67,11 @@ local function applyFileChooserExtensions()
 end
 
 local function applyBookInfoManagerExtensions()
-    logger.info("KindlePlugin: attempting to apply BookInfoManager extensions")
     local ok, BookInfoManager = pcall(require, "bookinfomanager")
-    logger.info("KindlePlugin: require result ok=" .. tostring(ok) .. " type=" .. type(BookInfoManager))
-    if not ok then
-        logger.warn("KindlePlugin: failed to require bookinfomanager:", tostring(BookInfoManager))
-    end
     if ok and BookInfoManager then
         local ext = BookInfoManagerExt
         ext:init(virtual_library, cache_manager)
         ext:apply(BookInfoManager)
-        -- Clear stale "too many attempts" entries for virtual paths
-        -- so they can be re-extracted with our patched extractor
         ext:clearStaleVirtualEntries(BookInfoManager)
     else
         logger.dbg("KindlePlugin: CoverBrowser plugin not loaded, skipping BookInfoManager patches")
