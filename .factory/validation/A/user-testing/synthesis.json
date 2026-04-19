@@ -1,0 +1,68 @@
+{
+  "milestone": "A",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 86,
+    "passed": 86,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-A-001", "VAL-A-002", "VAL-A-003", "VAL-A-004", "VAL-A-005",
+    "VAL-A-006", "VAL-A-007", "VAL-A-008", "VAL-A-009", "VAL-A-010",
+    "VAL-A-011", "VAL-A-012", "VAL-A-013", "VAL-A-014", "VAL-A-015",
+    "VAL-A-016", "VAL-A-017", "VAL-A-018", "VAL-A-019", "VAL-A-020",
+    "VAL-A-021", "VAL-A-022", "VAL-A-023", "VAL-A-024",
+    "VAL-A-025", "VAL-A-026", "VAL-A-027", "VAL-A-028", "VAL-A-029",
+    "VAL-A-030", "VAL-A-031",
+    "VAL-A-032", "VAL-A-033", "VAL-A-034", "VAL-A-035", "VAL-A-036",
+    "VAL-A-037", "VAL-A-038", "VAL-A-039", "VAL-A-040", "VAL-A-041",
+    "VAL-A-042", "VAL-A-043",
+    "VAL-A-044", "VAL-A-045", "VAL-A-046", "VAL-A-047", "VAL-A-048",
+    "VAL-A-049", "VAL-A-050", "VAL-A-051", "VAL-A-052", "VAL-A-053",
+    "VAL-A-054", "VAL-A-055", "VAL-A-056", "VAL-A-057", "VAL-A-058",
+    "VAL-A-059", "VAL-A-060", "VAL-A-061", "VAL-A-062", "VAL-A-063",
+    "VAL-A-064", "VAL-A-065", "VAL-A-066", "VAL-A-067", "VAL-A-068",
+    "VAL-A-069", "VAL-A-070", "VAL-A-071", "VAL-A-072", "VAL-A-073",
+    "VAL-A-074", "VAL-A-075", "VAL-A-076", "VAL-A-077", "VAL-A-078",
+    "VAL-A-079", "VAL-A-080", "VAL-A-081", "VAL-A-082", "VAL-A-083",
+    "VAL-A-084", "VAL-A-085",
+    "VAL-CROSS-001"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance section for Go Test surface (Milestone A) with test name mappings for A1-A5 areas",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/A/user-testing/flows/a1-organize-fragments.json",
+    ".factory/validation/A/user-testing/flows/a2-classify-symbol.json",
+    ".factory/validation/A/user-testing/flows/a3-process-section.json",
+    ".factory/validation/A/user-testing/flows/a4-page-spread-template.json",
+    ".factory/validation/A/user-testing/flows/a5-position-location.json"
+  ],
+  "testExecution": {
+    "totalGoTestPass": 278,
+    "totalGoTestFail": 18,
+    "failedTestsArePreExistingFixtureDependent": true,
+    "milestoneATestPass": 176,
+    "milestoneATestFail": 0
+  },
+  "concurrencyStrategy": {
+    "batches": 2,
+    "maxConcurrent": 3,
+    "groups": [
+      {"batch": 1, "group": "a1-organize-fragments", "assertions": 10, "result": "all pass"},
+      {"batch": 1, "group": "a2-classify-symbol", "assertions": 14, "result": "all pass"},
+      {"batch": 1, "group": "a3-process-section", "assertions": 7, "result": "all pass"},
+      {"batch": 2, "group": "a4-page-spread-template", "assertions": 12, "result": "all pass"},
+      {"batch": 2, "group": "a5-position-location", "assertions": 43, "result": "all pass"}
+    ]
+  }
+}

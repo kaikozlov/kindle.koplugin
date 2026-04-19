@@ -1,0 +1,148 @@
+=== RUN   TestContentChunkConstructionValid
+2026/04/18 23:11:02 kfx: bad ContentChunk: text length mismatch: pid=0 eid=5 len=20 sect=section1 text="hello" img=
+--- PASS: TestContentChunkConstructionValid (0.00s)
+=== RUN   TestContentChunkConstructionWithImageResource
+--- PASS: TestContentChunkConstructionWithImageResource (0.00s)
+=== RUN   TestContentChunkConstructionWithNilEID
+--- PASS: TestContentChunkConstructionWithNilEID (0.00s)
+=== RUN   TestContentChunkConstructionNegativePID
+2026/04/18 23:11:02 kfx: bad ContentChunk: pid=-1 eid=5 len=10 sect=sec text= img=
+--- PASS: TestContentChunkConstructionNegativePID (0.00s)
+=== RUN   TestContentChunkConstructionZeroEID
+2026/04/18 23:11:02 kfx: bad ContentChunk: pid=0 eid=0 len=10 sect=sec text= img=
+--- PASS: TestContentChunkConstructionZeroEID (0.00s)
+=== RUN   TestContentChunkConstructionNegativeEIDOffset
+2026/04/18 23:11:02 kfx: bad ContentChunk: pid=0 eid=5+-1 len=10 sect=sec text= img=
+--- PASS: TestContentChunkConstructionNegativeEIDOffset (0.00s)
+=== RUN   TestContentChunkConstructionNegativeLength
+2026/04/18 23:11:02 kfx: bad ContentChunk: pid=0 eid=5 len=-1 sect=sec text= img=
+--- PASS: TestContentChunkConstructionNegativeLength (0.00s)
+=== RUN   TestContentChunkConstructionTextLengthMismatch
+2026/04/18 23:11:02 kfx: bad ContentChunk: text length mismatch: pid=0 eid=5 len=10 sect=sec text="hello" img=
+--- PASS: TestContentChunkConstructionTextLengthMismatch (0.00s)
+=== RUN   TestContentChunkEqualMatchingPID
+--- PASS: TestContentChunkEqualMatchingPID (0.00s)
+=== RUN   TestContentChunkEqualDifferentPIDButSameEID
+--- PASS: TestContentChunkEqualDifferentPIDButSameEID (0.00s)
+=== RUN   TestContentChunkEqualMatchZeroLenTolerance
+--- PASS: TestContentChunkEqualMatchZeroLenTolerance (0.00s)
+=== RUN   TestContentChunkEqualMatchZeroLenBidirectional
+--- PASS: TestContentChunkEqualMatchZeroLenBidirectional (0.00s)
+=== RUN   TestContentChunkEqualNoMatchZeroLenDifferentLengths
+--- PASS: TestContentChunkEqualNoMatchZeroLenDifferentLengths (0.00s)
+=== RUN   TestContentChunkEqualEIDTypeMismatch
+--- PASS: TestContentChunkEqualEIDTypeMismatch (0.00s)
+=== RUN   TestContentChunkEqualBothStringEIDs
+--- PASS: TestContentChunkEqualBothStringEIDs (0.00s)
+=== RUN   TestContentChunkEqualNil
+--- PASS: TestContentChunkEqualNil (0.00s)
+=== RUN   TestConditionalTemplateRangeOpersSetStartToNil
+--- PASS: TestConditionalTemplateRangeOpersSetStartToNil (0.00s)
+=== RUN   TestConditionalTemplateRangeOper299
+--- PASS: TestConditionalTemplateRangeOper299 (0.00s)
+=== RUN   TestConditionalTemplateNonRangeOperSetStart
+--- PASS: TestConditionalTemplateNonRangeOperSetStart (0.00s)
+=== RUN   TestConditionalTemplateOper348
+--- PASS: TestConditionalTemplateOper348 (0.00s)
+=== RUN   TestConditionalTemplateUseNextDefaultFalse
+--- PASS: TestConditionalTemplateUseNextDefaultFalse (0.00s)
+=== RUN   TestConditionalTemplatePosInfoSnapshot
+--- PASS: TestConditionalTemplatePosInfoSnapshot (0.00s)
+=== RUN   TestCollectContentPositionInfoReturnsEmptyForMinimalBook
+--- PASS: TestCollectContentPositionInfoReturnsEmptyForMinimalBook (0.00s)
+=== RUN   TestCreatePositionMapBuildsPIDToEIDMapping
+--- PASS: TestCreatePositionMapBuildsPIDToEIDMapping (0.00s)
+=== RUN   TestCreatePositionMapDetectsEIDOffset
+--- PASS: TestCreatePositionMapDetectsEIDOffset (0.00s)
+=== RUN   TestCreatePositionMapNoEIDOffset
+--- PASS: TestCreatePositionMapNoEIDOffset (0.00s)
+=== RUN   TestCreatePositionMapDictionaryEarlyReturn
+2026/04/18 23:11:02 kfx: warning: Position map creation for KPF or dictionary not supported
+--- PASS: TestCreatePositionMapDictionaryEarlyReturn (0.00s)
+=== RUN   TestCreatePositionMapScribeEarlyReturn
+2026/04/18 23:11:02 kfx: warning: Position map creation for KPF or dictionary not supported
+--- PASS: TestCreatePositionMapScribeEarlyReturn (0.00s)
+=== RUN   TestCreatePositionMapKPFPPrepubEarlyReturn
+2026/04/18 23:11:02 kfx: warning: Position map creation for KPF or dictionary not supported
+--- PASS: TestCreatePositionMapKPFPPrepubEarlyReturn (0.00s)
+=== RUN   TestCreatePositionMapSectionToEIDMapping
+--- PASS: TestCreatePositionMapSectionToEIDMapping (0.00s)
+=== RUN   TestPidForEidLinearSearch
+--- PASS: TestPidForEidLinearSearch (0.00s)
+=== RUN   TestPidForEidCaching
+--- PASS: TestPidForEidCaching (0.00s)
+=== RUN   TestPidForEidNotFound
+--- PASS: TestPidForEidNotFound (0.00s)
+=== RUN   TestPidForEidEmptyPosInfo
+--- PASS: TestPidForEidEmptyPosInfo (0.00s)
+=== RUN   TestPidForEidCachingWraparound
+--- PASS: TestPidForEidCachingWraparound (0.00s)
+=== RUN   TestEidForPidBinarySearch
+--- PASS: TestEidForPidBinarySearch (0.00s)
+=== RUN   TestEidForPidNotFound
+--- PASS: TestEidForPidNotFound (0.00s)
+=== RUN   TestEidForPidEmptyPosInfo
+--- PASS: TestEidForPidEmptyPosInfo (0.00s)
+=== RUN   TestEidForPidExactChunkStart
+--- PASS: TestEidForPidExactChunkStart (0.00s)
+=== RUN   TestEidForPidChunkEndInclusive
+--- PASS: TestEidForPidChunkEndInclusive (0.00s)
+=== RUN   TestEidForPidAtEndOfLastChunk
+--- PASS: TestEidForPidAtEndOfLastChunk (0.00s)
+=== RUN   TestEidForPidPastEndOfLastChunk
+--- PASS: TestEidForPidPastEndOfLastChunk (0.00s)
+=== RUN   TestGenerateApproximateLocationsEvery110
+2026/04/18 23:11:02 kfx: Built approximate location_map with 4 locations
+--- PASS: TestGenerateApproximateLocationsEvery110 (0.00s)
+=== RUN   TestGenerateApproximateLocationsSectionReset
+2026/04/18 23:11:02 kfx: Built approximate location_map with 3 locations
+--- PASS: TestGenerateApproximateLocationsSectionReset (0.00s)
+=== RUN   TestGenerateApproximateLocationsSplitsAcrossChunks
+2026/04/18 23:11:02 kfx: Built approximate location_map with 2 locations
+--- PASS: TestGenerateApproximateLocationsSplitsAcrossChunks (0.00s)
+=== RUN   TestGenerateApproximateLocationsEmpty
+2026/04/18 23:11:02 kfx: Built approximate location_map with 0 locations
+--- PASS: TestGenerateApproximateLocationsEmpty (0.00s)
+=== RUN   TestDetermineApproximatePagesFixedLayout
+--- PASS: TestDetermineApproximatePagesFixedLayout (0.00s)
+=== RUN   TestDetermineApproximatePagesReflowable
+--- PASS: TestDetermineApproximatePagesReflowable (0.00s)
+=== RUN   TestDetermineApproximatePagesSectionBoundaries
+--- PASS: TestDetermineApproximatePagesSectionBoundaries (0.00s)
+=== RUN   TestDetermineApproximatePagesSkipTemplateEIDs
+--- PASS: TestDetermineApproximatePagesSkipTemplateEIDs (0.00s)
+=== RUN   TestDetermineApproximatePagesCoverSkip
+--- PASS: TestDetermineApproximatePagesCoverSkip (0.00s)
+=== RUN   TestDetermineApproximatePagesWhitespaceLookback
+--- PASS: TestDetermineApproximatePagesWhitespaceLookback (0.00s)
+=== RUN   TestVerifyPositionInfoMatching
+--- PASS: TestVerifyPositionInfoMatching (0.00s)
+=== RUN   TestVerifyPositionInfoMismatchedEID
+2026/04/18 23:11:02 kfx: warning: position_id map extra at idx=0, chunk: pid=0 eid=99 len=10 sect=sec1 text= img=
+2026/04/18 23:11:02 kfx: warning: position_id content extra at idx=0, chunk: pid=0 eid=10 len=10 sect=sec1 text= img=
+--- PASS: TestVerifyPositionInfoMismatchedEID (0.00s)
+=== RUN   TestVerifyPositionInfoExtraContent
+2026/04/18 23:11:02 kfx: warning: position_id content extra at idx=1, chunk: pid=10 eid=20 len=15 sect=sec1 text= img=
+--- PASS: TestVerifyPositionInfoExtraContent (0.00s)
+=== RUN   TestAnchorEidOffsetFound
+--- PASS: TestAnchorEidOffsetFound (0.00s)
+=== RUN   TestAnchorEidOffsetNotFound
+2026/04/18 23:11:02 kfx: Failed to locate position for anchor: nonexistent
+--- PASS: TestAnchorEidOffsetNotFound (0.00s)
+=== RUN   TestMatchReportLimitEnforcement
+--- PASS: TestMatchReportLimitEnforcement (0.00s)
+=== RUN   TestMatchReportCountIncrement
+2026/04/18 23:11:02 kfx: warning: test message 1
+2026/04/18 23:11:02 kfx: warning: test message 2
+2026/04/18 23:11:02 kfx: warning: test message 3
+--- PASS: TestMatchReportCountIncrement (0.00s)
+=== RUN   TestContentChunkString
+--- PASS: TestContentChunkString (0.00s)
+=== RUN   TestContentChunkStringNoOffset
+--- PASS: TestContentChunkStringNoOffset (0.00s)
+=== RUN   TestConditionalTemplateString
+--- PASS: TestConditionalTemplateString (0.00s)
+=== RUN   TestConditionalTemplateStringRange
+--- PASS: TestConditionalTemplateStringRange (0.00s)
+PASS
+ok  	github.com/kaikozlov/kindle-koplugin/internal/kfx	0.169s

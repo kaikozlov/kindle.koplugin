@@ -1,0 +1,222 @@
+{
+  "groupId": "a2-classify-symbol",
+  "testedAt": "2026-04-18T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "servicesNeeded": "none (pure Go library)",
+    "testCommand": "go test ./internal/kfx/... -count=1 -v -run 'TestClassifySymbol|TestAllowedSymbolPrefix|TestGetReadingOrders|TestOrderedSectionNames|TestDetermineBookSymbolFormat|TestHasIllustratedLayout'"
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-A-011",
+      "title": "classify_symbol — SHARED detection via resolver",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestClassifySymbolSharedNumeric", "expected": "classifySymbolWithResolver returns symShared when SID < localStart", "observed": "PASS: $50 and $999 with localStart=1000 both return symShared. $0 returns symUnknown (special system symbol). c73 returns symShort (falls through to non-resolver path)." },
+        { "action": "Verify resolver-based shared detection", "expected": "Symbols with SID < 1000 classified as shared", "observed": "All resolver-based shared detection cases pass" }
+      ],
+      "evidence": {
+        "testNames": ["TestClassifySymbolSharedNumeric"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-012",
+      "title": "classify_symbol — COMMON exact-name matches",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestClassifySymbolCommonExactNames", "expected": "All 8 exact-match names return symCommon", "observed": "PASS: APPROXIMATE_PAGE_LIST, crop_bleed, dictionary_rules, mkfx_id, page_list_entry, srl_created_by_stampler, yj.dictionary.text, note_template_collection all return symCommon" }
+      ],
+      "evidence": {
+        "testNames": ["TestClassifySymbolCommonExactNames"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-013",
+      "title": "classify_symbol — COMMON prefix and regex matches",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestClassifySymbolCommonPrefixAndRegex", "expected": "Various COMMON prefix/regex patterns return symCommon, negatives return other types", "observed": "PASS: kfx_cover_image_large, content_42, eidbucket_7, PAGE_LIST_1234567890, UUID, yj.conversion.html_name, yj.authoring.test, yj.print.page, yj.semantics.heading, nmdl.canvas_width all return symCommon. Negative cases (content_, content_abc, PAGE_LIST_123, not-a-uuid, yj.other.thing) return symUnknown as expected." }
+      ],
+      "evidence": {
+        "testNames": ["TestClassifySymbolCommonPrefixAndRegex"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-014",
+      "title": "classify_symbol — DICTIONARY pattern group",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestClassifySymbolDictionary", "expected": "G42, G42-spm, yj.dictionary.other return symDictionary. G, g42, G42-extra do not return symDictionary.", "observed": "PASS: G42 → symDictionary, G42-spm → symDictionary, G0 → symDictionary, yj.dictionary.text → symCommon (COMMON priority), yj.dictionary.other → symDictionary. G → symUnknown, g42 → symShort, G42-extra → symUnknown." }
+      ],
+      "evidence": {
+        "testNames": ["TestClassifySymbolDictionary"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-015",
+      "title": "classify_symbol — ORIGINAL pattern group",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestClassifySymbolOriginal", "expected": "All ORIGINAL regex patterns match symOriginal. Non-matching variants return lower-priority type.", "observed": "PASS: 30 test cases covering V_ prefix, resource/anchor/section/story/style/nav prefixes, LANDMARKS_/TOC_, LazyLoad/Target, slice pdf, Target_pg, KFXConditionalNavGroupUnit, exact strings (order-1, TargetReadingOrder, PageLabels, toc_entry). Non-matching V_0 returns symUnknown." }
+      ],
+      "evidence": {
+        "testNames": ["TestClassifySymbolOriginal"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-016",
+      "title": "classify_symbol — BASE64 pattern group",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestClassifySymbolBase64", "expected": "22+ char alphanumeric strings return symBase64. Short strings do not.", "observed": "PASS: 22-char minimum validated, resource/ prefix validated, [ctliz] prefix validated, suffixes (-hd, .jpg, .ttf, .otf, .woff, -ad, -spm, _thumbnail) all work. 21-char string returns symUnknown. 'short' and 'cShortID' return symUnknown." }
+      ],
+      "evidence": {
+        "testNames": ["TestClassifySymbolBase64"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-017",
+      "title": "classify_symbol — SHORT pattern group",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestClassifySymbolShort", "expected": "Short patterns like c73, rsrcAABB, resource/rsrcAABB return symShort. Boundary cases handled correctly.", "observed": "PASS: c73, rsrcAABB, resource/rsrcAABB, resource/eAABB, eAB12 all return symShort. Suffix variants (-hd, .jpg, .ttf, -ad, -spm, _thumbnail, -resized-100-200) work. 'c' (no uppercase) → symUnknown. 'c1234567' (7 chars exceeds limit) → symUnknown." }
+      ],
+      "evidence": {
+        "testNames": ["TestClassifySymbolShort"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-018",
+      "title": "classify_symbol — UNKNOWN fallback",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestClassifySymbolUnknown", "expected": "Unmatched symbols and empty string return symUnknown", "observed": "PASS: 'totally-random-identifier' → symUnknown, '' → symUnknown, 'x' → symUnknown, 'not_a_known_pattern_at_all' → symUnknown." }
+      ],
+      "evidence": {
+        "testNames": ["TestClassifySymbolUnknown"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-019",
+      "title": "classify_symbol — priority order",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestClassifySymbolPriorityOrder", "expected": "First match wins: SHARED → COMMON → DICTIONARY → ORIGINAL → BASE64 → SHORT → UNKNOWN", "observed": "PASS: SHARED takes priority over everything ($50 with resolver). COMMON wins over DICTIONARY (yj.dictionary.text → symCommon). content_42 → symCommon (not SHORT or UNKNOWN). kfx_cover_image_large → symCommon." }
+      ],
+      "evidence": {
+        "testNames": ["TestClassifySymbolPriorityOrder"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-020",
+      "title": "allowed_symbol_prefix validation",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestAllowedSymbolPrefix", "expected": "Each valid char (a,b,c,d,e,f,i,l,n,p,s,t,z) returns true. Invalid chars return false. Multi-char strings validated.", "observed": "PASS: All 12 valid single chars (abcdefilnpstz) return true. Invalid chars (ghjkmqruvwxy) return false. Multi-char 'ab' and 'cdefilnpstz' return true. 'ax' and 'xa' return false. Empty string returns true." }
+      ],
+      "evidence": {
+        "testNames": ["TestAllowedSymbolPrefix"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-021",
+      "title": "get_reading_orders — $538 then $258 fallback",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestGetReadingOrdersFrom538", "expected": "Only $538 has $169 → extracts reading orders", "observed": "PASS: 1 reading order extracted with name 'main'" },
+        { "action": "Run TestGetReadingOrdersFallsBackTo258", "expected": "Only $258 has $169 → falls back to metadata", "observed": "PASS: 1 reading order extracted with name 'fallback'" },
+        { "action": "Run TestGetReadingOrdersEmpty", "expected": "Neither has $169 → empty list", "observed": "PASS: 0 reading orders returned" },
+        { "action": "Run TestGetReadingOrdersPrefers538Over258", "expected": "Both have $169 → $538 preferred", "observed": "PASS: Reading order name is 'from_538', not 'from_258'" }
+      ],
+      "evidence": {
+        "testNames": ["TestGetReadingOrdersFrom538", "TestGetReadingOrdersFallsBackTo258", "TestGetReadingOrdersEmpty", "TestGetReadingOrdersPrefers538Over258"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-022",
+      "title": "ordered_section_names — deduplication and order preservation",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestOrderedSectionNamesDeduplication", "expected": "Reading orders [A,B] and [B,C] produce [A,B,C]", "observed": "PASS: Deduplication works correctly, B appears once" },
+        { "action": "Run TestOrderedSectionNamesEmpty", "expected": "Empty fragments produce empty list", "observed": "PASS: Empty list returned" },
+        { "action": "Run TestOrderedSectionNamesPreservesOrder", "expected": "First-seen order preserved: [Z,A,M]", "observed": "PASS: Order preserved as [Z,A,M]" }
+      ],
+      "evidence": {
+        "testNames": ["TestOrderedSectionNamesDeduplication", "TestOrderedSectionNamesEmpty", "TestOrderedSectionNamesPreservesOrder"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-023",
+      "title": "has_illustrated_layout_page_template_condition",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestHasIllustratedLayoutPageTemplateConditionTrue", "expected": "Matching condition returns true", "observed": "PASS: $294/$183/$266 pattern detected" },
+        { "action": "Run TestHasIllustratedLayoutPageTemplateConditionWithWrongOperator", "expected": "Wrong operator returns false", "observed": "PASS: $999 operator not detected" },
+        { "action": "Run TestHasIllustratedLayoutPageTemplateConditionNoCondition", "expected": "No $171 returns false", "observed": "PASS: Section without condition returns false" },
+        { "action": "Run TestHasIllustratedLayoutPageTemplateConditionEmpty", "expected": "Empty sections return false", "observed": "PASS" },
+        { "action": "Run TestHasIllustratedLayoutPageTemplateConditionAllOperators", "expected": "All three operators ($294, $299, $298) match", "observed": "PASS: All three valid operators detected" },
+        { "action": "Run TestHasIllustratedLayoutPageTemplateConditionWrongStructure", "expected": "Malformed SExp structures return false", "observed": "PASS: All 6 wrong structure subcases correctly return false" }
+      ],
+      "evidence": {
+        "testNames": ["TestHasIllustratedLayoutPageTemplateConditionTrue", "TestHasIllustratedLayoutPageTemplateConditionWithWrongOperator", "TestHasIllustratedLayoutPageTemplateConditionNoCondition", "TestHasIllustratedLayoutPageTemplateConditionEmpty", "TestHasIllustratedLayoutPageTemplateConditionAllOperators", "TestHasIllustratedLayoutPageTemplateConditionWrongStructure"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-024",
+      "title": "determine_book_symbol_format — quorum and priority",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestDetermineBookSymbolFormatQuorumAndPriority", "expected": "Quorum and priority rules applied correctly", "observed": "PASS: All 7 subcases pass: empty → SHORT, all SHORT → SHORT, all DICTIONARY → DICTIONARY, mixed SHORT reaches quorum → SHORT, documentData max_id → SHORT, BASE64 reaches quorum → BASE64, ORIGINAL fallback → ORIGINAL" }
+      ],
+      "evidence": {
+        "testNames": ["TestDetermineBookSymbolFormatQuorumAndPriority"],
+        "outputFile": "evidence/a2/go-test-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 14 assertions (VAL-A-011 through VAL-A-024): all 14 passed. 33 individual test functions/subtests executed, 0 failures. All tests use synthetic Go data with no external dependencies. Test file: internal/kfx/symbol_format_test.go."
+}

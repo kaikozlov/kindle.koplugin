@@ -52,6 +52,37 @@ The CLI surface tests the `cmd/kindle-helper` binary as a black box.
 3. Parse JSON output and verify structure
 4. Check exit codes
 
+## Flow Validator Guidance: Go Test (Milestone A)
+
+The Go test surface validates milestone A features by running `go test ./internal/kfx/... -count=1 -v` and verifying that specific tests pass.
+
+**Test tool**: `go test ./internal/kfx/... -count=1 -v` (direct shell execution)
+
+**Isolation rules:**
+- Each validator runs `go test` with specific `-run` flags targeting its assigned assertions
+- Tests are independent — they construct their own synthetic data
+- No shared mutable state between tests
+- Validators can run concurrently since `go test` builds and caches independently
+
+**Boundaries:**
+- Do NOT modify source files
+- Only inspect test results (pass/fail/output)
+- Ignore the 18 pre-existing fixture-dependent failures listed below
+- Focus ONLY on the assigned assertion IDs
+
+**How to test:**
+1. Run `go test ./internal/kfx/... -count=1 -v -run "<TestPattern>"` for each assertion group
+2. Check exit code: 0 = all tests pass, 1 = some tests fail
+3. Parse output for specific test names matching the assertion
+4. Report pass/fail per assertion based on whether the corresponding test passes
+
+**Known test name mappings (milestone A):**
+- A1 (organizeFragments): TestOrganizeFragments*, TestReplaceIonData*, TestFragmentIDRemap*, TestBookSymbols*, TestSectionOrder*, TestMergeIonReferencedStringSymbols*
+- A2 (classifySymbol): TestClassifySymbol*, TestAllowedSymbolPrefix*, TestGetReadingOrders*, TestOrderedSectionNames*, TestDetermineBookSymbolFormat*, TestHasIllustratedLayout*
+- A3 (processSection): TestProcessSection*, TestScribeNotebook*, TestComicDispatch*, TestMagazineDispatch*, TestSectionUnused*, TestBranchPriorityOrder*
+- A4 (pageSpread): TestPageSpread*, TestScaleFit*, TestConnectedPagination*, TestLeafBranch*, TestVirtualPanel*, TestFacingPage*, TestRecursivePageSpread*, TestExtractSpreadType*
+- A5 (position/location): TestContentChunk*, TestConditionalTemplate*, TestPositionMap*, TestLocationMap*, TestApproximatePages*, TestMatchReport*, TestPidForEid*, TestEidForPid*, TestCollectContent*
+
 ## Pre-existing Known Failures (IGNORE)
 
 These test failures are expected because fixture files are missing:

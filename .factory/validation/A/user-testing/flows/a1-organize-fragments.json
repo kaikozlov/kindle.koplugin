@@ -1,0 +1,221 @@
+{
+  "groupId": "a1-organize-fragments",
+  "testedAt": "2026-04-18T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "testCommand": "go test ./internal/kfx/... -count=1 -v -run \"TestOrganizeFragments|TestReplaceIonData|TestFragmentIDRemap|TestBookSymbols|TestSectionOrder|TestMergeIonReferencedStringSymbols|TestMergeContentFragment|TestFragmentCatalog\"",
+    "services": "none (pure Go library)",
+    "testFile": "internal/kfx/state_test.go"
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-A-001",
+      "title": "Fragment type categorization into fragmentCatalog buckets",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestOrganizeFragmentsCategorizesContentFragments",
+          "expected": "Test passes — $145 fragments routed to ContentFragments with correct parsed values",
+          "observed": "PASS: ContentFragments[\"content1\"] contains [\"sid_a\", \"sid_b\"] as expected"
+        }
+      ],
+      "evidence": {
+        "testOutput": "A/user-testing/flows/evidence/a1/test-output.txt",
+        "testNames": ["TestOrganizeFragmentsCategorizesContentFragments"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-002",
+      "title": "Fragment ID remapping — $270 container format",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestOrganizeFragmentsRemaps270ContainerFormat",
+          "expected": "Test passes — $270 with $161=\"fmtA\" and $409=\"c001\" produces summary ID \"fmtA:c001\"",
+          "observed": "PASS: summaryID = \"fmtA:c001\" as expected"
+        }
+      ],
+      "evidence": {
+        "testOutput": "A/user-testing/flows/evidence/a1/test-output.txt",
+        "testNames": ["TestOrganizeFragmentsRemaps270ContainerFormat"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-003",
+      "title": "Fragment ID remapping — $593 reuses last container ID",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestOrganizeFragmentsRemaps593ReusesLastContainerID",
+          "expected": "Test passes — $593 summary ID equals lastContainerID from preceding $270",
+          "observed": "PASS: summaryID = \"x:y\" matching lastContainerID"
+        }
+      ],
+      "evidence": {
+        "testOutput": "A/user-testing/flows/evidence/a1/test-output.txt",
+        "testNames": ["TestOrganizeFragmentsRemaps593ReusesLastContainerID"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-004",
+      "title": "Fragment ID remapping — $262 font count suffix",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestOrganizeFragmentsRemaps262FontCountSuffix",
+          "expected": "Test passes — three sequential $262 fragments produce IDs ending in -font-000, -font-001, -font-002",
+          "observed": "PASS: IDs = [\"myfont-font-000\", \"myfont-font-001\", \"myfont-font-002\"]"
+        }
+      ],
+      "evidence": {
+        "testOutput": "A/user-testing/flows/evidence/a1/test-output.txt",
+        "testNames": ["TestOrganizeFragmentsRemaps262FontCountSuffix"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-005",
+      "title": "Fragment ID remapping — $387 with $215 suffix",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestOrganizeFragmentsRemaps387With215Suffix",
+          "expected": "Test passes — $387 with $215=\"extra\" produces summary ID \"{rawID}:extra\"",
+          "observed": "PASS: summaryID = \"sec1:extra\""
+        }
+      ],
+      "evidence": {
+        "testOutput": "A/user-testing/flows/evidence/a1/test-output.txt",
+        "testNames": ["TestOrganizeFragmentsRemaps387With215Suffix"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-006",
+      "title": "replace_ion_data symbol collection — recursive walk",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestMergeIonReferencedStringSymbolsRecursiveWalk",
+          "expected": "Test passes — nested structure yields both \"symA\" and \"symB\" in bookSymbols",
+          "observed": "PASS: bookSymbols contains both \"symA\" and \"symB\""
+        },
+        {
+          "action": "Run TestMergeIonReferencedStringSymbolsNonDollarKeys",
+          "expected": "Only $-prefixed keys collect values; non-$ keys ignored",
+          "observed": "PASS: \"symbol_from_dollar\" collected, \"not_a_symbol\" excluded"
+        },
+        {
+          "action": "Run TestMergeIonReferencedStringSymbolsEmptyString",
+          "expected": "Empty strings are not added to bookSymbols",
+          "observed": "PASS: bookSymbols is empty after processing empty strings"
+        }
+      ],
+      "evidence": {
+        "testOutput": "A/user-testing/flows/evidence/a1/test-output.txt",
+        "testNames": ["TestMergeIonReferencedStringSymbolsRecursiveWalk", "TestMergeIonReferencedStringSymbolsNonDollarKeys", "TestMergeIonReferencedStringSymbolsEmptyString"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-007",
+      "title": "mergeContentFragmentStringSymbols collects all content IDs",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestMergeContentFragmentStringSymbols",
+          "expected": "All string IDs from ContentFragments appear in bookSymbols",
+          "observed": "PASS: bookSymbols contains \"sid_a\", \"sid_b\", \"sid_c\""
+        },
+        {
+          "action": "Run TestMergeContentFragmentStringSymbolsSkipsEmpty",
+          "expected": "Empty strings are skipped, only valid IDs added",
+          "observed": "PASS: 2 symbols added (empty string excluded)"
+        }
+      ],
+      "evidence": {
+        "testOutput": "A/user-testing/flows/evidence/a1/test-output.txt",
+        "testNames": ["TestMergeContentFragmentStringSymbols", "TestMergeContentFragmentStringSymbolsSkipsEmpty"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-008",
+      "title": "book_symbols accumulates fragment IDs from all containers",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestBookSymbolsAccumulatesFromMultipleContainers",
+          "expected": "IDs from two container sources all appear in final bookSymbols set",
+          "observed": "PASS: bookSymbols contains \"frag_a\", \"frag_b\" (source 1) and \"frag_c\", \"frag_d\" (source 2)"
+        }
+      ],
+      "evidence": {
+        "testOutput": "A/user-testing/flows/evidence/a1/test-output.txt",
+        "testNames": ["TestBookSymbolsAccumulatesFromMultipleContainers"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-009",
+      "title": "Section order derivation from $258 then $538 then fallback",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestSectionOrderFrom258",
+          "expected": "$258 reading orders produce section order [secA, secB]",
+          "observed": "PASS: order = [secA, secB]"
+        },
+        {
+          "action": "Run TestSectionOrderFallbackTo538",
+          "expected": "$538 document data provides section order when $258 is empty",
+          "observed": "PASS: order = [secX, secY]"
+        },
+        {
+          "action": "Run TestSectionOrderFallbackToSortedKeys",
+          "expected": "Sorted keys of SectionFragments used when both $258 and $538 are empty",
+          "observed": "PASS: order = [alpha, bravo, charlie]"
+        }
+      ],
+      "evidence": {
+        "testOutput": "A/user-testing/flows/evidence/a1/test-output.txt",
+        "testNames": ["TestSectionOrderFrom258", "TestSectionOrderFallbackTo538", "TestSectionOrderFallbackToSortedKeys"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-A-010",
+      "title": "Duplicate fragment ID within same type is recorded in FragmentIDsByType",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TestDuplicateFragmentIDsRecorded",
+          "expected": "Two $157 fragments with different IDs both appear in FragmentIDsByType[\"$157\"]",
+          "observed": "PASS: FragmentIDsByType[\"$157\"] = [\"style1\", \"style2\"]"
+        }
+      ],
+      "evidence": {
+        "testOutput": "A/user-testing/flows/evidence/a1/test-output.txt",
+        "testNames": ["TestDuplicateFragmentIDsRecorded"],
+        "exitCode": 0
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 10 assertions: all 10 passed (VAL-A-001 through VAL-A-010). All 14 test functions in state_test.go passed with exit code 0. No failures, no blockers, no frictions encountered."
+}

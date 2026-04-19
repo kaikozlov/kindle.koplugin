@@ -1,0 +1,76 @@
+=== RUN   TestClassifySymbolSharedNumeric
+--- PASS: TestClassifySymbolSharedNumeric (0.00s)
+=== RUN   TestClassifySymbolCommonExactNames
+--- PASS: TestClassifySymbolCommonExactNames (0.00s)
+=== RUN   TestClassifySymbolCommonPrefixAndRegex
+--- PASS: TestClassifySymbolCommonPrefixAndRegex (0.00s)
+=== RUN   TestClassifySymbolDictionary
+--- PASS: TestClassifySymbolDictionary (0.00s)
+=== RUN   TestClassifySymbolOriginal
+--- PASS: TestClassifySymbolOriginal (0.00s)
+=== RUN   TestClassifySymbolBase64
+--- PASS: TestClassifySymbolBase64 (0.00s)
+=== RUN   TestClassifySymbolShort
+--- PASS: TestClassifySymbolShort (0.00s)
+=== RUN   TestClassifySymbolUnknown
+--- PASS: TestClassifySymbolUnknown (0.00s)
+=== RUN   TestClassifySymbolPriorityOrder
+--- PASS: TestClassifySymbolPriorityOrder (0.00s)
+=== RUN   TestAllowedSymbolPrefix
+--- PASS: TestAllowedSymbolPrefix (0.00s)
+=== RUN   TestGetReadingOrdersFrom538
+--- PASS: TestGetReadingOrdersFrom538 (0.00s)
+=== RUN   TestGetReadingOrdersFallsBackTo258
+--- PASS: TestGetReadingOrdersFallsBackTo258 (0.00s)
+=== RUN   TestGetReadingOrdersEmpty
+--- PASS: TestGetReadingOrdersEmpty (0.00s)
+=== RUN   TestGetReadingOrdersPrefers538Over258
+--- PASS: TestGetReadingOrdersPrefers538Over258 (0.00s)
+=== RUN   TestOrderedSectionNamesDeduplication
+--- PASS: TestOrderedSectionNamesDeduplication (0.00s)
+=== RUN   TestOrderedSectionNamesEmpty
+--- PASS: TestOrderedSectionNamesEmpty (0.00s)
+=== RUN   TestOrderedSectionNamesPreservesOrder
+--- PASS: TestOrderedSectionNamesPreservesOrder (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionTrue
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionTrue (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWithWrongOperator
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionWithWrongOperator (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionNoCondition
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionNoCondition (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionEmpty
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionEmpty (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionAllOperators
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionAllOperators (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/wrong_length_2
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/wrong_length_4
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2]_wrong_type
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2]_wrong_length
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2][0]_wrong
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[1]_wrong
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/wrong_length_2 (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/wrong_length_4 (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2]_wrong_type (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2]_wrong_length (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2][0]_wrong (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[1]_wrong (0.00s)
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/empty_favors_SHORT
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/all_SHORT
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/all_DICTIONARY
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/mixed_SHORT_reaches_quorum
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/documentData_max_id_forces_SHORT
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/BASE64_reaches_quorum
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/ORIGINAL_fallback
+--- PASS: TestDetermineBookSymbolFormatQuorumAndPriority (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/empty_favors_SHORT (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/all_SHORT (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/all_DICTIONARY (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/mixed_SHORT_reaches_quorum (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/documentData_max_id_forces_SHORT (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/BASE64_reaches_quorum (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/ORIGINAL_fallback (0.00s)
+PASS
+ok  	github.com/kaikozlov/kindle-koplugin/internal/kfx	0.186s
