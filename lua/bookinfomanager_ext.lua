@@ -144,6 +144,7 @@ end
 function BookInfoManagerExt:buildBookInfoFromScanAndEpub(virtual_filepath, book, get_cover)
     local directory, filename = util.splitFilePathName(virtual_filepath)
 
+    -- Start with scan metadata as fallback
     local bookinfo = {
         directory = directory,
         filename = filename,
@@ -172,65 +173,59 @@ function BookInfoManagerExt:buildBookInfoFromScanAndEpub(virtual_filepath, book,
         bookinfo.has_meta = "Y"
     end
 
-    -- Only open the EPUB if we need a cover image
-    if not get_cover then
-        return bookinfo
-    end
-
     -- Resolve to cached EPUB
     local real_path = self.virtual_library:resolveBookPath(book)
-    if not real_path or not lfs.attributes(real_path, "mode") then
-        logger.warn("KindlePlugin: cannot resolve virtual path for cover:", virtual_filepath)
-        return bookinfo
-    end
+    local has_cached_epub = real_path and lfs.attributes(real_path, "mode") == "file"
 
-    -- Open the EPUB with crengine to get the cover image
-    local ok, document = pcall(function()
-        local DocumentRegistry = require("document/documentregistry")
-        local CreDocument = require("document/credocument")
-        return DocumentRegistry:openDocument(real_path, CreDocument)
-    end)
+    -- If we have a cached EPUB, prefer its metadata over scan data.
+    -- The EPUB has richer metadata (publisher, language, series, description,
+    -- multiple authors properly separated) from the KFX→EPUB conversion.
+    if has_cached_epub then
+        local ok, document = pcall(function()
+            local DocumentRegistry = require("document/documentregistry")
+            local CreDocument = require("document/credocument")
+            return DocumentRegistry:openDocument(real_path, CreDocument)
+        end)
 
-    if not ok or not document then
-        logger.warn("KindlePlugin: failed to open cached EPUB for cover:", real_path_path)
-        return bookinfo
-    end
-
-    -- If scan didn't provide metadata, try getting it from the EPUB too
-    if not bookinfo.has_meta then
-        if document.loadDocument then
-            pcall(function() document:loadDocument(false) end)
-        end
-        local ok2, props = pcall(function() return document:getProps() end)
-        if ok2 and props and next(props) then
-            bookinfo.has_meta = "Y"
-            for k, v in pairs(props) do
-                if not bookinfo[k] then
-                    bookinfo[k] = v
+        if ok and document then
+            if document.loadDocument then
+                pcall(function() document:loadDocument(false) end)
+            end
+            local ok2, props = pcall(function() return document:getProps() end)
+            if ok2 and props and next(props) then
+                bookinfo.has_meta = "Y"
+                -- EPUB props overwrite scan metadata (richer source)
+                for k, v in pairs(props) do
+                    if v and v ~= "" then
+                        bookinfo[k] = v
+                    end
                 end
             end
+
+            -- Extract cover image while we have the document open
+            if get_cover then
+                local ok3, cover_bb = pcall(function()
+                    local FileManagerBookInfo = require("apps/filemanager/filemanagerbookinfo")
+                    return FileManagerBookInfo:getCoverImage(document)
+                end)
+                if ok3 and cover_bb then
+                    bookinfo.has_cover = "Y"
+                    bookinfo.cover_bb = cover_bb
+                    bookinfo.cover_w = cover_bb:getWidth()
+                    bookinfo.cover_h = cover_bb:getHeight()
+                    bookinfo.cover_sizetag = string.format("%dx%d", bookinfo.cover_w, bookinfo.cover_h)
+                end
+            end
+
+            pcall(function() document:close() end)
+            return bookinfo
+        else
+            logger.warn("KindlePlugin: failed to open cached EPUB:", real_path)
         end
     end
 
-    -- Extract cover image
-    local ok3, cover_bb = pcall(function()
-        local FileManagerBookInfo = require("apps/filemanager/filemanagerbookinfo")
-        return FileManagerBookInfo:getCoverImage(document)
-    end)
-
-    if ok3 and cover_bb then
-        bookinfo.has_cover = "Y"
-        bookinfo.cover_bb = cover_bb
-        bookinfo.cover_w = cover_bb:getWidth()
-        bookinfo.cover_h = cover_bb:getHeight()
-        bookinfo.cover_sizetag = string.format("%dx%d", bookinfo.cover_w, bookinfo.cover_h)
-        logger.info("KindlePlugin: got cover:", bookinfo.cover_w, "x", bookinfo.cover_h)
-    else
-        logger.warn("KindlePlugin: cover extraction failed")
-    end
-
-    pcall(function() document:close() end)
-
+    -- No cached EPUB or failed to open — fall back to scan metadata only.
+    -- No cover available without the EPUB.
     return bookinfo
 end
 
