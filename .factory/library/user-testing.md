@@ -49,6 +49,16 @@ go test ./internal/kfx/... -count=1 -run "TestCollectContentPositionInfo|TestCol
 go test ./internal/kfx/... -count=1 -run "TestAnchorEidOffset|TestDetermineApproximatePages_Rune|TestContentChunk_NilVsEmpty|TestHasNonImageRenderInline|TestCollectLocationMapInfo|TestCreateApproximatePageList_Double|TestCollectPositionInfo_Story|TestProcessPageSpreadLeaf|TestContentChunkConstruction|TestContentChunkEqual" -v
 ```
 
+**Notebook/Scribe (VAL-M4-NB-001 through VAL-M4-NB-008):**
+```
+go test ./internal/kfx/... -count=1 -run "TestProcessNotebookContent|TestScribeNotebookStroke|TestBrushType|TestScribeNotebookAnnotation|TestDecodeStrokeValues|TestAdjustColorForDensity" -v
+```
+
+**Image Book (VAL-M4-IB-001 through VAL-M4-IB-008):**
+```
+go test ./internal/kfx/... -count=1 -run "TestGetOrderedImages|TestConvertBookToCBZ|TestConvertBookToPDF|TestCropImage|TestCBZ|TestCombineImages|TestTOCPage|TestGetResourceImage" -v
+```
+
 ### Boundaries
 
 - Do NOT modify any source files — only read and run tests

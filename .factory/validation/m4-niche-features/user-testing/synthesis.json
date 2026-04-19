@@ -1,0 +1,39 @@
+{
+  "milestone": "m4-niche-features",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 16,
+    "passed": 16,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-M4-NB-001",
+    "VAL-M4-NB-002",
+    "VAL-M4-NB-003",
+    "VAL-M4-NB-004",
+    "VAL-M4-NB-005",
+    "VAL-M4-NB-006",
+    "VAL-M4-NB-007",
+    "VAL-M4-NB-008",
+    "VAL-M4-IB-001",
+    "VAL-M4-IB-002",
+    "VAL-M4-IB-003",
+    "VAL-M4-IB-004",
+    "VAL-M4-IB-005",
+    "VAL-M4-IB-006",
+    "VAL-M4-IB-007",
+    "VAL-M4-IB-008"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added m4 notebook/scribe and image book test patterns to Flow Validator Guidance",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}

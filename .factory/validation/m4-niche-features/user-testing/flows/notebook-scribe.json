@@ -1,0 +1,191 @@
+{
+  "groupId": "notebook-scribe",
+  "testedAt": "2026-04-19T14:45:22Z",
+  "isolation": {
+    "type": "go-test",
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "testPattern": "TestProcessNotebookContent|TestScribeNotebookStroke|TestBrushType|TestScribeNotebookAnnotation|TestDecodeStrokeValues|TestAdjustColorForDensity"
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-M4-NB-001",
+      "title": "processNotebookContent dispatches content types correctly",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestProcessNotebookContent_DispatchesDollar270", "expected": "PASS - $270 layouts dispatched, children visited", "observed": "PASS" },
+        { "action": "Run TestProcessNotebookContent_SymbolLookup", "expected": "PASS - symbol lookup works correctly", "observed": "PASS" },
+        { "action": "Run TestProcessNotebookContent_UnknownContentType", "expected": "PASS - unknown $999 logs error", "observed": "PASS (error logged: 'test $999 has unknown content type: $999')" },
+        { "action": "Run TestProcessNotebookContent_RecursesDollar176", "expected": "PASS - $176 recursion works", "observed": "PASS" },
+        { "action": "Run TestProcessNotebookContent_DispatchesStrokeWhenNoLayout", "expected": "PASS - strokes delegated when no layout", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testOutput": "m4-niche-features/user-testing/evidence/notebook-scribe-test-output.txt",
+        "testNames": [
+          "TestProcessNotebookContent_DispatchesDollar270",
+          "TestProcessNotebookContent_SymbolLookup",
+          "TestProcessNotebookContent_UnknownContentType",
+          "TestProcessNotebookContent_RecursesDollar176",
+          "TestProcessNotebookContent_DispatchesStrokeWhenNoLayout"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M4-NB-002",
+      "title": "scribeNotebookStroke handles stroke groups",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestScribeNotebookStrokeGroup", "expected": "PASS - <g> created, annotation handler called", "observed": "PASS" },
+        { "action": "Run TestScribeNotebookStrokeGroup_ChunkedValidation", "expected": "PASS - chunked validation works (error on chunked=false)", "observed": "PASS (error logged: 'test has unexpected nmdl.chunked: false')" }
+      ],
+      "evidence": {
+        "testOutput": "m4-niche-features/user-testing/evidence/notebook-scribe-test-output.txt",
+        "testNames": [
+          "TestScribeNotebookStrokeGroup",
+          "TestScribeNotebookStrokeGroup_ChunkedValidation"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M4-NB-003",
+      "title": "SVG path generation for normal strokes",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestScribeNotebookStroke_NormalStroke", "expected": "PASS - <path> with correct d attribute generated from stroke values", "observed": "PASS (note: extra data warnings for position_x/position_y, but test passes)" }
+      ],
+      "evidence": {
+        "testOutput": "m4-niche-features/user-testing/evidence/notebook-scribe-test-output.txt",
+        "testNames": ["TestScribeNotebookStroke_NormalStroke"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M4-NB-004",
+      "title": "PNG density map for variable-density strokes",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestScribeNotebookStroke_VariableDensity", "expected": "PASS - variable DAF → base64 PNG produced", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testOutput": "m4-niche-features/user-testing/evidence/notebook-scribe-test-output.txt",
+        "testNames": ["TestScribeNotebookStroke_VariableDensity"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M4-NB-005",
+      "title": "Brush type and thickness classification",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestBrushTypeClassification", "expected": "PASS - each brush type → correct name", "observed": "PASS (error logged for unknown brush type 99 as expected)" },
+        { "action": "Run TestBrushTypeClassificationWithThickness", "expected": "PASS - thicknesses match THICKNESS_CHOICES", "observed": "PASS" },
+        { "action": "Run TestBrushTypeOpacity", "expected": "PASS - correct opacity for each brush type", "observed": "PASS" },
+        { "action": "Run TestBrushTypeConstants", "expected": "PASS - brush type constants defined correctly", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testOutput": "m4-niche-features/user-testing/evidence/notebook-scribe-test-output.txt",
+        "testNames": [
+          "TestBrushTypeClassification",
+          "TestBrushTypeClassificationWithThickness",
+          "TestBrushTypeOpacity",
+          "TestBrushTypeConstants"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M4-NB-006",
+      "title": "scribeNotebookAnnotation processes handwriting recognition",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestScribeNotebookAnnotation_HWR", "expected": "PASS - 'Hello World' → <text> with 2 <tspan> elements", "observed": "PASS" },
+        { "action": "Run TestScribeNotebookAnnotation_UnexpectedType", "expected": "PASS - unexpected type logged as error", "observed": "PASS (error logged: 'test has unexpected annotation_type: nmdl.unknown_type')" }
+      ],
+      "evidence": {
+        "testOutput": "m4-niche-features/user-testing/evidence/notebook-scribe-test-output.txt",
+        "testNames": [
+          "TestScribeNotebookAnnotation_HWR",
+          "TestScribeNotebookAnnotation_UnexpectedType"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M4-NB-007",
+      "title": "decodeStrokeValues implements delta-compression protocol",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestDecodeStrokeValuesValidSignature", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesInvalidSignature", "expected": "PASS - invalid signature detected", "observed": "PASS (error logged)" },
+        { "action": "Run TestDecodeStrokeValuesNumValsMismatch", "expected": "PASS - count mismatch detected", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesNibbleExtraction", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesIncrementDecoding", "expected": "PASS - 4 subcases", "observed": "PASS (4 sub-tests all pass)" },
+        { "action": "Run TestDecodeStrokeValuesMultiByteIncrement", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesDeltaDecoding", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesEmpty", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesExtraData", "expected": "PASS - extra data detected", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesNegativeIncrement", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesSingleByteIncrement", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesThreeByteIncrement", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesNegativeThreeByteIncrement", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesNegativeSingleByteIncrement", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValuesNegativeZeroIncrement", "expected": "PASS - negative zero increment detected as error", "observed": "PASS (error logged: 'negative zero increment')" },
+        { "action": "Run TestDecodeStrokeValues_ShortData", "expected": "PASS - short data detected", "observed": "PASS" },
+        { "action": "Run TestDecodeStrokeValues_LargeValue", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testOutput": "m4-niche-features/user-testing/evidence/notebook-scribe-test-output.txt",
+        "testNames": [
+          "TestDecodeStrokeValuesValidSignature",
+          "TestDecodeStrokeValuesInvalidSignature",
+          "TestDecodeStrokeValuesNumValsMismatch",
+          "TestDecodeStrokeValuesNibbleExtraction",
+          "TestDecodeStrokeValuesIncrementDecoding",
+          "TestDecodeStrokeValuesMultiByteIncrement",
+          "TestDecodeStrokeValuesDeltaDecoding",
+          "TestDecodeStrokeValuesEmpty",
+          "TestDecodeStrokeValuesExtraData",
+          "TestDecodeStrokeValuesNegativeIncrement",
+          "TestDecodeStrokeValuesSingleByteIncrement",
+          "TestDecodeStrokeValuesThreeByteIncrement",
+          "TestDecodeStrokeValuesNegativeThreeByteIncrement",
+          "TestDecodeStrokeValuesNegativeSingleByteIncrement",
+          "TestDecodeStrokeValuesNegativeZeroIncrement",
+          "TestDecodeStrokeValues_ShortData",
+          "TestDecodeStrokeValues_LargeValue"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M4-NB-008",
+      "title": "adjustColorForDensity converts RGB to grayscale with density",
+      "status": "pass",
+      "steps": [
+        { "action": "Run TestAdjustColorForDensityLuminance", "expected": "PASS - luminance computed correctly", "observed": "PASS" },
+        { "action": "Run TestAdjustColorForDensityClamping", "expected": "PASS - values clamped to [0,255]", "observed": "PASS" },
+        { "action": "Run TestAdjustColorForDensityGraySymmetry", "expected": "PASS - gray input handled correctly", "observed": "PASS" },
+        { "action": "Run TestAdjustColorForDensityGrayInput", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestAdjustColorForDensityHalfGray", "expected": "PASS", "observed": "PASS" },
+        { "action": "Run TestAdjustColorForDensity_AllColors", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testOutput": "m4-niche-features/user-testing/evidence/notebook-scribe-test-output.txt",
+        "testNames": [
+          "TestAdjustColorForDensityLuminance",
+          "TestAdjustColorForDensityClamping",
+          "TestAdjustColorForDensityGraySymmetry",
+          "TestAdjustColorForDensityGrayInput",
+          "TestAdjustColorForDensityHalfGray",
+          "TestAdjustColorForDensity_AllColors"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 8 assertions: all 8 passed. 38 test functions executed (including sub-tests), all PASS. Total execution time: 0.219s."
+}
