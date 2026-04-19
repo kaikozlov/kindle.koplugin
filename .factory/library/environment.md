@@ -30,6 +30,14 @@ CGO is disabled (`CGO_ENABLED=0`).
 
 Python 3 is available for running reference scripts (`scripts/kfx_reference_snapshot.py`) but is NOT needed for Go tests.
 
+## .gitignore Pitfall
+
+When a Go binary name matches a source directory name (e.g., binary `kindle-helper` vs directory `cmd/kindle-helper/`), the `.gitignore` pattern must use a leading `/` to match only at the repo root. Without it, `kindle-helper` matches `cmd/kindle-helper/` at any depth, preventing source files from being tracked.
+
+## arm_build.sh Build Path Convention
+
+The `arm_build.sh` script references `./kindle.koplugin/cmd/kindle-helper` as the build package path, implying the repo is expected to be nested inside a parent `kindle.koplugin/` directory at build time. If running builds directly from the repo root, the path needs adjustment.
+
 ## Test Fixtures
 
 KFX test fixtures are NOT available in the repository. All tests must use synthetic Go data. The following fixture paths are referenced in tests but do NOT exist:
