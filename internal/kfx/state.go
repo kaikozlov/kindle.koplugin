@@ -255,6 +255,23 @@ func loadContainerSource(path string) (*containerSource, error) {
 	return loadContainerSourceData(path, data)
 }
 
+// validateEntityOffsets checks that all entity offsets in the container's
+// index table are within the data bounds. Decrypted DRMION sidecars may
+// have index entries referencing positions in the original encrypted data
+// that don't match the decrypted CONT structure.
+func validateEntityOffsets(src *containerSource) bool {
+	for offset := 0; offset+24 <= len(src.IndexData); offset += 24 {
+		entityOffset := int(binary.LittleEndian.Uint64(src.IndexData[offset+8 : offset+16]))
+		entityLength := int(binary.LittleEndian.Uint64(src.IndexData[offset+16 : offset+24]))
+		start := src.HeaderLen + entityOffset
+		end := start + entityLength
+		if start < 0 || end > len(src.Data) || start >= end {
+			return false
+		}
+	}
+	return true
+}
+
 func loadContainerSourceData(path string, data []byte) (*containerSource, error) {
 	if len(data) < 18 || !bytes.HasPrefix(data, contSignature) {
 		return nil, &UnsupportedError{Message: "file is not a CONT KFX container"}
@@ -336,17 +353,6 @@ func mergeIonReferencedStringSymbols(value interface{}, bookSymbols map[string]s
 	}
 }
 
-// firstDocSymbols returns the docSymbols from the first source that has them,
-// or nil if no source has docSymbols.
-func firstDocSymbols(sources []*containerSource) []byte {
-	for _, s := range sources {
-		if len(s.DocSymbols) > 0 {
-			return s.DocSymbols
-		}
-	}
-	return nil
-}
-
 // sharedDocSymbols maintains the shared symbol table state as containers are
 // processed sequentially, matching Calibre's LocalSymbolTable pattern.
 // The first container with docSymbols populates the shared state; subsequent
@@ -399,58 +405,43 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 		Language:   "en",
 	}
 
-	// Create initial resolver from YJ prelude. Will be updated as containers
-	// with docSymbols are processed.
-	var resolver *symbolResolver
-	initialSymbols := firstDocSymbols(sources)
-	if len(initialSymbols) > 0 {
-		var err error
-		resolver, err = newSymbolResolver(initialSymbols)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	bookSymbols := map[string]struct{}{}
-	fontCount := 0
-
-	// categorizedData tracks per-type ID sets for duplicate/null ID detection
-	// (parity with Python organize_fragments_by_type L202-214).
-	categorizedData := map[string]map[string]bool{}
-
-	// Shared symbol table: containers processed in order contribute docSymbols.
-	// First container with docSymbols populates the shared state; subsequent
-	// containers with empty docSymbols (symLen=0) inherit the shared state.
-	// This matches Calibre's LocalSymbolTable pattern where all containers
-	// share a single mutable symtab.
+	// Two-pass approach matching Calibre's yj_book.decode_book():
+	//   Pass 1: container.deserialize() → loads doc_symbols into shared symtab
+	//   Pass 2: container.get_fragments() → decodes entities with accumulated symtab
+	//
+	// Calibre processes all containers in loop 1 (loading symbols), then all
+	// containers in loop 2 (decoding fragments). This ensures ALL docSymbols
+	// are accumulated before any entity is decoded.
 	sharedSym := &sharedDocSymbols{}
 
 	// Sort sources alphabetically by path, matching Calibre's sequential
-	// processing order. Sources are already sorted from collection, but
-	// ensure deterministic order here.
+	// processing order.
 	sort.Slice(sources, func(i, j int) bool {
 		return sources[i].Path < sources[j].Path
 	})
 
+	// Pass 1: Accumulate docSymbols from all sources (Calibre: deserialize loop).
 	for _, source := range sources {
-		// Update shared symbol table: if this container has docSymbols,
-		// they become the new shared state for all subsequent containers.
 		sharedSym.update(source.DocSymbols)
-		srcDocSymbols := sharedSym.get()
+	}
 
-		// Rebuild resolver when shared symbols change
-		if len(source.DocSymbols) > 0 {
-			var err error
-			resolver, err = newSymbolResolver(srcDocSymbols)
-			if err != nil {
-				return nil, err
-			}
-		}
+	// Build resolver from fully accumulated docSymbols.
+	srcDocSymbols := sharedSym.get()
+	if len(srcDocSymbols) == 0 {
+		return nil, &UnsupportedError{Message: "no document symbol table found in any container"}
+	}
+	resolver, err := newSymbolResolver(srcDocSymbols)
+	if err != nil {
+		return nil, err
+	}
 
-		if resolver == nil {
-			continue
-		}
+	bookSymbols := map[string]struct{}{}
+	fontCount := 0
+	categorizedData := map[string]map[string]bool{}
 
+	// Pass 2: Decode all fragments using the fully accumulated resolver
+	// (Calibre: get_fragments loop).
+	for _, source := range sources {
 		lastContainerID := ""
 		for offset := 0; offset+24 <= len(source.IndexData); offset += 24 {
 			idID := binary.LittleEndian.Uint32(source.IndexData[offset : offset+4])

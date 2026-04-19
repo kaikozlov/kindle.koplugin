@@ -317,6 +317,20 @@ func convertFromDRMIONData(contData []byte, outputPath string, originalPath stri
 			continue
 		}
 
+		// Validate entity offsets — decrypted metadata.kfx may have mismatched
+		// offsets. If any entity is out of range, only use its docSymbols,
+		// not its fragments.
+		if !validateEntityOffsets(src) {
+			log.Printf("DRM: decrypted sidecar %s has invalid entity offsets, using docSymbols only (%d bytes)", blob.Path, len(src.DocSymbols))
+			// Create a minimal source with docSymbols but empty index
+			// so the two-pass symbol accumulation picks up the symbols.
+			sources = append(sources, &containerSource{
+				Path:       src.Path,
+				DocSymbols: src.DocSymbols,
+			})
+			continue
+		}
+
 		sources = append(sources, src)
 		log.Printf("DRM: decrypted sidecar %s (%d bytes)", blob.Path, len(decrypted))
 	}
