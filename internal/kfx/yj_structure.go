@@ -303,6 +303,35 @@ func Numstr(x float64) string {
 }
 
 // ---------------------------------------------------------------------------
+// logErrorOnce — C3-10: Error deduplication (yj_structure.py:1306-1310)
+// ---------------------------------------------------------------------------
+
+// reportedErrors tracks which error messages have already been logged,
+// so that logErrorOnce can suppress duplicates.
+// Python: self.reported_errors = set() on BookStructure
+var reportedErrors = map[string]bool{}
+
+// LogErrorOnce logs an error message only once per message string.
+// Python: BookStructure.log_error_once (yj_structure.py:1306-1310)
+//
+//	def log_error_once(self, msg):
+//	    if msg not in self.reported_errors:
+//	        log.error(msg)
+//	        self.reported_errors.add(msg)
+func LogErrorOnce(msg string) {
+	if !reportedErrors[msg] {
+		log.Printf("kfx: error: %s", msg)
+		reportedErrors[msg] = true
+	}
+}
+
+// ResetReportedErrors clears the error deduplication set.
+// Call between books to reset state.
+func ResetReportedErrors() {
+	reportedErrors = map[string]bool{}
+}
+
+// ---------------------------------------------------------------------------
 // extractFragmentIDFromValue (yj_structure.py:703-716)
 // ---------------------------------------------------------------------------
 
@@ -384,12 +413,12 @@ func walkInternal(
 		}
 		if !topLevel {
 			if len(ann.Annotations) != 1 {
-				log.Printf("kfx: Found multiple annotations in %s of %s fragment", cont, fragment.FType)
+				LogErrorOnce(fmt.Sprintf("Found multiple annotations in %s of %s fragment", cont, fragment.FType))
 			}
 			for _, annot := range ann.Annotations {
 				if !ExpectedAnnotations[[3]string{fragment.FType, cont, annot}] &&
 					!ExpectedDictionaryAnnotations[[3]string{fragment.FType, cont, annot}] {
-					log.Printf("kfx: Found unexpected IonAnnotation %s in %s of %s fragment", annot, cont, fragment.FType)
+					LogErrorOnce(fmt.Sprintf("Found unexpected IonAnnotation %s in %s of %s fragment", annot, cont, fragment.FType))
 				}
 			}
 		}
@@ -990,13 +1019,13 @@ func walkInternalOpts(
 		}
 		if !topLevel {
 			if len(ann.Annotations) != 1 {
-				log.Printf("kfx: Found multiple annotations in %s of %s fragment", cont, fragment.FType)
+				LogErrorOnce(fmt.Sprintf("Found multiple annotations in %s of %s fragment", cont, fragment.FType))
 			}
 			for _, annot := range ann.Annotations {
 				// C3-9: EXPECTED_DICTIONARY_ANNOTATIONS only checked for dictionaries
 				if !ExpectedAnnotations[[3]string{fragment.FType, cont, annot}] &&
 					!(opts.IsDictionary && ExpectedDictionaryAnnotations[[3]string{fragment.FType, cont, annot}]) {
-					log.Printf("kfx: Found unexpected IonAnnotation %s in %s of %s fragment", annot, cont, fragment.FType)
+					LogErrorOnce(fmt.Sprintf("Found unexpected IonAnnotation %s in %s of %s fragment", annot, cont, fragment.FType))
 				}
 			}
 		}

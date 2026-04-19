@@ -32,6 +32,10 @@ import (
 
 // Note: USE_HIGHEST_RESOLUTION_IMAGE_VARIANT is declared in yj_to_epub_resources.go.
 
+// DebugVariants enables debug logging for image variant selection.
+// Python: DEBUG_VARIANTS = False (yj_to_image_book.py:15)
+const DebugVariants = false
+
 // ---------------------------------------------------------------------------
 // ImageResource — port of Python ImageResource/PdfImageResource
 // ---------------------------------------------------------------------------
