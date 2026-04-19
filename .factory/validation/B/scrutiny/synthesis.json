@@ -1,0 +1,137 @@
+{
+  "milestone": "B",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "go test ./... -count=1",
+      "exitCode": 0,
+      "note": "All synthetic/unit tests pass. 18 fixture-dependent tests fail due to missing REFERENCE/ files (expected). Packages: cmd/kindle-helper OK, internal/epub OK, internal/kfx OK (synthetic), internal/jxr FAIL (fixtures), internal/scan FAIL (fixtures)."
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "go build ./...",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "go vet ./...",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 4,
+    "failed": 1,
+    "failedFeatures": ["b5-metadata-getters"]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "b5-metadata-getters",
+      "file": "internal/kfx/yj_metadata_getters.go",
+      "line": 140,
+      "severity": "blocking",
+      "description": "getFeatureValue format_capabilities path uses incorrect 'items' key to iterate $593 fragment data. Python iterates fragment.value directly as a list (yj_metadata.py:374). The test data fabricates an 'items' key that won't exist in real KFX data. FormatCapabilities should store $593 fragments as lists or iterate the map values directly."
+    },
+    {
+      "featureId": "b5-metadata-getters",
+      "file": "internal/kfx/yj_metadata_getters.go",
+      "line": 555,
+      "severity": "blocking",
+      "description": "updateCoverSectionAndStoryline is missing the $157 style fragment recursive processing present in Python (yj_metadata.py:814). The Go code only processes $146 subcontent children but does not recursively process style fragments referenced via $157 keys."
+    }
+  ],
+  "nonBlockingIssues": [
+    {
+      "featureId": "b1-epub-packaging-parity",
+      "description": "Default title is 'Untitled' while Python uses 'Unknown' (intentional deviation documented in VAL-B-018)"
+    },
+    {
+      "featureId": "b1-epub-packaging-parity",
+      "description": "fixHTMLID doesn't handle illustrated_layout period replacement (pre-existing gap)"
+    },
+    {
+      "featureId": "b1-epub-packaging-parity",
+      "description": "naturalSortKeyEpub is computed but unused (dead code)"
+    },
+    {
+      "featureId": "b3-illustrated-layout-complete",
+      "description": "fixupIllustratedLayoutAnchors guards on IllustratedLayout vs Python's has_conditional_content (pre-existing)"
+    },
+    {
+      "featureId": "b3-illustrated-layout-complete",
+      "description": "Missing unreference_resource call when removing img elements"
+    },
+    {
+      "featureId": "b3-illustrated-layout-complete",
+      "description": "No-op parent-walk loop due to Go DOM lacking parent pointers"
+    },
+    {
+      "featureId": "b3-illustrated-layout-complete",
+      "description": "Missing error logging for unexpected template children"
+    },
+    {
+      "featureId": "b3-illustrated-layout-complete",
+      "description": "Dead code: removeChild and removeChildFromParent are defined but never called"
+    },
+    {
+      "featureId": "b4-resource-variant-handling",
+      "description": "Hardcoded 'image/jpeg' mime in getExternalResource filename generation"
+    },
+    {
+      "featureId": "b4-resource-variant-handling",
+      "description": "Missing check_empty equivalent for unexpected fragment fields"
+    },
+    {
+      "featureId": "b5-metadata-getters",
+      "description": "getGenerators missing PACKAGE_VERSION_PLACEHOLDERS filtering"
+    },
+    {
+      "featureId": "b5-metadata-getters",
+      "description": "getPageCount missing $391 symbol resolution for nav containers"
+    },
+    {
+      "featureId": "b5-metadata-getters",
+      "description": "isImageBasedFixedLayout uses simplified check instead of getOrderedImageResources"
+    },
+    {
+      "featureId": "b5-metadata-getters",
+      "description": "getPageCount returns 0 (int) vs Python's None"
+    },
+    {
+      "featureId": "b5-metadata-getters",
+      "description": "reportFeaturesAndMetadata heavily simplified from Python (debug function)"
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Document the accepted pattern for intentional deviations from Python behavior. Currently AGENTS.md says logic must match 1:1, but there are cases (like 'Untitled' vs 'Unknown') where the validation contract explicitly accepts a deviation. Add guidance: 'Intentional deviations from Python behavior must be documented in the validation contract and are acceptable when the difference is semantically equivalent or preferred for the Go implementation.'",
+      "evidence": "b1-epub-packaging-parity: VAL-B-018 documents 'Untitled' vs 'Unknown' as intentional. b5-metadata-getters: getPageCount returns 0 vs None. Multiple features have minor deviations that should have clear guidance.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Standardize logging approach across the codebase. Currently mixed: log.Printf vs fmt.Fprintf(os.Stderr). Add convention to AGENTS.md specifying which to use (recommend log.Printf for consistency).",
+      "evidence": "b2-navigation-reporting: changed from fmt.Fprintf to log.Printf. b4-resource-variant-handling: same file mixes both approaches. Multiple files across internal/kfx/ have inconsistent logging.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Go DOM lacks parent pointers — architectural constraint for future porting",
+      "reason": "Already known architectural limitation; documenting in AGENTS.md is not the right place. This belongs in library/ architecture docs, which already exists."
+    },
+    {
+      "observation": "Map-based style manipulation pattern should be documented as Go convention",
+      "reason": "Implementation detail that is self-evident from reading the code; not a normative convention that workers need to be told"
+    },
+    {
+      "observation": "naturalSortKeyEpub dead code should be removed or used",
+      "reason": "Already captured in non-blocking issues; not a shared state observation requiring documentation update"
+    }
+  ],
+  "previousRound": null
+}
