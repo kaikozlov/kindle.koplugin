@@ -498,7 +498,7 @@ function BookInfoManagerExt:clearStaleVirtualEntries(BookInfoManager)
     if stored_version == current_version then
         -- Version matches — just clean up failed rows
         stmt = db_conn:prepare(
-            "DELETE FROM bookinfo WHERE directory LIKE 'KINDLE_VIRTUAL://%'
+            "DELETE FROM bookinfo WHERE directory LIKE 'KINDLE_VIRTUAL://%'"
             .. " AND (in_progress > 0 OR unsupported IS NOT NULL);"
         )
         if stmt then
