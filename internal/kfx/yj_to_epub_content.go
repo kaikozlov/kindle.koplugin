@@ -669,15 +669,15 @@ func processPageSpreadPageTemplate(
 
 	branch := determinePageSpreadBranch(pageTemplate, isSection)
 
-	// Check if this is a scale_fit branch that requires PDF backing but we're not PDF-backed
-	if branch == pageSpreadBranchScaleFit && !cfg.IsPdfBacked {
-		// Python condition: self.is_pdf_backed and "$67" not in page_template and "$66" not in page_template
-		// If not PDF-backed, fall through to leaf
-		if _, has67 := pageTemplate["$67"]; has67 {
+	// Python condition for scale_fit branch:
+	//   self.is_pdf_backed and "$67" not in page_template and "$66" not in page_template
+	// If not PDF-backed, OR if $67/$66 are present in pageTemplate, fall to leaf branch.
+	if branch == pageSpreadBranchScaleFit {
+		if !cfg.IsPdfBacked {
+			branch = pageSpreadBranchLeaf
+		} else if _, has67 := pageTemplate["$67"]; has67 {
 			branch = pageSpreadBranchLeaf
 		} else if _, has66 := pageTemplate["$66"]; has66 {
-			branch = pageSpreadBranchLeaf
-		} else {
 			branch = pageSpreadBranchLeaf
 		}
 	}
@@ -727,9 +727,10 @@ func processPageSpreadStoryBranch(
 	delete(pageTemplate, "$140")
 	delete(pageTemplate, "$560")
 
-	// Get location ID for parent
+	// Get location ID for parent (passed as parentTemplateID to first child only).
+	// Port of Python: parent_template_id = self.get_location_id(page_template)
+	// then parent_template_id = None after first child.
 	locID := getLocationID(pageTemplate)
-	_ = locID // stored as parent for recursive calls
 
 	// Get story from storyline reference
 	storyName, _ := popString(pageTemplate, "$176")
@@ -758,6 +759,12 @@ func processPageSpreadStoryBranch(
 	children, _ := asSlice(popInterfaceDefault(story, "$146"))
 	result.Children = make([]pageSpreadChild, 0, len(children))
 
+	// Port of Python: parent_template_id passed to first child, then set to None.
+	childParentID := &locID
+	if locID == 0 {
+		childParentID = nil
+	}
+
 	for _, child := range children {
 		childData, ok := asMap(child)
 		if !ok {
@@ -766,7 +773,7 @@ func processPageSpreadStoryBranch(
 
 		// Recursively process each child template
 		childResult := processPageSpreadPageTemplate(
-			childData, sectionName, pageProperty, nil, false, cfg, storylines,
+			childData, sectionName, pageProperty, childParentID, false, cfg, storylines,
 		)
 		if childResult.Err != nil {
 			result.Err = childResult.Err
@@ -783,6 +790,9 @@ func processPageSpreadStoryBranch(
 		})
 		result.Sections = append(result.Sections, childResult.Sections...)
 		result.Children = append(result.Children, childResult.Children...)
+
+		// After first child, parentTemplateID is set to None (Python: parent_template_id = None)
+		childParentID = nil
 
 		// Alternate left/right
 		if pageProperty == rightProperty {
@@ -827,9 +837,15 @@ func processPageSpreadScaleFitBranch(
 		log.Printf("kfx: warning: unexpected font size in PDF backed scale_fit page template: %d", fontSize)
 	}
 
-	// Get location ID
+	// Get location ID — used as parentTemplateID for ALL children.
+	// Port of Python: parent_template_id = self.get_location_id(page_template)
+	// Note: unlike story/connected branches, scale_fit passes parent_template_id
+	// to ALL children (Python does NOT set parent_template_id = None after first child).
 	locID := getLocationID(pageTemplate)
-	_ = locID
+	var childParentID *int
+	if locID != 0 {
+		childParentID = &locID
+	}
 
 	// Get story
 	storyName, _ := popString(pageTemplate, "$176")
@@ -851,7 +867,7 @@ func processPageSpreadScaleFitBranch(
 		}
 
 		childResult := processPageSpreadPageTemplate(
-			childData, sectionName, "", nil, false, cfg, storylines,
+			childData, sectionName, "", childParentID, false, cfg, storylines,
 		)
 		if childResult.Err != nil {
 			result.Err = childResult.Err
@@ -900,9 +916,10 @@ func processPageSpreadConnectedBranch(
 		log.Printf("kfx: error: unexpected connected_pagination: %d", connectedPagination)
 	}
 
-	// Get location ID
+	// Get location ID for parent (passed as parentTemplateID to first child only).
+	// Port of Python: parent_template_id = self.get_location_id(page_template)
+	// then parent_template_id = None after first child.
 	locID := getLocationID(pageTemplate)
-	_ = locID
 
 	// Get story
 	storyName, _ := popString(pageTemplate, "$176")
@@ -917,6 +934,12 @@ func processPageSpreadConnectedBranch(
 	children, _ := asSlice(popInterfaceDefault(story, "$146"))
 	result.Children = make([]pageSpreadChild, 0, len(children))
 
+	// Port of Python: parent_template_id passed to first child, then set to None.
+	childParentID := &locID
+	if locID == 0 {
+		childParentID = nil
+	}
+
 	for _, child := range children {
 		childData, ok := asMap(child)
 		if !ok {
@@ -924,7 +947,7 @@ func processPageSpreadConnectedBranch(
 		}
 
 		childResult := processPageSpreadPageTemplate(
-			childData, sectionName, "rendition:page-spread-center", nil, false, cfg, storylines,
+			childData, sectionName, "rendition:page-spread-center", childParentID, false, cfg, storylines,
 		)
 		if childResult.Err != nil {
 			result.Err = childResult.Err
@@ -940,6 +963,9 @@ func processPageSpreadConnectedBranch(
 		})
 		result.Sections = append(result.Sections, childResult.Sections...)
 		result.Children = append(result.Children, childResult.Children...)
+
+		// After first child, parentTemplateID is set to None (Python: parent_template_id = None)
+		childParentID = nil
 	}
 
 	return result

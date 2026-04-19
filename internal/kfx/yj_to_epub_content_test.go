@@ -1625,3 +1625,310 @@ func TestLeafBranchWithParentTemplateID(t *testing.T) {
 		t.Errorf("expected ParentPositionID=42, got %d", result.Sections[0].ParentPositionID)
 	}
 }
+
+// =============================================================================
+// Scrutiny fix tests — parentTemplateID propagation and scale_fit condition
+// =============================================================================
+
+// TestStoryBranchParentTemplateIDFirstChildOnly verifies that in the story branch
+// ($437/$438), parentTemplateID (from $155 location ID) is propagated to the first
+// child only, and set to nil for subsequent children.
+// Python reference: yj_to_epub_content.py ~260 — parent_template_id passed to first
+// child then set to None.
+func TestStoryBranchParentTemplateIDFirstChildOnly(t *testing.T) {
+	cfg := makeSpreadConfig()
+	cfg.PageProgressionDirection = "ltr"
+
+	storyName := "story-ptid"
+	locID := 42
+
+	// Two leaf children in the story
+	child1 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+	child2 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+	child3 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": storyName,
+		"$434": "$441",
+		"$155": locID,
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{child1, child2, child3},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	// Should have 3 sections (leaf children produce sections)
+	if len(result.Sections) != 3 {
+		t.Fatalf("expected 3 sections, got %d", len(result.Sections))
+	}
+
+	// First child should have parentTemplateID = locID (42)
+	if result.Sections[0].ParentPositionID != locID {
+		t.Errorf("first child: expected ParentPositionID=%d, got %d", locID, result.Sections[0].ParentPositionID)
+	}
+	// Second child should have NO parentTemplateID (nil → 0)
+	if result.Sections[1].ParentPositionID != 0 {
+		t.Errorf("second child: expected ParentPositionID=0 (nil), got %d", result.Sections[1].ParentPositionID)
+	}
+	// Third child should also have NO parentTemplateID
+	if result.Sections[2].ParentPositionID != 0 {
+		t.Errorf("third child: expected ParentPositionID=0 (nil), got %d", result.Sections[2].ParentPositionID)
+	}
+}
+
+// TestStoryBranchParentTemplateIDZeroWhenNoLocationID verifies that when there's no
+// $155 location ID in the template, no parentTemplateID is propagated to any child.
+func TestStoryBranchParentTemplateIDZeroWhenNoLocationID(t *testing.T) {
+	cfg := makeSpreadConfig()
+
+	storyName := "story-no-ptid"
+	child1 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": storyName,
+		"$434": "$441",
+		// No $155 key → location ID = 0 → no parentTemplateID
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{child1},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	if len(result.Sections) != 1 {
+		t.Fatalf("expected 1 section, got %d", len(result.Sections))
+	}
+	if result.Sections[0].ParentPositionID != 0 {
+		t.Errorf("expected ParentPositionID=0 when no location ID, got %d", result.Sections[0].ParentPositionID)
+	}
+}
+
+// TestConnectedBranchParentTemplateIDFirstChildOnly verifies that in the connected
+// pagination branch ($323/$656), parentTemplateID is propagated to the first child
+// only, and set to nil for subsequent children.
+// Python reference: yj_to_epub_content.py ~310 — parent_template_id passed to first
+// child then set to None.
+func TestConnectedBranchParentTemplateIDFirstChildOnly(t *testing.T) {
+	cfg := makeSpreadConfig()
+
+	storyName := "story-cp-ptid"
+	locID := 77
+
+	child1 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+	child2 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$323",
+		"$656": true,
+		"$176": storyName,
+		"$434": "$441",
+		"$155": locID,
+		"$655": 2,
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{child1, child2},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	if len(result.Sections) != 2 {
+		t.Fatalf("expected 2 sections, got %d", len(result.Sections))
+	}
+
+	// First child should have parentTemplateID = locID (77)
+	if result.Sections[0].ParentPositionID != locID {
+		t.Errorf("first child: expected ParentPositionID=%d, got %d", locID, result.Sections[0].ParentPositionID)
+	}
+	// Second child should have NO parentTemplateID
+	if result.Sections[1].ParentPositionID != 0 {
+		t.Errorf("second child: expected ParentPositionID=0 (nil), got %d", result.Sections[1].ParentPositionID)
+	}
+}
+
+// TestScaleFitBranchParentTemplateIDAllChildren verifies that in the scale_fit branch
+// ($326), parentTemplateID is propagated to ALL children (Python does NOT set
+// parent_template_id = None after the first child).
+// Python reference: yj_to_epub_content.py ~280 — parent_template_id passed to all
+// children without reset.
+func TestScaleFitBranchParentTemplateIDAllChildren(t *testing.T) {
+	cfg := makePDFSpreadConfig()
+
+	storyName := "story-sf-ptid"
+	locID := 55
+
+	child1 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+	child2 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+		"$176": storyName,
+		"$434": "$441",
+		"$192": nil,
+		"$140": nil,
+		"$560": nil,
+		"$155": locID,
+		"$16":  16,
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{child1, child2},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	if len(result.Sections) != 2 {
+		t.Fatalf("expected 2 sections, got %d", len(result.Sections))
+	}
+
+	// BOTH children should have parentTemplateID = locID (55)
+	// (Unlike story/connected branches which only pass to first child)
+	if result.Sections[0].ParentPositionID != locID {
+		t.Errorf("first child: expected ParentPositionID=%d, got %d", locID, result.Sections[0].ParentPositionID)
+	}
+	if result.Sections[1].ParentPositionID != locID {
+		t.Errorf("second child: expected ParentPositionID=%d, got %d", locID, result.Sections[1].ParentPositionID)
+	}
+}
+
+// TestScaleFitFallsToLeafWhenDollar67Present verifies that when IsPdfBacked is true
+// but $67 is present in the pageTemplate, the scale_fit branch falls through to the
+// leaf branch instead.
+// Python reference: yj_to_epub_content.py ~260 — condition checks
+// "self.is_pdf_backed and '$67' not in page_template and '$66' not in page_template".
+func TestScaleFitFallsToLeafWhenDollar67Present(t *testing.T) {
+	cfg := makePDFSpreadConfig() // PDF-backed = true
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+		"$67":  "has-sixty-seven", // $67 present → should NOT enter scale_fit
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, map[string]map[string]interface{}{})
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	// Should produce a leaf section, not enter scale_fit processing
+	if len(result.Sections) != 1 {
+		t.Fatalf("expected 1 leaf section (fell through from scale_fit due to $67), got %d sections, %d children", len(result.Sections), len(result.Children))
+	}
+}
+
+// TestScaleFitFallsToLeafWhenDollar66Present verifies that when IsPdfBacked is true
+// but $66 is present in the pageTemplate, the scale_fit branch falls through to the
+// leaf branch instead.
+func TestScaleFitFallsToLeafWhenDollar66Present(t *testing.T) {
+	cfg := makePDFSpreadConfig() // PDF-backed = true
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+		"$66":  "has-sixty-six", // $66 present → should NOT enter scale_fit
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, map[string]map[string]interface{}{})
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	// Should produce a leaf section, not enter scale_fit processing
+	if len(result.Sections) != 1 {
+		t.Fatalf("expected 1 leaf section (fell through from scale_fit due to $66), got %d sections, %d children", len(result.Sections), len(result.Children))
+	}
+}
+
+// TestScaleFitProcessesWhenPdfBackedNoDollar67Dollar66 verifies the happy path:
+// IsPdfBacked=true, no $67, no $66 → scale_fit branch processes normally.
+func TestScaleFitProcessesWhenPdfBackedNoDollar67Dollar66(t *testing.T) {
+	cfg := makePDFSpreadConfig()
+
+	storyName := "story-sf-happy"
+	child1 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+		"$176": storyName,
+		"$434": "$441",
+		"$192": nil,
+		"$140": nil,
+		"$560": nil,
+		"$155": 55,
+		"$16":  16,
+		// No $67, no $66 → scale_fit branch should activate
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{child1},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	// Should produce a child (not a leaf section) — scale_fit branch active
+	if len(result.Children) != 1 {
+		t.Errorf("expected 1 child from scale_fit branch, got %d children, %d sections", len(result.Children), len(result.Sections))
+	}
+}
