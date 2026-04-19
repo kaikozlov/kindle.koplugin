@@ -207,7 +207,7 @@ func ConvertFile(inputPath, outputPath string, cacheDir string) error {
 			return &DRMError{Message: fmt.Sprintf("decryption failed: %s", err)}
 		}
 
-		return convertFromDRMIONData(contData, outputPath, inputPath)
+		return convertFromDRMIONData(contData, outputPath, inputPath, pageKey)
 	}
 
 	mode, reason, err := Classify(inputPath)
@@ -258,7 +258,7 @@ func decodeKFX(path string) (*decodedBook, error) {
 
 // convertFromCONTData takes raw CONT KFX data and converts it to EPUB.
 // This is used after DRMION decryption produces a valid CONT container.
-func convertFromDRMIONData(contData []byte, outputPath string, originalPath string) error {
+func convertFromDRMIONData(contData []byte, outputPath string, originalPath string, pageKey []byte) error {
 	if !bytes.HasPrefix(contData, contSignature) {
 		return &UnsupportedError{Message: "decrypted data is not a valid CONT KFX container"}
 	}
@@ -269,23 +269,68 @@ func convertFromDRMIONData(contData []byte, outputPath string, originalPath stri
 		return fmt.Errorf("parsing decrypted CONT: %w", err)
 	}
 
-	// Collect additional CONT blobs from the .sdr sidecar directory.
+	// Collect additional blobs from the .sdr sidecar directory.
 	// DRM books store metadata, cover images, and other fragments in
 	// the sidecar (e.g. assets/metadata.kfx, assets/attachables/*.kfx).
+	// Some books (e.g. The Familiars) have DRMION-encrypted metadata.kfx
+	// that must also be decrypted.
 	sources := []*containerSource{primarySource}
 	sidecarRoot := strings.TrimSuffix(originalPath, filepath.Ext(originalPath)) + ".sdr"
-	sidecarBlobs, _, err := collectSidecarContainerBlobs(sidecarRoot)
+	contBlobs, drmionBlobs, err := collectSidecarContainerBlobs(sidecarRoot)
 	if err != nil {
-		// Non-fatal: metadata may be incomplete but conversion can proceed
 		log.Printf("DRM sidecar collection failed for %s: %v", sidecarRoot, err)
 	}
-	for _, blob := range sidecarBlobs {
+	for _, blob := range contBlobs {
 		src, err := loadContainerSourceData(blob.Path, blob.Data)
 		if err != nil {
-		log.Printf("skipping sidecar blob %s: %v", blob.Path, err)
+			log.Printf("skipping sidecar blob %s: %v", blob.Path, err)
 			continue
 		}
 		sources = append(sources, src)
+	}
+
+	// Decrypt DRMION sidecar blobs using the same page key.
+	// These may contain the document symbol table needed for the main content.
+	for _, blob := range drmionBlobs {
+		decrypted, decErr := decryptDRMION(blob.Data, pageKey)
+		if decErr != nil {
+			log.Printf("skipping DRMION sidecar %s: %v", blob.Path, decErr)
+			continue
+		}
+
+		// Try LZMA decompression if the decrypted data doesn't start with CONT
+		if !bytes.HasPrefix(decrypted, contSignature) && len(decrypted) > 1 && decrypted[0] == 0x00 {
+			decompressed, lzmaErr := lzmaDecompress(decrypted[1:])
+			if lzmaErr == nil && bytes.HasPrefix(decompressed, contSignature) {
+				decrypted = decompressed
+			}
+		}
+
+		if !bytes.HasPrefix(decrypted, contSignature) {
+			log.Printf("DRMION sidecar %s: not CONT after decryption, skipping", blob.Path)
+			continue
+		}
+
+		src, err := loadContainerSourceData(blob.Path, decrypted)
+		if err != nil {
+			log.Printf("skipping decrypted sidecar %s: %v", blob.Path, err)
+			continue
+		}
+
+		// Extract docSymbols and inject into sources that have empty docSymbols
+		// (e.g. the decrypted main CONT container).
+		if len(src.DocSymbols) > 0 {
+			log.Printf("DRM: extracted docSymbols from sidecar %s (%d bytes)", blob.Path, len(src.DocSymbols))
+			for _, s := range sources {
+				if len(s.DocSymbols) == 0 {
+					s.DocSymbols = src.DocSymbols
+				}
+			}
+		}
+
+		// Don't add encrypted metadata.kfx as a fragment source.
+		// Its entity offsets don't match the decrypted data structure.
+		// We only need its docSymbols (extracted above).
 	}
 
 	if len(sources) > 1 {

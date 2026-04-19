@@ -136,12 +136,12 @@ func collectContainerBlobs(path string) ([]containerBlob, bool, error) {
 		blobs = append(blobs, containerBlob{Path: path, Data: data})
 
 		sidecarRoot := strings.TrimSuffix(path, filepath.Ext(path)) + ".sdr"
-		sidecarBlobs, sidecarDRM, err := collectSidecarContainerBlobs(sidecarRoot)
+		sidecarBlobs, sidecarDRMionBlobs, err := collectSidecarContainerBlobs(sidecarRoot)
 		if err != nil {
 			return nil, false, err
 		}
 		blobs = append(blobs, sidecarBlobs...)
-		hasDRM = hasDRM || sidecarDRM
+		hasDRM = hasDRM || len(sidecarDRMionBlobs) > 0
 	case bytes.HasPrefix(data, []byte("PK\x03\x04")):
 		zipBlobs, zipDRM, err := collectZipContainerBlobs(path, data)
 		if err != nil {
@@ -156,16 +156,16 @@ func collectContainerBlobs(path string) ([]containerBlob, bool, error) {
 	return blobs, hasDRM, nil
 }
 
-func collectSidecarContainerBlobs(root string) ([]containerBlob, bool, error) {
+func collectSidecarContainerBlobs(root string) ([]containerBlob, []containerBlob, error) {
 	info, err := os.Stat(root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, false, nil
+			return nil, nil, nil
 		}
-		return nil, false, err
+		return nil, nil, err
 	}
 	if !info.IsDir() {
-		return nil, false, nil
+		return nil, nil, nil
 	}
 
 	var names []string
@@ -179,25 +179,25 @@ func collectSidecarContainerBlobs(root string) ([]containerBlob, bool, error) {
 		names = append(names, path)
 		return nil
 	}); err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
 	sort.Strings(names)
 
-	blobs := make([]containerBlob, 0, len(names))
-	hasDRM := false
+	contBlobs := make([]containerBlob, 0, len(names))
+	drmionBlobs := make([]containerBlob, 0)
 	for _, name := range names {
 		data, err := os.ReadFile(name)
 		if err != nil {
-			return nil, false, err
+			return nil, nil, err
 		}
 		switch {
 		case bytes.HasPrefix(data, contSignature):
-			blobs = append(blobs, containerBlob{Path: name, Data: data})
+			contBlobs = append(contBlobs, containerBlob{Path: name, Data: data})
 		case bytes.HasPrefix(data, drmionSignature):
-			hasDRM = true
+			drmionBlobs = append(drmionBlobs, containerBlob{Path: name, Data: data})
 		}
 	}
-	return blobs, hasDRM, nil
+	return contBlobs, drmionBlobs, nil
 }
 
 func collectZipContainerBlobs(path string, data []byte) ([]containerBlob, bool, error) {
@@ -396,7 +396,48 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 	// (parity with Python organize_fragments_by_type L202-214).
 	categorizedData := map[string]map[string]bool{}
 
+	// Find a source with actual docSymbols to use as fallback for sources
+	// that have empty docSymbols (e.g., DRMION-decrypted CONT).
+	var fallbackDocSymbols []byte
 	for _, source := range sources {
+		if len(source.DocSymbols) > 0 {
+			fallbackDocSymbols = source.DocSymbols
+			break
+		}
+	}
+
+	// Sort sources: those with docSymbols first, so we build up the
+	// fallback before processing sources that need it.
+	type indexedSource struct {
+		idx    int
+		source *containerSource
+	}
+	var withSym, withoutSym []indexedSource
+	for i, source := range sources {
+		if len(source.DocSymbols) > 0 {
+			withSym = append(withSym, indexedSource{i, source})
+		} else {
+			withoutSym = append(withoutSym, indexedSource{i, source})
+		}
+	}
+	sortedSources := append(withSym, withoutSym...)
+
+	for _, is := range sortedSources {
+		_ = is.idx
+		source := is.source
+
+		srcDocSymbols := source.DocSymbols
+		if len(srcDocSymbols) == 0 {
+			srcDocSymbols = fallbackDocSymbols
+		}
+
+		if source.Resolver != nil {
+			symOff, _ := asInt(source.ContainerInfo["$415"])
+			symLen, _ := asInt(source.ContainerInfo["$416"])
+			_ = symOff
+			_ = symLen
+		}
+
 		lastContainerID := ""
 		for offset := 0; offset+24 <= len(source.IndexData); offset += 24 {
 			idID := binary.LittleEndian.Uint32(source.IndexData[offset : offset+4])
@@ -421,7 +462,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 			summaryID := fragmentID
 			switch fragmentType {
 			case "$270":
-				value, err := decodeIonMap(payload, docSymbols, resolver)
+				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
@@ -434,13 +475,13 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 				summaryID = fmt.Sprintf("%s-font-%03d", fragmentID, fontCount)
 				fontCount++
 			case "$258":
-				value, err := decodeIonMap(payload, docSymbols, resolver)
+				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
 				summaryID = chooseFragmentIdentity(fragmentID, value["$169"])
 			case "$387":
-				value, err := decodeIonMap(payload, docSymbols, resolver)
+				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
@@ -459,7 +500,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 
 			switch fragmentType {
 			case "$145", "$157", "$164", "$258", "$259", "$260", "$262", "$266", "$270", "$391", "$490", "$538", "$585", "$593", "$608", "$609", "$756":
-				value, err := decodeIonMap(payload, docSymbols, resolver)
+				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
@@ -547,7 +588,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 					}
 				}
 			case "$389":
-				value, err := decodeIonValue(payload, docSymbols, resolver)
+				value, err := decodeIonValue(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
