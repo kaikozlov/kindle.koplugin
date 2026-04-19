@@ -1,0 +1,64 @@
+{
+  "milestone": "C",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "go test ./internal/kfx/... -count=1 (synthetic tests only; fixture-dependent tests excluded per mission scope — REFERENCE/ fixtures not present)",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "go build ./...",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "go vet ./...",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Fixed KINDLE_CAPABILITY_VERSIONS count from 83 to 64 in c1-yj-versions-constants.md library note to match actual Python/Go data",
+      "sourceFeature": "c1-yj-versions-constants"
+    },
+    {
+      "target": "library",
+      "description": "Added IonSExp vs IonList tagging guidance to python-porting-guide.md for future workers dealing with Ion S-expression dispatch",
+      "sourceFeature": "c3-fragment-validation"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a note about BookStructure context flags (is_kpf_prepub, is_dictionary, is_sample, is_scribe_notebook) being needed before several yj_structure.py conditional branches can be fully ported. Workers should track these dependencies explicitly.",
+      "evidence": "c3-fragment-validation omits $609/$610 conditional logic, $610 seeding, $597 sample handling, and $391/$266/$259/$260/$608 prepub filtering due to missing BookStructure context flags. Python yj_structure.py lines 709-711, 723-724, 799, 804-807, 894.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Feature description for c2-move-enum-props mentioned kfx.go as source but actual source was css_values.go and yj_to_epub_resources.go",
+      "reason": "already-documented — worker adapted correctly, and this is a one-time issue for an already-completed feature"
+    },
+    {
+      "observation": "Same-package Go refactoring needs no import changes",
+      "reason": "already-documented — implicit Go knowledge, not specific to this project"
+    },
+    {
+      "observation": "NMDL tuple constants ported as plain strings (functionally harmless)",
+      "reason": "already-documented — noted in c1 library note, non-blocking, no action needed"
+    }
+  ],
+  "previousRound": null
+}

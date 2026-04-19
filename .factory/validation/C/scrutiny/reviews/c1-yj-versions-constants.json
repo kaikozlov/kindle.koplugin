@@ -1,0 +1,39 @@
+{
+  "featureId": "c1-yj-versions-constants",
+  "reviewedAt": "2026-04-19T06:45:00Z",
+  "commitId": "8fcb6c1",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The Go port of yj_versions.py is thorough and achieves strong parity with the Python reference. All 92 feature name constants match Python's string values. KNOWN_KFX_GENERATORS (50 entries), KNOWN_FEATURES (4 categories, 51 total feature keys), KNOWN_METADATA (8 categories with correct values), KNOWN_AUXILIARY_METADATA (36 keys), KNOWN_KCB_DATA (4 categories), KINDLE_VERSION_CAPABILITIES (23 entries including special 5.14.3.2 single value), and KINDLE_CAPABILITY_VERSIONS (64 computed entries) all match Python. The critical Python quirk ANY==True==1 is correctly replicated in IsKnownFeature by checking both AnyVersionKey() and IntVersionKey(1). The init() function correctly computes KINDLE_CAPABILITY_VERSIONS and populates KNOWN_KCB_DATA cross-references. All 6 validation functions (IsKnownGenerator, IsKnownFeature, KindleFeatureVersion, IsKnownMetadata, IsKnownAuxMetadata, IsKnownKCBData) match Python logic. 39 tests cover all VAL-C-001 through VAL-C-023 assertions and pass successfully.",
+    "issues": [
+      {
+        "file": ".factory/library/c1-yj-versions-constants.md",
+        "line": 38,
+        "severity": "non_blocking",
+        "description": "Documentation claims KINDLE_CAPABILITY_VERSIONS has 83 entries, but actual count from both Python and Go is 64 unique capabilities. The handoff also claims 83. This is a documentation error, not a code error — the actual Go data structure has the correct 64 entries matching Python."
+      },
+      {
+        "file": "internal/kfx/yj_versions.go",
+        "line": 16,
+        "severity": "non_blocking",
+        "description": "NMDL_NOTE_V2/V3/V4 constants are plain strings in Go ('NMDL_NOTE_V2', etc.) but in Python they are single-element tuples due to trailing commas on lines 16-18 of yj_versions.py. Since these values are only used as dict values in KNOWN_FEATURES (not as dict keys) and are never compared against user input, this difference is functionally harmless. The string values themselves are identical."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The Python ANY==True==1 quirk for dict membership is a critical cross-language behavior that could affect future porting. The library note c1-yj-versions-constants.md documents this well for this file, but the general python-porting-guide.md could benefit from a note about Python's bool/int coercion affecting dict/set membership checks.",
+      "evidence": "IsKnownFeature in yj_versions.go:914-925 explicitly checks IntVersionKey(1) to replicate ANY in vals behavior. The fix commit 276bcf7 was needed because the initial implementation missed this."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The KINDLE_CAPABILITY_VERSIONS count in both the handoff (83) and library note (83) is inaccurate — the actual count is 64, matching Python. Future workers referencing this count could be misled.",
+      "evidence": "Manual Python analysis of yj_versions.py KINDLE_VERSION_CAPABILITIES shows 64 unique capability strings. Go runtime produces the same 64 entries."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS — The yj_versions.go port achieves strong 1:1 parity with yj_versions.py. All constants, data structures, and validation functions match the Python reference. The critical ANY==True==1 Python quirk is correctly handled after a fix commit. 39 comprehensive tests cover all validation contract assertions. Two minor non-blocking issues: an inaccurate entry count (83 vs actual 64) in documentation, and NMDL tuple constants ported as plain strings (functionally harmless). No blocking issues found."
+}

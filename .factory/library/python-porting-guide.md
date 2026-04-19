@@ -69,6 +69,12 @@ Key differences:
 - If a change introduces unexpected test failures, REVERT immediately
 - Python code is READ ONLY — never modify it
 
+## IonSExp vs IonList Distinction
+
+Python's Ion types use a class hierarchy (IonSExp and IonList both extend list) to differentiate between S-expressions and lists. Go's type system cannot distinguish `[]interface{}` as List vs SExp at runtime. When processing real KFX Ion data, a tagging mechanism (e.g., wrapper structs `IonSExp{items []interface{}}` and `IonList{items []interface{}}`) will be needed. The SExp dispatch semantics differ from List: IonSExp uses `data[0]` as an operator and iterates `data[1:]`, while IonList iterates all elements.
+
+Reference: `yj_structure.py` `walk_fragment()` dispatch at line ~880.
+
 ## Detailed Reference Documents
 
 Workers should read the appropriate stream's reference document before starting:
