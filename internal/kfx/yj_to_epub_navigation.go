@@ -4,6 +4,7 @@ package kfx
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strings"
@@ -478,42 +479,66 @@ func fixupAnchorsAndHrefs(sections []renderedSection, resolved map[string]string
 	replaceRenderedAnchorPlaceholders(sections, resolved)
 }
 
-// Port of KFX_EPUB_Navigation.report_missing_positions (yj_to_epub_navigation.py L353+).
+// Port of KFX_EPUB_Navigation.report_missing_positions (yj_to_epub_navigation.py L353-361).
+// Logs error for each unresolved position (remaining entries in positionAnchors after processing).
+// Formats as "EID.OFFSET", sorts them, and truncates list at 10 items (matching Python's truncate_list).
 func reportMissingPositions(positionAnchors map[int]map[int][]string) {
 	if len(positionAnchors) == 0 {
 		return
 	}
-	left := 0
-	for _, offs := range positionAnchors {
-		left += len(offs)
+	var pos []string
+	for eid, offsets := range positionAnchors {
+		for offset := range offsets {
+			pos = append(pos, fmt.Sprintf("%d.%d", eid, offset))
+		}
 	}
-	if left == 0 {
+	if len(pos) == 0 {
 		return
 	}
-	if os.Getenv("KFX_VERBOSE") == "" {
-		return
-	}
-	fmt.Fprintf(os.Stderr, "kfx: error: failed to locate %d referenced position anchor(s) after content (report_missing_positions)\n", left)
+	sort.Sort(sortablePositionStrings(pos))
+	truncated := truncatePositionList(pos)
+	log.Printf("kfx: error: Failed to locate %d referenced positions: %s", len(pos), strings.Join(truncated, ", "))
 }
 
-// Port of KFX_EPUB_Navigation.report_duplicate_anchors (yj_to_epub_navigation.py L431+).
-// Logs when an anchor that received a resolved URI was registered at more than one (position, offset).
-func reportDuplicateAnchors(state navProcessor, resolved map[string]string) {
-	if len(state.anchorSites) == 0 {
+// Port of KFX_EPUB_Navigation.report_duplicate_anchors (yj_to_epub_navigation.py L431-440).
+// Logs error for anchors that are BOTH used (present in usedAnchors) AND have multiple positions.
+func reportDuplicateAnchors(anchorPositions map[string]map[string]struct{}, usedAnchors map[string]bool) {
+	if len(anchorPositions) == 0 {
 		return
 	}
-	for name, sites := range state.anchorSites {
-		if len(sites) <= 1 {
+	for anchorName, positions := range anchorPositions {
+		if !usedAnchors[anchorName] {
 			continue
 		}
-		if resolved == nil || resolved[name] == "" {
+		if len(positions) <= 1 {
 			continue
 		}
-		keys := make([]string, 0, len(sites))
-		for k := range sites {
+		keys := make([]string, 0, len(positions))
+		for k := range positions {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		fmt.Fprintf(os.Stderr, "kfx: error: anchor %q has multiple positions: %s (report_duplicate_anchors)\n", name, strings.Join(keys, ", "))
+		log.Printf("kfx: error: Anchor %s has multiple positions: %s", anchorName, strings.Join(keys, ", "))
 	}
 }
+
+// truncatePositionList truncates a list to maxAllowed items, appending a "... (N total)" summary.
+// Port of Python utilities.truncate_list (utilities.py L159-160).
+func truncatePositionList(lst []string) []string {
+	const maxAllowed = 10
+	if len(lst) <= maxAllowed {
+		return lst
+	}
+	result := make([]string, maxAllowed+1)
+	copy(result[:maxAllowed], lst[:maxAllowed])
+	result[maxAllowed] = fmt.Sprintf("... (%d total)", len(lst))
+	return result
+}
+
+// sortablePositionStrings implements sort.Interface for position strings like "42.5".
+// Python sorts these as plain strings (which is correct for formatted "EID.OFFSET" strings).
+type sortablePositionStrings []string
+
+func (s sortablePositionStrings) Len() int           { return len(s) }
+func (s sortablePositionStrings) Less(i, j int) bool { return s[i] < s[j] }
+func (s sortablePositionStrings) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }

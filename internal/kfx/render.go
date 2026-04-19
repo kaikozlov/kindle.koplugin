@@ -197,7 +197,13 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	book.PageList = pagesToEPUB(navState.pages, targetHref)
 	prepareBookParts(book)
 	reportMissingPositions(navState.positionAnchors)
-	reportDuplicateAnchors(navState, resolvedAnchorURI)
+	usedAnchors := make(map[string]bool, len(resolvedAnchorURI))
+	for name, href := range resolvedAnchorURI {
+		if href != "" {
+			usedAnchors[name] = true
+		}
+	}
+	reportDuplicateAnchors(navState.anchorSites, usedAnchors)
 	book.Sections = materializeRenderedSections(book.RenderedSections)
 	applyCoverSVGPromotion(book, resolvedDefaultFont)
 	pruneUnusedResources(book)
