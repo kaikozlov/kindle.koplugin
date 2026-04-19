@@ -1551,17 +1551,17 @@ func TestNCX_MBPNamespace(t *testing.T) {
 		files := readZIP(t, path)
 		ncxData := string(files["OEBPS/toc.ncx"])
 
-		// Periodical NCX class at depth 0
-		if !strings.Contains(ncxData, `class="periodical"`) {
-			t.Error("magazine NCX should have periodical class at depth 0")
-		}
-		// Section class at depth 1
+		// Periodical NCX class at depth 0 — Python uses "section" not "periodical" (epub_output.py:56-59)
 		if !strings.Contains(ncxData, `class="section"`) {
-			t.Error("magazine NCX should have section class at depth 1")
+			t.Error("magazine NCX should have section class at depth 0")
 		}
-		// Article class at depth 2
+		// Article class at depth 1
 		if !strings.Contains(ncxData, `class="article"`) {
-			t.Error("magazine NCX should have article class at depth 2")
+			t.Error("magazine NCX should have article class at depth 1")
+		}
+		// No "periodical" class should exist — Python doesn't define it
+		if strings.Contains(ncxData, `class="periodical"`) {
+			t.Error("magazine NCX should NOT have periodical class — not in Python PERIODICAL_NCX_CLASSES")
 		}
 	})
 
@@ -1722,6 +1722,14 @@ func TestOPFMetadataRefinements(t *testing.T) {
 		// EPUB2 should not have refines
 		if strings.Contains(opfData, "refines=") {
 			t.Error("EPUB2 should not have refines metadata")
+		}
+		// EPUB2 should have opf:role="aut" on dc:creator (epub_output.py:893-894)
+		if !strings.Contains(opfData, `opf:role="aut"`) {
+			t.Error("EPUB2 dc:creator should have opf:role='aut' attribute")
+		}
+		// EPUB2 should declare opf namespace
+		if !strings.Contains(opfData, `xmlns:opf="http://www.idpf.org/2007/opf"`) {
+			t.Error("EPUB2 package should declare xmlns:opf namespace")
 		}
 	})
 

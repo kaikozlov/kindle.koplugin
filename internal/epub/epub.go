@@ -292,11 +292,10 @@ func tocNCX(book Book) string {
 }
 
 // PERIODICAL_NCX_CLASSES maps NCX depth to class names for periodical/magazine navPoints.
-// Port of epub_output.py PERIODICAL_NCX_CLASSES.
+// Port of epub_output.py:56-59 PERIODICAL_NCX_CLASSES = {0: "section", 1: "article"}
 var PERIODICAL_NCX_CLASSES = map[int]string{
-	0: "periodical",
-	1: "section",
-	2: "article",
+	0: "section",
+	1: "article",
 }
 
 func appendNCXPoints(out *strings.Builder, points []NavPoint, indent int, navID *int, isMagazine bool, depth int) {
@@ -346,8 +345,14 @@ func contentOPF(book Book) string {
 	}
 
 	var out strings.Builder
-	out.WriteString(xmlDecl)
-	out.WriteString(`<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="` + epubVersion + `" unique-identifier="bookid" prefix="marc: http://id.loc.gov/vocabulary/">` + "\n")
+	// EPUB2 needs xmlns:opf for opf:role attributes on dc:creator (epub_output.py:893-894)
+	if generateEpub2 {
+		out.WriteString(xmlDecl)
+		out.WriteString(`<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf" version="` + epubVersion + `" unique-identifier="bookid">` + "\n")
+	} else {
+		out.WriteString(xmlDecl)
+		out.WriteString(`<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="` + epubVersion + `" unique-identifier="bookid" prefix="marc: http://id.loc.gov/vocabulary/">` + "\n")
+	}
 	out.WriteString(`  <metadata>` + "\n")
 	out.WriteString(`    <dc:identifier id="bookid">` + xmlEscape(book.Identifier) + `</dc:identifier>` + "\n")
 
@@ -369,8 +374,8 @@ func contentOPF(book Book) string {
 				out.WriteString(`    <meta refines="#` + id + `" property="alternate-script">` + xmlEscape(book.AuthorPronunciations[index]) + `</meta>` + "\n")
 			}
 		} else {
-			// EPUB2: opf:role attribute on creator
-			out.WriteString(`    <dc:creator>` + xmlEscape(author) + `</dc:creator>` + "\n")
+			// EPUB2: opf:role attribute on creator (epub_output.py:893-894)
+			out.WriteString(`    <dc:creator opf:role="aut">` + xmlEscape(author) + `</dc:creator>` + "\n")
 		}
 	}
 	out.WriteString(`    <dc:language>` + xmlEscape(book.Language) + `</dc:language>` + "\n")

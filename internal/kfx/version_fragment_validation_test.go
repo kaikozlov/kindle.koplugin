@@ -2,6 +2,7 @@ package kfx
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -500,7 +501,7 @@ func TestRebuild_SkipsDictionary(t *testing.T) {
 	fragments := FragmentList{
 		{FType: "$270", FID: "container1", Value: map[string]interface{}{
 			"$409": "CR!OLD",
-			"$161": "KFX_MAIN",
+			"$161": "KFX main",
 			"$587": "tool1.0",
 			"$588": "pkg1.0",
 			"version": 1,
@@ -540,4 +541,77 @@ func TestRebuild_SkipsDictionary(t *testing.T) {
 		}
 	}
 	_ = found270Scribe
+}
+
+// ---------------------------------------------------------------------------
+// Test: CreateContainerID produces different IDs (crypto/rand)
+// Python: yj_structure.py:854-855 random.choice produces non-deterministic IDs
+// ---------------------------------------------------------------------------
+
+func TestCreateContainerID_NonDeterministic(t *testing.T) {
+	// CreateContainerID should produce different IDs on successive calls
+	// matching Python's random.choice behavior (yj_structure.py:854-855)
+	id1 := CreateContainerID()
+	id2 := CreateContainerID()
+
+	// Both should have CR! prefix
+	if !strings.HasPrefix(id1, "CR!") {
+		t.Errorf("CreateContainerID() = %q, want CR! prefix", id1)
+	}
+	if !strings.HasPrefix(id2, "CR!") {
+		t.Errorf("CreateContainerID() = %q, want CR! prefix", id2)
+	}
+
+	// Body should be 28 chars
+	if len(id1) != 31 { // "CR!" (3) + 28 chars
+		t.Errorf("CreateContainerID() len = %d, want 31", len(id1))
+	}
+	if len(id2) != 31 {
+		t.Errorf("CreateContainerID() len = %d, want 31", len(id2))
+	}
+
+	// IDs should differ (extremely unlikely to match with crypto/rand)
+	if id1 == id2 {
+		t.Errorf("CreateContainerID() produced same ID twice: %q — should be non-deterministic", id1)
+	}
+
+	// Body should only contain valid characters
+	const validChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	for i, c := range id1[3:] {
+		if !strings.ContainsRune(validChars, c) {
+			t.Errorf("CreateContainerID() char at position %d = %q, not in valid charset", i, c)
+		}
+	}
+}
+
+func TestCreateContainerID_ContainerFormat(t *testing.T) {
+	// Verify the $161 field in rebuilt containers uses "KFX main" not "KFX_MAIN"
+	// matching Python yj_container.py:15 CONTAINER_FORMAT_KFX_MAIN
+	fragments := FragmentList{
+		{FType: "$270", FID: "c1", Value: map[string]interface{}{
+			"$409": "CR!OLD",
+			"$161": "KFX main",
+			"$587": "v1",
+			"$588": "v2",
+			"version": 1,
+		}},
+		{FType: "$260", FID: "s1", Value: map[string]interface{}{}},
+	}
+
+	result := RebuildFragments(fragments, nil, false, false)
+	for _, f := range result {
+		if f.FType == "$270" {
+			val, ok := f.Value.(map[string]interface{})
+			if !ok {
+				t.Fatal("$270 value is not a map")
+			}
+			format, ok := val["$161"].(string)
+			if !ok {
+				t.Fatal("$161 is not a string")
+			}
+			if format != "KFX main" {
+				t.Errorf("$161 = %q, want %q", format, "KFX main")
+			}
+		}
+	}
 }

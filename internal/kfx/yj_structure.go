@@ -4,6 +4,7 @@ package kfx
 // Python reference: REFERENCE/Calibre_KFX_Input/kfxlib/yj_structure.py
 
 import (
+	"crypto/rand"
 	"fmt"
 	"log"
 	"math"
@@ -1152,7 +1153,7 @@ func RebuildFragments(fragments FragmentList, getAssetID func() string, isDictio
 		FType: "$270",
 		Value: map[string]interface{}{
 			"$409":    containerID,
-			"$161":    "KFX_MAIN",
+			"$161":    "KFX main",
 			"$587":    appVersion,
 			"$588":    pkgVersion,
 			"version": versionStr,
@@ -1172,29 +1173,19 @@ func RebuildFragments(fragments FragmentList, getAssetID func() string, isDictio
 	return FragmentList(sortedByKey(result))
 }
 
-// CreateContainerID generates a random container ID.
-// Python: BookStructure.create_container_id (yj_structure.py:812-814).
+// CreateContainerID generates a random container ID using crypto/rand.
+// Python: BookStructure.create_container_id (yj_structure.py:854-855).
+// Python uses random.choice() which is non-deterministic — crypto/rand ensures uniqueness.
 func CreateContainerID() string {
 	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	result := make([]byte, 28)
+	randBytes := make([]byte, 28)
+	// crypto/rand.Read always fills the buffer and returns nil error on supported platforms
+	_, _ = rand.Read(randBytes)
 	for i := range result {
-		result[i] = chars[fastrandn(uint32(len(chars)))]
+		result[i] = chars[int(randBytes[i])%len(chars)]
 	}
 	return "CR!" + string(result)
-}
-
-// fastrandn returns a pseudo-random number in [0, n).
-// Uses a simple xorshift for portability without importing crypto/rand.
-func fastrandn(n uint32) uint32 {
-	// Simple deterministic PRNG for container IDs
-	// Not cryptographically secure, but sufficient for unique IDs
-	v := uint32(1)
-	for i := 0; i < 16; i++ {
-		v ^= v << 13
-		v ^= v >> 17
-		v ^= v << 5
-	}
-	return v % n
 }
 
 // sortedByKey returns fragments sorted by (FType, FID).
