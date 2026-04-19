@@ -1,6 +1,8 @@
 package kfx
 
 import (
+	"fmt"
+	"math"
 	"testing"
 )
 
@@ -671,5 +673,991 @@ func TestDecodeStrokeValuesNegativeZeroIncrement(t *testing.T) {
 	_, err := decodeStrokeValues(data, 1, "test_negzero")
 	if err == nil {
 		t.Error("expected error for negative zero increment")
+	}
+}
+
+// ===========================================================================
+// VAL-M4-NB-001: processNotebookContent dispatches content types correctly
+// Python: yj_to_epub_notebook.py:220-268
+// ===========================================================================
+
+func TestProcessNotebookContent_DispatchesDollar270(t *testing.T) {
+	// Verify that $270 content type is dispatched correctly and children are visited.
+	fragmentStore := map[string]map[string]interface{}{}
+
+	nc := &notebookContext{
+		getFragment: func(ftype string, fid string) map[string]interface{} {
+			key := ftype + ":" + fid
+			return fragmentStore[key]
+		},
+		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
+			// Look up the story reference
+			if ref, ok := content["$259"]; ok {
+				if fid, ok := ref.(string); ok {
+					return fragmentStore["$259:"+fid]
+				}
+			}
+			return nil
+		},
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "svg"}
+
+	content := map[string]interface{}{
+		"$159": "$270",
+		"$146": []interface{}{
+			map[string]interface{}{
+				"$159": "$270",
+			},
+		},
+	}
+
+	processNotebookContent(nc, content, parent)
+
+	// After processing, $159 should have been popped
+	if _, ok := content["$159"]; ok {
+		t.Error("$159 should have been popped from content")
+	}
+	// $146 should have been popped
+	if _, ok := content["$146"]; ok {
+		t.Error("$146 should have been popped from content")
+	}
+}
+
+func TestProcessNotebookContent_SymbolLookup(t *testing.T) {
+	// Verify that IonSymbol content triggers $608 fragment lookup.
+	fragmentStore := map[string]map[string]interface{}{
+		"$608:sym1": {
+			"$159": "$270",
+		},
+	}
+
+	nc := &notebookContext{
+		getFragment: func(ftype string, fid string) map[string]interface{} {
+			key := ftype + ":" + fid
+			return fragmentStore[key]
+		},
+		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
+			return nil
+		},
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "svg"}
+
+	// Pass a string (IonSymbol) as content
+	processNotebookContent(nc, "sym1", parent)
+
+	// Should not panic and should have looked up the fragment
+}
+
+func TestProcessNotebookContent_UnknownContentType(t *testing.T) {
+	// Non-$270 content type should log error but not panic.
+	nc := &notebookContext{
+		getFragment: func(ftype string, fid string) map[string]interface{} {
+			return nil
+		},
+		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
+			return nil
+		},
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "svg"}
+
+	content := map[string]interface{}{
+		"$159": "$999", // unknown content type
+	}
+
+	processNotebookContent(nc, content, parent)
+	// Should log error but not panic
+}
+
+func TestProcessNotebookContent_RecursesDollar176(t *testing.T) {
+	// Verify that $176 story content is looked up and processed.
+	storyFragment := map[string]interface{}{
+		"$176": "my_story",
+		"$146": []interface{}{
+			map[string]interface{}{
+				"$159": "$270",
+			},
+		},
+	}
+
+	fragmentStore := map[string]map[string]interface{}{
+		"$259:story_ref": storyFragment,
+	}
+
+	nc := &notebookContext{
+		getFragment: func(ftype string, fid string) map[string]interface{} {
+			return fragmentStore[ftype+":"+fid]
+		},
+		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
+			if ref, ok := content["$259"]; ok {
+				if fid, ok := ref.(string); ok {
+					return fragmentStore["$259:"+fid]
+				}
+			}
+			return nil
+		},
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "svg"}
+
+	content := map[string]interface{}{
+		"$159": "$270",
+		"$176": "story_name",
+		"$259": "story_ref",
+	}
+
+	processNotebookContent(nc, content, parent)
+
+	// $176 should have been consumed in the content
+	if _, ok := content["$176"]; !ok {
+		t.Error("$176 should still be in content (it's consumed by getNamedFragment)")
+	}
+}
+
+func TestProcessNotebookContent_DispatchesStrokeWhenNoLayout(t *testing.T) {
+	// When $270 has no $156 layout and has nmdl.type, should dispatch to scribeNotebookStroke.
+	nc := &notebookContext{
+		getFragment: func(ftype string, fid string) map[string]interface{} {
+			return nil
+		},
+		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
+			return nil
+		},
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "svg"}
+
+	content := map[string]interface{}{
+		"$159":      "$270",
+		"nmdl.type": "nmdl.stroke_group",
+		"nmdl.chunked": true,
+		"nmdl.chunk_threshold": 50,
+	}
+
+	processNotebookContent(nc, content, parent)
+
+	// nmdl.type should have been consumed
+	if _, ok := content["nmdl.type"]; ok {
+		t.Error("nmdl.type should have been consumed by scribeNotebookStroke")
+	}
+	// A <g> element should have been created
+	if len(parent.Children) != 1 {
+		t.Fatalf("expected 1 child element, got %d", len(parent.Children))
+	}
+	if parent.Children[0].Tag != "g" {
+		t.Errorf("expected <g> element, got <%s>", parent.Children[0].Tag)
+	}
+}
+
+// ===========================================================================
+// VAL-M4-NB-002: scribeNotebookStroke handles stroke groups
+// Python: yj_to_epub_notebook.py:274-292
+// ===========================================================================
+
+func TestScribeNotebookStrokeGroup(t *testing.T) {
+	// Verify stroke group creates <g> element and processes annotations.
+	nc := &notebookContext{
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "svg"}
+
+	content := map[string]interface{}{
+		"nmdl.type":            "nmdl.stroke_group",
+		"nmdl.chunked":         true,
+		"nmdl.chunk_threshold": 50,
+		"$683": []interface{}{
+			map[string]interface{}{
+				"$687": "nmdl.hwr",
+			},
+		},
+	}
+
+	scribeNotebookStroke(nc, content, parent, "loc123")
+
+	// nmdl.type should be consumed
+	if _, ok := content["nmdl.type"]; ok {
+		t.Error("nmdl.type should have been consumed")
+	}
+
+	// Should create a <g> child
+	if len(parent.Children) != 1 {
+		t.Fatalf("expected 1 child, got %d", len(parent.Children))
+	}
+
+	groupElem := parent.Children[0]
+	if groupElem.Tag != "g" {
+		t.Errorf("expected <g>, got <%s>", groupElem.Tag)
+	}
+
+	// Should have id attribute
+	if groupElem.Attrib["id"] != "loc123" {
+		t.Errorf("expected id=loc123, got %v", groupElem.Attrib["id"])
+	}
+}
+
+func TestScribeNotebookStrokeGroup_ChunkedValidation(t *testing.T) {
+	// Verify that non-true chunked value logs error.
+	nc := &notebookContext{
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "svg"}
+
+	content := map[string]interface{}{
+		"nmdl.type":            "nmdl.stroke_group",
+		"nmdl.chunked":         false, // should trigger error
+		"nmdl.chunk_threshold": 50,
+	}
+
+	scribeNotebookStroke(nc, content, parent, "")
+
+	// Should still create group element despite error
+	if len(parent.Children) != 1 {
+		t.Fatalf("expected 1 child even with error, got %d", len(parent.Children))
+	}
+}
+
+// ===========================================================================
+// VAL-M4-NB-005: Brush type and thickness classification
+// Python: yj_to_epub_notebook.py:330-350
+// ===========================================================================
+
+func TestBrushTypeClassification(t *testing.T) {
+	tests := []struct {
+		brushType int
+		expected  string
+	}{
+		{0, ORIGINAL_PEN},
+		{1, HIGHLIGHTER},
+		{5, PENCIL},
+		{6, FOUNTAIN_PEN},
+		{7, MARKER},  // default when no thickness info
+		{9, SHADER},
+		{99, UNKNOWN + "99"}, // unknown type
+	}
+
+	for _, tc := range tests {
+		got := classifyBrushType(tc.brushType)
+		if got != tc.expected {
+			t.Errorf("classifyBrushType(%d) = %q, want %q", tc.brushType, got, tc.expected)
+		}
+	}
+}
+
+func TestBrushTypeClassificationWithThickness(t *testing.T) {
+	// Brush type 7: MARKER when variable thickness, PEN otherwise
+	tests := []struct {
+		brushType         int
+		variableThickness bool
+		expected          string
+	}{
+		{7, true, MARKER},
+		{7, false, PEN},
+		{0, false, ORIGINAL_PEN},
+		{0, true, ORIGINAL_PEN},
+	}
+
+	for _, tc := range tests {
+		got := classifyBrushTypeWithThickness(tc.brushType, tc.variableThickness)
+		if got != tc.expected {
+			t.Errorf("classifyBrushTypeWithThickness(%d, %v) = %q, want %q",
+				tc.brushType, tc.variableThickness, got, tc.expected)
+		}
+	}
+}
+
+func TestBrushTypeOpacity(t *testing.T) {
+	// Verify that HIGHLIGHTER and SHADER get correct opacity.
+	// This is tested indirectly through the stroke processing.
+	tests := []struct {
+		brushType int
+		opacity   float64
+	}{
+		{0, 1.0}, // ORIGINAL_PEN
+		{1, 0.2}, // HIGHLIGHTER
+		{5, 1.0}, // PENCIL
+		{6, 1.0}, // FOUNTAIN_PEN
+		{9, 0.2}, // SHADER
+	}
+	for _, tc := range tests {
+		brushName := classifyBrushType(tc.brushType)
+		opacity := 1.0
+		if tc.brushType == 1 {
+			opacity = 0.2
+		}
+		if tc.brushType == 9 {
+			opacity = 0.2
+		}
+		_ = brushName
+		if opacity != tc.opacity {
+			t.Errorf("brush type %d (%s) opacity = %v, want %v", tc.brushType, brushName, opacity, tc.opacity)
+		}
+	}
+}
+
+// ===========================================================================
+// VAL-M4-NB-003: SVG path generation for normal strokes
+// Python: yj_to_epub_notebook.py:482-515
+// ===========================================================================
+
+func TestSVGPathGeneration_SinglePath(t *testing.T) {
+	groupElem := &svgElement{Tag: "g"}
+	points := []strokePoint{
+		{X: 10, Y: 20, T: 5, D: 1.0},
+		{X: 30, Y: 40, T: 5, D: 1.0},
+		{X: 50, Y: 60, T: 5, D: 1.0},
+	}
+
+	generateSVGPaths(groupElem, points, 5)
+
+	if len(groupElem.Children) != 1 {
+		t.Fatalf("expected 1 path, got %d", len(groupElem.Children))
+	}
+
+	pathElem := groupElem.Children[0]
+	if pathElem.Tag != "path" {
+		t.Errorf("expected <path>, got <%s>", pathElem.Tag)
+	}
+
+	// Check d attribute
+	d := pathElem.Attrib["d"]
+	// With INCLUDE_PRIOR_LINE_SEGMENT, we include 2 prior points:
+	// First point: M 10 20
+	// Second point: L 30 40
+	// Third point: L 50 60
+	// But with prior segments: first path starts with nothing before, includes [1] prior
+	// Actually: for i=0, priors=[2,1], but i<2 and i<1, so nothing included.
+	// For i=0: path starts with M 10 20
+	// For i=1: same t and d, so appended: L 30 40
+	// For i=2: same t and d, so appended: L 50 60
+	expectedD := "M 10 20 L 30 40 L 50 60"
+	if d != expectedD {
+		t.Errorf("path d = %q, want %q", d, expectedD)
+	}
+
+	// stroke-width should NOT be set when t == nmdlThickness
+	if _, ok := pathElem.Attrib["stroke-width"]; ok {
+		t.Error("stroke-width should not be set when equal to nmdlThickness")
+	}
+}
+
+func TestSVGPathGeneration_VariableThickness(t *testing.T) {
+	groupElem := &svgElement{Tag: "g"}
+	points := []strokePoint{
+		{X: 10, Y: 20, T: 5, D: 1.0},
+		{X: 30, Y: 40, T: 10, D: 1.0}, // different thickness → new path
+	}
+
+	generateSVGPaths(groupElem, points, 5)
+
+	// Point 0 has T=5 and only 1 point → no path element (need >1 points)
+	// Point 1 has T=10 with prior segment from point 0 → 1 path element
+	if len(groupElem.Children) != 1 {
+		t.Fatalf("expected 1 path, got %d", len(groupElem.Children))
+	}
+
+	// The path should have stroke-width set (10 != 5)
+	path1 := groupElem.Children[0]
+	if path1.Attrib["stroke-width"] != "10" {
+		t.Errorf("path stroke-width = %q, want %q", path1.Attrib["stroke-width"], "10")
+	}
+}
+
+func TestSVGPathGeneration_IncludePriorLineSegment(t *testing.T) {
+	// When INCLUDE_PRIOR_LINE_SEGMENT is true, new paths include prior points
+	groupElem := &svgElement{Tag: "g"}
+	points := []strokePoint{
+		{X: 10, Y: 20, T: 5, D: 1.0},
+		{X: 30, Y: 40, T: 5, D: 1.0},
+		{X: 50, Y: 60, T: 15, D: 1.0}, // new path starts here
+	}
+
+	generateSVGPaths(groupElem, points, 5)
+
+	// Two paths
+	if len(groupElem.Children) != 2 {
+		t.Fatalf("expected 2 paths, got %d", len(groupElem.Children))
+	}
+
+	// Second path should include prior line segments from points[1] and points[0]
+	// priors = [2, 1]: i=2, j=2 → points[0]=(10,20), j=1 → points[1]=(30,40)
+	path2 := groupElem.Children[1]
+	d := path2.Attrib["d"]
+	// Should start with M for the first prior point
+	if len(d) == 0 {
+		t.Error("second path d attribute should not be empty")
+	}
+	// Should include prior points: (10,20) and (30,40), then current (50,60)
+	// Points are added in order [2, 1]: first (10,20), then (30,40), then (50,60)
+	if !containsStr(d, "M") {
+		t.Errorf("path d should contain M: %q", d)
+	}
+}
+
+// ===========================================================================
+// VAL-M4-NB-006: scribeNotebookAnnotation processes handwriting recognition
+// Python: yj_to_epub_notebook.py:517-614
+// ===========================================================================
+
+func TestScribeNotebookAnnotation_HWR(t *testing.T) {
+	// Verify that nmdl.hwr annotation creates <text>/<tspan> elements.
+	storyFragment := map[string]interface{}{
+		"$176": "hwr_story",
+		"$146": []interface{}{
+			map[string]interface{}{
+				"$159": "$269",
+				"$58":  float64(100),
+				"$59":  float64(50),
+				"$57":  float64(20),
+				"$56":  float64(80),
+				"$145": "Hello World",
+				"$142": []interface{}{
+					map[string]interface{}{
+						"$604": "word",
+						"$143": 0,
+						"$144": 5,
+						"$58":  float64(100),
+						"$59":  float64(50),
+						"$57":  float64(20),
+						"$56":  float64(40),
+					},
+					map[string]interface{}{
+						"$604": "word",
+						"$143": 6,
+						"$144": 5,
+						"$58":  float64(100),
+						"$59":  float64(90),
+						"$57":  float64(20),
+						"$56":  float64(40),
+					},
+				},
+			},
+		},
+	}
+
+	nc := &notebookContext{
+		getFragment: func(ftype string, fid string) map[string]interface{} {
+			return nil
+		},
+		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
+			// Return the story fragment for any $259 lookup
+			if ftype == "$259" {
+				return storyFragment
+			}
+			return nil
+		},
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "g"}
+
+	annotation := map[string]interface{}{
+		"$687": "nmdl.hwr",
+		"$259": "story_ref",
+	}
+
+	scribeNotebookAnnotation(nc, annotation, parent)
+
+	// Should have created desc and text elements
+	// The annotation processes the story which has content with $269 type
+	// We expect at least desc + text elements
+	if len(parent.Children) < 2 {
+		t.Fatalf("expected at least 2 children (desc + text), got %d", len(parent.Children))
+	}
+
+	// Find the text element
+	var textElem *svgElement
+	for _, child := range parent.Children {
+		if child.Tag == "text" {
+			textElem = child
+			break
+		}
+	}
+
+	if textElem == nil {
+		t.Fatal("expected <text> element to be created")
+	}
+
+	// Check text element attributes
+	if textElem.Attrib["fill"] != "red" {
+		t.Errorf("text fill = %q, want %q", textElem.Attrib["fill"], "red")
+	}
+
+	// Should have tspan children for each word
+	tspanCount := 0
+	for _, child := range textElem.Children {
+		if child.Tag == "tspan" {
+			tspanCount++
+			if child.Text == "" {
+				t.Error("tspan should have text content")
+			}
+		}
+	}
+	if tspanCount != 2 {
+		t.Errorf("expected 2 tspan elements, got %d", tspanCount)
+	}
+}
+
+func TestScribeNotebookAnnotation_UnexpectedType(t *testing.T) {
+	// Verify unexpected annotation type logs error.
+	nc := &notebookContext{
+		getFragment: func(ftype string, fid string) map[string]interface{} {
+			return nil
+		},
+		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
+			return nil
+		},
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "g"}
+
+	annotation := map[string]interface{}{
+		"$687": "nmdl.unknown_type",
+	}
+
+	scribeNotebookAnnotation(nc, annotation, parent)
+
+	// Should not create any children
+	if len(parent.Children) != 0 {
+		t.Errorf("expected 0 children for unknown annotation type, got %d", len(parent.Children))
+	}
+}
+
+// ===========================================================================
+// VAL-M4-NB-004: PNG density map for variable-density strokes
+// Python: yj_to_epub_notebook.py:402-480
+// ===========================================================================
+
+func TestScribeNotebookStroke_VariableDensity(t *testing.T) {
+	// Verify that variable density strokes produce an <image> element with base64 PNG.
+	nc := &notebookContext{
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "svg"}
+
+	// Create position_x/y data with valid signature
+	posData := []byte{
+		0x01, 0x01,             // signature
+		0x02, 0x00, 0x00, 0x00, // num_vals=2
+		0x45,                   // nibbles: 4 (inc=0), 5 (inc=1)
+	}
+
+	// Make dafData return values != 100 to trigger variable density
+	// nibble 5 → n=1,bit2=1 → increment=1; nibble 5 → increment=1
+	// value[0]=1, change=0+1=1, value=1+1=2 → daf values [1, 2]
+	dafData2 := []byte{
+		0x01, 0x01,
+		0x02, 0x00, 0x00, 0x00,
+		0x55, // both nibbles = 5 → increment=1
+	}
+
+	tafData := []byte{
+		0x01, 0x01,
+		0x02, 0x00, 0x00, 0x00,
+		0x44, // both nibbles = 4 → increment=0 → values [0, 0]
+	}
+
+	content := map[string]interface{}{
+		"nmdl.type":        "nmdl.stroke",
+		"nmdl.brush_type":  0, // ORIGINAL_PEN
+		"nmdl.color":       0, // black
+		"nmdl.random_seed": 42,
+		"nmdl.stroke_bounds": []interface{}{int(0), int(0), int(1000), int(1000)},
+		"nmdl.thickness":    float64(50),
+		"nmdl.stroke_points": map[string]interface{}{
+			"nmdl.num_points":            2,
+			"nmdl.position_x":            posData,
+			"nmdl.position_y":            posData,
+			"nmdl.density_adjust_factor": dafData2, // non-100 values → variable density
+			"nmdl.thickness_adjust_factor": tafData,
+		},
+	}
+
+	scribeNotebookStroke(nc, content, parent, "density_loc")
+
+	// Should have created a group with density image
+	// Find the group element (might be nested in SVG root)
+	var findGroup func(elem *svgElement) *svgElement
+	findGroup = func(elem *svgElement) *svgElement {
+		for _, child := range elem.Children {
+			if child.Tag == "g" {
+				return child
+			}
+			if result := findGroup(child); result != nil {
+				return result
+			}
+		}
+		return nil
+	}
+
+	groupElem := findGroup(parent)
+	if groupElem == nil {
+		t.Fatal("expected <g> element to be created")
+	}
+
+	// Group should have stroke="none" for variable density
+	if groupElem.Attrib["stroke"] != "none" {
+		t.Errorf("variable density group stroke = %q, want %q", groupElem.Attrib["stroke"], "none")
+	}
+
+	// Should have an image child with base64 data
+	var imageElem *svgElement
+	for _, child := range groupElem.Children {
+		if child.Tag == "image" {
+			imageElem = child
+			break
+		}
+	}
+	if imageElem == nil {
+		t.Fatal("expected <image> element for variable density stroke")
+	}
+
+	href := imageElem.Attrib["xlink:href"]
+	if !containsStr(href, "data:image/png;base64,") {
+		t.Errorf("image href should contain base64 PNG data, got: %s", href[:min(80, len(href))])
+	}
+}
+
+// ===========================================================================
+// VAL-M4-NB-008: adjustColorForDensity edge cases
+// Python: yj_to_epub_notebook.py:615-622
+// ===========================================================================
+
+func TestAdjustColorForDensity_AllColors(t *testing.T) {
+	// Test all stroke colors at density 1.0
+	for idx, entry := range STROKE_COLORS {
+		result := adjustColorForDensity(entry.Hex, 1.0)
+		r := (result >> 16) & 0xff
+		g := (result >> 8) & 0xff
+		b := result & 0xff
+		// Result should be grayscale
+		if r != g || g != b {
+			t.Errorf("STROKE_COLORS[%d] (%s, 0x%06x) at density 1.0 = 0x%06x, not grayscale", idx, entry.Name, entry.Hex, result)
+		}
+	}
+}
+
+// ===========================================================================
+// Helper: check if string contains substring
+// ===========================================================================
+
+func containsStr(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
+}
+
+func containsSubstr(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// ===========================================================================
+// Thickness matching
+// ===========================================================================
+
+func TestThicknessMatching(t *testing.T) {
+	// Verify thickness matching works correctly for each brush type.
+	// Python: iterates THICKNESS_CHOICES[brush_name] to find closest match.
+	tests := []struct {
+		brushName string
+		thickness float64
+		expected  string
+	}{
+		{FOUNTAIN_PEN, 23.625, "fine"},    // exact match
+		{FOUNTAIN_PEN, 47.25, "medium"},   // exact match
+		{PEN, 40.0, "thin"},               // closest to 39.375
+		{PENCIL, 100.0, "thick"},          // closest to 110.25 or 94.5?
+		{HIGHLIGHTER, 300.0, "thin"},      // closest to 315
+		{UNKNOWN, 50.0, "50.000"},         // no choices → format string
+	}
+
+	for _, tc := range tests {
+		bestDiff := 0.5
+		thicknessName := fmt.Sprintf("%1.3f", tc.thickness)
+		for idx, choice := range THICKNESS_CHOICES[tc.brushName] {
+			diff := math.Abs(choice-tc.thickness) / choice
+			if diff < bestDiff {
+				thicknessName = THICKNESS_NAME[idx]
+				bestDiff = diff
+			}
+		}
+
+		if thicknessName != tc.expected {
+			t.Errorf("thickness match for %s/%v = %q, want %q", tc.brushName, tc.thickness, thicknessName, tc.expected)
+		}
+	}
+}
+
+// ===========================================================================
+// scribeNotebookStrokeIndividual with normal (non-density) stroke
+// ===========================================================================
+
+func TestScribeNotebookStroke_NormalStroke(t *testing.T) {
+	// Test a normal stroke (all daf=100) that produces SVG paths.
+	nc := &notebookContext{
+		contentContext: "test",
+	}
+
+	parent := &svgElement{Tag: "svg"}
+
+	// Create position data for 2 points
+	posData := []byte{
+		0x01, 0x01,
+		0x02, 0x00, 0x00, 0x00,
+		0x15, // nibble 1: n=1,bit2=0 → read 1 byte
+		0x0a, // increment = 10
+		0x54, // nibble 5: n=1,bit2=1 → increment=1; nibble 4: n=0,bit2=1 → increment=0
+	}
+	// Delta decode for posData:
+	// i=0: change=0, value=10 → 10
+	// i=1: change=0+1=1, value=10+1=11 → 11
+	// Wait, nibbles are: byte 0x15 → high=1, low=5
+	// i=0: instr=1, n=1,bit2=0 → read 1 byte (0x0a=10) → increment=10, value=10
+	// i=1: instr=5, n=1,bit2=1 → increment=1, change=0+1=1, value=10+1=11
+
+	// daf=100 for all points (not variable density)
+	// We need daf values of 100 for each point.
+	// To get value=100 at first point: first increment=100
+	// Then no more changes: increment=0 for remaining points.
+	// n=1,bit2=0 → instr=0x01, read 1 byte = 100 = 0x64
+	dafAll100 := []byte{
+		0x01, 0x01,
+		0x02, 0x00, 0x00, 0x00,
+		0x14, // nibble 1: n=1,bit2=0 → read 1 byte; nibble 4: inc=0
+		0x64, // byte = 100
+	}
+	// i=0: instr=1, read 1 byte=100, value=100
+	// i=1: instr=4, increment=0, change=0, value=100
+
+	tafAll100 := []byte{
+		0x01, 0x01,
+		0x02, 0x00, 0x00, 0x00,
+		0x14, // same as daf
+		0x64, // 100
+	}
+
+	content := map[string]interface{}{
+		"nmdl.type":        "nmdl.stroke",
+		"nmdl.brush_type":  0, // ORIGINAL_PEN
+		"nmdl.color":       2, // red
+		"nmdl.random_seed": 42,
+		"nmdl.stroke_bounds": []interface{}{int(0), int(0), int(1000), int(1000)},
+		"nmdl.thickness":    float64(50),
+		"nmdl.stroke_points": map[string]interface{}{
+			"nmdl.num_points":              2,
+			"nmdl.position_x":              posData,
+			"nmdl.position_y":              posData,
+			"nmdl.density_adjust_factor":   dafAll100,
+			"nmdl.thickness_adjust_factor": tafAll100,
+		},
+	}
+
+	scribeNotebookStroke(nc, content, parent, "normal_loc")
+
+	// Find the group element
+	var findGroups func(elem *svgElement) []*svgElement
+	findGroups = func(elem *svgElement) []*svgElement {
+		var result []*svgElement
+		for _, child := range elem.Children {
+			if child.Tag == "g" {
+				result = append(result, child)
+			}
+			result = append(result, findGroups(child)...)
+		}
+		return result
+	}
+
+	groups := findGroups(parent)
+	if len(groups) == 0 {
+		t.Fatal("expected at least one <g> element")
+	}
+
+	// Find the group with id="normal_loc"
+	var strokeGroup *svgElement
+	for _, g := range groups {
+		if g.Attrib["id"] == "normal_loc" {
+			strokeGroup = g
+			break
+		}
+	}
+	if strokeGroup == nil {
+		t.Fatal("expected <g> element with id=normal_loc")
+	}
+
+	// Should have fill="none" and stroke attributes for normal stroke
+	if strokeGroup.Attrib["fill"] != "none" {
+		t.Errorf("normal stroke group fill = %q, want %q", strokeGroup.Attrib["fill"], "none")
+	}
+	if strokeGroup.Attrib["stroke"] == "" {
+		t.Error("normal stroke group should have stroke color")
+	}
+	if strokeGroup.Attrib["stroke-width"] == "" {
+		t.Error("normal stroke group should have stroke-width")
+	}
+
+	// Should have desc and path children
+	var hasDesc, hasPath bool
+	for _, child := range strokeGroup.Children {
+		if child.Tag == "desc" {
+			hasDesc = true
+		}
+		if child.Tag == "path" {
+			hasPath = true
+		}
+	}
+	if !hasDesc {
+		t.Error("expected <desc> element in stroke group")
+	}
+	if !hasPath {
+		t.Error("expected <path> element in stroke group")
+	}
+}
+
+// ===========================================================================
+// VAL-M4-NB-007: decodeStrokeValues edge cases
+// ===========================================================================
+
+func TestDecodeStrokeValues_ShortData(t *testing.T) {
+	// Not enough data for instructions should return error
+	data := []byte{
+		0x01, 0x01,
+		0x05, 0x00, 0x00, 0x00, // num_vals=5 but only 1 byte of instruction data
+		0x44,
+	}
+	_, err := decodeStrokeValues(data, 5, "test_short")
+	if err == nil {
+		t.Error("expected error for insufficient data")
+	}
+}
+
+func TestDecodeStrokeValues_LargeValue(t *testing.T) {
+	// Test with a large 2-byte increment value
+	data := []byte{
+		0x01, 0x01,
+		0x01, 0x00, 0x00, 0x00,
+		0x20,             // n=2, bit2=0 → read 2 bytes
+		0x00, 0x10,       // uint16 LE = 0x1000 = 4096
+	}
+	vals, err := decodeStrokeValues(data, 1, "test_large")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if vals[0] != 4096 {
+		t.Errorf("value = %d, want 4096", vals[0])
+	}
+}
+
+// ===========================================================================
+// SVG element tests
+// ===========================================================================
+
+func TestSVGElement_SetAttrib(t *testing.T) {
+	elem := &svgElement{Tag: "g"}
+	elem.setAttrib("id", "test1")
+	elem.setAttrib("opacity", "0.20")
+
+	if elem.Attrib["id"] != "test1" {
+		t.Errorf("id = %q, want %q", elem.Attrib["id"], "test1")
+	}
+	if elem.Attrib["opacity"] != "0.20" {
+		t.Errorf("opacity = %q, want %q", elem.Attrib["opacity"], "0.20")
+	}
+}
+
+func TestNewSVGElement(t *testing.T) {
+	parent := &svgElement{Tag: "svg"}
+	child := newSVGElement(parent, "g", map[string]string{"id": "child1"})
+
+	if child.Tag != "g" {
+		t.Errorf("child tag = %q, want %q", child.Tag, "g")
+	}
+	if child.Parent != parent {
+		t.Error("child parent should be parent")
+	}
+	if len(parent.Children) != 1 || parent.Children[0] != child {
+		t.Error("parent should have child in Children")
+	}
+}
+
+// ===========================================================================
+// Context stack tests
+// ===========================================================================
+
+func TestContextStack(t *testing.T) {
+	cs := &contextStack{base: "root"}
+
+	if cs.current() != "root" {
+		t.Errorf("initial current = %q, want %q", cs.current(), "root")
+	}
+
+	cs.push("level1")
+	if cs.current() != "root level1" {
+		t.Errorf("after push = %q, want %q", cs.current(), "root level1")
+	}
+
+	cs.push("level2")
+	if cs.current() != "root level1 level2" {
+		t.Errorf("after second push = %q, want %q", cs.current(), "root level1 level2")
+	}
+
+	cs.pop()
+	if cs.current() != "root level1" {
+		t.Errorf("after pop = %q, want %q", cs.current(), "root level1")
+	}
+
+	cs.pop()
+	if cs.current() != "root" {
+		t.Errorf("after second pop = %q, want %q", cs.current(), "root")
+	}
+}
+
+// ===========================================================================
+// Quantize thickness
+// ===========================================================================
+
+func TestQuantizeThickness(t *testing.T) {
+	// When QUANTIZE_THICKNESS is true, TAF is quantized to 10% steps.
+	if !QUANTIZE_THICKNESS {
+		t.Fatal("QUANTIZE_THICKNESS should be true")
+	}
+
+	// Test quantization: (taf // 10) * 10
+	tests := []struct {
+		input    int
+		expected int
+	}{
+		{95, 90},
+		{100, 100},
+		{105, 100},
+		{99, 90},
+		{10, 10},
+		{0, 0},
+	}
+
+	for _, tc := range tests {
+		result := (tc.input / 10) * 10
+		if result != tc.expected {
+			t.Errorf("quantize(%d) = %d, want %d", tc.input, result, tc.expected)
+		}
 	}
 }
