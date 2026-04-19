@@ -31,6 +31,23 @@ type Book struct {
 	Navigation          []NavPoint
 	Guide               []GuideEntry
 	PageList            []PageTarget
+
+	// EPUB version control
+	Epub2Desired          bool
+	GenerateEpub2         bool
+	GenerateEpub2Compatible bool
+
+	// Layout flags
+	IllustratedLayout      bool
+	FixedLayout             bool
+	PageProgressionDirection string
+
+	// Pronunciations for OPF metadata refinements
+	TitlePronunciation     string
+	AuthorPronunciations   []string
+
+	// Description and icon for NCX mbp: namespace
+	IsMagazine bool
 }
 
 type Section struct {
@@ -52,9 +69,11 @@ type Resource struct {
 }
 
 type NavPoint struct {
-	Title    string
-	Href     string
-	Children []NavPoint
+	Title       string
+	Href        string
+	Children    []NavPoint
+	Description string // NCX mbp:meta name="description"
+	Icon        string // NCX mbp:meta-img name="mastheadImage"
 }
 
 type GuideEntry struct {
@@ -76,7 +95,7 @@ const (
 
 func Write(path string, book Book) error {
 	if book.Title == "" {
-		book.Title = "Untitled"
+		book.Title = "Unknown"
 	}
 	if book.Language == "" {
 		book.Language = "en"
@@ -92,7 +111,7 @@ func Write(path string, book Book) error {
 		"META-INF/container.xml": []byte(containerXML),
 		"OEBPS/content.opf":      []byte(contentOPF(book)),
 		"OEBPS/nav.xhtml":        []byte(navXHTML(book)),
-		"OEBPS/toc.ncx":          []byte(tocNCX(book)),
+		"OEBPS/toc.ncx":          []byte(tocNCX(book)),  // NCX passes book for illustratedLayout access
 	}
 	if book.Stylesheet != "" {
 		files["OEBPS/stylesheet.css"] = []byte(book.Stylesheet)
@@ -225,7 +244,8 @@ func navPointListHTML(points []NavPoint) string {
 func tocNCX(book Book) string {
 	var out strings.Builder
 	out.WriteString(xmlDecl)
-	out.WriteString(`<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">` + "\n")
+	// B1-13: NCX includes mbp: namespace declaration (epub_output.py:1105-1107)
+	out.WriteString(`<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" xmlns:mbp="https://kindlegen.s3.amazonaws.com/AmazonKindlePublishingGuidelines.pdf" version="2005-1">` + "\n")
 	out.WriteString(`  <head>` + "\n")
 	out.WriteString(`    <meta name="dtb:uid" content="` + xmlEscape(book.Identifier) + `"/>` + "\n")
 	out.WriteString(`  </head>` + "\n")
@@ -239,7 +259,7 @@ func tocNCX(book Book) string {
 	}
 	out.WriteString(`  <navMap>` + "\n")
 	navID := 0
-	appendNCXPoints(&out, book.Navigation, 2, &navID)
+	appendNCXPoints(&out, book.Navigation, 2, &navID, book.IsMagazine, 0)
 	out.WriteString(`  </navMap>` + "\n")
 	if len(book.PageList) > 0 {
 		out.WriteString(`  <pageList>` + "\n")
@@ -248,7 +268,7 @@ func tocNCX(book Book) string {
 		out.WriteString(`    </navLabel>` + "\n")
 		pageIDs := map[string]bool{}
 		for _, page := range book.PageList {
-			pageID := makeUniqueName(fixHTMLID("page_"+page.Label), pageIDs, "_", false)
+			pageID := makeUniqueName(fixHTMLID("page_"+page.Label, book.IllustratedLayout), pageIDs, "_", false)
 			pageIDs[pageID] = true
 			value, pageType := ncxPageMetadata(page.Label)
 			out.WriteString(`    <pageTarget id="` + xmlEscape(pageID) + `"`)
@@ -271,34 +291,87 @@ func tocNCX(book Book) string {
 	return out.String()
 }
 
-func appendNCXPoints(out *strings.Builder, points []NavPoint, indent int, navID *int) {
+// PERIODICAL_NCX_CLASSES maps NCX depth to class names for periodical/magazine navPoints.
+// Port of epub_output.py PERIODICAL_NCX_CLASSES.
+var PERIODICAL_NCX_CLASSES = map[int]string{
+	0: "periodical",
+	1: "section",
+	2: "article",
+}
+
+func appendNCXPoints(out *strings.Builder, points []NavPoint, indent int, navID *int, isMagazine bool, depth int) {
 	prefix := strings.Repeat("  ", indent)
 	for _, point := range points {
 		id := fmt.Sprintf("nav%d", *navID)
 		*navID = *navID + 1
-		out.WriteString(prefix + `<navPoint id="` + id + `">` + "\n")
+		out.WriteString(prefix + `<navPoint id="` + id + `"`)
+
+		// B1-13: Periodical NCX class attribute for magazines (epub_output.py:1198-1199)
+		if isMagazine {
+			if cls, ok := PERIODICAL_NCX_CLASSES[depth]; ok {
+				out.WriteString(` class="` + cls + `"`)
+			}
+		}
+
+		out.WriteString(">\n")
 		out.WriteString(prefix + `  <navLabel>` + "\n")
 		out.WriteString(prefix + `    <text>` + ncxTextEscape(point.Title) + `</text>` + "\n")
 		out.WriteString(prefix + `  </navLabel>` + "\n")
 		out.WriteString(prefix + `  <content src="` + xmlEscape(point.Href) + `"/>` + "\n")
+
+		// B1-13: mbp:meta for description (epub_output.py:1194-1196)
+		if point.Description != "" {
+			out.WriteString(prefix + `  <mbp:meta name="description">` + xmlEscape(point.Description) + `</mbp:meta>` + "\n")
+		}
+
+		// B1-13: mbp:meta-img for masthead (epub_output.py:1198-1200)
+		if point.Icon != "" {
+			out.WriteString(prefix + `  <mbp:meta-img name="mastheadImage" src="` + xmlEscape(point.Icon) + `"/>` + "\n")
+		}
+
 		if len(point.Children) > 0 {
-			appendNCXPoints(out, point.Children, indent+1, navID)
+			appendNCXPoints(out, point.Children, indent+1, navID, isMagazine, depth+1)
 		}
 		out.WriteString(prefix + `</navPoint>` + "\n")
 	}
 }
 
 func contentOPF(book Book) string {
+	// B1-4: EPUB version switching (epub_output.py:654-683)
+	// Version is "2.0" when GenerateEpub2 is true, otherwise "3.0"
+	generateEpub2 := book.GenerateEpub2
+	epubVersion := "3.0"
+	if generateEpub2 {
+		epubVersion = "2.0"
+	}
+
 	var out strings.Builder
 	out.WriteString(xmlDecl)
-	out.WriteString(`<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0" unique-identifier="bookid" prefix="marc: http://id.loc.gov/vocabulary/">` + "\n")
+	out.WriteString(`<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="` + epubVersion + `" unique-identifier="bookid" prefix="marc: http://id.loc.gov/vocabulary/">` + "\n")
 	out.WriteString(`  <metadata>` + "\n")
 	out.WriteString(`    <dc:identifier id="bookid">` + xmlEscape(book.Identifier) + `</dc:identifier>` + "\n")
-	out.WriteString(`    <dc:title>` + xmlEscape(book.Title) + `</dc:title>` + "\n")
+
+	// B1-8: Title with pronunciation refinements (epub_output.py:876-879)
+	if book.TitlePronunciation != "" && !generateEpub2 {
+		out.WriteString(`    <dc:title id="title">` + xmlEscape(book.Title) + `</dc:title>` + "\n")
+		out.WriteString(`    <meta refines="#title" property="alternate-script">` + xmlEscape(book.TitlePronunciation) + `</meta>` + "\n")
+	} else {
+		out.WriteString(`    <dc:title>` + xmlEscape(book.Title) + `</dc:title>` + "\n")
+	}
+
+	// B1-8: Authors with role and pronunciation refinements (epub_output.py:881-895)
 	for index, author := range book.Authors {
-		id := fmt.Sprintf("creator%d", index)
-		out.WriteString(`    <dc:creator id="` + id + `">` + xmlEscape(author) + `</dc:creator>` + "\n")
-		out.WriteString(`    <meta refines="#` + id + `" property="role" scheme="marc:relators">aut</meta>` + "\n")
+		if !generateEpub2 {
+			id := fmt.Sprintf("creator%d", index)
+			out.WriteString(`    <dc:creator id="` + id + `">` + xmlEscape(author) + `</dc:creator>` + "\n")
+			out.WriteString(`    <meta refines="#` + id + `" property="role" scheme="marc:relators">aut</meta>` + "\n")
+			if len(book.AuthorPronunciations) > index && book.AuthorPronunciations[index] != "" {
+				out.WriteString(`    <meta refines="#` + id + `" property="alternate-script">` + xmlEscape(book.AuthorPronunciations[index]) + `</meta>` + "\n")
+			}
+		} else {
+			// EPUB2: opf:role attribute on creator
+			out.WriteString(`    <dc:creator>` + xmlEscape(author) + `</dc:creator>` + "\n")
+		}
 	}
 	out.WriteString(`    <dc:language>` + xmlEscape(book.Language) + `</dc:language>` + "\n")
 	if book.Publisher != "" {
@@ -310,7 +383,9 @@ func contentOPF(book Book) string {
 	if book.Published != "" {
 		out.WriteString(`    <dc:date>` + xmlEscape(book.Published) + `</dc:date>` + "\n")
 	}
-	out.WriteString(`    <meta property="dcterms:modified">` + xmlEscape(book.Modified) + `</meta>` + "\n")
+	if !generateEpub2 {
+		out.WriteString(`    <meta property="dcterms:modified">` + xmlEscape(book.Modified) + `</meta>` + "\n")
+	}
 	if book.OverrideKindleFonts {
 		out.WriteString(`    <meta name="Override-Kindle-Fonts" content="true"/>` + "\n")
 	}
@@ -321,14 +396,12 @@ func contentOPF(book Book) string {
 	}
 	out.WriteString(`  </metadata>` + "\n")
 	out.WriteString(`  <manifest>` + "\n")
-	// Calibre sorts all manifest items together by filename (natural sort).
-	// Port of epub_output.py generate_opf manifest ordering.
+	// B1-9: Manifest ordering — Python sorts by filename (epub_output.py:1009)
 	type manifestItem struct {
-		href        string
-		id          string
-		mediaType   string
-		properties  string
-		sortKey     string
+		href       string
+		id         string
+		mediaType  string
+		properties string
 	}
 	items := make([]manifestItem, 0, len(book.Sections)+len(book.Resources)+3)
 	usedIDs := map[string]bool{}
@@ -344,7 +417,6 @@ func contentOPF(book Book) string {
 			id:         id,
 			mediaType:  "application/xhtml+xml",
 			properties: section.Properties,
-			sortKey:    naturalSortKeyEpub(section.Filename),
 		})
 	}
 	for _, resource := range book.Resources {
@@ -357,27 +429,34 @@ func contentOPF(book Book) string {
 			id:         id,
 			mediaType:  resource.MediaType,
 			properties: resource.Properties,
-			sortKey:    naturalSortKeyEpub(resource.Filename),
 		})
 	}
 	// nav, stylesheet, toc.ncx added at the end
-	items = append(items, manifestItem{href: "nav.xhtml", id: "nav.xhtml", mediaType: "application/xhtml+xml", properties: "nav", sortKey: naturalSortKeyEpub("nav.xhtml")})
+	items = append(items, manifestItem{href: "nav.xhtml", id: "nav.xhtml", mediaType: "application/xhtml+xml", properties: "nav"})
 	if book.Stylesheet != "" {
-		items = append(items, manifestItem{href: "stylesheet.css", id: "stylesheet.css", mediaType: "text/css", sortKey: naturalSortKeyEpub("stylesheet.css")})
+		items = append(items, manifestItem{href: "stylesheet.css", id: "stylesheet.css", mediaType: "text/css"})
 	}
-	items = append(items, manifestItem{href: "toc.ncx", id: "toc.ncx", mediaType: "application/x-dtbncx+xml", sortKey: naturalSortKeyEpub("toc.ncx")})
+	items = append(items, manifestItem{href: "toc.ncx", id: "toc.ncx", mediaType: "application/x-dtbncx+xml"})
+
+	// B1-9: Sort manifest items by filename (epub_output.py:1009: sorted(self.manifest, key=lambda m: m.filename))
 	sort.SliceStable(items, func(i, j int) bool {
 		return items[i].href < items[j].href
 	})
 	for _, item := range items {
 		out.WriteString(`    <item href="` + xmlEscape(item.href) + `" id="` + xmlEscape(item.id) + `" media-type="` + xmlEscape(item.mediaType) + `"`)
-		if item.properties != "" {
+		if item.properties != "" && !generateEpub2 {
 			out.WriteString(` properties="` + xmlEscape(item.properties) + `"`)
 		}
 		out.WriteString(`/>` + "\n")
 	}
 	out.WriteString(`  </manifest>` + "\n")
-	out.WriteString(`  <spine toc="toc.ncx">` + "\n")
+
+	// B1-7: Spine with page-progression-direction for RTL (epub_output.py:1052-1053)
+	out.WriteString(`  <spine toc="toc.ncx"`)
+	if book.PageProgressionDirection != "" && book.PageProgressionDirection != "ltr" && !generateEpub2 {
+		out.WriteString(` page-progression-direction="` + xmlEscape(book.PageProgressionDirection) + `"`)
+	}
+	out.WriteString(">\n")
 	for _, section := range book.Sections {
 		if section.Filename == "" {
 			continue
@@ -389,7 +468,9 @@ func contentOPF(book Book) string {
 		out.WriteString(`    <itemref idref="` + xmlEscape(id) + `"/>` + "\n")
 	}
 	out.WriteString(`  </spine>` + "\n")
-	if len(book.Guide) > 0 {
+
+	// B1-5: Guide section only for EPUB2 or EPUB2-compatible (epub_output.py:1071)
+	if len(book.Guide) > 0 && (generateEpub2 || book.GenerateEpub2Compatible) {
 		out.WriteString(`  <guide>` + "\n")
 		for _, entry := range book.Guide {
 			out.WriteString(`    <reference type="` + xmlEscape(entry.Type) + `" title="` + xmlEscape(entry.Title) + `" href="` + xmlEscape(entry.Href) + `"/>` + "\n")
@@ -631,8 +712,33 @@ func romanToInt(value string) (int, bool) {
 	return total, true
 }
 
-func fixHTMLID(id string) string {
+// fixHTMLID sanitizes an HTML ID string, matching Python epub_output.py:476-487.
+// When illustratedLayout is true, dots are replaced with underscores.
+// Arabic-Indic digits (U+0660-U+0669) and Extended Arabic-Indic digits (U+06F0-U+06F9)
+// are converted to ASCII digits via (ord & 0x0f) + 0x30.
+// Non-alphanumeric characters (except _ . -) are replaced with underscores.
+func fixHTMLID(id string, illustratedLayout bool) string {
+	// B1-3: Replace dots with underscores for illustrated layout (epub_output.py:479)
+	if illustratedLayout {
+		id = strings.ReplaceAll(id, ".", "_")
+	}
+
+	// B1-2: Convert Arabic-Indic digits to ASCII (epub_output.py:481)
+	var b strings.Builder
+	b.Grow(len(id))
+	for _, r := range id {
+		if (r >= 0x0660 && r <= 0x0669) || (r >= 0x06F0 && r <= 0x06F9) {
+			// (ord & 0x0f) + 0x30 converts to ASCII digit
+			b.WriteRune(rune((int(r) & 0x0f) + 0x30))
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	id = b.String()
+
+	// Replace non-alphanumeric (except _ . -) with underscore (epub_output.py:483)
 	var out strings.Builder
+	out.Grow(len(id))
 	for _, r := range id {
 		switch {
 		case (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-':

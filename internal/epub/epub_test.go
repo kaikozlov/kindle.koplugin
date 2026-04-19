@@ -265,7 +265,7 @@ func TestOPFMetadata(t *testing.T) {
 }
 
 func TestOPFMetadataDefaults(t *testing.T) {
-	// Empty Title → "Untitled", empty Language → "en"
+	// Empty Title → "Unknown" (Python: epub_output.py:426-427)
 	book := Book{
 		Identifier: "urn:uuid:default-test",
 		Sections: []Section{
@@ -277,8 +277,8 @@ func TestOPFMetadataDefaults(t *testing.T) {
 	opfData := string(files["OEBPS/content.opf"])
 
 	title := extractFirstMatch(opfData, `<dc:title>([^<]+)</dc:title>`)
-	if title != "Untitled" {
-		t.Errorf("default title: got %q, want %q", title, "Untitled")
+	if title != "Unknown" {
+		t.Errorf("default title: got %q, want %q", title, "Unknown")
 	}
 
 	lang := extractFirstMatch(opfData, `<dc:language>([^<]+)</dc:language>`)
@@ -1037,8 +1037,8 @@ func TestDefaultTitleWhenEmpty(t *testing.T) {
 	opfData := string(files["OEBPS/content.opf"])
 
 	title := extractFirstMatch(opfData, `<dc:title>([^<]+)</dc:title>`)
-	if title != "Untitled" {
-		t.Errorf("empty title: got %q, want %q", title, "Untitled")
+	if title != "Unknown" {
+		t.Errorf("empty title: got %q, want %q", title, "Unknown")
 	}
 }
 
@@ -1179,7 +1179,7 @@ func TestFixHTMLID(t *testing.T) {
 		{"", "id_"},
 	}
 	for _, tt := range tests {
-		got := fixHTMLID(tt.input)
+		got := fixHTMLID(tt.input, false)
 		if got != tt.want {
 			t.Errorf("fixHTMLID(%q) = %q, want %q", tt.input, got, tt.want)
 		}
@@ -1253,5 +1253,566 @@ func TestIsDecimal(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("isDecimal(%q) = %v, want %v", tt.input, got, tt.want)
 		}
+	}
+}
+
+// =========================================================================== //
+// VAL-M1-EPUB-001: Default title for empty books is "Unknown"
+// Python: epub_output.py:426-427
+// =========================================================================== //
+
+func TestDefaultTitle_Unknown(t *testing.T) {
+	book := Book{
+		Identifier: "urn:uuid:title-test",
+		Language:   "en",
+		Authors:    []string{"A"},
+		Modified:   "2024-01-01T00:00:00Z",
+		Sections: []Section{
+			{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+		},
+	}
+	path := writeBookToTemp(t, book)
+	files := readZIP(t, path)
+	opfData := string(files["OEBPS/content.opf"])
+
+	title := extractFirstMatch(opfData, `<dc:title>([^<]+)</dc:title>`)
+	if title != "Unknown" {
+		t.Errorf("empty title default: got %q, want %q", title, "Unknown")
+	}
+
+	// Also check NCX
+	ncxData := string(files["OEBPS/toc.ncx"])
+	docTitle := extractFirstMatch(ncxData, `<docTitle>\s*<text>([^<]+)</text>`)
+	if docTitle != "Unknown" {
+		t.Errorf("NCX docTitle: got %q, want %q", docTitle, "Unknown")
+	}
+}
+
+// =========================================================================== //
+// VAL-M1-EPUB-002: Arabic-Indic numerals converted to ASCII digits in HTML IDs
+// Python: epub_output.py:481
+// =========================================================================== //
+
+func TestFixHTMLID_ArabicIndic(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"arabic_indic_1", "a\u0661b", "a1b"},
+		{"arabic_indic_9", "\u0669", "id_9"},
+		{"extended_arabic_indic_0", "\u06f0", "id_0"},
+		{"extended_arabic_indic_9", "\u06f9", "id_9"},
+		{"mixed_arabic_indic", "sec\u0661\u0662\u0663", "sec123"},
+		{"all_zero", "\u0660\u06f0", "id_00"},
+		{"preserve_ascii_digits", "abc123", "abc123"},
+		{"arabic_after_alpha", "ch\u0667", "ch7"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fixHTMLID(tt.input, false)
+			if got != tt.want {
+				t.Errorf("fixHTMLID(%q, false) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// =========================================================================== //
+// VAL-M1-EPUB-003: Dots replaced with underscores in illustrated layout HTML IDs
+// Python: epub_output.py:479
+// =========================================================================== //
+
+func TestFixHTMLID_IllustratedLayoutDots(t *testing.T) {
+	tests := []struct {
+		name               string
+		input              string
+		illustratedLayout  bool
+		want               string
+	}{
+		{"dot_illustrated", "sec.1", true, "sec_1"},
+		{"dot_not_illustrated", "sec.1", false, "sec.1"},
+		{"multiple_dots_illustrated", "a.b.c", true, "a_b_c"},
+		{"multiple_dots_not_illustrated", "a.b.c", false, "a.b.c"},
+		{"no_dots_illustrated", "sec1", true, "sec1"},
+		{"no_dots_not_illustrated", "sec1", false, "sec1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fixHTMLID(tt.input, tt.illustratedLayout)
+			if got != tt.want {
+				t.Errorf("fixHTMLID(%q, %v) = %q, want %q", tt.input, tt.illustratedLayout, got, tt.want)
+			}
+		})
+	}
+}
+
+// =========================================================================== //
+// VAL-M1-EPUB-004: EPUB version switches from 3 to 2 when no EPUB3 features needed
+// Python: epub_output.py:654-683
+// =========================================================================== //
+
+func TestEPUBVersionSwitching(t *testing.T) {
+	baseBook := Book{
+		Identifier: "urn:uuid:version-test",
+		Title:      "Version Test",
+		Language:   "en",
+		Authors:    []string{"A"},
+		Modified:   "2024-01-01T00:00:00Z",
+		Sections: []Section{
+			{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+		},
+	}
+
+	t.Run("default_epub3", func(t *testing.T) {
+		book := baseBook
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+		if !strings.Contains(opfData, `version="3.0"`) {
+			t.Error("default should be EPUB 3.0")
+		}
+	})
+
+	t.Run("epub2_desired_generates_epub2", func(t *testing.T) {
+		book := baseBook
+		book.GenerateEpub2 = true
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+		if !strings.Contains(opfData, `version="2.0"`) {
+			t.Error("GenerateEpub2 should produce EPUB 2.0")
+		}
+	})
+}
+
+// =========================================================================== //
+// VAL-M1-EPUB-005: Guide section emitted only for EPUB2 or EPUB2-compatible
+// Python: epub_output.py:1071
+// =========================================================================== //
+
+func TestGuideSectionConditional(t *testing.T) {
+	baseBook := Book{
+		Identifier: "urn:uuid:guide-test",
+		Title:      "Guide Test",
+		Language:   "en",
+		Authors:    []string{"A"},
+		Modified:   "2024-01-01T00:00:00Z",
+		Sections: []Section{
+			{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+		},
+		Guide: []GuideEntry{
+			{Type: "toc", Title: "TOC", Href: "sec.xhtml"},
+		},
+	}
+
+	t.Run("epub3_no_guide", func(t *testing.T) {
+		// Pure EPUB3 with no EPUB2 compatibility → no guide section
+		book := baseBook
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+		if strings.Contains(opfData, "<guide>") {
+			t.Error("pure EPUB3 should not have guide section")
+		}
+	})
+
+	t.Run("epub2_has_guide", func(t *testing.T) {
+		book := baseBook
+		book.GenerateEpub2 = true
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+		if !strings.Contains(opfData, "<guide>") {
+			t.Error("EPUB2 should have guide section")
+		}
+	})
+
+	t.Run("epub2_compatible_has_guide", func(t *testing.T) {
+		book := baseBook
+		book.GenerateEpub2Compatible = true
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+		if !strings.Contains(opfData, "<guide>") {
+			t.Error("EPUB2-compatible should have guide section")
+		}
+	})
+
+	t.Run("no_guide_entries_no_guide_section", func(t *testing.T) {
+		book := baseBook
+		book.Guide = nil
+		book.GenerateEpub2 = true
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+		if strings.Contains(opfData, "<guide>") {
+			t.Error("no guide entries should not produce guide section even in EPUB2")
+		}
+	})
+}
+
+// =========================================================================== //
+// VAL-M1-EPUB-006: NCX includes mbp: namespace for descriptions, masthead, periodical
+// Python: epub_output.py:1096-1243
+// =========================================================================== //
+
+func TestNCX_MBPNamespace(t *testing.T) {
+	t.Run("mbp_namespace_declaration", func(t *testing.T) {
+		book := Book{
+			Identifier: "urn:uuid:mbp-test",
+			Title:      "MBP Test",
+			Language:   "en",
+			Authors:    []string{"A"},
+			Modified:   "2024-01-01T00:00:00Z",
+			Sections: []Section{
+				{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+			},
+			Navigation: []NavPoint{
+				{Title: "Ch1", Href: "sec.xhtml"},
+			},
+		}
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		ncxData := string(files["OEBPS/toc.ncx"])
+
+		// B1-13: NCX must declare mbp: namespace (epub_output.py:1105-1107)
+		if !strings.Contains(ncxData, `xmlns:mbp="https://kindlegen.s3.amazonaws.com/AmazonKindlePublishingGuidelines.pdf"`) {
+			t.Error("NCX should have mbp: namespace declaration")
+		}
+	})
+
+	t.Run("mbp_meta_description", func(t *testing.T) {
+		book := Book{
+			Identifier: "urn:uuid:mbp-desc-test",
+			Title:      "MBP Desc Test",
+			Language:   "en",
+			Authors:    []string{"A"},
+			Modified:   "2024-01-01T00:00:00Z",
+			Sections: []Section{
+				{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+			},
+			Navigation: []NavPoint{
+				{Title: "Ch1", Href: "sec.xhtml", Description: "Chapter description"},
+			},
+		}
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		ncxData := string(files["OEBPS/toc.ncx"])
+
+		if !strings.Contains(ncxData, `<mbp:meta name="description">Chapter description</mbp:meta>`) {
+			t.Error("NCX should have mbp:meta description element")
+		}
+	})
+
+	t.Run("mbp_meta_img_masthead", func(t *testing.T) {
+		book := Book{
+			Identifier: "urn:uuid:mbp-icon-test",
+			Title:      "MBP Icon Test",
+			Language:   "en",
+			Authors:    []string{"A"},
+			Modified:   "2024-01-01T00:00:00Z",
+			Sections: []Section{
+				{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+			},
+			Navigation: []NavPoint{
+				{Title: "Ch1", Href: "sec.xhtml", Icon: "masthead.jpg"},
+			},
+		}
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		ncxData := string(files["OEBPS/toc.ncx"])
+
+		if !strings.Contains(ncxData, `<mbp:meta-img name="mastheadImage" src="masthead.jpg"/>`) {
+			t.Error("NCX should have mbp:meta-img mastheadImage element")
+		}
+	})
+
+	t.Run("periodical_ncx_classes", func(t *testing.T) {
+		book := Book{
+			Identifier: "urn:uuid:periodical-test",
+			Title:      "Periodical Test",
+			Language:   "en",
+			Authors:    []string{"A"},
+			Modified:   "2024-01-01T00:00:00Z",
+			IsMagazine: true,
+			Sections: []Section{
+				{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+			},
+			Navigation: []NavPoint{
+				{Title: "Periodical", Href: "sec.xhtml", Children: []NavPoint{
+					{Title: "Section", Href: "sec.xhtml", Children: []NavPoint{
+						{Title: "Article", Href: "sec.xhtml"},
+					}},
+				}},
+			},
+		}
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		ncxData := string(files["OEBPS/toc.ncx"])
+
+		// Periodical NCX class at depth 0
+		if !strings.Contains(ncxData, `class="periodical"`) {
+			t.Error("magazine NCX should have periodical class at depth 0")
+		}
+		// Section class at depth 1
+		if !strings.Contains(ncxData, `class="section"`) {
+			t.Error("magazine NCX should have section class at depth 1")
+		}
+		// Article class at depth 2
+		if !strings.Contains(ncxData, `class="article"`) {
+			t.Error("magazine NCX should have article class at depth 2")
+		}
+	})
+
+	t.Run("no_periodical_classes_when_not_magazine", func(t *testing.T) {
+		book := Book{
+			Identifier: "urn:uuid:not-magazine",
+			Title:      "Not Magazine",
+			Language:   "en",
+			Authors:    []string{"A"},
+			Modified:   "2024-01-01T00:00:00Z",
+			Sections: []Section{
+				{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+			},
+			Navigation: []NavPoint{
+				{Title: "Ch1", Href: "sec.xhtml"},
+			},
+		}
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		ncxData := string(files["OEBPS/toc.ncx"])
+
+		if strings.Contains(ncxData, `class="periodical"`) {
+			t.Error("non-magazine NCX should not have periodical class")
+		}
+	})
+}
+
+// =========================================================================== //
+// VAL-M1-EPUB-007: Spine includes page-progression-direction for RTL books
+// Python: epub_output.py:1052-1053
+// =========================================================================== //
+
+func TestSpinePageProgressionDirection(t *testing.T) {
+	baseBook := Book{
+		Identifier: "urn:uuid:spine-test",
+		Title:      "Spine Test",
+		Language:   "en",
+		Authors:    []string{"A"},
+		Modified:   "2024-01-01T00:00:00Z",
+		Sections: []Section{
+			{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+		},
+	}
+
+	t.Run("rtl_spine", func(t *testing.T) {
+		book := baseBook
+		book.PageProgressionDirection = "rtl"
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+
+		if !strings.Contains(opfData, `page-progression-direction="rtl"`) {
+			t.Error("RTL book should have page-progression-direction attribute on spine")
+		}
+	})
+
+	t.Run("ltr_no_attribute", func(t *testing.T) {
+		book := baseBook
+		book.PageProgressionDirection = "ltr"
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+
+		if strings.Contains(opfData, "page-progression-direction") {
+			t.Error("LTR book should not have page-progression-direction attribute")
+		}
+	})
+
+	t.Run("empty_no_attribute", func(t *testing.T) {
+		book := baseBook
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+
+		if strings.Contains(opfData, "page-progression-direction") {
+			t.Error("empty direction should not have page-progression-direction attribute")
+		}
+	})
+
+	t.Run("rtl_epub2_no_attribute", func(t *testing.T) {
+		book := baseBook
+		book.PageProgressionDirection = "rtl"
+		book.GenerateEpub2 = true
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+
+		if strings.Contains(opfData, "page-progression-direction") {
+			t.Error("EPUB2 should not have page-progression-direction attribute")
+		}
+	})
+}
+
+// =========================================================================== //
+// VAL-M1-EPUB-008: OPF metadata refinements for alternate-script and file-as
+// Python: epub_output.py:877-894
+// =========================================================================== //
+
+func TestOPFMetadataRefinements(t *testing.T) {
+	baseBook := Book{
+		Identifier: "urn:uuid:refines-test",
+		Title:      "Refines Test",
+		Language:   "en",
+		Authors:    []string{"Author One", "Author Two"},
+		Modified:   "2024-01-01T00:00:00Z",
+		Sections: []Section{
+			{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+		},
+	}
+
+	t.Run("title_pronunciation_refines", func(t *testing.T) {
+		book := baseBook
+		book.TitlePronunciation = "タイトル"
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+
+		// Title should have id="title"
+		if !strings.Contains(opfData, `<dc:title id="title">Refines Test</dc:title>`) {
+			t.Error("title should have id when pronunciation is set")
+		}
+		// Should have refines meta
+		if !strings.Contains(opfData, `<meta refines="#title" property="alternate-script">タイトル</meta>`) {
+			t.Error("should have alternate-script refines for title pronunciation")
+		}
+	})
+
+	t.Run("author_pronunciation_refines", func(t *testing.T) {
+		book := baseBook
+		book.AuthorPronunciations = []string{"オーターワン", "オーターツー"}
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+
+		// First author pronunciation
+		if !strings.Contains(opfData, `<meta refines="#creator0" property="alternate-script">オーターワン</meta>`) {
+			t.Error("should have alternate-script refines for first author")
+		}
+		// Second author pronunciation
+		if !strings.Contains(opfData, `<meta refines="#creator1" property="alternate-script">オーターツー</meta>`) {
+			t.Error("should have alternate-script refines for second author")
+		}
+	})
+
+	t.Run("epub2_no_refines", func(t *testing.T) {
+		book := baseBook
+		book.GenerateEpub2 = true
+		book.TitlePronunciation = "タイトル"
+		book.AuthorPronunciations = []string{"オーター"}
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+
+		// EPUB2 should not have title id
+		if strings.Contains(opfData, `<dc:title id="title"`) {
+			t.Error("EPUB2 should not have title id attribute")
+		}
+		// EPUB2 should not have refines
+		if strings.Contains(opfData, "refines=") {
+			t.Error("EPUB2 should not have refines metadata")
+		}
+	})
+
+	t.Run("author_role_refines", func(t *testing.T) {
+		book := baseBook
+		path := writeBookToTemp(t, book)
+		files := readZIP(t, path)
+		opfData := string(files["OEBPS/content.opf"])
+
+		// Should have role refines for each author
+		for i := range book.Authors {
+			id := fmt.Sprintf("creator%d", i)
+			pattern := fmt.Sprintf(`<meta refines="#%s" property="role" scheme="marc:relators">aut</meta>`, id)
+			if !strings.Contains(opfData, pattern) {
+				t.Errorf("author %d should have role refines", i)
+			}
+		}
+	})
+}
+
+// =========================================================================== //
+// VAL-M1-EPUB-009: OPF manifest item ordering matches Python
+// Python: epub_output.py:1009 sorted(self.manifest, key=lambda m: m.filename)
+// =========================================================================== //
+
+func TestOPFManifestOrdering_MatchPython(t *testing.T) {
+	book := Book{
+		Identifier: "urn:uuid:manifest-order-test",
+		Title:      "Manifest Order",
+		Language:   "en",
+		Authors:    []string{"A"},
+		Modified:   "2024-01-01T00:00:00Z",
+		Sections: []Section{
+			{Filename: "chapter2.xhtml", Title: "Ch2", BodyHTML: "<p>2</p>"},
+			{Filename: "chapter1.xhtml", Title: "Ch1", BodyHTML: "<p>1</p>"},
+		},
+		Resources: []Resource{
+			{Filename: "image2.png", MediaType: "image/png", Data: []byte("png2")},
+			{Filename: "image1.jpg", MediaType: "image/jpeg", Data: []byte("jpg1")},
+			{Filename: "style.css", MediaType: "text/css", Data: []byte("body{}")},
+		},
+		Stylesheet: "body { margin: 0; }",
+	}
+	path := writeBookToTemp(t, book)
+	files := readZIP(t, path)
+	opfData := string(files["OEBPS/content.opf"])
+
+	// Extract manifest items in order
+	hrefs := extractAllMatches(opfData, `<item[^>]*href="([^"]*)"[^>]*>`)
+
+	// All hrefs should be in alphabetical order (Python sorts by filename)
+	sorted := make([]string, len(hrefs))
+	copy(sorted, hrefs)
+	sort.Strings(sorted)
+
+	for i, got := range hrefs {
+		if got != sorted[i] {
+			t.Errorf("manifest item %d: got %q, want %q (alphabetical)", i, got, sorted[i])
+		}
+	}
+}
+
+// =========================================================================== //
+// VAL-M1-EPUB-010: Font @font-face emission ordering matches Python
+// Python: yj_to_epub_properties.py:2254 sorted(self.font_faces)
+// Note: Font @font-face ordering is handled in internal/kfx package.
+// This test validates that the epub package preserves stylesheet order.
+// =========================================================================== //
+
+func TestFontFaceOrdering(t *testing.T) {
+	// The font @font-face ordering is done in the kfx package
+	// (yj_to_epub_properties.go:239 sorts fontFaces).
+	// Here we test that the stylesheet content is preserved as-is in the EPUB.
+	fontCSS := "@font-face {font-family: \"Arial\"; src: url(\"a.ttf\")}\n@font-face {font-family: \"Bold\"; src: url(\"b.ttf\")}\nbody { font-family: Arial; }"
+
+	book := Book{
+		Identifier: "urn:uuid:font-test",
+		Title:      "Font Test",
+		Language:   "en",
+		Authors:    []string{"A"},
+		Modified:   "2024-01-01T00:00:00Z",
+		Stylesheet: fontCSS,
+		Sections: []Section{
+			{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+		},
+	}
+	path := writeBookToTemp(t, book)
+	files := readZIP(t, path)
+
+	cssData := string(files["OEBPS/stylesheet.css"])
+	if cssData != fontCSS {
+		t.Errorf("stylesheet content not preserved:\ngot: %q\nwant: %q", cssData, fontCSS)
 	}
 }
