@@ -84,22 +84,18 @@ function ShowReaderExt:apply()
     end
 
     -- Patch showFileManager: when closing a book that was opened from the
-    -- virtual library, return to the Kindle Library instead of the cache dir.
+    -- virtual library, schedule returning to the Kindle Library on next tick.
     ReaderUI.showFileManager = function(reader_self, file, selected_files)
         if file and virtual_library:isOpenAlias(file) then
-            logger.info("KindlePlugin: returning to Kindle Library after closing virtual book")
-            local FileChooser = require("ui/widget/filechooser")
-            local FileManager = require("apps/filemanager/filemanager")
-            if FileChooser.showKindleVirtualLibrary and FileManager.instance then
-                local fm = FileManager.instance
-                -- Close the reader first, then show virtual library
-                -- We return here so the original showFileManager doesn't run
-                -- The reader's onClose will handle the actual close
-                -- Just set the path to virtual so it doesn't navigate to cache dir
-                fm.path = "KINDLE_VIRTUAL://"
-                FileChooser.showKindleVirtualLibrary(fm.file_chooser or fm)
-                return
-            end
+            logger.info("KindlePlugin: scheduling return to Kindle Library after close")
+            UIManager:scheduleIn(0.1, function()
+                local FileChooser = require("ui/widget/filechooser")
+                local FileManager = require("apps/filemanager/filemanager")
+                if FileChooser.showKindleVirtualLibrary and FileManager.instance then
+                    FileManager.instance.path = "KINDLE_VIRTUAL://"
+                    FileChooser.showKindleVirtualLibrary(FileManager.instance.file_chooser or FileManager.instance)
+                end
+            end)
         end
         return original_showFileManager(reader_self, file, selected_files)
     end
