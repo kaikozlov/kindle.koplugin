@@ -25,8 +25,8 @@ type containerSource struct {
 
 type fragmentCatalog struct {
 	TitleMetadata         map[string]interface{} // $490; applied in applyKFXEPUBInitMetadataAfterOrganize (yj_to_epub.py L77–80 order).
-	ContentFeatures       map[string]interface{}
-	DocumentData          map[string]interface{}
+	ContentFeatures       map[string]interface{} // $585; content features with $590 capability list.
+	DocumentData          map[string]interface{} // $538; document-level data.
 	ReadingOrderMetadata  map[string]interface{} // $258 top-level; applied in applyKFXEPUBInitMetadataAfterOrganize.
 	ContentFragments      map[string][]string
 	Storylines            map[string]map[string]interface{}
@@ -38,6 +38,9 @@ type fragmentCatalog struct {
 	NavContainers         map[string]map[string]interface{}
 	NavRoots              []map[string]interface{}
 	ResourceFragments     map[string]resourceFragment
+	ResourceRawData       map[string]map[string]interface{} // $164 raw fragment data keyed by resource ID (for format/location lookup).
+	FormatCapabilities    map[string]map[string]interface{} // $593 fragments keyed by fragment ID.
+	Generators            map[string]map[string]interface{} // $270 fragments keyed by fragment ID.
 	FontFragments         map[string]fontFragment
 	RawFragments          map[string][]byte
 	PositionAliases       map[int]string
@@ -351,6 +354,9 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 		AnchorFragments:   map[string]anchorFragment{},
 		NavContainers:     map[string]map[string]interface{}{},
 		ResourceFragments: map[string]resourceFragment{},
+		ResourceRawData:   map[string]map[string]interface{}{},
+		FormatCapabilities: map[string]map[string]interface{}{},
+		Generators:        map[string]map[string]interface{}{},
 		FontFragments:     map[string]fontFragment{},
 		RawFragments:      map[string][]byte{},
 		PositionAliases:   map[int]string{},
@@ -437,7 +443,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 			categorizedData[fragmentType][summaryID] = true
 
 			switch fragmentType {
-			case "$145", "$157", "$164", "$258", "$259", "$260", "$262", "$266", "$391", "$490", "$538", "$585", "$608", "$609", "$756":
+			case "$145", "$157", "$164", "$258", "$259", "$260", "$262", "$266", "$270", "$391", "$490", "$538", "$585", "$593", "$608", "$609", "$756":
 				value, err := decodeIonMap(payload, docSymbols, resolver)
 				if err != nil {
 					return nil, err
@@ -461,6 +467,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 					if resource.Location != "" {
 						fragments.ResourceFragments[resource.ID] = resource
 					}
+					fragments.ResourceRawData[resource.ID] = value
 				case "$258":
 					order := readSectionOrder(value)
 					if len(order) > 0 {
@@ -489,6 +496,8 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 					if anchor.ID != "" && (anchor.PositionID != 0 || anchor.URI != "") {
 						fragments.AnchorFragments[anchor.ID] = anchor
 					}
+				case "$270":
+					fragments.Generators[summaryID] = value
 				case "$391":
 					id := chooseFragmentIdentity(fragmentID, value["$239"])
 					if id != "" {
@@ -500,6 +509,8 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 					fragments.DocumentData = value
 				case "$585":
 					fragments.ContentFeatures = value
+				case "$593":
+					fragments.FormatCapabilities[summaryID] = value
 				case "$608":
 					id := chooseFragmentIdentity(fragmentID, value["$758"])
 					if id == "" {
