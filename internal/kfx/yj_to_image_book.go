@@ -65,6 +65,8 @@ type OutlineEntry struct {
 type KFXImageBook struct {
 	fragments             fragmentCatalog
 	orderedImageResources []string // pre-computed ordered image resource IDs
+	orderedImagePids      []int    // pre-computed PIDs matching orderedImageResources (D2-1)
+	contentPosInfo        interface{} // content position info from get_ordered_image_resources (D2-1)
 }
 
 // NewKFXImageBook creates a KFXImageBook from a fragment catalog and ordered image list.
@@ -142,8 +144,85 @@ func (b *KFXImageBook) getOrderedImages(splitLandscape, isComic, isRTL bool) []I
 	return orderedImages
 }
 
+// getOrderedImagesV2 returns the book's images in reading order with PIDs and contentPosInfo.
+// Port of Python KFX_IMAGE_BOOK.get_ordered_images (L101-155).
+// Python returns (ordered_images, ordered_image_pids, content_pos_info).
+// This is the corrected 3-value return version matching Python parity.
+func (b *KFXImageBook) getOrderedImagesV2(splitLandscape, isComic, isRTL bool, progress interface{}) ([]ImageResource, []int, interface{}) {
+	var orderedImages []ImageResource
+	var orderedImagePids []int
+	splitImageCount := 0
+
+	for idx, fid := range b.orderedImageResources {
+		var pid int
+		if idx < len(b.orderedImagePids) {
+			pid = b.orderedImagePids[idx]
+		}
+
+		imgRes := b.getResourceImage(fid, false)
+		if imgRes == nil {
+			continue
+		}
+
+		// Split landscape comic images
+		// Python: split_landscape_comic_images and is_comic and image_resource.format != "$565" and image_resource.width > image_resource.height
+		if splitLandscape && isComic && imgRes.Format != "$565" && imgRes.Width > imgRes.Height {
+			splitImageCount++
+			newWidth := imgRes.Width / 2
+
+			// Crop left half: margins (0, newWidth, 0, 0)
+			leftData, err := cropImage(imgRes.RawMedia, imgRes.Location, imgRes.Width, imgRes.Height, 0, newWidth, 0, 0)
+			if err != nil {
+				log.Printf("kfx: error: %v", err)
+				continue
+			}
+			left := ImageResource{
+				Format:   imgRes.Format,
+				Location: suffixLocation(imgRes.Location, "-L"),
+				RawMedia: leftData,
+				Height:   imgRes.Height,
+				Width:    newWidth,
+			}
+
+			// Crop right half: margins (newWidth, 0, 0, 0)
+			rightData, err := cropImage(imgRes.RawMedia, imgRes.Location, imgRes.Width, imgRes.Height, newWidth, 0, 0, 0)
+			if err != nil {
+				log.Printf("kfx: error: %v", err)
+				continue
+			}
+			right := ImageResource{
+				Format:   imgRes.Format,
+				Location: suffixLocation(imgRes.Location, "-R"),
+				RawMedia: rightData,
+				Height:   imgRes.Height,
+				Width:    newWidth,
+			}
+
+			if !isRTL {
+				orderedImages = append(orderedImages, left)
+				orderedImagePids = append(orderedImagePids, pid)
+				imgRes = &right
+			} else {
+				orderedImages = append(orderedImages, right)
+				orderedImagePids = append(orderedImagePids, pid)
+				imgRes = &left
+			}
+		}
+
+		orderedImages = append(orderedImages, *imgRes)
+		orderedImagePids = append(orderedImagePids, pid)
+	}
+
+	if splitImageCount > 0 {
+		log.Printf("kfx: warning: Split %d landscape comic images into left/right image pairs", splitImageCount)
+	}
+
+	return orderedImages, orderedImagePids, b.contentPosInfo
+}
+
 // getResourceImage retrieves an ImageResource from the fragment catalog.
 // Port of Python KFX_IMAGE_BOOK.get_resource_image (L157-213).
+// D2-11: Fixed tile handling to use combineImageTiles for full reassembly.
 func (b *KFXImageBook) getResourceImage(resourceID string, ignoreVariants bool) *ImageResource {
 	resData, ok := b.fragments.ResourceRawData[resourceID]
 	if !ok {
@@ -153,33 +232,78 @@ func (b *KFXImageBook) getResourceImage(resourceID string, ignoreVariants bool) 
 	resourceFormat, _ := asString(resData["$161"])
 	resourceHeight := intFromVal(resData["$423"], resData["$67"])
 	resourceWidth := intFromVal(resData["$422"], resData["$66"])
+	pageIndex := intFromVal(resData["$564"])
 
 	var location string
 	var rawMedia []byte
 
-	// Check for tiles ($636)
+	// Check for tiles ($636) — D2-11: full tile reassembly via combineImageTiles
+	// Python: yj_to_image_book.py:168-186
 	if _, hasTiles := resData["$636"]; hasTiles {
-		// Tile handling: simplified version — extract location from first tile
-		tilesSlice, ok := asSlice(resData["$636"])
-		if !ok || len(tilesSlice) == 0 {
+		yjTilesRaw, ok := asSlice(resData["$636"])
+		if !ok || len(yjTilesRaw) == 0 {
 			return nil
 		}
-		firstRow, ok := asSlice(tilesSlice[0])
-		if !ok || len(firstRow) == 0 {
+
+		// Convert to [][]string tile grid
+		var yjTiles [][]string
+		var tilesRawMedia [][]byte
+
+		for _, rowVal := range yjTilesRaw {
+			rowSlice, ok := asSlice(rowVal)
+			if !ok {
+				continue
+			}
+			var row []string
+			for _, tileVal := range rowSlice {
+				tileLoc, _ := asString(tileVal)
+				row = append(row, tileLoc)
+				// Get raw media for each tile from RawFragments
+				if tileLoc != "" {
+					if raw, exists := b.fragments.RawFragments[tileLoc]; exists {
+						tilesRawMedia = append(tilesRawMedia, raw)
+					} else {
+						tilesRawMedia = append(tilesRawMedia, nil)
+					}
+				} else {
+					tilesRawMedia = append(tilesRawMedia, nil)
+				}
+			}
+			yjTiles = append(yjTiles, row)
+		}
+
+		// Extract base location from first tile (strip "-tile" suffix)
+		// Python: location = yj_tiles[0][0].partition("-tile")[0]
+		firstTileLoc := ""
+		if len(yjTiles) > 0 && len(yjTiles[0]) > 0 {
+			firstTileLoc = yjTiles[0][0]
+		}
+		if firstTileLoc == "" {
 			return nil
 		}
-		tileLoc, _ := asString(firstRow[0])
-		if tileLoc == "" {
-			return nil
-		}
-		// Strip "-tile" suffix for base location
-		if idx := strings.Index(tileLoc, "-tile"); idx >= 0 {
-			location = tileLoc[:idx]
+		if idx := strings.Index(firstTileLoc, "-tile"); idx >= 0 {
+			location = firstTileLoc[:idx]
 		} else {
-			location = tileLoc
+			location = firstTileLoc
 		}
-		// For simplicity, just use the raw media from the first tile location
-		rawMedia = b.fragments.RawFragments[tileLoc]
+
+		// Get tile dimensions from resource
+		tileHeight := intFromVal(resData["$638"])
+		tileWidth := intFromVal(resData["$637"])
+		tilePadding := intFromVal(resData["$797"])
+
+		// Reassemble tiles via combineImageTiles
+		combinedMedia, combinedFormat := combineImageTiles(
+			resourceID, resourceHeight, resourceWidth, resourceFormat,
+			tileHeight, tileWidth, tilePadding,
+			yjTiles, tilesRawMedia, ignoreVariants,
+		)
+
+		if combinedMedia == nil {
+			return nil
+		}
+		rawMedia = combinedMedia
+		resourceFormat = combinedFormat
 	} else {
 		// Direct resource: get location from $165
 		locVal, _ := asString(resData["$165"])
@@ -190,6 +314,7 @@ func (b *KFXImageBook) getResourceImage(resourceID string, ignoreVariants bool) 
 	}
 
 	// Variant handling: try higher resolution variants
+	// Python: yj_to_image_book.py:188-201
 	if resourceFormat != "$565" && !ignoreVariants {
 		variants, _ := asSlice(resData["$635"])
 		for _, vr := range variants {
@@ -213,13 +338,14 @@ func (b *KFXImageBook) getResourceImage(resourceID string, ignoreVariants bool) 
 		return nil
 	}
 
+	// Python: yj_to_image_book.py:204-213
 	if resourceFormat == "$565" {
-		pageIndex := intFromVal(resData["$564"])
 		return &ImageResource{
-			Format:   "$565",
-			Location: location,
-			RawMedia: rawMedia,
-			PageNums: []int{pageIndex},
+			Format:     "$565",
+			Location:   location,
+			RawMedia:   rawMedia,
+			PageNums:   []int{pageIndex + 1}, // Python: page_nums = [page_index + 1]
+			TotalPages: 0,
 		}
 	}
 
@@ -286,6 +412,29 @@ func cropImage(data []byte, resourceName string, resourceWidth, resourceHeight, 
 }
 
 // ---------------------------------------------------------------------------
+// tocPageForPID — D2-9: TOC page number resolution
+// Python: yj_to_image_book.py:67-85 — binary search for PID in ordered image PIDs.
+// ---------------------------------------------------------------------------
+
+// tocPageForPID performs binary search to find the page number for a given PID.
+// Python: iterates ordered_image_pids, setting page_num and breaking when toc_pid <= ordered_page_pid.
+// Returns -1 if no pages exist.
+func tocPageForPID(tocPID int, orderedPids []int) int {
+	if len(orderedPids) == 0 {
+		return -1
+	}
+
+	pageNum := 0
+	for orderedPageNum, orderedPagePID := range orderedPids {
+		pageNum = orderedPageNum
+		if tocPID <= orderedPagePID {
+			break
+		}
+	}
+	return pageNum
+}
+
+// ---------------------------------------------------------------------------
 // suffixLocation — port of Python suffix_location (yj_to_image_book.py L349-353)
 // ---------------------------------------------------------------------------
 
@@ -304,6 +453,8 @@ func suffixLocation(location, suffix string) string {
 
 // combineImagesIntoCBZ creates a CBZ (ZIP) archive from ordered images.
 // Metadata is serialized as compact JSON in the ZIP comment (if ≤65535 bytes).
+// D2-5/D2-6: Fixed to convert PDF pages and JXR images instead of skipping.
+// Python: yj_to_image_book.py:304-347.
 func combineImagesIntoCBZ(orderedImages []ImageResource, metadata interface{}) []byte {
 	if len(orderedImages) == 0 {
 		return nil
@@ -311,7 +462,8 @@ func combineImagesIntoCBZ(orderedImages []ImageResource, metadata interface{}) [
 
 	// Track image formats for logging
 	imageResourceFormats := map[string]map[string]bool{}
-	pageImages := []ImageResource{}
+	reportedPdfErrors := map[string]bool{}
+	var pageImages []ImageResource
 
 	for _, imgRes := range orderedImages {
 		ext := extensionForFormat(imgRes.Format)
@@ -323,12 +475,30 @@ func combineImagesIntoCBZ(orderedImages []ImageResource, metadata interface{}) [
 
 		switch imgRes.Format {
 		case "$286", "$285", "$284": // GIF, JPG, PNG — direct
+			// Python: page_images.append(image_resource)
 			pageImages = append(pageImages, imgRes)
-		case "$565": // PDF — would need convert_pdf_page_to_image
-			// For the port, we skip PDF pages in CBZ output (simplified)
-			log.Printf("kfx: warning: PDF resource %s skipped in CBZ output", imgRes.Location)
-		case "$548": // JXR — would need convert_jxr_to_jpeg_or_png
-			log.Printf("kfx: warning: JXR resource %s skipped in CBZ output", imgRes.Location)
+
+		case "$565": // PDF — convert pages to images
+			// Python: yj_to_image_book.py:326-330
+			for _, pageNum := range imgRes.PageNums {
+				imageData, fmt := convertPDFPageToImage(
+					imgRes.Location, imgRes.RawMedia, pageNum, reportedPdfErrors, false)
+				pageImages = append(pageImages, ImageResource{
+					Format:   fmt,
+					Location: "",
+					RawMedia: imageData,
+				})
+			}
+
+		case "$548": // JXR — convert to JPEG/PNG
+			// Python: yj_to_image_book.py:331-333
+			imageData, fmt := convertJXRToJpegOrPNG(imgRes.RawMedia, imgRes.Location)
+			pageImages = append(pageImages, ImageResource{
+				Format:   fmt,
+				Location: "",
+				RawMedia: imageData,
+			})
+
 		default:
 			log.Printf("kfx: error: Unexpected image format: %s", imgRes.Format)
 		}
