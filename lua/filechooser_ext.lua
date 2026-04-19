@@ -122,6 +122,24 @@ function FileChooserExt:apply(FileChooser)
     self.original_methods.onMenuSelect = FileChooser.onMenuSelect
     self.original_methods.onMenuHold = FileChooser.onMenuHold
 
+    -- Patch FileManager:updateTitleBarPath to show "Kindle Library" instead
+    -- of "KINDLE_VIRTUAL://" in the title bar subtitle.
+    local FileManager = require("apps/filemanager/filemanager")
+    if not self.original_methods.updateTitleBarPath then
+        self.original_methods.updateTitleBarPath = FileManager.updateTitleBarPath
+    end
+    local orig_updateTitleBarPath = self.original_methods.updateTitleBarPath
+    local vl = self.virtual_library
+
+    FileManager.updateTitleBarPath = function(fm_self, path)
+        if path and path:match("^KINDLE_VIRTUAL://") then
+            fm_self.title_bar:setSubTitle(vl.VIRTUAL_LIBRARY_NAME)
+        else
+            orig_updateTitleBarPath(fm_self, path)
+        end
+    end
+    FileManager.onPathChanged = FileManager.updateTitleBarPath
+
     local cache_dir = self.cache_manager and self.cache_manager:getCacheDir() or ""
     logger.info("KindlePlugin: FileChooser cache_dir =", cache_dir)
 
