@@ -115,6 +115,35 @@ The Go test surface validates milestone B features by running `go test` on speci
 - B4 (Resource Variant): TestResourceVariant*, TestResourceDedup*, TestResourceCache*, TestLocateRaw*, TestProcessExternal*, TestPackageResource*
 - B5 (Metadata Getters): TestGetMetadata*, TestGetFeature*, TestIsMag*, TestIsSample*, TestIsFixed*, TestIsPrint*, TestIsImage*, TestIsKfx*, TestHasPdf*, TestHasMetadata*, TestGetCover*, TestGetAsset*, TestGetGenerators*, TestCaching*, TestCdeType*, TestUpdateCover*, TestHasCover*
 
+## Flow Validator Guidance: Go Test (Milestone C)
+
+The Go test surface validates milestone C features by running `go test` on specific test patterns in `./internal/kfx/...`.
+
+**Test tool**: `go test ./internal/kfx/... -count=1 -v` (direct shell execution)
+
+**Isolation rules:**
+- Each validator runs `go test` with specific `-run` flags targeting its assigned assertions
+- Tests are independent — they construct their own synthetic data
+- No shared mutable state between tests
+- Validators can run concurrently since `go test` builds and caches independently
+
+**Boundaries:**
+- Do NOT modify source files
+- Only inspect test results (pass/fail/output)
+- Ignore the pre-existing fixture-dependent failures (see below)
+- Focus ONLY on the assigned assertion IDs
+
+**How to test:**
+1. Run `go test ./internal/kfx/... -count=1 -v -run "<TestPattern>"` for each assertion group
+2. Check exit code: 0 = all tests pass, 1 = some tests fail
+3. Parse output for specific test names matching the assertion
+4. Report pass/fail per assertion based on whether the corresponding test passes
+
+**Known test name mappings (milestone C):**
+- C1 (yj_versions): TestSentinelConstants*, TestFeatureNameConstants*, TestPackageVersion*, TestKnownKFXGenerators, TestGenericCreatorVersions, TestKnownFeatures*, TestKnownSupportedFeatures, TestKnownMetadata*, TestKnownAuxiliary*, TestKnownKCBData*, TestUnsupported, TestKindleVersion*, TestKindleCapability*, TestIsKnownGenerator*, TestIsKnownFeature*, TestKindleFeatureVersion*, TestIsKnownMetadata*, TestIsKnownAux*, TestIsKnownKCBData*, TestAuxMetadata*
+- C2 (enum props): TestYJPropertyInfoCoreKeys, TestConvertYJProperties*, TestProcessContentProperties*
+- C3 (fragment validation): TestModuleControlConstants, TestFixedLayoutImageFormats, TestSymType*, TestNumstr*, TestExtractFragmentID*, TestWalkFragment*, TestCheckFragmentUsage*, TestDetermineEntityDependencies*, TestRebuildContainerEntityMap*, TestFragmentIDKeys, TestCommonFragmentReferences, TestNestedFragmentReferences, TestSpecialFragmentReferences, TestSectionDataTypes, TestEIDReferences, TestExpectedAnnotations, TestFragmentListGet, TestSortImportUsed, TestSpecialParentFragment*, TestRootAndContainer*, TestKnownFragment*, TestSortedFragment*, TestEntityDeps*
+
 ## Pre-existing Known Failures (IGNORE)
 
 These test failures are expected because fixture files are missing:
