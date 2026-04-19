@@ -18,9 +18,8 @@ type containerSource struct {
 	Data          []byte
 	HeaderLen     int
 	ContainerInfo map[string]interface{}
-	DocSymbols    []byte
+	DocSymbols    []byte // raw ION symbol table data from this container (may be empty)
 	IndexData     []byte
-	Resolver      *symbolResolver
 }
 
 type fragmentCatalog struct {
@@ -296,10 +295,6 @@ func loadContainerSourceData(path string, data []byte) (*containerSource, error)
 
 	docSymbols := data[docSymbolOffset : docSymbolOffset+docSymbolLength]
 	indexData := data[indexOffset : indexOffset+indexLength]
-	resolver, err := newSymbolResolver(docSymbols)
-	if err != nil {
-		return nil, err
-	}
 
 	return &containerSource{
 		Path:          path,
@@ -308,7 +303,6 @@ func loadContainerSourceData(path string, data []byte) (*containerSource, error)
 		ContainerInfo: containerInfo,
 		DocSymbols:    docSymbols,
 		IndexData:     indexData,
-		Resolver:      resolver,
 	}, nil
 }
 
@@ -342,15 +336,37 @@ func mergeIonReferencedStringSymbols(value interface{}, bookSymbols map[string]s
 	}
 }
 
-func combineContainerDocSymbols(sources []*containerSource) []byte {
-	var combined []byte
-	for _, source := range sources {
-		if len(source.DocSymbols) == 0 {
-			continue
+// firstDocSymbols returns the docSymbols from the first source that has them,
+// or nil if no source has docSymbols.
+func firstDocSymbols(sources []*containerSource) []byte {
+	for _, s := range sources {
+		if len(s.DocSymbols) > 0 {
+			return s.DocSymbols
 		}
-		combined = append(combined, source.DocSymbols...)
 	}
-	return combined
+	return nil
+}
+
+// sharedDocSymbols maintains the shared symbol table state as containers are
+// processed sequentially, matching Calibre's LocalSymbolTable pattern.
+// The first container with docSymbols populates the shared state; subsequent
+// containers with empty docSymbols (symLen=0) inherit the shared state.
+type sharedDocSymbols struct {
+	current []byte // accumulated docSymbols from all processed containers
+}
+
+// update sets the shared docSymbols from a container's docSymbols.
+// If the container has docSymbols, they become the new shared state.
+// If the container has no docSymbols, the shared state is unchanged.
+func (s *sharedDocSymbols) update(containerDocSymbols []byte) {
+	if len(containerDocSymbols) > 0 {
+		s.current = containerDocSymbols
+	}
+}
+
+// get returns the current shared docSymbols for decoding a container's fragments.
+func (s *sharedDocSymbols) get() []byte {
+	return s.current
 }
 
 // Port of KFX_EPUB.organize_fragments_by_type (yj_to_epub.py) adapted to the Go fragmentCatalog layout.
@@ -383,10 +399,16 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 		Language:   "en",
 	}
 
-	docSymbols := combineContainerDocSymbols(sources)
-	resolver, err := newSymbolResolver(docSymbols)
-	if err != nil {
-		return nil, err
+	// Create initial resolver from YJ prelude. Will be updated as containers
+	// with docSymbols are processed.
+	var resolver *symbolResolver
+	initialSymbols := firstDocSymbols(sources)
+	if len(initialSymbols) > 0 {
+		var err error
+		resolver, err = newSymbolResolver(initialSymbols)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	bookSymbols := map[string]struct{}{}
@@ -396,46 +418,37 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 	// (parity with Python organize_fragments_by_type L202-214).
 	categorizedData := map[string]map[string]bool{}
 
-	// Find a source with actual docSymbols to use as fallback for sources
-	// that have empty docSymbols (e.g., DRMION-decrypted CONT).
-	var fallbackDocSymbols []byte
+	// Shared symbol table: containers processed in order contribute docSymbols.
+	// First container with docSymbols populates the shared state; subsequent
+	// containers with empty docSymbols (symLen=0) inherit the shared state.
+	// This matches Calibre's LocalSymbolTable pattern where all containers
+	// share a single mutable symtab.
+	sharedSym := &sharedDocSymbols{}
+
+	// Sort sources alphabetically by path, matching Calibre's sequential
+	// processing order. Sources are already sorted from collection, but
+	// ensure deterministic order here.
+	sort.Slice(sources, func(i, j int) bool {
+		return sources[i].Path < sources[j].Path
+	})
+
 	for _, source := range sources {
+		// Update shared symbol table: if this container has docSymbols,
+		// they become the new shared state for all subsequent containers.
+		sharedSym.update(source.DocSymbols)
+		srcDocSymbols := sharedSym.get()
+
+		// Rebuild resolver when shared symbols change
 		if len(source.DocSymbols) > 0 {
-			fallbackDocSymbols = source.DocSymbols
-			break
-		}
-	}
-
-	// Sort sources: those with docSymbols first, so we build up the
-	// fallback before processing sources that need it.
-	type indexedSource struct {
-		idx    int
-		source *containerSource
-	}
-	var withSym, withoutSym []indexedSource
-	for i, source := range sources {
-		if len(source.DocSymbols) > 0 {
-			withSym = append(withSym, indexedSource{i, source})
-		} else {
-			withoutSym = append(withoutSym, indexedSource{i, source})
-		}
-	}
-	sortedSources := append(withSym, withoutSym...)
-
-	for _, is := range sortedSources {
-		_ = is.idx
-		source := is.source
-
-		srcDocSymbols := source.DocSymbols
-		if len(srcDocSymbols) == 0 {
-			srcDocSymbols = fallbackDocSymbols
+			var err error
+			resolver, err = newSymbolResolver(srcDocSymbols)
+			if err != nil {
+				return nil, err
+			}
 		}
 
-		if source.Resolver != nil {
-			symOff, _ := asInt(source.ContainerInfo["$415"])
-			symLen, _ := asInt(source.ContainerInfo["$416"])
-			_ = symOff
-			_ = symLen
+		if resolver == nil {
+			continue
 		}
 
 		lastContainerID := ""

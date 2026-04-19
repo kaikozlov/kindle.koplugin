@@ -317,20 +317,8 @@ func convertFromDRMIONData(contData []byte, outputPath string, originalPath stri
 			continue
 		}
 
-		// Extract docSymbols and inject into sources that have empty docSymbols
-		// (e.g. the decrypted main CONT container).
-		if len(src.DocSymbols) > 0 {
-			log.Printf("DRM: extracted docSymbols from sidecar %s (%d bytes)", blob.Path, len(src.DocSymbols))
-			for _, s := range sources {
-				if len(s.DocSymbols) == 0 {
-					s.DocSymbols = src.DocSymbols
-				}
-			}
-		}
-
-		// Don't add encrypted metadata.kfx as a fragment source.
-		// Its entity offsets don't match the decrypted data structure.
-		// We only need its docSymbols (extracted above).
+		sources = append(sources, src)
+		log.Printf("DRM: decrypted sidecar %s (%d bytes)", blob.Path, len(decrypted))
 	}
 
 	if len(sources) > 1 {
