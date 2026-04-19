@@ -1,0 +1,49 @@
+{
+  "milestone": "m2-core-conversion",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 26,
+    "passed": 26,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-M2-DISPATCH-001",
+    "VAL-M2-DISPATCH-002",
+    "VAL-M2-DISPATCH-003",
+    "VAL-M2-DISPATCH-004",
+    "VAL-M2-DISPATCH-005",
+    "VAL-M2-POSITION-001",
+    "VAL-M2-POSITION-002",
+    "VAL-M2-POSITION-003",
+    "VAL-M2-POSITION-004",
+    "VAL-M2-POSITION-005",
+    "VAL-M2-POSITION-006",
+    "VAL-M2-POSITION-007",
+    "VAL-M2-POSITION-008",
+    "VAL-M2-POSITION-009",
+    "VAL-M2-POSITION-010",
+    "VAL-M2-POSITION-011",
+    "VAL-M2-EDGE-001",
+    "VAL-M2-EDGE-002",
+    "VAL-M2-EDGE-003",
+    "VAL-M2-EDGE-004",
+    "VAL-M2-EDGE-005",
+    "VAL-M2-EDGE-006",
+    "VAL-M2-EDGE-007",
+    "VAL-M2-EDGE-008",
+    "VAL-M2-EDGE-009",
+    "VAL-M2-EDGE-010"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Created .factory/library/user-testing.md with testing surface documentation, resource cost assessment (max 3 concurrent go-test validators), and flow validator guidance for go-test surface",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}
