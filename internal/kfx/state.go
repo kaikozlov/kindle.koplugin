@@ -419,11 +419,9 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 				summaryID = fmt.Sprintf("%s-font-%03d", fragmentID, fontCount)
 				fontCount++
 			case "$258":
-				value, err := decodeIonMap(payload, docSymbols, resolver)
-				if err != nil {
-					return nil, err
-				}
-				summaryID = chooseFragmentIdentity(fragmentID, value["$169"])
+				// Python has no special ID override for $258 (yj_to_epub.py L186: id = fragment.fid).
+				// The value is decoded later in the fragment type switch below.
+				summaryID = fragmentID
 			case "$387":
 				value, err := decodeIonMap(payload, docSymbols, resolver)
 				if err != nil {
@@ -620,6 +618,10 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 	}
 
 	symbolFormat := determineBookSymbolFormat(bookSymbols, fragments.DocumentData, resolver)
+	// Python yj_to_epub.py L239: log.info for non-SHORT book symbol format.
+	if symbolFormat != symShort {
+		log.Printf("kfx: Book symbol format is %s", symbolFormat)
+	}
 	// KFX_EPUB.__init__ L77–80 after determine_book_symbol_format (L76).
 	applyKFXEPUBInitMetadataAfterOrganize(book, &fragments)
 

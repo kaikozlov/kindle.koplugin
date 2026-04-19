@@ -11,6 +11,7 @@ package kfx
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"strconv"
@@ -1302,14 +1303,26 @@ func convertStyleUnits(sty map[string]string, inherited map[string]string) {
 			q := *quantity
 			var baseFontSize string
 			if name == "font-size" {
-				// Use inherited font-size
-				baseFontSize = inherited["font-size"]
+				// Python L1734: base_font_size = inherited_properties["font-size"]
+				// KeyError if missing; in Go we log error.
+				var ok bool
+				baseFontSize, ok = inherited["font-size"]
+				if !ok || baseFontSize == "" {
+					log.Printf("kfx: error: Cannot convert %s with missing inherited font-size", name)
+					continue
+				}
 			} else {
-				// Use the element's own original font-size
+				// Python L1737: base_font_size = orig_sty["font-size"]
+				// KeyError if missing; in Go we log error.
 				if hasOrigFontSize {
 					baseFontSize = origFontSize
 				} else {
-					baseFontSize = sty["font-size"]
+					var ok bool
+					baseFontSize, ok = sty["font-size"]
+					if !ok || baseFontSize == "" {
+						log.Printf("kfx: error: Cannot convert %s with missing element font-size", name)
+						continue
+					}
 				}
 			}
 
@@ -1320,8 +1333,12 @@ func convertStyleUnits(sty map[string]string, inherited map[string]string) {
 					unit = "em"
 				} else if baseUnit == "em" {
 					unit = "em"
+				} else {
+					// Python L1745: log.error("Cannot convert %s:%s with incorrect base font size units %s")
+					log.Printf("kfx: error: Cannot convert %s:%s with incorrect base font size units %s", name, val, baseFontSize)
 				}
-				// else: log error in Python; we silently skip
+			} else {
+				log.Printf("kfx: error: Cannot convert %s:%s with invalid base font size %s", name, val, baseFontSize)
 			}
 
 			if name == "line-height" && q < minimumLineHeight {

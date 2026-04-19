@@ -159,6 +159,53 @@ func hasConditionalTemplate(templates []pageTemplateFragment) bool {
 	return false
 }
 
+// validateOverlayCondition validates the $171 condition for overlay templates.
+// Port of Python yj_to_epub_content.py:491-504.
+// In Python, when a $171 condition is found in content with a layout, the layout must be "$324"
+// and the condition must match a specific structure: IonSExp of length 3, where
+// fv[0] in CONDITION_OPERATOR_NAMES ($294/$299/$298), fv[1]=="$183",
+// fv[2] is IonSExp of length 2 with fv[2][0]=="$266".
+// Returns true if the condition is valid, false and logs an error if not.
+func validateOverlayCondition(condition interface{}, layout string) bool {
+	if condition == nil {
+		return true
+	}
+	// Python L492: if layout != "$324": log.error("Conditional page template has unexpected layout")
+	if layout != "$324" {
+		log.Printf("kfx: error: Conditional page template has unexpected layout: %s", layout)
+	}
+	// Python L500-504: validate condition structure
+	// ion_type(condition) is IonSExp and len(condition) == 3 and condition[1] == "$183" and
+	// ion_type(condition[2]) is IonSExp and len(condition[2]) == 2 and condition[2][0] == "$266" and
+	// condition[0] in self.CONDITION_OPERATOR_NAMES
+	slice, ok := asSlice(condition)
+	if !ok || len(slice) != 3 {
+		log.Printf("kfx: error: Condition is not in expected format: %v", condition)
+		return false
+	}
+	fv0, _ := asString(slice[0])
+	fv1, _ := asString(slice[1])
+	if fv1 != "$183" {
+		log.Printf("kfx: error: Condition is not in expected format: %v", condition)
+		return false
+	}
+	fv2, ok := asSlice(slice[2])
+	if !ok || len(fv2) != 2 {
+		log.Printf("kfx: error: Condition is not in expected format: %v", condition)
+		return false
+	}
+	fv20, _ := asString(fv2[0])
+	if fv20 != "$266" {
+		log.Printf("kfx: error: Condition is not in expected format: %v", condition)
+		return false
+	}
+	if _, valid := conditionOperatorNames[fv0]; !valid {
+		log.Printf("kfx: error: Condition is not in expected format: %v", condition)
+		return false
+	}
+	return true
+}
+
 // determineSectionBranch determines which processing branch to use for a section,
 // matching Python's process_section dispatch logic (yj_to_epub_content.py L136-186).
 func determineSectionBranch(section sectionFragment, bt bookType) sectionBranch {

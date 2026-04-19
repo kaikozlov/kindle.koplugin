@@ -2,7 +2,9 @@ package kfx
 
 import (
 	"fmt"
+	"log"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -215,12 +217,15 @@ func hasIllustratedLayoutPageTemplateCondition(frags fragmentCatalog) bool {
 		if scanSectionForCondition(section.PageTemplateValues) {
 			return true
 		}
-		// Also check individual page templates within the section
+		// Check individual page templates within the section.
+		// Python walks the raw fragment data; in Go, the $171 condition is stored
+		// in pt.Condition and pt.PageTemplateValues (filtered, so no $171 key).
 		for _, pt := range section.PageTemplates {
 			if scanSectionForCondition(pt.PageTemplateValues) {
 				return true
 			}
-			if scanSectionForConditionValue(pt.Condition) {
+			// Check the raw condition value directly (yj_structure.py L1240-1244).
+			if pt.Condition != nil && matchConditionPattern(pt.Condition) {
 				return true
 			}
 		}
@@ -316,13 +321,30 @@ func getOrderedImageResources(frags fragmentCatalog, isFixedLayout bool) ([]stri
 	return orderedImageResources, orderedImageResourcePids, nil
 }
 
-// Port of BookStructure.check_symbol_table (yj_structure.py L1099-1149).
+// checkSymbolTableConfig holds the book-level flags needed for symbol table validation.
+// Corresponds to Python's self.is_dictionary, self.is_kpf_prepub, self.is_sample, etc.
+type checkSymbolTableConfig struct {
+	IsDictionary  bool
+	IsKpfPrepub   bool
+	IsSample      bool
+	ReportedFIDs  map[string]bool // symbols in self.reported_missing_fids
+	OriginalSyms  []string        // symbols from $ion_symbol_table
+}
+
+// Port of BookStructure.check_symbol_table (yj_structure.py L1099-1160).
 // Walks all fragments to collect used symbols, checks for missing and unused symbols.
 // The rebuild and full replacement logic requires fragment list manipulation that
 // depends on a more complete fragment store interface; this port focuses on the
 // checking/logging portion that is relevant for the Go port's validation.
 func checkSymbolTable(frags fragmentCatalog, resolver *symbolResolver, rebuild bool, ignoreUnused bool) {
-	// Collect used symbols from all fragment data
+	checkSymbolTableWithConfig(frags, resolver, rebuild, ignoreUnused, checkSymbolTableConfig{})
+}
+
+// checkSymbolTableWithConfig is the full implementation accepting book flags.
+// Port of BookStructure.check_symbol_table (yj_structure.py L1099-1160).
+func checkSymbolTableWithConfig(frags fragmentCatalog, resolver *symbolResolver, rebuild bool, ignoreUnused bool, cfg checkSymbolTableConfig) {
+	// Step 1: Collect used symbols from all non-container fragment data
+	// Python: for fragment in self.fragments: if fragment.ftype not in CONTAINER_FRAGMENT_TYPES: find_symbol_references(...)
 	usedSymbols := map[string]bool{}
 	findSymbolReferences(frags.TitleMetadata, usedSymbols)
 	findSymbolReferences(frags.DocumentData, usedSymbols)
@@ -353,7 +375,14 @@ func checkSymbolTable(frags fragmentCatalog, resolver *symbolResolver, rebuild b
 		}
 	}
 
-	// Determine new (non-shared) symbols
+	// Step 2: Build original_symbols set from $ion_symbol_table symbols
+	// Python: if fragment.ftype == "$ion_symbol_table": original_symbols |= set(fragment.value.get("symbols", []))
+	originalSymbols := map[string]bool{}
+	for _, sym := range cfg.OriginalSyms {
+		originalSymbols[sym] = true
+	}
+
+	// Step 3: Determine new (non-shared) symbols
 	newSymbols := map[string]bool{}
 	for symbol := range usedSymbols {
 		if resolver != nil && resolver.isSharedSymbolText(symbol) {
@@ -362,14 +391,86 @@ func checkSymbolTable(frags fragmentCatalog, resolver *symbolResolver, rebuild b
 		newSymbols[symbol] = true
 	}
 
-	_ = newSymbols
-	_ = rebuild
-	_ = ignoreUnused
+	// Step 4: Check missing symbols (new - original)
+	// Python L1119: missing_symbols = new_symbols - original_symbols
+	missingSymbols := map[string]bool{}
+	for sym := range newSymbols {
+		if !originalSymbols[sym] {
+			missingSymbols[sym] = true
+		}
+	}
 
-	// Note: Full missing/unused symbol checking against original $ion_symbol_table
-	// requires access to the original symbol table, which is not available in
-	// fragmentCatalog. The rebuild and replace_symbol_table_import logic is
-	// deferred to a later milestone when fragment list manipulation is needed.
+	if rebuild && resolver != nil {
+		for _, local := range resolver.locals {
+			delete(missingSymbols, local)
+		}
+	}
+
+	// Python L1123: if missing_symbols and not (self.is_dictionary or self.is_kpf_prepub): log.error(...)
+	if len(missingSymbols) > 0 && !cfg.IsDictionary && !cfg.IsKpfPrepub {
+		missingList := sortedKeys(missingSymbols)
+		truncList := listTruncated(missingList, 20)
+		log.Printf("kfx: error: Symbol table is missing symbols: %v", truncList)
+	}
+
+	// Step 5: Check unused symbols (original - new)
+	// Python L1127: unused_symbols = original_symbols - new_symbols
+	unusedSymbols := map[string]bool{}
+	for sym := range originalSymbols {
+		if !newSymbols[sym] {
+			unusedSymbols[sym] = true
+		}
+	}
+
+	if len(unusedSymbols) > 0 && !ignoreUnused {
+		expectedUnusedSymbols := map[string]bool{}
+		for symbol := range unusedSymbols {
+			if symbol == "mkfx_id" || reUUID.MatchString(symbol) ||
+				strings.HasPrefix(symbol, "PAGE_LIST_") || symbol == "page_list_entry" ||
+				(cfg.IsSample && strings.HasSuffix(symbol, "-ad")) ||
+				(cfg.IsKpfPrepub && (strings.HasPrefix(symbol, "yj.print.") || strings.HasPrefix(symbol, "yj.semantics."))) ||
+				cfg.ReportedFIDs[symbol] {
+				expectedUnusedSymbols[symbol] = true
+			}
+		}
+		for sym := range expectedUnusedSymbols {
+			delete(unusedSymbols, sym)
+		}
+
+		if len(unusedSymbols) > 0 {
+			unusedList := sortedKeys(unusedSymbols)
+			truncList := listTruncated(unusedList, 5)
+			log.Printf("kfx: warning: Symbol table contains %d unused symbols: %v", len(unusedSymbols), truncList)
+		}
+
+		if len(expectedUnusedSymbols) > 0 {
+			expectedList := sortedKeys(expectedUnusedSymbols)
+			truncList := listTruncated(expectedList, 5)
+			log.Printf("kfx: known error: Symbol table contains %d expected unused symbols: %v", len(expectedUnusedSymbols), truncList)
+		}
+	}
+
+	// Note: rebuild logic (replace_local_symbols + replace_symbol_table_import) is deferred
+	// as it requires fragment list manipulation not yet available.
+}
+
+// listTruncated returns at most max items from the input slice.
+// Port of Python utilities.list_truncated.
+func listTruncated(items []string, max int) []string {
+	if len(items) <= max {
+		return items
+	}
+	return items[:max]
+}
+
+// sortedKeys returns the keys of a map[string]bool in sorted order.
+func sortedKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // findSymbolReferences recursively walks Ion-like Go data collecting string values
