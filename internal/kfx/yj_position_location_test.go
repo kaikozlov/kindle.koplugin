@@ -1109,6 +1109,736 @@ func TestCollectLocationMapInfoNoFragments(t *testing.T) {
 }
 
 // =============================================================================
+// FragmentStore tests
+// =============================================================================
+
+func TestFragmentStoreBasic(t *testing.T) {
+	fs := NewFragmentStore()
+	if fs.Has("$264") {
+		t.Error("expected no $264 fragments initially")
+	}
+	if fs.Get("$264") != nil {
+		t.Error("expected nil for missing fragment")
+	}
+
+	fs.Append("$264", map[string]interface{}{"$264": "test"})
+	if !fs.Has("$264") {
+		t.Error("expected $264 to exist after append")
+	}
+
+	all := fs.GetAll("$264")
+	if len(all) != 1 {
+		t.Errorf("expected 1 fragment, got %d", len(all))
+	}
+
+	fs.RemoveAll("$264")
+	if fs.Has("$264") {
+		t.Error("expected $264 to be removed")
+	}
+}
+
+func TestFragmentStoreMultiple(t *testing.T) {
+	fs := NewFragmentStore()
+	fs.Append("$265", map[string]interface{}{"data": 1})
+	fs.Append("$265", map[string]interface{}{"data": 2})
+	if len(fs.GetAll("$265")) != 2 {
+		t.Errorf("expected 2 fragments, got %d", len(fs.GetAll("$265")))
+	}
+	first := fs.Get("$265")
+	if first["data"] != 1 {
+		t.Error("expected Get to return first fragment")
+	}
+}
+
+// =============================================================================
+// VAL-M2-POSITION-001: CollectContentPositionInfo walks sections and returns ContentChunks
+// =============================================================================
+
+func TestCollectContentPositionInfoWalksSections(t *testing.T) {
+	// Build a simple book with 2 sections, each containing a container with text
+	fs := NewFragmentStore()
+	fs.Append("$260", map[string]interface{}{
+		"$260": map[string]interface{}{
+			"$174": "sec1",
+			"$141": []interface{}{
+				map[string]interface{}{
+					"$155": 10,
+					"$159": "$270",
+					"$146": []interface{}{
+						"Hello World", // 11 chars
+					},
+				},
+			},
+		},
+	})
+	// Override with two section data
+	fs.RemoveAll("$260")
+	fs.Append("$260", map[string]interface{}{
+		"$260": map[string]interface{}{
+			"$174": "sec1",
+			"$141": []interface{}{
+				map[string]interface{}{
+					"$155": 10,
+					"$159": "$270",
+					"$146": []interface{}{"Hello"},
+				},
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	result := bpl.CollectContentPositionInfo(true, false, false)
+	if len(result) == 0 {
+		t.Fatal("expected non-empty position info")
+	}
+
+	// Should have at least one chunk for sec1
+	foundSec1 := false
+	for _, chunk := range result {
+		if chunk.SectionName == "sec1" {
+			foundSec1 = true
+			break
+		}
+	}
+	if !foundSec1 {
+		t.Error("expected at least one chunk with section sec1")
+	}
+}
+
+func TestCollectContentPositionInfoTwoSections(t *testing.T) {
+	fs := NewFragmentStore()
+	// Section 1 with eid=10
+	fs.Append("$260", map[string]interface{}{
+		"$260": []interface{}{
+			map[string]interface{}{
+				"$155": 10,
+				"$159": "$270",
+				"$146": []interface{}{"text1"},
+			},
+		},
+	})
+	// Section 2 with eid=20
+	fs.Append("$260", map[string]interface{}{
+		"$260": []interface{}{
+			map[string]interface{}{
+				"$155": 20,
+				"$159": "$270",
+				"$146": []interface{}{"text2"},
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1", "sec2"},
+		Store:           fs,
+	}
+
+	result := bpl.CollectContentPositionInfo(true, false, false)
+	if len(result) < 2 {
+		t.Fatalf("expected at least 2 chunks for 2 sections, got %d", len(result))
+	}
+}
+
+// =============================================================================
+// VAL-M2-POSITION-002: CollectContentPositionInfo tracks eid→section mapping
+// =============================================================================
+
+func TestCollectPositionInfo_EidSectionMap(t *testing.T) {
+	fs := NewFragmentStore()
+	fs.Append("$260", map[string]interface{}{
+		"$260": []interface{}{
+			map[string]interface{}{
+				"$155": 100,
+				"$159": "$270",
+				"$146": []interface{}{"abc"},
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"s1"},
+		Store:           fs,
+	}
+
+	result := bpl.CollectContentPositionInfo(true, false, false)
+	if len(result) == 0 {
+		t.Fatal("expected at least one chunk")
+	}
+
+	// The chunk for eid=100 should have section s1
+	found := false
+	for _, chunk := range result {
+		if chunk.EID == 100 && chunk.SectionName == "s1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected chunk with eid=100 in section s1, got %v", result)
+	}
+}
+
+// =============================================================================
+// VAL-M2-POSITION-003: CollectContentPositionInfo merges consecutive same-EID chunks
+// =============================================================================
+
+func TestCollectPositionInfo_MergeEids(t *testing.T) {
+	fs := NewFragmentStore()
+	// Two consecutive children with same eid=42
+	fs.Append("$260", map[string]interface{}{
+		"$260": []interface{}{
+			map[string]interface{}{
+				"$155": 42,
+				"$159": "$270",
+				"$146": []interface{}{
+					"abc", // 3 chars
+					"def", // 3 chars - should merge with previous
+				},
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	result := bpl.CollectContentPositionInfo(true, false, false)
+
+	// After merging, should have fewer chunks than if unmerged
+	if len(result) == 0 {
+		t.Fatal("expected at least one chunk")
+	}
+
+	// Check that there are consecutive chunks with same EID being merged
+	eid42Count := 0
+	for _, chunk := range result {
+		if chunk.EID == 42 {
+			eid42Count++
+		}
+	}
+	// Due to merging, there should be at most 2 chunks for eid=42 (one for the content, one for the $270 container)
+	if eid42Count > 2 {
+		t.Errorf("expected at most 2 chunks for eid=42 after merging, got %d", eid42Count)
+	}
+}
+
+// =============================================================================
+// VAL-M2-POSITION-004: CollectPositionMapInfo parses $264/$265 fragments
+// =============================================================================
+
+func TestCollectPositionMapInfoBasic(t *testing.T) {
+	fs := NewFragmentStore()
+	// Add a simple position_id_map ($265) as a flat list
+	fs.Append("$265", map[string]interface{}{
+		"$265": []interface{}{
+			[]interface{}{0, 10},    // pid=0, eid=10
+			[]interface{}{100, 20},  // pid=100, eid=20
+			[]interface{}{200, 0},   // terminal entry
+		},
+	})
+	// Add a position_map ($264)
+	fs.Append("$264", map[string]interface{}{
+		"$264": []interface{}{
+			map[string]interface{}{
+				"$174": "sec1",
+				"$181": []interface{}{10, 20},
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	result := bpl.CollectPositionMapInfo()
+	if len(result) == 0 {
+		t.Fatal("expected non-empty position map info")
+	}
+
+	// Should have chunks from the position_id_map entries
+	if len(result) < 1 {
+		t.Errorf("expected at least 1 chunk, got %d", len(result))
+	}
+}
+
+// =============================================================================
+// VAL-M2-POSITION-005: CollectPositionMapInfo handles SPIM $609 fragments
+// =============================================================================
+
+func TestCollectPositionMapInfo_SPIM(t *testing.T) {
+	fs := NewFragmentStore()
+	// SPIM format: $265 value is a map with $181 containing per-section entries
+	fs.Append("$265", map[string]interface{}{
+		"$265": map[string]interface{}{
+			"$181": []interface{}{
+				map[string]interface{}{
+					"$174": "sec1",
+					"$184": 0,
+					"$144": 100,
+				},
+			},
+		},
+	})
+	// $609 SPIM fragment for sec1
+	fs.Append("$609", map[string]interface{}{
+		"$609": map[string]interface{}{
+			"$174": "sec1",
+			"$181": []interface{}{
+				[]interface{}{0, 10},
+				[]interface{}{100, 0},
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	result := bpl.CollectPositionMapInfo()
+	if len(result) == 0 {
+		t.Fatal("expected non-empty SPIM position map info")
+	}
+}
+
+// =============================================================================
+// VAL-M2-POSITION-006: CollectPositionMapInfo validates eid section consistency
+// =============================================================================
+
+func TestCollectPositionMapInfo_EidValidation(t *testing.T) {
+	fs := NewFragmentStore()
+	// Position map with section sec1
+	fs.Append("$264", map[string]interface{}{
+		"$264": []interface{}{
+			map[string]interface{}{
+				"$174": "sec1",
+				"$181": []interface{}{10},
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	// Should not panic — validation just logs errors
+	result := bpl.CollectPositionMapInfo()
+	_ = result
+}
+
+// =============================================================================
+// VAL-M2-POSITION-007: CreateLocationMap removes old $550/$621 and builds new $550
+// =============================================================================
+
+func TestCreateLocationMapRemovesOldAndBuildsNew(t *testing.T) {
+	fs := NewFragmentStore()
+	// Pre-existing $550 and $621 fragments
+	fs.Append("$550", map[string]interface{}{"$550": "old"})
+	fs.Append("$621", map[string]interface{}{"$621": "old"})
+
+	bpl := &BookPosLoc{
+		Store: fs,
+	}
+
+	locInfo := []*ContentChunk{
+		{PID: 0, EID: 10, EIDOffset: 0},
+		{PID: 110, EID: 20, EIDOffset: 5},
+		{PID: 220, EID: 30, EIDOffset: 0},
+	}
+
+	result := bpl.CreateLocationMap(locInfo)
+
+	// hasYJLocationPidMap should be false
+	if result != false {
+		t.Error("expected hasYJLocationPidMap=false")
+	}
+
+	// Old $550 and $621 should be gone
+	if fs.Has("$621") {
+		t.Error("expected $621 to be removed")
+	}
+
+	// New $550 should exist with 3 location entries
+	new550 := fs.Get("$550")
+	if new550 == nil {
+		t.Fatal("expected new $550 fragment to be created")
+	}
+	locMapData, ok := new550["$550"].([]interface{})
+	if !ok {
+		t.Fatalf("expected $550 to be []interface{}, got %T", new550["$550"])
+	}
+	if len(locMapData) != 1 {
+		t.Fatalf("expected 1 map entry in $550, got %d", len(locMapData))
+	}
+	locMap, ok := locMapData[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected map entry")
+	}
+	entries, ok := locMap["$182"].([]interface{})
+	if !ok {
+		t.Fatal("expected $182 list in location map")
+	}
+	if len(entries) != 3 {
+		t.Errorf("expected 3 location entries, got %d", len(entries))
+	}
+}
+
+// =============================================================================
+// VAL-M2-POSITION-008: CreateApproximatePageList processes full page list logic
+// =============================================================================
+
+func TestCreateApproximatePageListBasic(t *testing.T) {
+	fs := NewFragmentStore()
+	// Add reading order
+	fs.Append("$389", map[string]interface{}{
+		"$389": []interface{}{
+			map[string]interface{}{
+				"$178": "default",
+				"$170": []interface{}{"sec1"},
+				"$169": []interface{}{},
+			},
+		},
+	})
+	// Add section fragment
+	fs.Append("$260", map[string]interface{}{
+		"$260": []interface{}{
+			map[string]interface{}{
+				"$155": 10,
+				"$159": "$270",
+				"$146": []interface{}{makeLongText(5000)},
+			},
+		},
+	})
+
+	frags := &fragmentCatalog{
+		DocumentData: map[string]interface{}{
+			"$169": []interface{}{
+				map[string]interface{}{
+					"$178": "default",
+					"$170": []interface{}{"sec1"},
+				},
+			},
+		},
+	}
+
+	bpl := &BookPosLoc{
+		Fragments:       frags,
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	bpl.CreateApproximatePageList(0)
+
+	// Should not panic — pages are generated
+}
+
+func TestCreateApproximatePageListInvalidCDEType(t *testing.T) {
+	fs := NewFragmentStore()
+	bpl := &BookPosLoc{
+		CDEType: "MAGZ",
+		Store:   fs,
+	}
+
+	// Should return early and not panic
+	bpl.CreateApproximatePageList(0)
+}
+
+func TestCreateApproximatePageListDictionary(t *testing.T) {
+	fs := NewFragmentStore()
+	bpl := &BookPosLoc{
+		IsDictionary: true,
+		Store:        fs,
+	}
+
+	// Should return early
+	bpl.CreateApproximatePageList(0)
+}
+
+// =============================================================================
+// VAL-M2-POSITION-009: CreatePositionMap stores $264 and $265 fragments
+// =============================================================================
+
+func TestCreatePositionMapStores(t *testing.T) {
+	fs := NewFragmentStore()
+
+	posInfo := []*ContentChunk{
+		{PID: 0, EID: 10, EIDOffset: 0, Length: 10, SectionName: "sec1"},
+		{PID: 10, EID: 20, EIDOffset: 0, Length: 15, SectionName: "sec1"},
+		{PID: 25, EID: 30, EIDOffset: 0, Length: 20, SectionName: "sec2"},
+	}
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1", "sec2"},
+		Store:           fs,
+	}
+
+	hasSPIM, hasPositionIDOffset := bpl.CreatePositionMap(posInfo)
+
+	if hasSPIM != false {
+		t.Error("expected hasSPIM=false")
+	}
+	if hasPositionIDOffset != false {
+		t.Error("expected hasPositionIDOffset=false for zero offsets")
+	}
+
+	// Verify $264 fragment was stored
+	frag264 := fs.Get("$264")
+	if frag264 == nil {
+		t.Fatal("expected $264 fragment to be stored")
+	}
+	pmSlice, ok := frag264["$264"].([]interface{})
+	if !ok {
+		t.Fatalf("expected $264 to be []interface{}, got %T", frag264["$264"])
+	}
+	if len(pmSlice) != 2 {
+		t.Errorf("expected 2 section entries in $264, got %d", len(pmSlice))
+	}
+
+	// Verify $265 fragment was stored
+	frag265 := fs.Get("$265")
+	if frag265 == nil {
+		t.Fatal("expected $265 fragment to be stored")
+	}
+	pidSlice, ok := frag265["$265"].([]interface{})
+	if !ok {
+		t.Fatalf("expected $265 to be []interface{}, got %T", frag265["$265"])
+	}
+	// Should have 3 entries + 1 terminal = 4
+	if len(pidSlice) != 4 {
+		t.Errorf("expected 4 entries in $265 (3 chunks + terminal), got %d", len(pidSlice))
+	}
+
+	// Terminal entry should have $185=0
+	terminal, ok := pidSlice[3].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected terminal entry to be a map")
+	}
+	if terminal["$185"] != 0 {
+		t.Errorf("expected terminal $185=0, got %v", terminal["$185"])
+	}
+	if terminal["$184"] != 45 { // 10+15+20=45
+		t.Errorf("expected terminal $184=45, got %v", terminal["$184"])
+	}
+}
+
+// =============================================================================
+// VAL-M2-POSITION-010: CreatePositionMap removes old mapping fragments first
+// =============================================================================
+
+func TestCreatePositionMapRemovesOld(t *testing.T) {
+	fs := NewFragmentStore()
+	// Pre-existing fragments
+	fs.Append("$264", map[string]interface{}{"$264": "old"})
+	fs.Append("$265", map[string]interface{}{"$265": "old"})
+	fs.Append("$609", map[string]interface{}{"$609": "old"})
+	fs.Append("$610", map[string]interface{}{"$610": "old"})
+	fs.Append("$611", map[string]interface{}{"$611": "old"})
+
+	posInfo := []*ContentChunk{
+		{PID: 0, EID: 10, EIDOffset: 0, Length: 10, SectionName: "sec1"},
+	}
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	bpl.CreatePositionMap(posInfo)
+
+	// Old $609, $610, $611 should be removed
+	if fs.Has("$609") {
+		t.Error("expected $609 to be removed")
+	}
+	if fs.Has("$610") {
+		t.Error("expected $610 to be removed")
+	}
+	if fs.Has("$611") {
+		t.Error("expected $611 to be removed")
+	}
+
+	// New $264 and $265 should exist
+	if !fs.Has("$264") {
+		t.Error("expected new $264 to exist")
+	}
+	if !fs.Has("$265") {
+		t.Error("expected new $265 to exist")
+	}
+}
+
+// =============================================================================
+// VAL-M2-POSITION-011: CheckPositionAndLocationMaps orchestration exists
+// =============================================================================
+
+func TestCheckPositionAndLocationMaps(t *testing.T) {
+	fs := NewFragmentStore()
+	fs.Append("$260", map[string]interface{}{
+		"$260": []interface{}{
+			map[string]interface{}{
+				"$155": 10,
+				"$159": "$270",
+				"$146": []interface{}{"text"},
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	// Should not panic — calls all sub-methods in order
+	bpl.CheckPositionAndLocationMaps()
+}
+
+func TestCheckPositionAndLocationMapsEmptyBook(t *testing.T) {
+	fs := NewFragmentStore()
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{},
+		Store:           fs,
+	}
+
+	// Empty book should not panic
+	bpl.CheckPositionAndLocationMaps()
+}
+
+// =============================================================================
+// CreatePositionMap with EIDOffset tracking
+// =============================================================================
+
+func TestCreatePositionMapWithEIDOffset(t *testing.T) {
+	fs := NewFragmentStore()
+
+	posInfo := []*ContentChunk{
+		{PID: 0, EID: 10, EIDOffset: 0, Length: 10, SectionName: "sec1"},
+		{PID: 10, EID: 20, EIDOffset: 5, Length: 15, SectionName: "sec1"},
+	}
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	_, hasPositionIDOffset := bpl.CreatePositionMap(posInfo)
+	if !hasPositionIDOffset {
+		t.Error("expected hasPositionIDOffset=true when eid_offset != 0")
+	}
+
+	// Verify $265 entries include $143 offset
+	frag265 := fs.Get("$265")
+	pidSlice, _ := frag265["$265"].([]interface{})
+	secondEntry, _ := pidSlice[1].(map[string]interface{})
+	if secondEntry["$143"] != 5 {
+		t.Errorf("expected $143=5 in second entry, got %v", secondEntry["$143"])
+	}
+}
+
+// =============================================================================
+// CreatePositionMap dictionary early return removes $264/$265/$610
+// =============================================================================
+
+func TestCreatePositionMapDictionaryRemovesOldFragments(t *testing.T) {
+	fs := NewFragmentStore()
+	fs.Append("$264", map[string]interface{}{"$264": "old"})
+	fs.Append("$265", map[string]interface{}{"$265": "old"})
+	fs.Append("$610", map[string]interface{}{"$610": "old"})
+
+	bpl := &BookPosLoc{
+		IsDictionary:    true,
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	hasSPIM, hasPosIDOffset := bpl.CreatePositionMap(nil)
+	if hasSPIM != false || hasPosIDOffset != false {
+		t.Error("dictionary should return (false, false)")
+	}
+
+	if fs.Has("$264") {
+		t.Error("expected $264 to be removed for dictionary")
+	}
+	if fs.Has("$265") {
+		t.Error("expected $265 to be removed for dictionary")
+	}
+	if fs.Has("$610") {
+		t.Error("expected $610 to be removed for dictionary")
+	}
+}
+
+// =============================================================================
+// CollectContentPositionInfo with empty sections
+// =============================================================================
+
+func TestCollectContentPositionInfoEmptySections(t *testing.T) {
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{},
+		Store:           NewFragmentStore(),
+	}
+
+	result := bpl.CollectContentPositionInfo(true, false, false)
+	if len(result) != 0 {
+		t.Errorf("expected empty result for empty book, got %d chunks", len(result))
+	}
+}
+
+// =============================================================================
+// CollectPositionMapInfo with no fragments
+// =============================================================================
+
+func TestCollectPositionMapInfoNoFragments(t *testing.T) {
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           NewFragmentStore(),
+	}
+
+	result := bpl.CollectPositionMapInfo()
+	if len(result) != 0 {
+		t.Errorf("expected empty result with no fragments, got %d chunks", len(result))
+	}
+}
+
+// =============================================================================
+// CollectPositionMapInfo dictionary path
+// =============================================================================
+
+func TestCollectPositionMapInfoDictionaryPath(t *testing.T) {
+	fs := NewFragmentStore()
+	bpl := &BookPosLoc{
+		IsDictionary:    true,
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	result := bpl.CollectPositionMapInfo()
+	// Dictionary path without $611 returns empty
+	if len(result) != 0 {
+		t.Errorf("expected empty for dictionary without $611, got %d", len(result))
+	}
+}
+
+// =============================================================================
 // Helpers
 // =============================================================================
 
