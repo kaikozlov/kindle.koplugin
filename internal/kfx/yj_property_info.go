@@ -917,12 +917,16 @@ func mergeEpubType(a, b string) string {
 // (epub_output.py:1373-1393). For float64 values it delegates to formatCSSQuantity
 // which implements the full %g → %.4f fallback → trailing zero strip pipeline.
 func valueStr(v interface{}) string {
+	// Python: if quantity is None → return "" (epub_output.py:1374-1375)
+	if v == nil {
+		return ""
+	}
 	switch n := v.(type) {
 	case float64:
 		return formatCSSQuantity(n)
 	case *float64:
 		if n == nil {
-			return "0"
+			return ""
 		}
 		return formatCSSQuantity(*n)
 	case int:

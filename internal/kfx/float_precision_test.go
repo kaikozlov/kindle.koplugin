@@ -257,6 +257,39 @@ func TestValueStrWithUnitNilNoUnit(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestValueStr_Nil — VAL-M1-FLOAT-001: valueStr(nil) returns "" not "<nil>"
+// ---------------------------------------------------------------------------
+
+func TestValueStr_NilInterface(t *testing.T) {
+	// Python: value_str(None) → "" (epub_output.py:1374-1375)
+	got := valueStr(nil)
+	want := ""
+	if got != want {
+		t.Errorf("valueStr(nil) = %q, want %q", got, want)
+	}
+}
+
+func TestValueStr_NilFloat64Ptr(t *testing.T) {
+	// *float64(nil) should also return "" not "0"
+	var fp *float64 = nil
+	got := valueStr(fp)
+	want := ""
+	if got != want {
+		t.Errorf("valueStr((*float64)(nil)) = %q, want %q", got, want)
+	}
+}
+
+func TestValueStr_Float64PtrValue(t *testing.T) {
+	// *float64 with actual value should still work
+	v := 3.5
+	got := valueStr(&v)
+	want := "3.5"
+	if got != want {
+		t.Errorf("valueStr(&3.5) = %q, want %q", got, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TestColorStr — port of Python color_str from yj_to_epub_properties.py:2121-2134
 // ---------------------------------------------------------------------------
 
