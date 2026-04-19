@@ -1,48 +1,30 @@
 {
   "featureId": "m1-version-fragment-validation",
-  "reviewedAt": "2026-04-19T17:10:00Z",
-  "commitId": "930142d",
+  "reviewedAt": "2026-04-19T17:25:00Z",
+  "commitId": "53552d6",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
-  "status": "fail",
+  "status": "pass",
   "codeReview": {
-    "summary": "The implementation covers all 9 inconsistencies with good test coverage. However, there are two blocking issues: (1) CONTAINER_FORMAT_KFX_MAIN uses 'KFX_MAIN' instead of Python's 'KFX main' string value, and (2) fastrandn always produces the same deterministic output making CreateContainerID generate identical IDs on every call. Several non-blocking issues include missing IonAnnotation test in IonDataEq, an incomplete test for Rebuild_SkipsDictionary, and the old walkInternal function that still unconditionally checks ExpectedDictionaryAnnotations.",
+    "summary": "Re-review after fix-m1-scrutiny-blockers (commit 53552d6). Both blocking issues from round 1 have been adequately addressed: (1) Container format now uses 'KFX main' matching Python's CONTAINER_FORMAT_KFX_MAIN (yj_container.py:15), and (2) CreateContainerID now uses crypto/rand for non-deterministic random ID generation matching Python's random.choice behavior (yj_structure.py:854-855). All 11 relevant tests pass. The fix is clean — the old deterministic fastrandn function was removed and replaced with crypto/rand.Read. Pre-existing non-blocking issues from round 1 remain but none are blocking.",
     "issues": [
-      {
-        "file": "internal/kfx/yj_structure.go",
-        "line": 1155,
-        "severity": "blocking",
-        "description": "RebuildFragments uses \"KFX_MAIN\" for $161 container format, but Python's CONTAINER_FORMAT_KFX_MAIN is \"KFX main\" (yj_container.py:15). This is a logic-level parity violation — the generated container fragment will have the wrong format string, which could cause downstream format detection to fail."
-      },
-      {
-        "file": "internal/kfx/yj_structure.go",
-        "line": 1182,
-        "severity": "blocking",
-        "description": "fastrandn() always starts with v=1 and performs the same xorshift sequence, so it always returns the same value (3385103793 % n). This means CreateContainerID() always produces the same 28-character string. Python's random.choice uses a proper PRNG seeded from OS entropy. If CreateContainerID is called multiple times (e.g., when asset_id is empty and container_ids != 1), all calls produce identical IDs. This violates parity with Python's behavior and could cause ID collisions."
-      },
       {
         "file": "internal/kfx/yj_structure.go",
         "line": 390,
         "severity": "non_blocking",
-        "description": "The original walkInternal function (line 390) still unconditionally checks ExpectedDictionaryAnnotations without the IsDictionary guard: `!ExpectedDictionaryAnnotations[...]` instead of `!(opts.IsDictionary && ExpectedDictionaryAnnotations[...])`. The new walkInternalOpts (line 997) is correct. This pre-existing code path (used by WalkFragment) always allows dictionary annotations, while Python only allows them for dictionaries. This is not introduced by this commit but is relevant to VAL-M1-VERS-008 parity."
+        "description": "The original walkInternal function (line 390) still unconditionally checks ExpectedDictionaryAnnotations without the IsDictionary guard. The new walkInternalOpts (line 997) is correct. This pre-existing code path (used by WalkFragment) always allows dictionary annotations, while Python only allows them for dictionaries. Not introduced by this commit."
       },
       {
         "file": "internal/kfx/version_fragment_validation_test.go",
         "line": 467,
         "severity": "non_blocking",
-        "description": "TestDictionaryAnnotations_OnlyForDicts only verifies data constants exist, not the actual behavioral conditional (IsDictionary check). The test comment acknowledges this: 'For now, we verify the data constants are correct'. A proper test should exercise WalkFragmentWithOptions with and without IsDictionary to verify the annotation check behavior differs."
+        "description": "TestDictionaryAnnotations_OnlyForDicts only verifies data constants exist, not the actual behavioral conditional (IsDictionary check). A proper test should exercise WalkFragmentWithOptions with and without IsDictionary to verify the annotation check behavior differs."
       },
       {
         "file": "internal/kfx/version_fragment_validation_test.go",
         "line": 494,
         "severity": "non_blocking",
         "description": "TestRebuild_SkipsDictionary does not effectively verify the skip behavior. Both dictionary and normal paths produce _ = found270Dict/_ = found270Scribe without asserting any difference. The test should verify that for dictionary/scribe, the original $270 fragment is preserved (not regenerated), while for normal, it IS regenerated with new values."
-      },
-      {
-        "file": "internal/kfx/version_fragment_validation_test.go",
-        "line": 503,
-        "severity": "non_blocking",
-        "description": "Test data uses \"KFX_MAIN\" consistent with the implementation bug — the test passes but validates incorrect behavior."
       },
       {
         "file": "internal/kfx/yj_structure.go",
@@ -54,22 +36,22 @@
         "file": "internal/kfx/yj_structure.go",
         "line": 695,
         "severity": "non_blocking",
-        "description": "In IonDataEq, the ionTypeInt case checks for NaN via asFloat64, but detectIonType maps float64 to ionTypeInt. The logic is correct but confusing — NaN handling lives in the int branch because floats are classified as ionTypeInt. This should have a clarifying comment since it's non-obvious."
+        "description": "In IonDataEq, the ionTypeInt case checks for NaN via asFloat64, but detectIonType maps float64 to ionTypeInt. The logic is correct but confusing — NaN handling lives in the int branch because floats are classified as ionTypeInt. This should have a clarifying comment."
       }
     ]
   },
   "sharedStateObservations": [
     {
-      "area": "conventions",
-      "observation": "CONTAINER_FORMAT_KFX_MAIN is defined as a Python constant 'KFX main' in yj_container.py:15 but has no corresponding Go constant. The Go implementation inlined an incorrect string 'KFX_MAIN'. A Go constant should be defined to match Python, and referenced wherever container format strings are used.",
-      "evidence": "REFERENCE/Calibre_KFX_Input/kfxlib/yj_container.py:15 defines CONTAINER_FORMAT_KFX_MAIN = 'KFX main', while internal/kfx/yj_structure.go:1155 uses hardcoded 'KFX_MAIN'"
-    },
-    {
       "area": "knowledge",
       "observation": "The Python porting guide should document that Python's bool subclassing of int (True==1, False==0) affects dict key lookups. The toVersionKey solution (converting bool→int) is a pattern that may recur elsewhere.",
       "evidence": "internal/kfx/yj_versions.go:954-962 implements bool→int conversion with comment explaining Python's True==1 behavior"
+    },
+    {
+      "area": "knowledge",
+      "observation": "When porting Python's random.choice() to Go, crypto/rand should be preferred over math/rand for generating IDs. The modulo bias (% len(chars) where len=36, with 256 possible byte values) is negligible (256 mod 36 = 4, bias ≈ 0.43%) and matches Python's random.choice behavior which also has no uniformity guarantees for non-power-of-2 set sizes.",
+      "evidence": "internal/kfx/yj_structure.go:1179-1187 uses crypto/rand with modulo indexing; Python yj_structure.py:854-855 uses random.choice over 36-char alphabet"
     }
   ],
-  "addressesFailureFrom": null,
-  "summary": "The implementation covers all 9 version registry and fragment validation inconsistencies with 19 test functions. The Go code closely follows the Python reference for most features (toVersionKey bool handling, IonDataEq recursive comparison, fragment validation options, $597/$610 handling, prepub cleanup). However, there are two blocking issues: (1) RebuildFragments uses 'KFX_MAIN' instead of Python's 'KFX main' for the container format constant (yj_container.py:15), which is a direct parity violation, and (2) fastrandn is deterministic (always returns the same value), making CreateContainerID produce identical IDs on every call unlike Python's random.choice. Several non-blocking issues include incomplete test assertions for the dictionary rebuild skip and dictionary annotation conditional behavior, and the pre-existing walkInternal function that still unconditionally allows dictionary annotations."
+  "addressesFailureFrom": "/Users/kai/dev/projects/kindle.koplugin/.factory/validation/m1-foundation/scrutiny/reviews/m1-version-fragment-validation.json",
+  "summary": "Re-review (round 2) after fix-m1-scrutiny-blockers. Both blocking issues from round 1 are resolved: (1) Container format string changed from 'KFX_MAIN' to 'KFX main' matching Python's CONTAINER_FORMAT_KFX_MAIN constant at yj_container.py:15. (2) CreateContainerID now uses crypto/rand.Read instead of the deterministic fastrandn xorshift PRNG, producing non-deterministic IDs matching Python's random.choice behavior at yj_structure.py:854-855. The fix is clean — the old fastrandn function was fully removed. Two new tests were added: TestCreateContainerID_NonDeterministic verifies IDs differ across calls, and TestCreateContainerID_ContainerFormat verifies the $161 field uses 'KFX main'. All 11 relevant tests pass. Pre-existing non-blocking issues from round 1 remain (incomplete test assertions for dictionary skip, missing IonAnnotation test, confusing NaN handling comment). The 18 broader test failures (TestConvertFile*, TestClassify*, TestSymbolResolver*, TestBuildBookState*) are pre-existing due to missing reference fixture files and unrelated to this feature. Status: PASS."
 }

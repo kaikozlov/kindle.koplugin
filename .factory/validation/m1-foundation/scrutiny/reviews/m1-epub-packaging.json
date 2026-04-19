@@ -1,51 +1,28 @@
 {
   "featureId": "m1-epub-packaging",
-  "reviewedAt": "2026-04-19T16:30:00Z",
-  "commitId": "a55a742",
+  "reviewedAt": "2026-04-19T17:15:00Z",
+  "commitId": "53552d6",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
-  "status": "fail",
+  "status": "pass",
   "codeReview": {
-    "summary": "The implementation covers 10 EPUB packaging fixes with good test coverage (20 new sub-tests). 8 of 10 fixes have correct logic-level parity with Python. However, two blocking issues were found: (1) PERIODICAL_NCX_CLASSES mapping is wrong — Go has {0:'periodical', 1:'section', 2:'article'} but Python has {0:'section', 1:'article'} with no 'periodical' key, and (2) EPUB2 author opf:role attribute is missing from the Go implementation.",
+    "summary": "Re-review after fix commit 53552d6. Both blocking issues from round 1 have been correctly resolved: (1) PERIODICAL_NCX_CLASSES now matches Python exactly as {0:'section', 1:'article'} — the erroneous 'periodical' entry at depth 0 has been removed and tests updated accordingly. (2) EPUB2 <dc:creator> now includes opf:role='aut' attribute, with xmlns:opf namespace declared on the EPUB2 package element, and the EPUB3 package element correctly retains the marc: prefix without xmlns:opf. The fix also correctly separates the package element opening into EPUB2 vs EPUB3 branches. All 17 NCX/OPF tests pass, full epub test suite passes. Two pre-existing non-blocking issues remain (simplified check_epub_version logic, missing opf:scheme='uuid' on identifier) — these were noted in round 1 and are acceptable deferrals.",
     "issues": [
-      {
-        "file": "internal/epub/epub.go",
-        "line": 80,
-        "severity": "blocking",
-        "description": "PERIODICAL_NCX_CLASSES map does not match Python. Python (epub_output.py:56-59) defines `{0: \"section\", 1: \"article\"}` with only 2 entries. Go defines `{0: \"periodical\", 1: \"section\", 2: \"article\"}` with 3 entries. The 'periodical' class name does not exist in the Python constant at all. This means: at depth 0, Go emits class=\"periodical\" but Python emits class=\"section\"; at depth 1, Go emits class=\"section\" but Python emits class=\"article\"; at depth 2, Go emits class=\"article\" but Python emits nothing (no matching key). The test TestNCX_MBPNamespace/periodical_ncx_classes also incorrectly validates this wrong behavior."
-      },
-      {
-        "file": "internal/epub/epub.go",
-        "line": 250,
-        "severity": "blocking",
-        "description": "EPUB2 author opf:role attribute is missing. Python (epub_output.py:893-894) sets `creator.set(qname(ALT_OPF_NS_URI, \"role\"), \"aut\")` for EPUB2 mode, which produces `<dc:creator opf:role=\"aut\">author</dc:creator>`. The Go code in EPUB2 mode just outputs `<dc:creator>author</dc:creator>` without the opf:role attribute. The test `TestOPFMetadataRefinements/epub2_no_refines` only verifies that refines are not present, but does not check for the opf:role attribute."
-      },
       {
         "file": "internal/epub/epub.go",
         "line": 240,
         "severity": "non_blocking",
-        "description": "EPUB4 check_epub_version logic is significantly simplified compared to Python (epub_output.py:654-683). Python's check_epub_version inspects HTML elements (article, aside, etc.), attributes (data-*, epub:*), MIME types, and layout flags to decide whether to downgrade from EPUB2. The Go code just uses the GenerateEpub2 boolean directly without any content analysis. This is an acceptable simplification for now since the Go caller sets GenerateEpub2 after performing its own analysis, but it should be documented that the full check_epub_version logic is not ported."
+        "description": "EPUB4 check_epub_version logic is significantly simplified compared to Python (epub_output.py:654-683). Python's check_epub_version inspects HTML elements (article, aside, etc.), attributes (data-*, epub:*), MIME types, and layout flags to decide whether to downgrade from EPUB2. The Go code just uses the GenerateEpub2 boolean directly without any content analysis. This is an acceptable simplification for now since the Go caller sets GenerateEpub2 after performing its own analysis, but it should be documented that the full check_epub_version logic is not ported. (Carried over from round 1.)"
       },
       {
         "file": "internal/epub/epub.go",
-        "line": 245,
+        "line": 362,
         "severity": "non_blocking",
-        "description": "Python (epub_output.py:872-873) adds `opf:scheme=\"uuid\"` to the identifier element when in EPUB2 mode and the uid starts with 'urn:uuid:'. Go does not implement this EPUB2-specific identifier scheme attribute."
+        "description": "Python (epub_output.py:872-873) adds opf:scheme='uuid' to the identifier element when in EPUB2 mode and the uid starts with 'urn:uuid:'. Go does not implement this EPUB2-specific identifier scheme attribute. (Carried over from round 1.)"
       }
     ]
   },
-  "sharedStateObservations": [
-    {
-      "area": "conventions",
-      "observation": "The EPUB2 mode handling shows a pattern where Python uses namespace-prefixed attributes (opf:role, opf:scheme) that require special namespace URI tricks (ALT_OPF_NS_URI = OPF_NS_URI + '?') for serialization. Go's xml/template approach makes this harder to replicate. This pattern may apply to other EPUB2-specific features.",
-      "evidence": "Python epub_output.py:858 defines ALT_OPF_NS_URI = OPF_NS_URI + '?' and epub_output.py:1082 does a string replacement of this fake URI with the real one. Go's contentOPF() hand-builds XML strings and would need to add xmlns:opf or inline the attribute differently."
-    },
-    {
-      "area": "knowledge",
-      "observation": "The PERIODICAL_NCX_CLASSES constant in Python only has 2 entries (section, article) starting at depth 0, not 3 entries. The Go implementation incorrectly added a 'periodical' entry at depth 0 that doesn't exist in the Python source. The Python class name for the top-level periodical navPoint comes from the fact that magazines use depth 0 = 'section', not 'periodical'.",
-      "evidence": "Python REFERENCE/Calibre_KFX_Input/kfxlib/epub_output.py:56-59 defines PERIODICAL_NCX_CLASSES = {0: 'section', 1: 'article'}. Go internal/epub/epub.go:80-83 adds an extra {0: 'periodical'} entry."
-    }
-  ],
-  "addressesFailureFrom": null,
-  "summary": "Found 2 blocking parity bugs: (1) PERIODICAL_NCX_CLASSES has wrong mappings — Go has 3 entries including a non-existent 'periodical' class at depth 0, while Python has 2 entries with {0:'section', 1:'article'}. (2) EPUB2 mode is missing the opf:role='aut' attribute on <dc:creator> elements that Python sets via its ALT_OPF_NS_URI namespace trick. The other 8 fixes (default title 'Unknown', Arabic-Indic digit conversion, dot→underscore, EPUB version switching, guide conditional, spine RTL, OPF refines, manifest ordering) appear correct and well-tested. Font @font-face ordering is correctly deferred to the kfx package."
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "Round 1 review found 2 blocking issues: (1) PERIODICAL_NCX_CLASSES had wrong entries {0:'periodical', 1:'section', 2:'article'} instead of Python's {0:'section', 1:'article'}. (2) EPUB2 dc:creator was missing opf:role='aut' attribute. Both were fixed in commit 53552d6 by fix-m1-scrutiny-blockers feature.",
+  "summary": "PASS — Both blocking issues from round 1 are resolved. PERIODICAL_NCX_CLASSES now correctly maps {0:'section', 1:'article'} matching Python epub_output.py:56-59. EPUB2 dc:creator now includes opf:role='aut' with proper xmlns:opf namespace on the package element. The EPUB2 vs EPUB3 package element branching is clean: EPUB2 gets xmlns:opf without marc: prefix, EPUB3 gets marc: prefix without xmlns:opf. Tests updated to verify correct behavior and assert absence of wrong 'periodical' class. All 17 targeted tests and full epub suite pass. Two pre-existing non-blocking issues (simplified check_epub_version, missing opf:scheme='uuid') remain as acceptable deferrals."
 }

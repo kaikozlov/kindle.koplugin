@@ -1,7 +1,7 @@
 {
   "milestone": "m1-foundation",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,37 +20,12 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
-    "passed": 3,
-    "failed": 2,
-    "failedFeatures": ["m1-epub-packaging", "m1-version-fragment-validation"]
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "m1-epub-packaging",
-      "severity": "blocking",
-      "description": "PERIODICAL_NCX_CLASSES map does not match Python. Go has {0:'periodical', 1:'section', 2:'article'} with 3 entries, but Python (epub_output.py:56-59) has {0:'section', 1:'article'} with 2 entries. The 'periodical' class name does not exist in the Python constant. At depth 0, Go emits class='periodical' but Python emits class='section'. The test also incorrectly validates this wrong behavior.",
-      "suggestedFix": "Remove the {0:'periodical'} entry and shift remaining entries so PERIODICAL_NCX_CLASSES = {0:'section', 1:'article'}. Update the test to match."
-    },
-    {
-      "featureId": "m1-epub-packaging",
-      "severity": "blocking",
-      "description": "EPUB2 author opf:role attribute is missing. Python (epub_output.py:893-894) sets opf:role='aut' on <dc:creator> elements in EPUB2 mode. Go outputs <dc:creator>author</dc:creator> without the role attribute. The test TestOPFMetadataRefinements/epub2_no_refines only verifies refines are not present but does not check for opf:role.",
-      "suggestedFix": "Add opf:role='aut' attribute to <dc:creator> in EPUB2 mode in contentOPF(). Update test to verify."
-    },
-    {
-      "featureId": "m1-version-fragment-validation",
-      "severity": "blocking",
-      "description": "RebuildFragments uses 'KFX_MAIN' for $161 container format but Python's CONTAINER_FORMAT_KFX_MAIN is 'KFX main' (yj_container.py:15). This is a logic-level parity violation — the generated container fragment will have the wrong format string.",
-      "suggestedFix": "Change 'KFX_MAIN' to 'KFX main' at yj_structure.go:1155. Define a constant CONTAINER_FORMAT_KFX_MAIN = 'KFX main' for future reference. Update tests that validate against 'KFX_MAIN'."
-    },
-    {
-      "featureId": "m1-version-fragment-validation",
-      "severity": "blocking",
-      "description": "fastrandn() always starts with v=1 and performs the same xorshift sequence, always returning the same value (3385103793 % n). CreateContainerID() always produces the same 28-character string. Python's random.choice uses a proper PRNG seeded from OS entropy. Multiple calls produce identical IDs.",
-      "suggestedFix": "Replace fastrandn with crypto/rand or math/rand seeded from time.Now().UnixNano() to produce different IDs per call, matching Python's non-deterministic behavior."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
@@ -75,7 +50,7 @@
   "rejectedObservations": [
     {
       "observation": "EPUB2 namespace attribute handling pattern (ALT_OPF_NS_URI trick)",
-      "reason": "ambiguous — no concrete implementation scope identified; the observation describes a Python serialization trick but doesn't specify what Go code needs to change beyond the blocking opf:role issue already captured"
+      "reason": "ambiguous — no concrete implementation scope identified; the observation describes a Python serialization trick but doesn't specify what Go code needs to change beyond the blocking opf:role issue already captured and now fixed"
     },
     {
       "observation": "jpegType placed in yj_metadata_getters.go instead of resources.go",
@@ -84,7 +59,15 @@
     {
       "observation": "isScribeNotebook hardcoding pattern in metadata getters",
       "reason": "non-blocking; currently mitigated by getOrderedImageResources being a stub. Will need addressing when A5 scope is implemented but not a current parity issue."
+    },
+    {
+      "observation": "Python bool→int (True==1) dict key lookup pattern",
+      "reason": "already-documented — c1-yj-versions-constants.md in library already covers this pattern with specific examples"
+    },
+    {
+      "observation": "crypto/rand preferred for random ID generation with modulo bias analysis",
+      "reason": "already-documented — the fix feature correctly implemented this and the pattern is straightforward; no additional documentation needed beyond the code itself"
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/m1-foundation/scrutiny/synthesis.json (round 1)"
 }
