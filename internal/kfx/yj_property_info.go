@@ -237,6 +237,186 @@ var borderStyles = map[string]string{
 	"$329": "double", "$335": "ridge", "$334": "groove", "$336": "inset", "$337": "outset",
 }
 
+// -----------------------------------------------------------------------
+// Enum property mappers  (Python: Prop values switch/case tables)
+//
+// These functions map KFX symbol IDs to CSS enum values.  They were
+// originally in css_values.go and yj_to_epub_resources.go (leftover
+// from Phase 1 monolith split).  Moved here because they belong with
+// the YJ_PROPERTY_INFO data-driven property system.
+// -----------------------------------------------------------------------
+
+func mapHyphens(value interface{}) string {
+	switch text, _ := asString(value); text {
+	case "$383":
+		return "auto"
+	case "$384":
+		return "manual"
+	case "$349":
+		return "none"
+	default:
+		return ""
+	}
+}
+
+func mapPageBreak(value interface{}) string {
+	switch text, _ := asString(value); text {
+	case "$352":
+		return "always"
+	case "$383":
+		return "auto"
+	case "$353":
+		return "avoid"
+	default:
+		return ""
+	}
+}
+
+func mapBorderStyle(value interface{}) string {
+	switch text, _ := asString(value); text {
+	case "$349":
+		return "none"
+	case "$328":
+		return "solid"
+	case "$331":
+		return "dotted"
+	case "$330":
+		return "dashed"
+	case "$329":
+		return "double"
+	case "$335":
+		return "ridge"
+	case "$334":
+		return "groove"
+	case "$336":
+		return "inset"
+	case "$337":
+		return "outset"
+	default:
+		return ""
+	}
+}
+
+func mapBoxAlign(value interface{}) string {
+	switch text, _ := asString(value); text {
+	case "$320":
+		return "center"
+	case "$59":
+		return "left"
+	case "$61":
+		return "right"
+	case "$321":
+		return "justify"
+	default:
+		return ""
+	}
+}
+
+func mapTableVerticalAlign(value interface{}) string {
+	switch asStringDefault(value) {
+	case "$350":
+		return "baseline"
+	case "$60":
+		return "bottom"
+	case "$320":
+		return "middle"
+	case "$58":
+		return "top"
+	default:
+		return ""
+	}
+}
+
+func mapTextDecoration(value interface{}) string {
+	switch text, _ := asString(value); text {
+	case "$328":
+		return "underline"
+	default:
+		return ""
+	}
+}
+
+func mapFontVariant(value interface{}) string {
+	switch text, _ := asString(value); text {
+	case "$369":
+		return "small-caps"
+	case "$349":
+		return "normal"
+	default:
+		return ""
+	}
+}
+
+func mapTextTransform(value interface{}) string {
+	switch text, _ := asString(value); text {
+	case "$374":
+		return "capitalize"
+	case "$373":
+		return "lowercase"
+	case "$372":
+		return "uppercase"
+	case "$349":
+		return "none"
+	default:
+		return ""
+	}
+}
+
+func mapFontStyle(value interface{}) string {
+	switch text, _ := asString(value); text {
+	case "$382":
+		return "italic"
+	case "$381":
+		return "oblique"
+	case "$350":
+		return "normal"
+	default:
+		return ""
+	}
+}
+
+func mapFontWeight(value interface{}) string {
+	switch text, _ := asString(value); text {
+	case "$361":
+		return "bold"
+	case "$363":
+		return "900"
+	case "$357":
+		return "300"
+	case "$359":
+		return "500"
+	case "$350":
+		return "normal"
+	case "$360":
+		return "600"
+	case "$355":
+		return "100"
+	case "$362":
+		return "800"
+	case "$356":
+		return "200"
+	default:
+		return ""
+	}
+}
+
+func mapFontStretch(value interface{}) string {
+	switch text, _ := asString(value); text {
+	case "$365":
+		return "condensed"
+	case "$368":
+		return "expanded"
+	case "$350":
+		return "normal"
+	case "$366":
+		return "semi-condensed"
+	case "$367":
+		return "semi-expanded"
+	default:
+		return ""
+	}
+}
+
 // yjPropertyNames is the set of recognized KFX property IDs (mirrors YJ_PROPERTY_NAMES).
 var yjPropertyNames map[string]bool
 

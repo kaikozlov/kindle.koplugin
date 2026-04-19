@@ -27,7 +27,7 @@
 //	phase-b-process-reading-order — Done: processReadingOrder in yj_to_epub_content.go, called from renderBookState.
 //	phase-b-process-section — Partial: processSection entry + renderSectionFragments reflowable/fixed subset; heading tag selection now checks layout hints (simplify_styles L1928 parity) — $790 alone no longer promotes to <h1>-<h6> without "heading" in $761 layout hints; scribe/comic/magazine branches unported.
 //	phase-b-prepare-book-parts — Partial: prepareBookParts reapplies normalizeHTMLWhitespace per rendered section Root before materializeRenderedSections.
-//	phase-c-yj-property-info — Partial: yj_property_info.go simple Ion→CSS map + YJPropertySimpleCSSName; enum Prop entries still in kfx.go.
+//	phase-c-yj-property-info — Partial: yj_property_info.go simple Ion→CSS map + YJPropertySimpleCSSName; enum Prop entries moved from css_values.go and yj_to_epub_resources.go.
 //	phase-c-fixup-styles-classes — Partial: fixupStylesAndClasses strips empty class attrs; createCSSFiles merges styleCatalog; styleBaseName applies uniquePartOfLocalSymbol; simplifyStylesPostProcess converts div→p (text-only, no block children) and unwraps classless spans (Python simplify_styles div/p/figure conversion parity).
 //	phase-c-simplify-styles-html-defaults — Partial: setHTMLDefaults fills per-section Language; updateDefaultFontAndLanguage normalizes book language; simplifyStylesPostProcess in yj_to_epub_properties.go handles div→p/figure conversion + span unwrapping (partial port of Python simplify_styles ~L1928).
 //	phase-d-process-anchors-navigation-reporting — Partial: reportMissingPositions; reportDuplicateAnchors; processNavigation retained; guideToEPUB includes "text"→"bodymatter" landmark.

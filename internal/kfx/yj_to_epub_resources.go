@@ -338,60 +338,6 @@ func splitExt(filename string) (string, string) {
 // End resource variant handling
 // ---------------------------------------------------------------------------
 
-func mapFontStyle(value interface{}) string {
-	switch text, _ := asString(value); text {
-	case "$382":
-		return "italic"
-	case "$381":
-		return "oblique"
-	case "$350":
-		return "normal"
-	default:
-		return ""
-	}
-}
-
-func mapFontWeight(value interface{}) string {
-	switch text, _ := asString(value); text {
-	case "$361":
-		return "bold"
-	case "$363":
-		return "900"
-	case "$357":
-		return "300"
-	case "$359":
-		return "500"
-	case "$350":
-		return "normal"
-	case "$360":
-		return "600"
-	case "$355":
-		return "100"
-	case "$362":
-		return "800"
-	case "$356":
-		return "200"
-	default:
-		return ""
-	}
-}
-
-func mapFontStretch(value interface{}) string {
-	switch text, _ := asString(value); text {
-	case "$365":
-		return "condensed"
-	case "$368":
-		return "expanded"
-	case "$350":
-		return "normal"
-	case "$366":
-		return "semi-condensed"
-	case "$367":
-		return "semi-expanded"
-	default:
-		return ""
-	}
-}
 func parseResourceFragment(fragmentID string, value map[string]interface{}) resourceFragment {
 	resourceID, _ := asString(value["$175"])
 	if resourceID == "" {
