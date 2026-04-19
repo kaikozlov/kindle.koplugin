@@ -473,14 +473,45 @@ end
 --- Preserves successful entries with metadata/covers so they don't need
 --- to be re-extracted on every startup.
 function BookInfoManagerExt:clearStaleVirtualEntries(BookInfoManager)
+    local CacheManager = require("cache_manager")
     local SQ3 = require("lua-ljsqlite3/init")
     local ok, db_conn = pcall(SQ3.open, self.db_location)
     if not ok or not db_conn then return end
     db_conn:set_busy_timeout(5000)
 
-    -- Delete ALL virtual-path bookinfo rows so they get re-extracted
-    -- from freshly converted EPUBs (covers, titles, etc. may have changed).
+    -- Check if converter version changed since last extraction.
+    -- Store version in the config table (key/value) and only
+    -- nuke virtual-path bookinfo rows when it changes.
+    local current_version = CacheManager.CONVERTER_VERSION
+    local stored_version = nil
     local stmt = db_conn:prepare(
+        "SELECT value FROM config WHERE key='kindle_converter_version';"
+    )
+    if stmt then
+        local row = stmt:step()
+        stmt:clearbind():reset()
+        if row then
+            stored_version = row[1]
+        end
+    end
+
+    if stored_version == current_version then
+        -- Version matches — just clean up failed rows
+        stmt = db_conn:prepare(
+            "DELETE FROM bookinfo WHERE directory LIKE 'KINDLE_VIRTUAL://%'
+            .. " AND (in_progress > 0 OR unsupported IS NOT NULL);"
+        )
+        if stmt then
+            stmt:step()
+            stmt:clearbind():reset()
+        end
+        db_conn:close()
+        logger.info("KindlePlugin: converter version unchanged, cleared failed entries only")
+        return
+    end
+
+    -- Version changed — nuke all virtual-path rows and update version
+    stmt = db_conn:prepare(
         "DELETE FROM bookinfo WHERE directory LIKE 'KINDLE_VIRTUAL://%';"
     )
     if stmt then
@@ -488,8 +519,18 @@ function BookInfoManagerExt:clearStaleVirtualEntries(BookInfoManager)
         stmt:clearbind():reset()
     end
 
+    stmt = db_conn:prepare(
+        "INSERT OR REPLACE INTO config(key, value) VALUES('kindle_converter_version', ?);"
+    )
+    if stmt then
+        stmt:bind(current_version)
+        stmt:step()
+        stmt:clearbind():reset()
+    end
+
     db_conn:close()
-    logger.info("KindlePlugin: cleared stale virtual path bookinfo entries")
+    logger.info("KindlePlugin: converter version changed", stored_version or "nil", "->", current_version,
+        "cleared all virtual bookinfo entries")
 end
 
 function BookInfoManagerExt:unapply(BookInfoManager)
