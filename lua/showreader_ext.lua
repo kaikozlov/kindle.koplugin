@@ -21,9 +21,13 @@ function ShowReaderExt:apply()
     if not self.original_showReader then
         self.original_showReader = ReaderUI.showReader
     end
+    if not self.original_showFileManager then
+        self.original_showFileManager = ReaderUI.showFileManager
+    end
 
     local virtual_library = self.virtual_library
     local original_showReader = self.original_showReader
+    local original_showFileManager = self.original_showFileManager
 
     ReaderUI.showReader = function(reader_self, file, provider, seamless, is_provider_forced, after_open_callback)
         if not virtual_library:isVirtualPath(file) then
@@ -79,6 +83,27 @@ function ShowReaderExt:apply()
         return original_showReader(reader_self, real_file, provider, seamless, is_provider_forced, after_open_callback)
     end
 
+    -- Patch showFileManager: when closing a book that was opened from the
+    -- virtual library, return to the Kindle Library instead of the cache dir.
+    ReaderUI.showFileManager = function(reader_self, file, selected_files)
+        if file and virtual_library:isOpenAlias(file) then
+            logger.info("KindlePlugin: returning to Kindle Library after closing virtual book")
+            local FileChooser = require("ui/widget/filechooser")
+            local FileManager = require("apps/filemanager/filemanager")
+            if FileChooser.showKindleVirtualLibrary and FileManager.instance then
+                local fm = FileManager.instance
+                -- Close the reader first, then show virtual library
+                -- We return here so the original showFileManager doesn't run
+                -- The reader's onClose will handle the actual close
+                -- Just set the path to virtual so it doesn't navigate to cache dir
+                fm.path = "KINDLE_VIRTUAL://"
+                FileChooser.showKindleVirtualLibrary(fm.file_chooser or fm)
+                return
+            end
+        end
+        return original_showFileManager(reader_self, file, selected_files)
+    end
+
     logger.info("KindlePlugin: patched ReaderUI:showReader for virtual library paths")
 end
 
@@ -89,8 +114,12 @@ function ShowReaderExt:unapply()
 
     local ReaderUI = require("apps/reader/readerui")
     ReaderUI.showReader = self.original_showReader
+    if self.original_showFileManager then
+        ReaderUI.showFileManager = self.original_showFileManager
+    end
     logger.info("KindlePlugin: restored original ReaderUI:showReader")
     self.original_showReader = nil
+    self.original_showFileManager = nil
 end
 
 return ShowReaderExt

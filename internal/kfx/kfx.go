@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"image/jpeg"
+	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kaikozlov/kindle-koplugin/internal/epub"
@@ -205,7 +207,7 @@ func ConvertFile(inputPath, outputPath string, cacheDir string) error {
 			return &DRMError{Message: fmt.Sprintf("decryption failed: %s", err)}
 		}
 
-		return convertFromCONTData(contData, outputPath)
+		return convertFromDRMIONData(contData, outputPath, inputPath)
 	}
 
 	mode, reason, err := Classify(inputPath)
@@ -256,6 +258,74 @@ func decodeKFX(path string) (*decodedBook, error) {
 
 // convertFromCONTData takes raw CONT KFX data and converts it to EPUB.
 // This is used after DRMION decryption produces a valid CONT container.
+func convertFromDRMIONData(contData []byte, outputPath string, originalPath string) error {
+	if !bytes.HasPrefix(contData, contSignature) {
+		return &UnsupportedError{Message: "decrypted data is not a valid CONT KFX container"}
+	}
+
+	// Build the primary source from decrypted CONT data
+	primarySource, err := loadContainerSourceData(originalPath, contData)
+	if err != nil {
+		return fmt.Errorf("parsing decrypted CONT: %w", err)
+	}
+
+	// Collect additional CONT blobs from the .sdr sidecar directory.
+	// DRM books store metadata, cover images, and other fragments in
+	// the sidecar (e.g. assets/metadata.kfx, assets/attachables/*.kfx).
+	sources := []*containerSource{primarySource}
+	sidecarRoot := strings.TrimSuffix(originalPath, filepath.Ext(originalPath)) + ".sdr"
+	sidecarBlobs, _, err := collectSidecarContainerBlobs(sidecarRoot)
+	if err != nil {
+		// Non-fatal: metadata may be incomplete but conversion can proceed
+		log.Printf("DRM sidecar collection failed for %s: %v", sidecarRoot, err)
+	}
+	for _, blob := range sidecarBlobs {
+		src, err := loadContainerSourceData(blob.Path, blob.Data)
+		if err != nil {
+		log.Printf("skipping sidecar blob %s: %v", blob.Path, err)
+			continue
+		}
+		sources = append(sources, src)
+	}
+
+	if len(sources) > 1 {
+		log.Printf("DRM conversion using %d sources (1 decrypted + %d sidecar)", len(sources), len(sources)-1)
+	}
+
+	// Use the original path as book identifier (for title fallback)
+	bookPath := originalPath
+	state, err := organizeFragments(bookPath, sources)
+	if err != nil {
+		return err
+	}
+
+	book, err := renderBookState(state)
+	if err != nil {
+		return err
+	}
+	if len(book.Sections) == 0 {
+		return &UnsupportedError{Message: "no readable sections were extracted from the decrypted KFX file"}
+	}
+
+	return epub.Write(outputPath, epub.Book{
+		Identifier:          book.Identifier,
+		Title:               book.Title,
+		Language:            book.Language,
+		Authors:             book.Authors,
+		Published:           book.Published,
+		Description:         book.Description,
+		Publisher:           book.Publisher,
+		OverrideKindleFonts: book.OverrideKindleFonts,
+		CoverImageHref:      book.CoverImageHref,
+		Stylesheet:          book.Stylesheet,
+		Sections:            book.Sections,
+		Resources:           book.Resources,
+		Navigation:          book.Navigation,
+		Guide:               book.Guide,
+		PageList:            book.PageList,
+	})
+}
+
 func convertFromCONTData(contData []byte, outputPath string) error {
 	if !bytes.HasPrefix(contData, contSignature) {
 		return &UnsupportedError{Message: "decrypted data is not a valid CONT KFX container"}

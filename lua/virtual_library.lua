@@ -134,6 +134,10 @@ function VirtualLibrary:registerOpenAlias(real_path, virtual_path)
     self.virtual_to_open_alias[virtual_path] = real_path
 end
 
+function VirtualLibrary:isOpenAlias(real_path)
+    return self.open_alias_to_virtual[real_path] ~= nil
+end
+
 function VirtualLibrary:clearOpenAlias(path)
     local virtual_path = self:getVirtualPath(path)
     if not virtual_path then
