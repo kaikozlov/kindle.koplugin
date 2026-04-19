@@ -5,6 +5,7 @@
 - Commit after every step — success OR failure, there must always be a commit
 - Never accumulate more than one step of uncommitted changes
 - If a change introduces new UNEXPECTED test failures or *unexpected* diffs: revert immediately, commit the revert, then figure out why. Regressions are only allowed as temporary artifacts if they are part of a refactor that makes progress on the task. If you cannot explicitly say that they are and why, you must revert it.
+- When making plans, You must add specific locations in the python code that we are referencing for each thing we are implementing in go. We are explicitly using the python as the source of truth. File, line, implementation details. Map it 1:1 python to go
 
 ## General
 
