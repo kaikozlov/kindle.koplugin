@@ -1,0 +1,153 @@
+{
+  "groupId": "d1-stroke-decoding",
+  "testedAt": "2026-04-19T02:44:16Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "testTool": "go test ./internal/kfx/... -count=1 -v -run PATTERN",
+    "servicesNeeded": "none"
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-D-011",
+      "title": "decode_stroke_values — valid signature",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run go test ./internal/kfx/... -count=1 -v -run TestDecodeStrokeValuesValidSignature|TestDecodeStrokeValuesInvalidSignature",
+          "expected": "Both tests pass (exit code 0)",
+          "observed": "Both tests PASS. TestDecodeStrokeValuesValidSignature passes cleanly. TestDecodeStrokeValuesInvalidSignature correctly logs 'error: test signature is incorrect (0000)' and still passes."
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestDecodeStrokeValuesValidSignature", "TestDecodeStrokeValuesInvalidSignature"],
+        "testResults": ["PASS", "PASS"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-012",
+      "title": "decode_stroke_values — num_vals verification",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run go test ./internal/kfx/... -count=1 -v -run TestDecodeStrokeValuesNumValsMismatch",
+          "expected": "Test passes (exit code 0), mismatch error logged",
+          "observed": "Test PASS. Logs 'error: test expected 1 values, found 2'. Function continues with actual num_vals."
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestDecodeStrokeValuesNumValsMismatch"],
+        "testResults": ["PASS"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-013",
+      "title": "decode_stroke_values — instruction nibble extraction",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run go test ./internal/kfx/... -count=1 -v -run TestDecodeStrokeValuesNibbleExtraction",
+          "expected": "Test passes (exit code 0)",
+          "observed": "Test PASS. Nibbles correctly extracted with high nibble first, low nibble second, and padding verified as 0."
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestDecodeStrokeValuesNibbleExtraction"],
+        "testResults": ["PASS"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-014",
+      "title": "decode_stroke_values — increment decoding",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run go test ./internal/kfx/... -count=1 -v -run TestDecodeStrokeValuesIncrementDecoding|TestDecodeStrokeValuesMultiByteIncrement|TestDecodeStrokeValuesNegativeIncrement|TestDecodeStrokeValuesSingleByteIncrement|TestDecodeStrokeValuesThreeByteIncrement|TestDecodeStrokeValuesNegativeThreeByteIncrement|TestDecodeStrokeValuesNegativeSingleByteIncrement|TestDecodeStrokeValuesNegativeZeroIncrement",
+          "expected": "All tests pass (exit code 0)",
+          "observed": "All 8 tests PASS. Sub-tests include: n=0_bit2=1 (increment=0), n=1_bit2=1 (increment=1), n=1_bit2=1_bit3=1 (increment=-1), n=0_bit2=0 (zero-length read), multi-byte increment, negative increment, single byte increment, three byte increment (with expected error log for 3-byte check), negative three byte increment, negative single byte increment, negative zero increment."
+        }
+      ],
+      "evidence": {
+        "testNames": [
+          "TestDecodeStrokeValuesIncrementDecoding/n=0_bit2=1",
+          "TestDecodeStrokeValuesIncrementDecoding/n=1_bit2=1",
+          "TestDecodeStrokeValuesIncrementDecoding/n=1_bit2=1_bit3=1",
+          "TestDecodeStrokeValuesIncrementDecoding/n=0_bit2=0",
+          "TestDecodeStrokeValuesMultiByteIncrement",
+          "TestDecodeStrokeValuesNegativeIncrement",
+          "TestDecodeStrokeValuesSingleByteIncrement",
+          "TestDecodeStrokeValuesThreeByteIncrement",
+          "TestDecodeStrokeValuesNegativeThreeByteIncrement",
+          "TestDecodeStrokeValuesNegativeSingleByteIncrement",
+          "TestDecodeStrokeValuesNegativeZeroIncrement"
+        ],
+        "testResults": ["PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-015",
+      "title": "decode_stroke_values — delta decoding",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run go test ./internal/kfx/... -count=1 -v -run TestDecodeStrokeValuesDeltaDecoding",
+          "expected": "Test passes with Python's actual delta algorithm producing [5, 8, 10, 12, 16]",
+          "observed": "Test PASS. Delta decoding produces [5, 8, 10, 12, 16] for increments [5, 3, -1, 0, 2], matching Python's actual algorithm (i==0: change=0, value=increment; else: change+=increment, value+=change)."
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestDecodeStrokeValuesDeltaDecoding"],
+        "testResults": ["PASS"],
+        "exitCode": 0
+      },
+      "issues": "Known discrepancy: Validation contract VAL-D-015 claims delta decoding produces [5,13,20,27,36] for increments [5,3,-1,0,2], but this is incorrect. Python's actual algorithm produces [5,8,10,12,16]. Our Go implementation correctly follows Python (source of truth). Test verifies Python's actual values."
+    },
+    {
+      "id": "VAL-D-016",
+      "title": "decode_stroke_values — empty data",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run go test ./internal/kfx/... -count=1 -v -run TestDecodeStrokeValuesEmpty",
+          "expected": "Test passes (exit code 0), returns empty slice",
+          "observed": "Test PASS. Empty input returns empty values with no error."
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestDecodeStrokeValuesEmpty"],
+        "testResults": ["PASS"],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-017",
+      "title": "decode_stroke_values — extra data detection",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run go test ./internal/kfx/... -count=1 -v -run TestDecodeStrokeValuesExtraData",
+          "expected": "Test passes (exit code 0), extra data error logged",
+          "observed": "Test PASS. Logs 'error: test_extra has extra data: ff' when trailing bytes present after decoding all points."
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestDecodeStrokeValuesExtraData"],
+        "testResults": ["PASS"],
+        "exitCode": 0
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 7 assertions: all 7 passed (VAL-D-011 through VAL-D-017). Known discrepancy confirmed for VAL-D-015: validation contract claims delta decoding produces [5,13,20,27,36] but Python's actual algorithm produces [5,8,10,12,16]. Go implementation correctly follows Python (source of truth)."
+}

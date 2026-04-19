@@ -1,0 +1,282 @@
+{
+  "groupId": "d3-float-precision",
+  "testedAt": "2026-04-19T12:00:00Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "testCommand": "go test ./internal/kfx/... -count=1 -v -run PATTERN",
+    "servicesNeeded": "none",
+    "description": "Pure Go library test execution for milestone D, area D3 (float precision)"
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-D-031",
+      "title": "value_str / formatCSSQuantity — zero handling",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestFormatCSSQuantityZero|TestFormatCSSQuantityNearZero'",
+          "expected": "Both tests PASS",
+          "observed": "TestFormatCSSQuantityZero PASS, TestFormatCSSQuantityNearZero PASS (5 subtests: positive_near_zero, negative_near_zero, tiny_positive, tiny_negative, negative_abs_near_zero)"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestFormatCSSQuantityZero", "TestFormatCSSQuantityNearZero"],
+        "testResults": ["PASS", "PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-032",
+      "title": "value_str / formatCSSQuantity — %g formatting for simple floats",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestFormatCSSQuantityFloats|TestFormatCSSQuantityPositiveIntegers'",
+          "expected": "Both tests PASS",
+          "observed": "TestFormatCSSQuantityFloats PASS, TestFormatCSSQuantityPositiveIntegers PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestFormatCSSQuantityFloats", "TestFormatCSSQuantityPositiveIntegers"],
+        "testResults": ["PASS", "PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-033",
+      "title": "value_str / formatCSSQuantity — scientific notation fallback",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestFormatCSSQuantityScientificNotationFallback'",
+          "expected": "Test PASS",
+          "observed": "TestFormatCSSQuantityScientificNotationFallback PASS (3 subtests: small_sci_pos, small_sci_value, small_neg_sci)"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestFormatCSSQuantityScientificNotationFallback"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-034",
+      "title": "value_str / formatCSSQuantity — trailing zero stripping",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestFormatCSSQuantityTrailingZeros'",
+          "expected": "Test PASS",
+          "observed": "TestFormatCSSQuantityTrailingZeros PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestFormatCSSQuantityTrailingZeros"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-035",
+      "title": "value_str / formatCSSQuantity — negative values",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestFormatCSSQuantityNegativeValues'",
+          "expected": "Test PASS",
+          "observed": "TestFormatCSSQuantityNegativeValues PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestFormatCSSQuantityNegativeValues"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-036",
+      "title": "value_str — unit appending (full value_str behavior)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestValueStrWithUnitInteger|TestValueStrWithUnitNoUnit'",
+          "expected": "Both tests PASS",
+          "observed": "TestValueStrWithUnitInteger PASS, TestValueStrWithUnitNoUnit PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestValueStrWithUnitInteger", "TestValueStrWithUnitNoUnit"],
+        "testResults": ["PASS", "PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-037",
+      "title": "value_str — nil/None handling",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestValueStrWithUnitNilNoUnit'",
+          "expected": "Test PASS",
+          "observed": "TestValueStrWithUnitNilNoUnit PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestValueStrWithUnitNilNoUnit"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-038",
+      "title": "color_str — opaque colors",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestColorStrOpaqueBlack|TestColorStrOpaqueWhite|TestColorStrOpaqueRed|TestColorStrOpaqueGreen|TestColorStrOpaqueGray|TestColorStrOpaqueLime|TestColorStrOpaqueNamedColor|TestColorStrOpaqueUnnamedColor'",
+          "expected": "All tests PASS",
+          "observed": "All 8 tests PASS: TestColorStrOpaqueBlack, TestColorStrOpaqueWhite, TestColorStrOpaqueNamedColor, TestColorStrOpaqueUnnamedColor, TestColorStrOpaqueRed, TestColorStrOpaqueGreen, TestColorStrOpaqueGray, TestColorStrOpaqueLime"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestColorStrOpaqueBlack", "TestColorStrOpaqueWhite", "TestColorStrOpaqueRed", "TestColorStrOpaqueGreen", "TestColorStrOpaqueGray", "TestColorStrOpaqueLime", "TestColorStrOpaqueNamedColor", "TestColorStrOpaqueUnnamedColor"],
+        "testResults": ["PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-039",
+      "title": "color_str — semi-transparent colors (alpha formatting)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestColorStrTranslucent|TestColorStrAlphaZero|TestColorStrAlphaSmallValue'",
+          "expected": "All tests PASS",
+          "observed": "TestColorStrTranslucent PASS, TestColorStrAlphaZero PASS, TestColorStrAlphaSmallValue PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestColorStrTranslucent", "TestColorStrAlphaZero", "TestColorStrAlphaSmallValue"],
+        "testResults": ["PASS", "PASS", "PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-040",
+      "title": "int_to_alpha — boundary values",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestIntToAlpha'",
+          "expected": "Test PASS",
+          "observed": "TestIntToAlpha PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestIntToAlpha"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-041",
+      "title": "alpha_to_int — boundary values",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestAlphaToInt'",
+          "expected": "Test PASS",
+          "observed": "TestAlphaToInt PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestAlphaToInt"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-042",
+      "title": "int_to_alpha / alpha_to_int — round-trip",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestIntToAlpha|TestAlphaToInt'",
+          "expected": "Both tests PASS, confirming boundary values that validate round-trip behavior",
+          "observed": "TestIntToAlpha PASS, TestAlphaToInt PASS — boundary values at 0,1,2,128,253,254,255 tested for intToAlpha, and corresponding inverse values tested for alphaToInt, confirming round-trip consistency"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestIntToAlpha", "TestAlphaToInt"],
+        "testResults": ["PASS", "PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-043",
+      "title": "formatCSSQuantity — real-world values (Martyr test EPUB stylesheet)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestFormatCSSQuantityFloats'",
+          "expected": "Test PASS, covering real-world float formatting values",
+          "observed": "TestFormatCSSQuantityFloats PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestFormatCSSQuantityFloats"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-044",
+      "title": "formatCSSQuantity — very large and very small values",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestFormatCSSQuantityLargeValues'",
+          "expected": "Test PASS",
+          "observed": "TestFormatCSSQuantityLargeValues PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": ["TestFormatCSSQuantityLargeValues"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 14 assertions (VAL-D-031 through VAL-D-044): all 14 passed. All tests for formatCSSQuantity (zero handling, %g formatting, scientific notation fallback, trailing zero stripping, negative values, real-world values, large/small values), valueStr (unit appending, nil handling), colorStr (opaque and semi-transparent), intToAlpha, and alphaToInt completed successfully with exit code 0."
+}

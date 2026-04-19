@@ -1,0 +1,199 @@
+{
+  "groupId": "d1-constants-stubs",
+  "testedAt": "2026-04-19T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "testPackage": "./internal/kfx/...",
+    "noServicesNeeded": true
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-D-001",
+      "title": "Module constants defined with correct values",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestNotebookConstants", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestNotebookConstants"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-002",
+      "title": "SVG_DOCTYPE constant",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestSVGDoctype", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestSVGDoctype"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-003",
+      "title": "Brush type string constants",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestBrushTypeConstants", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestBrushTypeConstants"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-004",
+      "title": "THICKNESS_NAME — 5 entries",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestThicknessName", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestThicknessName"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-005",
+      "title": "THICKNESS_CHOICES — 8 brush types with 5 values each",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestThicknessChoices$", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestThicknessChoices"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-006",
+      "title": "THICKNESS_CHOICES — ERASER has no entry",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestThicknessChoicesNoEraser", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestThicknessChoicesNoEraser"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-007",
+      "title": "STROKE_COLORS — 10 entries",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestStrokeColors", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestStrokeColors"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-008",
+      "title": "adjust_color_for_density — luminance computation",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestAdjustColorForDensityLuminance", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestAdjustColorForDensityLuminance"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt",
+        "contractDiscrepancyNotes": [
+          "VAL-D-008: The validation contract claims adjustColorForDensity(0xffffff, 1.0) returns 0x000000, but Python returns 0xffffff. Our Go follows Python (source of truth per AGENTS.md). The test follows Python, so this discrepancy is documented but not a failure.",
+          "VAL-D-008: Same for adjustColorForDensity(0xffffff, 2.0)."
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-009",
+      "title": "adjust_color_for_density — boundary clamping",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestAdjustColorForDensityClamping", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestAdjustColorForDensityClamping"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-010",
+      "title": "adjust_color_for_density — gray output symmetry",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestAdjustColorForDensityGraySymmetry", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestAdjustColorForDensityGraySymmetry"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-018",
+      "title": "processScribeNotebookPageSection — stub returns false",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestProcessScribeNotebookPageSectionStub", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestProcessScribeNotebookPageSectionStub"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-D-019",
+      "title": "processScribeNotebookTemplateSection — stub returns false",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run TestProcessScribeNotebookTemplateSectionStub", "expected": "PASS", "observed": "PASS" }
+      ],
+      "evidence": {
+        "testNames": ["TestProcessScribeNotebookTemplateSectionStub"],
+        "testResults": ["PASS"],
+        "exitCode": 0,
+        "outputFile": "evidence/all-tests-output.txt"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 12 assertions: all 12 passed (VAL-D-001 through VAL-D-010, VAL-D-018, VAL-D-019). No failures, no blockers. Known validation contract discrepancies for VAL-D-008 (adjustColorForDensity white-at-full-density behavior) documented — Go follows Python as source of truth per AGENTS.md."
+}

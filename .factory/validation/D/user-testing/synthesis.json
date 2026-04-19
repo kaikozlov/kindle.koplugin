@@ -1,0 +1,32 @@
+{
+  "milestone": "D",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 44,
+    "passed": 44,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-D-001", "VAL-D-002", "VAL-D-003", "VAL-D-004", "VAL-D-005",
+    "VAL-D-006", "VAL-D-007", "VAL-D-008", "VAL-D-009", "VAL-D-010",
+    "VAL-D-011", "VAL-D-012", "VAL-D-013", "VAL-D-014", "VAL-D-015",
+    "VAL-D-016", "VAL-D-017", "VAL-D-018", "VAL-D-019", "VAL-D-020",
+    "VAL-D-021", "VAL-D-022", "VAL-D-023", "VAL-D-024", "VAL-D-025",
+    "VAL-D-026", "VAL-D-027", "VAL-D-028", "VAL-D-029", "VAL-D-030",
+    "VAL-D-031", "VAL-D-032", "VAL-D-033", "VAL-D-034", "VAL-D-035",
+    "VAL-D-036", "VAL-D-037", "VAL-D-038", "VAL-D-039", "VAL-D-040",
+    "VAL-D-041", "VAL-D-042", "VAL-D-043", "VAL-D-044"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance for Milestone D with test name mappings and known contract discrepancies for adjustColorForDensity and delta decoding",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}
