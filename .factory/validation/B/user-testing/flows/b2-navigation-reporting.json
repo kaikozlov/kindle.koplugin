@@ -1,0 +1,91 @@
+{
+  "groupId": "b2-navigation-reporting",
+  "testedAt": "2026-04-19T12:00:00Z",
+  "isolation": {
+    "tool": "go test",
+    "package": "./internal/kfx/...",
+    "flags": "-count=1 -v -run <pattern>",
+    "sharedState": "none"
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-B-019",
+      "title": "report_missing_positions logs unresolved positions",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run 'TestReportMissingPositions'", "expected": "All tests pass (exit code 0)", "observed": "4 tests passed: TestReportMissingPositionsEmpty, TestReportMissingPositionsNil, TestReportMissingPositionsFormatsAndSorts, TestReportMissingPositionsTruncatesLongList. Exit code 0." }
+      ],
+      "evidence": {
+        "testOutput": "B/b2-navigation-reporting/VAL-B-019-test-output.txt",
+        "consoleErrors": "none",
+        "testsPassed": 4,
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-020",
+      "title": "report_duplicate_anchors logs only used anchors with multiple positions",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run 'TestReportDuplicateAnchors'", "expected": "All tests pass (exit code 0)", "observed": "5 tests passed: TestReportDuplicateAnchorsSkipsWhenUnresolved, TestReportDuplicateAnchorsSkipsSingleSite, TestReportDuplicateAnchorsEmitsForMultiSiteResolved, TestReportDuplicateAnchorsOnlyReportsUsedAnchorsWithMultiplePositions, TestReportDuplicateAnchorsPositionsSorted. Exit code 0." }
+      ],
+      "evidence": {
+        "testOutput": "B/b2-navigation-reporting/VAL-B-020-test-output.txt",
+        "consoleErrors": "none",
+        "testsPassed": 5,
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-021",
+      "title": "register_anchor populates position_anchors and anchor_positions bidirectionally",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run 'TestRegisterAnchor'", "expected": "All tests pass (exit code 0)", "observed": "5 tests passed: TestRegisterAnchorBidirectional, TestRegisterAnchorMultiplePositions, TestRegisterAnchorStoresHeadingLevel, TestRegisterAnchorSkipsEmptyName, TestRegisterAnchorSkipsZeroPosition. Exit code 0." }
+      ],
+      "evidence": {
+        "testOutput": "B/b2-navigation-reporting/VAL-B-021-test-output.txt",
+        "consoleErrors": "none",
+        "testsPassed": 5,
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-022",
+      "title": "process_anchors initializes all anchor data structures",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run 'TestProcessNavigationInitializesStructures'", "expected": "All tests pass (exit code 0)", "observed": "1 test passed: TestProcessNavigationInitializesStructures. Exit code 0." }
+      ],
+      "evidence": {
+        "testOutput": "B/b2-navigation-reporting/VAL-B-022-test-output.txt",
+        "consoleErrors": "none",
+        "testsPassed": 1,
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-023",
+      "title": "Navigation type matching for TOC, landmarks, and page-list",
+      "status": "pass",
+      "steps": [
+        { "action": "Run go test ./internal/kfx/... -count=1 -v -run 'TestNavContainerType'", "expected": "All tests pass (exit code 0)", "observed": "3 tests passed: TestNavContainerTypeTOC, TestNavContainerTypeLandmarks, TestNavContainerTypePageList. Exit code 0." }
+      ],
+      "evidence": {
+        "testOutput": "B/b2-navigation-reporting/VAL-B-023-test-output.txt",
+        "consoleErrors": "none",
+        "testsPassed": 3,
+        "exitCode": 0
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. Total of 18 sub-tests across all assertions (VAL-B-019: 4, VAL-B-020: 5, VAL-B-021: 5, VAL-B-022: 1, VAL-B-023: 3). All exit codes 0."
+}

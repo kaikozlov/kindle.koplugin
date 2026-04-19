@@ -83,6 +83,38 @@ The Go test surface validates milestone A features by running `go test ./interna
 - A4 (pageSpread): TestPageSpread*, TestScaleFit*, TestConnectedPagination*, TestLeafBranch*, TestVirtualPanel*, TestFacingPage*, TestRecursivePageSpread*, TestExtractSpreadType*
 - A5 (position/location): TestContentChunk*, TestConditionalTemplate*, TestPositionMap*, TestLocationMap*, TestApproximatePages*, TestMatchReport*, TestPidForEid*, TestEidForPid*, TestCollectContent*
 
+## Flow Validator Guidance: Go Test (Milestone B)
+
+The Go test surface validates milestone B features by running `go test` on specific test patterns in `./internal/epub/...` and `./internal/kfx/...`.
+
+**Test tool**: `go test ./internal/epub/... ./internal/kfx/... -count=1 -v` (direct shell execution)
+
+**Isolation rules:**
+- Each validator runs `go test` with specific `-run` flags targeting its assigned assertions
+- Tests are independent — they construct their own synthetic data
+- No shared mutable state between tests
+- Validators can run concurrently since `go test` builds and caches independently
+
+**Boundaries:**
+- Do NOT modify source files
+- Only inspect test results (pass/fail/output)
+- Ignore the 18 pre-existing fixture-dependent failures (see below)
+- Focus ONLY on the assigned assertion IDs
+
+**How to test:**
+1. Run `go test ./internal/epub/... -count=1 -v -run "<TestPattern>"` for EPUB packaging assertions
+2. Run `go test ./internal/kfx/... -count=1 -v -run "<TestPattern>"` for KFX library assertions
+3. Check exit code: 0 = all tests pass, 1 = some tests fail
+4. Parse output for specific test names matching the assertion
+5. Report pass/fail per assertion based on whether the corresponding test passes
+
+**Known test name mappings (milestone B):**
+- B1 (EPUB Packaging): TestManifest*, TestSpine*, TestOPF*, TestCover*, TestOverride*, TestNCX*, TestEpub3Nav*, TestGuide*, TestContainerXML*, TestZIP*, TestMakeManifestID*, TestSectionXHTML*, TestDefaultNav*, TestDefaultTitle*
+- B2 (Navigation Reporting): TestReportMissing*, TestReportDuplicate*, TestRegisterAnchor*, TestProcessNavigation*, TestNavContainer*, TestStripOperator*, TestPythonCondition*
+- B3 (Illustrated Layout): TestRewrite*, TestConditionOper*, TestFixup*, TestStyleRewrite*, TestCreateConditional*
+- B4 (Resource Variant): TestResourceVariant*, TestResourceDedup*, TestResourceCache*, TestLocateRaw*, TestProcessExternal*, TestPackageResource*
+- B5 (Metadata Getters): TestGetMetadata*, TestGetFeature*, TestIsMag*, TestIsSample*, TestIsFixed*, TestIsPrint*, TestIsImage*, TestIsKfx*, TestHasPdf*, TestHasMetadata*, TestGetCover*, TestGetAsset*, TestGetGenerators*, TestCaching*, TestCdeType*, TestUpdateCover*, TestHasCover*
+
 ## Pre-existing Known Failures (IGNORE)
 
 These test failures are expected because fixture files are missing:

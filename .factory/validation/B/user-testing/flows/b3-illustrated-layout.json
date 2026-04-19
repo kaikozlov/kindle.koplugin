@@ -1,0 +1,186 @@
+{
+  "groupId": "b3-illustrated-layout",
+  "testedAt": "2026-04-19T12:00:00Z",
+  "isolation": {
+    "method": "go test with -run flags targeting specific test patterns",
+    "scope": "./internal/kfx/...",
+    "sharedState": "none — all tests construct their own synthetic data"
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-B-024",
+      "title": "anchor-id rewrite to fragment ID",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestRewriteAmznConditionAnchorIDToFragment|TestRewriteAmznConditionAnchorOpaque'",
+          "expected": "Both tests pass — anchor-id URI is rewritten to fragment ID for same-file anchors",
+          "observed": "Both tests passed (exit code 0, 0.258s)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A (pure unit tests)",
+        "testOutput": "B/b3-illustrated-layout/test-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-025",
+      "title": "range-id.le prefix stripping",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestRewriteAmznConditionRangeIDLeOperator'",
+          "expected": "Test passes — range-id.le operator is stripped to range-id with fragment ID",
+          "observed": "Test passed (exit code 0, 0.172s)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A",
+        "testOutput": "B/b3-illustrated-layout/test-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-026",
+      "title": "range-id.lt prefix stripping",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestRewriteAmznConditionRangeIDLtOperator'",
+          "expected": "Test passes — range-id.lt operator is stripped to range-id with fragment ID",
+          "observed": "Test passed (exit code 0, 0.131s)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A",
+        "testOutput": "B/b3-illustrated-layout/test-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-027",
+      "title": "Cross-file not rewritten",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestRewriteAmznConditionCrossFileNotRewritten'",
+          "expected": "Test passes — cross-file condition anchors remain unchanged",
+          "observed": "Test passed (exit code 0, 0.147s)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A",
+        "testOutput": "B/b3-illustrated-layout/test-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-028",
+      "title": "Condition operator mapping",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestConditionOperatorNames'",
+          "expected": "Test passes — $294→anchor-id, $299→range-id.le, $298→range-id.lt",
+          "observed": "Test passed (exit code 0, 0.153s)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A",
+        "testOutput": "B/b3-illustrated-layout/test-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-029",
+      "title": "fixup skips when no conditional content",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestFixupIllustratedLayoutAnchorsSkipsWhenNotIllustrated|TestFixupIllustratedLayoutAnchorsSkipsNilBook'",
+          "expected": "Both tests pass — function returns early when IllustratedLayout=false or book is nil",
+          "observed": "Both tests passed (exit code 0, 0.165s)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A",
+        "testOutput": "B/b3-illustrated-layout/test-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-030",
+      "title": "iterates all sections",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestFixupIllustratedLayoutAnchorsIteratesAllSections'",
+          "expected": "Test passes — all sections are processed when IllustratedLayout=true",
+          "observed": "Test passed (exit code 0, 0.157s)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A",
+        "testOutput": "B/b3-illustrated-layout/test-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-031",
+      "title": "STYLE_REWRITE preserves other declarations",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestRewriteAmznConditionPreservesOtherDeclarations'",
+          "expected": "Test passes — only the condition declaration is modified, other CSS declarations preserved",
+          "observed": "Test passed (exit code 0, 0.172s)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A",
+        "testOutput": "B/b3-illustrated-layout/test-output.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-B-032",
+      "title": "create_conditional_page_templates gated",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run: go test ./internal/kfx/... -count=1 -v -run 'TestCreateConditionalPageTemplatesSkipsWhenNoConditionalContent|TestCreateConditionalPageTemplatesBasicTemplate'",
+          "expected": "Both tests pass — function returns early when has_conditional_content=false, processes when true",
+          "observed": "Both tests passed (exit code 0, 0.188s)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A",
+        "testOutput": "B/b3-illustrated-layout/test-output.txt"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 9 assertions (VAL-B-024 through VAL-B-032): all 9 passed. All tests in the B3 Illustrated Layout area pass successfully."
+}
