@@ -1,13 +1,13 @@
 {
   "milestone": "A",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
       "command": "go test ./... -count=1",
       "exitCode": 0,
-      "note": "All Milestone A feature tests pass (125+ new tests). Pre-existing fixture-dependent failures in internal/jxr, internal/kfx (pipeline_test.go, kfx_test.go), and internal/scan are expected — KFX fixture files don't exist in the repo."
+      "note": "All Milestone A tests pass. Pre-existing fixture-dependent failures in internal/jxr, internal/kfx (pipeline_test.go, kfx_test.go), and internal/scan are expected — KFX fixture files don't exist in the repo. cmd/kindle-helper passes."
     },
     "typecheck": {
       "passed": true,
@@ -21,31 +21,12 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
-    "passed": 4,
-    "failed": 1,
-    "failedFeatures": ["a4-page-spread-page-template"]
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "a4-page-spread-page-template",
-      "severity": "blocking",
-      "description": "parentTemplateID not propagated in story branch (yj_to_epub_content.go:~724). processPageSpreadStoryBranch always passes nil as parentTemplateID to child recursive calls. Python passes parent_template_id on the first child, then None for subsequent children. The locID variable is computed but discarded (_ = locID).",
-      "suggestedFix": "Pass locID as parentTemplateID for the first child (idx==0), then nil for subsequent children."
-    },
-    {
-      "featureId": "a4-page-spread-page-template",
-      "severity": "blocking",
-      "description": "parentTemplateID not propagated in connected pagination branch (yj_to_epub_content.go:~801). Same bug as story branch — processPageSpreadConnectedBranch always passes nil to children.",
-      "suggestedFix": "Pass locID as parentTemplateID for the first child, then nil for subsequent children."
-    },
-    {
-      "featureId": "a4-page-spread-page-template",
-      "severity": "blocking",
-      "description": "Incomplete scale_fit condition (yj_to_epub_content.go:~672). Go only checks !cfg.IsPdfBacked to fall to leaf. Python requires is_pdf_backed AND '$67' not in page_template AND '$66' not in page_template. When isPdfBacked is true but $67/$66 are present, Go incorrectly enters scale_fit instead of leaf branch.",
-      "suggestedFix": "Add check for $67/$66 absence: when cfg.IsPdfBacked is true, also verify $67 and $66 are not in pageTemplate before entering scale_fit branch."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
@@ -81,5 +62,5 @@
       "reason": "Minor refactoring suggestion, not blocking"
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/A/scrutiny/synthesis.json (round 1)"
 }

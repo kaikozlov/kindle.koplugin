@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-a4-scrutiny-blockers",
+  "reviewedAt": "2026-04-19T03:00:00Z",
+  "commitId": "53ce6cc",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "All 3 blocking issues from the original scrutiny review have been correctly fixed with Python parity. The fix also includes a bonus correction: scale_fit branch now propagates parentTemplateID to ALL children (Python does NOT reset parent_template_id in the scale_fit loop), which was not explicitly flagged as blocking but was part of the same root cause. 7 new tests cover all 3 fixes plus the scale_fit parentTemplateID bonus, and all existing tests pass without regressions.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": ".factory/validation/A/scrutiny/reviews/a4-page-spread-page-template.json",
+  "summary": "PASS — All 3 blocking issues from the prior scrutiny review are fixed correctly:\n\n1. **Story branch parentTemplateID** (yj_to_epub_content.go:~759-791): locID is extracted via getLocationID, wrapped in a pointer (childParentID), passed to the first child, then set to nil for subsequent children. This precisely matches Python's `parent_template_id` → first child, then `parent_template_id = None` pattern at yj_to_epub_content.py:~255-258.\n\n2. **Connected pagination branch parentTemplateID** (yj_to_epub_content.go:~934-963): Same first-child-only propagation pattern, matching Python at yj_to_epub_content.py:~327-331.\n\n3. **scale_fit condition** (yj_to_epub_content.go:~673-681): The condition now checks three cases: (a) !IsPdfBacked → leaf, (b) $67 present in pageTemplate → leaf, (c) $66 present in pageTemplate → leaf. Only when IsPdfBacked=true AND $67 absent AND $66 absent does it enter scale_fit. This matches Python's compound condition at yj_to_epub_content.py:~260-261.\n\n**Bonus fix**: scale_fit branch now propagates parentTemplateID to ALL children (not just the first), which is correct — Python does NOT set `parent_template_id = None` inside the scale_fit loop (yj_to_epub_content.py:~288-290).\n\n7 targeted tests verify all fixes: 2 for story branch propagation (with/without locID), 1 for connected branch propagation, 1 for scale_fit propagation to all children, and 3 for the $67/$66 condition (both present cases + happy path). No regressions in existing tests."
+}
