@@ -100,6 +100,22 @@ function FileChooserExt:showBookDialog(fc_self, item)
                     end,
                 },
                 {
+                    text = _("Clear Metadata"),
+                    callback = function()
+                        UIManager:close(dialog)
+                        -- Delete the CoverBrowser bookinfo DB row for this virtual path
+                        local BookInfoManager = require("bookinfomanager")
+                        if BookInfoManager and BookInfoManager.deleteBookInfo then
+                            BookInfoManager:deleteBookInfo(item.path)
+                            logger.info("KindlePlugin: cleared bookinfo for", item.path)
+                        end
+                        -- Refresh the list so CoverBrowser re-extracts metadata
+                        fc_self:updateItems(1, true)
+                    end,
+                },
+            },
+            {
+                {
                     text = _("Show Info"),
                     callback = function()
                         UIManager:close(dialog)
