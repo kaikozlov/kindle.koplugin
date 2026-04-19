@@ -1,0 +1,5 @@
+Command: /tmp/val-cross-004-helper scan --root /tmp/val-cross-004-sdr
+Setup: Created /tmp/val-cross-004-sdr/book.sdr/inner.kfx and /tmp/val-cross-004-sdr/outer_ABCDEF123456.kfx
+Stdout: {"version":1,"root":"/tmp/val-cross-004-sdr","books":[{"id":"sha1:c5d9a292c0505666298dc94c7a961aa849460f7d","source_path":"/tmp/val-cross-004-sdr/outer_ABCDEF123456.kfx","format":"kfx","logical_ext":"epub","title":"outer ABCDEF123456","authors":[],"display_name":"outer ABCDEF123456","open_mode":"blocked","block_reason":"unsupported_kfx_layout","source_mtime":1776565745,"source_size":0}]}
+Exit code: 0
+Result: PASS - Only 1 book found (outer), .sdr directory skipped correctly

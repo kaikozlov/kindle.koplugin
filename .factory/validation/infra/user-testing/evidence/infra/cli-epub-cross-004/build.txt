@@ -1,0 +1,5 @@
+Command: go build -o /tmp/val-cross-004-helper github.com/kaikozlov/kindle-koplugin/cmd/kindle-helper
+Exit code: 0
+Output: (clean build, no warnings)
+Binary size: 6030178 bytes
+Result: PASS

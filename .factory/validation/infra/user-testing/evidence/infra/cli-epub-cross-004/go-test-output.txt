@@ -1,0 +1,25 @@
+Command: cd /Users/kai/dev/projects/kindle.koplugin && go test ./cmd/kindle-helper/... -v -count=1
+Output:
+=== RUN   TestNoArgsPrintsUsage
+--- PASS: TestNoArgsPrintsUsage (0.39s)
+=== RUN   TestUnknownCommand
+--- PASS: TestUnknownCommand (0.39s)
+=== RUN   TestScanFlagParsing
+--- PASS: TestScanFlagParsing (0.38s)
+=== RUN   TestScanMissingRoot
+--- PASS: TestScanMissingRoot (0.38s)
+=== RUN   TestConvertFlagParsing
+--- PASS: TestConvertFlagParsing (0.38s)
+=== RUN   TestConvertMissingInput
+--- PASS: TestConvertMissingInput (0.40s)
+=== RUN   TestConvertMissingOutput
+--- PASS: TestConvertMissingOutput (0.39s)
+=== RUN   TestScanFindsKFXFile
+--- PASS: TestScanFindsKFXFile (0.38s)
+=== RUN   TestScanSkipsSDRDirs
+--- PASS: TestScanSkipsSDRDirs (0.37s)
+PASS
+ok  	github.com/kaikozlov/kindle-koplugin/cmd/kindle-helper	3.589s
+
+Exit code: 0
+Result: PASS - All 9 tests pass, 0 failures

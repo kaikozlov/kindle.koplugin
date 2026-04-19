@@ -1,0 +1,47 @@
+{
+  "groupId": "all-tests-cross-005",
+  "testedAt": "2026-04-18T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "testCommand": "go test ./cmd/kindle-helper/... -v -count=1"
+  },
+  "toolsUsed": ["go test", "go build", "go vet"],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-005",
+      "title": "All synthetic tests pass after full port",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run go test ./cmd/kindle-helper/... -v -count=1",
+          "expected": "All 9 tests pass with zero failures, exit code 0",
+          "observed": "All 9 tests passed (TestNoArgsPrintsUsage, TestUnknownCommand, TestScanFlagParsing, TestScanMissingRoot, TestConvertFlagParsing, TestConvertMissingInput, TestConvertMissingOutput, TestScanFindsKFXFile, TestScanSkipsSDRDirs). Exit code 0. Duration 3.725s."
+        },
+        {
+          "action": "Run go build ./...",
+          "expected": "Build succeeds with exit code 0",
+          "observed": "Build completed successfully with exit code 0. No compilation errors."
+        },
+        {
+          "action": "Run go vet ./cmd/kindle-helper/...",
+          "expected": "No issues reported, exit code 0",
+          "observed": "No issues reported. Exit code 0."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A (CLI only)",
+        "terminalSnapshots": [
+          "infra/all-tests-cross-005/go-test-output.txt",
+          "infra/all-tests-cross-005/go-build-output.txt",
+          "infra/all-tests-cross-005/go-vet-output.txt"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 1 assertion: VAL-CROSS-005 passed. All 9 cmd/kindle-helper tests pass (TestNoArgsPrintsUsage, TestUnknownCommand, TestScanFlagParsing, TestScanMissingRoot, TestConvertFlagParsing, TestConvertMissingInput, TestConvertMissingOutput, TestScanFindsKFXFile, TestScanSkipsSDRDirs). go build ./... and go vet ./cmd/kindle-helper/... both succeed with zero issues."
+}

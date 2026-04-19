@@ -1,0 +1,5 @@
+Command: /tmp/val-cross-004-helper convert --input /nonexistent/file.kfx --output /tmp/val-cross-004-test/out.epub
+Stdout: {"version":1,"ok":false,"code":"error","message":"open /nonexistent/file.kfx: no such file or directory"}
+Exit code: 0
+JSON structure: {version: int, ok: bool, code: string, message: string}
+Result: PASS - ok=false, code="error", message contains error details, exit code 0 (operational)

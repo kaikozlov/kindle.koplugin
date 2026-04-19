@@ -1,0 +1,4 @@
+Command: /tmp/val-cross-004-helper convert --input /tmp/in.kfx
+Stderr: convert: --output is required
+Exit code: 2
+Result: PASS - usage error for missing --output, exit code 2

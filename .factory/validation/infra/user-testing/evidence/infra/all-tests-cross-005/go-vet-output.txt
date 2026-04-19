@@ -1,0 +1,3 @@
+$ go vet ./cmd/kindle-helper/...
+[Process exited with code 0]
+Command completed successfully

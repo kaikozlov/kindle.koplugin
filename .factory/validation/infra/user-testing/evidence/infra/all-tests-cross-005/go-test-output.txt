@@ -1,0 +1,20 @@
+=== RUN   TestNoArgsPrintsUsage
+--- PASS: TestNoArgsPrintsUsage (0.47s)
+=== RUN   TestUnknownCommand
+--- PASS: TestUnknownCommand (0.37s)
+=== RUN   TestScanFlagParsing
+--- PASS: TestScanFlagParsing (0.39s)
+=== RUN   TestScanMissingRoot
+--- PASS: TestScanMissingRoot (0.39s)
+=== RUN   TestConvertFlagParsing
+--- PASS: TestConvertFlagParsing (0.38s)
+=== RUN   TestConvertMissingInput
+--- PASS: TestConvertMissingInput (0.39s)
+=== RUN   TestConvertMissingOutput
+--- PASS: TestConvertMissingOutput (0.37s)
+=== RUN   TestScanFindsKFXFile
+--- PASS: TestScanFindsKFXFile (0.39s)
+=== RUN   TestScanSkipsSDRDirs
+--- PASS: TestScanSkipsSDRDirs (0.37s)
+PASS
+ok  	github.com/kaikozlov/kindle-koplugin/cmd/kindle-helper	3.725s
