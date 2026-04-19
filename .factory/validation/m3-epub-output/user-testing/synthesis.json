@@ -1,0 +1,34 @@
+{
+  "milestone": "m3-epub-output",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 17,
+    "passed": 17,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-M3-RESOURCE-001",
+    "VAL-M3-RESOURCE-002",
+    "VAL-M3-RESOURCE-003",
+    "VAL-M3-RESOURCE-004",
+    "VAL-M3-RESOURCE-005",
+    "VAL-M3-RESOURCE-006",
+    "VAL-M3-RESOURCE-007",
+    "VAL-M3-RESOURCE-008",
+    "VAL-M3-RESOURCE-009",
+    "VAL-M3-RESOURCE-010",
+    "VAL-M3-RESOURCE-011",
+    "VAL-M3-ILLUST-001",
+    "VAL-M3-ILLUST-002",
+    "VAL-M3-ILLUST-003",
+    "VAL-M3-ILLUST-004",
+    "VAL-M3-ILLUST-005",
+    "VAL-M3-ILLUST-006"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}
