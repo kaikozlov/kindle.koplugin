@@ -913,23 +913,27 @@ func mergeEpubType(a, b string) string {
 	return strings.Join(parts, " ")
 }
 
-// valueStr formats a numeric value, trimming unnecessary decimals.
+// valueStr formats a numeric value for CSS output, matching Python's value_str
+// (epub_output.py:1373-1393). For float64 values it delegates to formatCSSQuantity
+// which implements the full %g → %.4f fallback → trailing zero strip pipeline.
 func valueStr(v interface{}) string {
 	switch n := v.(type) {
 	case float64:
-		if math.Trunc(n) == n {
-			return fmt.Sprintf("%d", int64(n))
-		}
-		s := fmt.Sprintf("%g", n)
-		return s
+		return formatCSSQuantity(n)
 	case *float64:
 		if n == nil {
 			return "0"
 		}
-		return valueStr(*n)
+		return formatCSSQuantity(*n)
 	case int:
+		if n == 0 {
+			return "0"
+		}
 		return fmt.Sprintf("%d", n)
 	case int64:
+		if n == 0 {
+			return "0"
+		}
 		return fmt.Sprintf("%d", n)
 	case string:
 		return n
@@ -937,7 +941,121 @@ func valueStr(v interface{}) string {
 	return fmt.Sprintf("%v", v)
 }
 
-// asFloat64 extracts a float64 from an interface{} (int, int64, float64, *float64).
+// valueStrWithUnit is the full port of Python's value_str (epub_output.py:1373-1393),
+// including unit suffix and emit_zero_unit flag.
+//
+// Python signature: def value_str(quantity, unit="", emit_zero_unit=False)
+func valueStrWithUnit(quantity interface{}, unit string, emitZeroUnit bool) string {
+	// Rule 1: None → return just the unit
+	if quantity == nil {
+		return unit
+	}
+
+	// Format the quantity as a string
+	var qStr string
+	switch n := quantity.(type) {
+	case float64:
+		qStr = formatCSSQuantity(n)
+	case *float64:
+		if n == nil {
+			return unit
+		}
+		qStr = formatCSSQuantity(*n)
+	case int:
+		if n == 0 {
+			qStr = "0"
+		} else {
+			qStr = fmt.Sprintf("%d", n)
+		}
+	case int64:
+		if n == 0 {
+			qStr = "0"
+		} else {
+			qStr = fmt.Sprintf("%d", n)
+		}
+	default:
+		qStr = fmt.Sprintf("%v", quantity)
+	}
+
+	// Rule 7: "0" without emitZeroUnit → return just "0" (no unit)
+	if qStr == "0" && !emitZeroUnit {
+		return qStr
+	}
+
+	return qStr + unit
+}
+
+// colorStr converts an RGB integer and alpha to a CSS color string.
+// Ported from Python color_str (yj_to_epub_properties.py:2121-2134).
+//
+// Rules:
+//   - alpha == 1.0: named color if known, else 3-char hex for black/white, else 6-char hex
+//   - alpha != 1.0: rgba(r,g,b,alpha_str) with alpha formatted as %0.3f (then trailing zeros stripped)
+func colorStr(rgbInt int, alpha float64) string {
+	if alpha == 1.0 {
+		hexColor := fmt.Sprintf("#%06x", rgbInt&0x00ffffff)
+		if name, ok := colorName[hexColor]; ok {
+			return name
+		}
+		if hexColor == "#000000" {
+			return "#000"
+		}
+		if hexColor == "#ffffff" {
+			return "#fff"
+		}
+		return hexColor
+	}
+
+	red := (rgbInt & 0x00ff0000) >> 16
+	green := (rgbInt & 0x0000ff00) >> 8
+	blue := rgbInt & 0x000000ff
+
+	var alphaStr string
+	if alpha == 0.0 {
+		alphaStr = "0"
+	} else {
+		// Python: "%0.3f" % alpha → 3 decimal places, then strip trailing zeros
+		alphaStr = formatAlpha(alpha)
+	}
+
+	return fmt.Sprintf("rgba(%d,%d,%d,%s)", red, green, blue, alphaStr)
+}
+
+// formatAlpha formats an alpha value matching Python's "%0.3f" % alpha.
+// Python's color_str uses this directly without trailing zero stripping,
+// so 0.5 → "0.500", 0.123 → "0.123", etc.
+func formatAlpha(alpha float64) string {
+	return fmt.Sprintf("%.3f", alpha)
+}
+
+// intToAlpha converts an integer alpha byte (0-255) to a float64 alpha value.
+// Ported from Python int_to_alpha (yj_to_epub_properties.py:2159-2166).
+func intToAlpha(alphaInt int) float64 {
+	if alphaInt < 2 {
+		return 0.0
+	}
+	if alphaInt > 253 {
+		return 1.0
+	}
+	return math.Max(math.Min(float64(alphaInt+1)/256.0, 1.0), 0.0)
+}
+
+// alphaToInt converts a float64 alpha value to an integer alpha byte (0-255).
+// Ported from Python alpha_to_int (yj_to_epub_properties.py:2168-2175).
+func alphaToInt(alpha float64) int {
+	if alpha < 0.012 {
+		return 0
+	}
+	if alpha > 0.996 {
+		return 255
+	}
+	return int(math.Max(math.Min(alpha*256.0+0.5, 255), 0)) - 1
+}
+
+// numstr is an unexported alias for Numstr (yj_structure.py:1313: "%g" % x).
+func numstr(x float64) string {
+	return Numstr(x)
+}
 func asFloat64(v interface{}) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
@@ -974,7 +1092,10 @@ var colorName = map[string]string{
 	"#ffffff": "white",
 }
 
-// fixColorValue converts a numeric color to #rrggbb hex string (or named color).
+// fixColorValue converts a numeric color to a CSS color string.
+// Ported from Python fix_color_value (yj_to_epub_properties.py:2102-2107).
+// It extracts the ARGB packed integer, computes alpha via intToAlpha,
+// then delegates to colorStr for the final formatting.
 func fixColorValue(v interface{}) string {
 	var n float64
 	switch val := v.(type) {
@@ -992,27 +1113,10 @@ func fixColorValue(v interface{}) string {
 	default:
 		return fmt.Sprintf("%v", v)
 	}
-	// Extract RGBA components (ARGB packed as 32-bit)
-	i := uint32(n)
-	alphaInt := (i >> 24) & 0xFF
-	r := (i >> 16) & 0xFF
-	g := (i >> 8) & 0xFF
-	b := i & 0xFF
-
-	// Ported from Python int_to_alpha / color_str: when alpha < 2, treat as 0.0;
-	// when alpha > 253, treat as 1.0; otherwise compute float value.
-	if alphaInt < 2 {
-		return fmt.Sprintf("rgba(%d,%d,%d,0)", r, g, b)
-	}
-	if alphaInt > 253 {
-		hexColor := fmt.Sprintf("#%02x%02x%02x", r, g, b)
-		if name, ok := colorName[hexColor]; ok {
-			return name
-		}
-		return hexColor
-	}
-	alpha := math.Max(math.Min(float64(alphaInt+1)/256.0, 1.0), 0.0)
-	return fmt.Sprintf("rgba(%d,%d,%d,%.3g)", r, g, b, alpha)
+	// Convert to int for bit manipulation
+	i := int(n)
+	alpha := intToAlpha((i >> 24) & 0xFF)
+	return colorStr(i, alpha)
 }
 
 // addColorOpacityStr is the string-argument version of addColorOpacity.
@@ -1039,7 +1143,7 @@ func addColorOpacityStr(color, opacity string) string {
 			if op <= 0.001 {
 				return fmt.Sprintf("rgba(%d,%d,%d,0)", r, g, b)
 			}
-			return fmt.Sprintf("rgba(%d,%d,%d,%.3g)", r, g, b, op)
+			return fmt.Sprintf("rgba(%d,%d,%d,%s)", r, g, b, formatAlpha(op))
 		}
 	}
 	// Fallback for other color formats: just return color (shouldn't happen for fill-color).
@@ -1099,38 +1203,40 @@ func splitCSSValue(val string) (*float64, string) {
 	return &quantity, unit
 }
 
-// formatCSSQuantity formats a float64 for CSS output, rounding to avoid
-// floating-point artifacts. Python uses decimal.Decimal with prec=6, so all
-// arithmetic results are automatically rounded to 6 significant digits.
-// In Go we replicate this by:
-//  1. Rounding to 6 significant digits using strconv.FormatFloat with 'g' format
-//  2. Stripping trailing zeros and trailing decimal point (matching Python's value_str)
+// formatCSSQuantity formats a float64 for CSS output, matching Python's
+// value_str (epub_output.py:1373-1393) for the quantity portion.
+//
+// Rules ported from Python value_str:
+//  1. Near-zero (abs < 1e-6) → "0"
+//  2. Format with %g (Go: 6 significant digits via 'g' format)
+//  3. If scientific notation in result → reformat with %.4f
+//  4. Strip trailing zeros after decimal, then strip trailing decimal point
+//  5. Handle negative values correctly
 func formatCSSQuantity(q float64) string {
-	if q == 0 {
+	// Rule 1: near-zero → "0"
+	if math.Abs(q) < 1e-6 {
 		return "0"
 	}
-	// Round to 6 significant digits, matching Python's decimal.getcontext().prec = 6.
-	// strconv.FormatFloat with 'g' format uses the specified precision as total
-	// significant digits and applies round-half-even matching Python's default rounding.
-	s := strconv.FormatFloat(q, 'g', 6, 64)
-	// 'g' format strips trailing zeros by spec, but verify and handle any edge cases.
+
+	// Rule 2: format with %g (6 significant digits)
+	s := strconv.FormatFloat(q, 'g', -1, 64)
+
+	// Rule 3: if scientific notation detected → reformat with %.4f
 	if strings.Contains(s, "e") || strings.Contains(s, "E") {
-		// Scientific notation from very small/large values — convert to decimal.
-		if f, err := strconv.ParseFloat(s, 64); err == nil {
-			s = strconv.FormatFloat(f, 'f', -1, 64)
-		}
+		s = strconv.FormatFloat(q, 'f', 4, 64)
 	}
-	// Strip trailing zeros and trailing decimal point.
-	if dot := strings.Index(s, "."); dot >= 0 {
-		i := len(s) - 1
-		for i >= 0 && s[i] == '0' {
-			i--
-		}
-		if i >= 0 && s[i] == '.' {
-			i--
-		}
-		s = s[:i+1]
+
+	// Rule 4: strip trailing zeros after decimal, then strip trailing dot
+	if strings.Contains(s, ".") {
+		s = strings.TrimRight(s, "0")
+		s = strings.TrimRight(s, ".")
 	}
+
+	// Normalize -0 to 0 (can happen after stripping trailing zeros from negative small values)
+	if s == "-0" {
+		s = "0"
+	}
+
 	return s
 }
 
