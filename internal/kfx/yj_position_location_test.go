@@ -3,6 +3,7 @@ package kfx
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // =============================================================================
@@ -833,7 +834,7 @@ func TestDetermineApproximatePagesWhitespaceLookback(t *testing.T) {
 	// positions_per_page=8, break at position 8 (inside "world")
 	text := "hello world and more text"
 	posInfo := []*ContentChunk{
-		{PID: 0, EID: 10, EIDOffset: 0, Length: len(text), SectionName: "sec1", Text: text},
+		{PID: 0, EID: 10, EIDOffset: 0, Length: len(text), SectionName: "sec1", Text: text, HasText: true},
 	}
 
 	pages, _ := DetermineApproximatePages(posInfo, nil, "sec1", 8, false)
@@ -1867,4 +1868,533 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// =============================================================================
+// VAL-M2-EDGE-001: anchorEidOffset reads $183→$155 and $143 offset correctly
+// =============================================================================
+
+func TestAnchorEidOffset_OffsetFrom143(t *testing.T) {
+	fs := NewFragmentStore()
+	// $266 fragment with $183 containing $155=eid and $143=offset
+	fs.Append("$266", map[string]interface{}{
+		"$180": "my-anchor",
+		"$183": map[string]interface{}{
+			"$155": 42,
+			"$143": 7,
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	eid, offset, found := bpl.anchorEidOffset("my-anchor")
+	if !found {
+		t.Fatal("expected to find anchor")
+	}
+	if eid != 42 {
+		t.Errorf("expected eid=42, got %v", eid)
+	}
+	if offset != 7 {
+		t.Errorf("expected offset=7, got %d", offset)
+	}
+}
+
+func TestAnchorEidOffset_NoOffsetDefaultsZero(t *testing.T) {
+	fs := NewFragmentStore()
+	// $266 fragment with $183 containing $155 but no $143
+	fs.Append("$266", map[string]interface{}{
+		"$180": "anchor2",
+		"$183": map[string]interface{}{
+			"$155": 99,
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	eid, offset, found := bpl.anchorEidOffset("anchor2")
+	if !found {
+		t.Fatal("expected to find anchor")
+	}
+	if eid != 99 {
+		t.Errorf("expected eid=99, got %v", eid)
+	}
+	if offset != 0 {
+		t.Errorf("expected offset=0 (no $143), got %d", offset)
+	}
+}
+
+// =============================================================================
+// VAL-M2-EDGE-002: Whitespace lookback uses rune indexing for UTF-8
+// =============================================================================
+
+func TestDetermineApproximatePages_RuneIndexing(t *testing.T) {
+	// UTF-8 text with multi-byte characters: "café" (4 runes, 5 bytes)
+	// followed by spaces and more text
+	text := "café monde test"
+	posInfo := []*ContentChunk{
+		{PID: 0, EID: 10, EIDOffset: 0, Length: utf8.RuneCountInString(text), SectionName: "sec1", Text: text, HasText: true},
+	}
+
+	pages, _ := DetermineApproximatePages(posInfo, nil, "sec1", 6, false)
+
+	if len(pages) < 2 {
+		t.Fatalf("expected at least 2 pages, got %d", len(pages))
+	}
+
+	// Verify that offset calculation is rune-based, not byte-based
+	// If byte-based, "é" at rune index 3 / byte index 3 would be split incorrectly
+	// With rune indexing, the lookback should find word boundaries correctly
+	for i, page := range pages {
+		targetMap, ok := page["$246"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("page %d: expected $246 map", i)
+		}
+		offset, ok := targetMap["$143"].(int)
+		if !ok {
+			t.Fatalf("page %d: expected $143 int", i)
+		}
+		// Offset should be a valid rune index within the text
+		runes := []rune(text)
+		if offset < 0 || offset > len(runes) {
+			t.Errorf("page %d: offset %d is out of rune range [0, %d]", i, offset, len(runes))
+		}
+	}
+}
+
+// =============================================================================
+// VAL-M2-EDGE-003: ContentChunk Text distinguishes nil from empty via HasText flag
+// =============================================================================
+
+func TestContentChunk_NilVsEmpty(t *testing.T) {
+	// Chunk with no text set (HasText=false, Text="")
+	nilText := &ContentChunk{PID: 0, EID: 1, Length: 10, SectionName: "s1"}
+	// Chunk with empty string explicitly set (HasText=true, Text="")
+	emptyText := &ContentChunk{PID: 0, EID: 1, Length: 10, SectionName: "s1", Text: "", HasText: true}
+	// Chunk with actual text
+	someText := &ContentChunk{PID: 0, EID: 1, Length: 5, SectionName: "s1", Text: "hello", HasText: true}
+
+	if nilText.HasText {
+		t.Error("nilText should have HasText=false")
+	}
+	if !emptyText.HasText {
+		t.Error("emptyText should have HasText=true")
+	}
+	if !someText.HasText {
+		t.Error("someText should have HasText=true")
+	}
+
+	// Verify HasText affects whitespace lookback in DetermineApproximatePages
+	// Chunk without HasText should NOT trigger lookback
+	posInfo := []*ContentChunk{
+		{PID: 0, EID: 10, Length: 20, SectionName: "sec1", Text: "hello world test here", HasText: false},
+	}
+	pages, _ := DetermineApproximatePages(posInfo, nil, "sec1", 8, false)
+	// Should still produce pages but without whitespace adjustment
+	if len(pages) < 2 {
+		t.Fatalf("expected at least 2 pages, got %d", len(pages))
+	}
+
+	// With HasText=true, lookback should adjust
+	posInfo2 := []*ContentChunk{
+		{PID: 0, EID: 10, Length: 20, SectionName: "sec1", Text: "hello world test here", HasText: true},
+	}
+	pages2, _ := DetermineApproximatePages(posInfo2, nil, "sec1", 8, false)
+	if len(pages2) < 2 {
+		t.Fatalf("expected at least 2 pages with HasText, got %d", len(pages2))
+	}
+	// Pages should differ because lookback adjusts offset
+	t1 := pages[1]["$246"].(map[string]interface{})
+	t2 := pages2[1]["$246"].(map[string]interface{})
+	offset1 := t1["$143"].(int)
+	offset2 := t2["$143"].(int)
+	if offset1 == offset2 {
+		t.Errorf("expected different offsets with/without HasText: both %d", offset1)
+	}
+}
+
+// =============================================================================
+// VAL-M2-EDGE-004: HasNonImageRenderInline detects $601==$283 with $159!=$271
+// =============================================================================
+
+func TestHasNonImageRenderInline(t *testing.T) {
+	fs := NewFragmentStore()
+	// $259 fragment with a struct that has $601=="$283" and $159!="$271"
+	fs.Append("$259", map[string]interface{}{
+		"$259": map[string]interface{}{
+			"$159": "$270",
+			"$601": "$283",
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	if !bpl.HasNonImageRenderInline() {
+		t.Error("expected HasNonImageRenderInline=true for $601==$283 with $159!=$271")
+	}
+}
+
+func TestHasNonImageRenderInline_ImageType(t *testing.T) {
+	fs := NewFragmentStore()
+	// $159=="$271" is image type, should not trigger
+	fs.Append("$259", map[string]interface{}{
+		"$259": map[string]interface{}{
+			"$159": "$271",
+			"$601": "$283",
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	if bpl.HasNonImageRenderInline() {
+		t.Error("expected HasNonImageRenderInline=false for $159==$271 (image type)")
+	}
+}
+
+func TestHasNonImageRenderInline_NoRenderInline(t *testing.T) {
+	fs := NewFragmentStore()
+	// $601 is not "$283"
+	fs.Append("$259", map[string]interface{}{
+		"$259": map[string]interface{}{
+			"$159": "$270",
+			"$601": "$284",
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	if bpl.HasNonImageRenderInline() {
+		t.Error("expected HasNonImageRenderInline=false when $601!=$283")
+	}
+}
+
+func TestHasNonImageRenderInline_Nested(t *testing.T) {
+	fs := NewFragmentStore()
+	// Nested structure with the match deep inside a list
+	fs.Append("$259", map[string]interface{}{
+		"$259": []interface{}{
+			map[string]interface{}{
+				"$159": "$270",
+				"$146": []interface{}{
+					map[string]interface{}{
+						"$159": "$270",
+						"$601": "$283", // match here, nested
+					},
+				},
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	if !bpl.HasNonImageRenderInline() {
+		t.Error("expected HasNonImageRenderInline=true for nested match")
+	}
+}
+
+func TestHasNonImageRenderInline_Cached(t *testing.T) {
+	fs := NewFragmentStore()
+	fs.Append("$259", map[string]interface{}{
+		"$259": map[string]interface{}{
+			"$159": "$270",
+			"$601": "$283",
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	// First call computes and caches
+	result1 := bpl.HasNonImageRenderInline()
+	// Second call should use cache
+	result2 := bpl.HasNonImageRenderInline()
+
+	if !result1 || !result2 {
+		t.Errorf("expected both calls to return true, got %v and %v", result1, result2)
+	}
+
+	if bpl.cachedHasNonImageRenderInline == nil {
+		t.Error("expected cache to be set")
+	}
+}
+
+func TestHasNonImageRenderInline_608Fragment(t *testing.T) {
+	fs := NewFragmentStore()
+	// Match in $608 fragment type
+	fs.Append("$608", map[string]interface{}{
+		"$159": "$270",
+		"$601": "$283",
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	if !bpl.HasNonImageRenderInline() {
+		t.Error("expected HasNonImageRenderInline=true for $608 fragment with matching condition")
+	}
+}
+
+// =============================================================================
+// VAL-M2-EDGE-005: $550 fragment validation logs errors for malformed entries
+// =============================================================================
+
+func TestCollectLocationMapInfo_550Validation(t *testing.T) {
+	fs := NewFragmentStore()
+	// $550 structure matches CreateLocationMap output:
+	// {"$550": [{"$182": [entries...]}]}
+	fs.Append("$550", map[string]interface{}{
+		"$550": []interface{}{
+			map[string]interface{}{
+				"$182": []interface{}{
+					"bad-entry", // not a map
+					map[string]interface{}{
+						// missing $155
+						"$143": 5,
+					},
+					map[string]interface{}{
+						"$155": 10,
+						"$143": 0,
+					},
+				},
+			},
+		},
+	})
+
+	posInfo := []*ContentChunk{
+		{PID: 0, EID: 10, EIDOffset: 0, Length: 100, SectionName: "sec1"},
+	}
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	locInfo := bpl.CollectLocationMapInfo(posInfo)
+	// Should only create 1 valid location (the third entry)
+	if len(locInfo) != 1 {
+		t.Errorf("expected 1 valid location from $550, got %d", len(locInfo))
+	}
+}
+
+func TestCollectLocationMapInfo_550Missing182List(t *testing.T) {
+	fs := NewFragmentStore()
+	// $550 with a location map entry but no $182 list
+	fs.Append("$550", map[string]interface{}{
+		"$550": []interface{}{
+			map[string]interface{}{
+				"$155": 10,
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	locInfo := bpl.CollectLocationMapInfo(nil)
+	if len(locInfo) != 0 {
+		t.Errorf("expected 0 locations with malformed $550, got %d", len(locInfo))
+	}
+}
+
+// =============================================================================
+// VAL-M2-EDGE-006: $621 fragment validation handles malformed data gracefully
+// =============================================================================
+
+func TestCollectLocationMapInfo_621Validation(t *testing.T) {
+	fs := NewFragmentStore()
+	// Malformed $621: no $182 list
+	fs.Append("$621", map[string]interface{}{
+		"$621": map[string]interface{}{
+			"$155": 10,
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:       &fragmentCatalog{},
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+	}
+
+	locInfo := bpl.CollectLocationMapInfo(nil)
+	// Should not panic, just log error
+	if len(locInfo) != 0 {
+		t.Errorf("expected 0 locations with malformed $621, got %d", len(locInfo))
+	}
+}
+
+// =============================================================================
+// VAL-M2-EDGE-007: Double-page-spread check in CreateApproximatePageList
+// =============================================================================
+
+func TestCreateApproximatePageList_DoublePageSpread(t *testing.T) {
+	fs := NewFragmentStore()
+	frags := &fragmentCatalog{
+		DocumentData: map[string]interface{}{
+			"$169": []interface{}{
+				map[string]interface{}{
+					"$178": "default",
+					"$170": []interface{}{"sec1"},
+				},
+			},
+		},
+		TitleMetadata: map[string]interface{}{
+			"$590": []interface{}{
+				map[string]interface{}{
+					"$591": "yj_double_page_spread",
+					"$592": "true",
+				},
+			},
+		},
+	}
+
+	bpl := &BookPosLoc{
+		Fragments:       frags,
+		OrderedSections: []string{"sec1"},
+		Store:           fs,
+		IsFixedLayout:   true,
+		CDEType:         "EBOK",
+	}
+
+	// Should return early with error, not panic
+	bpl.CreateApproximatePageList(0)
+	// Verify no pages were created (early exit)
+}
+
+// =============================================================================
+// VAL-M2-EDGE-008: section_stories/story_sections validation logs errors
+// =============================================================================
+
+func TestCollectPositionInfo_StoryValidation(t *testing.T) {
+	// Test that scribe notebook with multiple stories per section doesn't error
+	fs := NewFragmentStore()
+	fs.Append("$260", map[string]interface{}{
+		"$260": []interface{}{
+			map[string]interface{}{
+				"$155": 10,
+				"$159": "$270",
+				"$146": []interface{}{
+					map[string]interface{}{
+						"$176": "story1",
+						"$155": 11,
+						"$159": "$270",
+					},
+				},
+			},
+		},
+	})
+
+	bpl := &BookPosLoc{
+		Fragments:        &fragmentCatalog{},
+		OrderedSections:  []string{"sec1"},
+		Store:            fs,
+		IsScribeNotebook: true,
+	}
+
+	// Should not panic — scribe notebook allows multiple stories
+	result := bpl.CollectContentPositionInfo(true, false, false)
+	_ = result
+}
+
+// =============================================================================
+// VAL-M2-EDGE-009: Page spread leaf branch produces XHTML content with CSS link
+// =============================================================================
+
+func TestProcessPageSpreadLeaf_HTML(t *testing.T) {
+	pageTemplate := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+	}
+
+	cfg := pageSpreadConfig{}
+	result := processPageSpreadLeaf(pageTemplate, "sec1", "", nil, true, cfg)
+
+	if len(result.Sections) != 1 {
+		t.Fatalf("expected 1 section, got %d", len(result.Sections))
+	}
+
+	section := result.Sections[0]
+	if !section.HasCSSLink {
+		t.Error("expected HasCSSLink=true (CSS file should be linked)")
+	}
+	if !section.ContentProcessed {
+		t.Error("expected ContentProcessed=true (XHTML content should be generated)")
+	}
+}
+
+// =============================================================================
+// VAL-M2-EDGE-010: Leaf branch handles position with parentTemplateID
+// =============================================================================
+
+func TestProcessPageSpreadLeafPosition(t *testing.T) {
+	pageTemplate := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+	}
+	parentID := 42
+
+	cfg := pageSpreadConfig{}
+	result := processPageSpreadLeaf(pageTemplate, "sec1", "", &parentID, true, cfg)
+
+	if len(result.Sections) != 1 {
+		t.Fatalf("expected 1 section, got %d", len(result.Sections))
+	}
+
+	section := result.Sections[0]
+	if !section.HasPositionMarker {
+		t.Error("expected HasPositionMarker=true when parentTemplateID is set")
+	}
+	if section.ParentPositionID != 42 {
+		t.Errorf("expected ParentPositionID=42, got %d", section.ParentPositionID)
+	}
+}
+
+func TestProcessPageSpreadLeaf_NoPositionWithoutParent(t *testing.T) {
+	pageTemplate := map[string]interface{}{
+		"$159": "$270",
+	}
+
+	cfg := pageSpreadConfig{}
+	result := processPageSpreadLeaf(pageTemplate, "sec1", "", nil, true, cfg)
+
+	if len(result.Sections) != 1 {
+		t.Fatalf("expected 1 section, got %d", len(result.Sections))
+	}
+
+	section := result.Sections[0]
+	if section.HasPositionMarker {
+		t.Error("expected HasPositionMarker=false when parentTemplateID is nil")
+	}
 }

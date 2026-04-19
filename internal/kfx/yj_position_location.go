@@ -34,14 +34,15 @@ var RANGE_OPERS = map[string]bool{
 // ContentChunk represents a unit of content position information.
 // Port of Python ContentChunk class (yj_position_location.py lines 31–62).
 type ContentChunk struct {
-	PID           int    // position ID
+	PID           int         // position ID
 	EID           interface{} // entity ID (int or string/IonSymbol)
-	EIDOffset     int    // offset within entity
-	Length        int    // length in positions
-	SectionName   string // section this chunk belongs to
-	MatchZeroLen  bool   // whether zero-length match is OK
-	Text          string // text content (empty string means nil)
-	ImageResource string // image resource name
+	EIDOffset     int         // offset within entity
+	Length        int         // length in positions
+	SectionName   string      // section this chunk belongs to
+	MatchZeroLen  bool        // whether zero-length match is OK
+	Text          string      // text content (empty string means nil)
+	HasText       bool        // true when Text was explicitly set (distinguishes nil from empty string)
+	ImageResource string      // image resource name
 }
 
 // NewContentChunk creates a ContentChunk with validation.
@@ -262,6 +263,9 @@ type BookPosLoc struct {
 
 	// hasEIDOffset tracks whether any eid_offset != 0 was seen
 	hasEIDOffset bool
+
+	// cachedHasNonImageRenderInline caches the result of HasNonImageRenderInline
+	cachedHasNonImageRenderInline *bool
 }
 
 // FragmentStore provides a simple store for fragments by type, used for
@@ -338,6 +342,60 @@ func (bpl *BookPosLoc) anchorEidOffset(anchor interface{}) (interface{}, int, bo
 
 	log.Printf("kfx: Failed to locate position for anchor: %s", anchorStr)
 	return nil, 0, false
+}
+
+// HasNonImageRenderInline walks $259/$608 fragments to detect non-image render-inline elements.
+// Port of Python has_non_image_render_inline (yj_position_location.py:588-616).
+// Returns true if any struct has $159!="$271" AND $601=="$283".
+func (bpl *BookPosLoc) HasNonImageRenderInline() bool {
+	if bpl.cachedHasNonImageRenderInline != nil {
+		return *bpl.cachedHasNonImageRenderInline
+	}
+
+	result := false
+
+	// walk recursively checks Ion data for non-image render-inline
+	var walk func(data interface{}) bool
+	walk = func(data interface{}) bool {
+		switch v := data.(type) {
+		case []interface{}: // IonList / IonSExp
+			for _, val := range v {
+				if walk(val) {
+					return true
+				}
+			}
+		case map[string]interface{}: // IonStruct
+			// Check condition: $159 != "$271" AND $601 == "$283"
+			typ, _ := asString(v["$159"])
+			renderMode, _ := asString(v["$601"])
+			if typ != "$271" && renderMode == "$283" {
+				return true
+			}
+			for _, val := range v {
+				if walk(val) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	if bpl.Store != nil {
+		for _, ftype := range []string{"$259", "$608"} {
+			for _, frag := range bpl.Store.GetAll(ftype) {
+				if walk(frag) {
+					result = true
+					break
+				}
+			}
+			if result {
+				break
+			}
+		}
+	}
+
+	bpl.cachedHasNonImageRenderInline = &result
+	return result
 }
 
 // PidForEid performs a linear search (with wraparound) for a chunk matching eid+offset.
@@ -517,24 +575,26 @@ func DetermineApproximatePages(posInfo []*ContentChunk, pageTemplateEIDs map[int
 					break
 				}
 
-				// Whitespace lookback adjustment
-				if chunk.Text != "" && len(chunk.Text) > chunkOffset {
-					r := rune(chunk.Text[chunkOffset])
-					if !unicode.IsSpace(r) {
-						initChunkOffset := chunkOffset
-						for {
-							if chunkOffset == 0 {
-								break
+				// Whitespace lookback adjustment — rune-based indexing for UTF-8
+				// Port of Python yj_position_location.py:1299 (chunk.text[chunk_offset])
+				if chunk.HasText && chunk.Text != "" {
+					runes := []rune(chunk.Text)
+					if chunkOffset < len(runes) {
+						if !unicode.IsSpace(runes[chunkOffset]) {
+							initChunkOffset := chunkOffset
+							for {
+								if chunkOffset == 0 {
+									break
+								}
+								if chunkOffset <= minChunkOffset {
+									chunkOffset = initChunkOffset
+									break
+								}
+								if unicode.IsSpace(runes[chunkOffset-1]) {
+									break
+								}
+								chunkOffset--
 							}
-							if chunkOffset <= minChunkOffset {
-								chunkOffset = initChunkOffset
-								break
-							}
-							prevRune := rune(chunk.Text[chunkOffset-1])
-							if unicode.IsSpace(prevRune) {
-								break
-							}
-							chunkOffset--
 						}
 					}
 				}
@@ -1103,19 +1163,42 @@ func (bpl *BookPosLoc) CollectLocationMapInfo(posInfo []*ContentChunk) []*Conten
 		}
 	}
 
-	// $550 fragment processing
+	// $550 fragment processing with validation
+	// Port of Python collect_location_map_info $550 handling
 	fragment550 := bpl.getFragment550()
 	if fragment550 != nil {
-		entries, ok := asSlice(fragment550["$182"])
-		if ok {
+		// The $550 fragment value is: {"$550": [{"$182": [entries...]}]}
+		// Need to unwrap the $550 key to get the location map list
+		var locationMapList []interface{}
+		if outer, ok := asSlice(fragment550["$550"]); ok && len(outer) > 0 {
+			locationMapList = outer
+		} else {
+			// Alternative: $182 directly on the fragment (some test data)
+			locationMapList = []interface{}{fragment550}
+		}
+
+		for _, lmOuter := range locationMapList {
+			lmMap, ok := asMap(lmOuter)
+			if !ok {
+				continue
+			}
+			entries, ok := asSlice(lmMap["$182"])
+			if !ok {
+				log.Printf("kfx: error: Bad location_map fragment: missing or invalid $182 list")
+				continue
+			}
 			for i, lm := range entries {
-				lmMap, ok := asMap(lm)
+				entryMap, ok := asMap(lm)
 				if !ok {
+					log.Printf("kfx: error: Bad location_map entry at index %d: expected map", i)
 					continue
 				}
-				_ = i
-				eid := lmMap["$155"]
-				eidOffset := asIntDefault(lmMap["$143"], 0)
+				eid := entryMap["$155"]
+				if eid == nil {
+					log.Printf("kfx: error: Bad location_map entry at index %d: missing $155", i)
+					continue
+				}
+				eidOffset := asIntDefault(entryMap["$143"], 0)
 
 				pid := bpl.PidForEid(eid, eidOffset, posInfo)
 				if pid == nil {
@@ -1124,16 +1207,19 @@ func (bpl *BookPosLoc) CollectLocationMapInfo(posInfo []*ContentChunk) []*Conten
 					addLoc(*pid, eid, eidOffset)
 				}
 			}
-			endAddLoc()
 		}
+		endAddLoc()
 	}
 
-	// $621 fragment processing
+	// $621 fragment processing with validation
+	// Port of Python collect_location_map_info $621 handling (yj_position_location.py:1060-1075)
 	fragment621 := bpl.getFragment621()
 	hasYJLocationPidMap := fragment621 != nil
 	if hasYJLocationPidMap {
 		locationPIDs, ok := asSlice(fragment621["$182"])
-		if ok {
+		if !ok {
+			log.Printf("kfx: error: Bad yj.location_pid_map fragment: %v", fragment621)
+		} else {
 			if len(locInfo) > 0 {
 				// Cross-validate
 				for i, loc := range locInfo {
@@ -1173,14 +1259,17 @@ func (bpl *BookPosLoc) CollectLocationMapInfo(posInfo []*ContentChunk) []*Conten
 
 // getFragment550 returns the $550 location_map fragment data if available.
 func (bpl *BookPosLoc) getFragment550() map[string]interface{} {
-	// In the full Python port, this looks up self.fragments.get("$550", first=True)
-	// For our simplified version, we return nil (no location map fragment available)
+	if bpl.Store != nil {
+		return bpl.Store.Get("$550")
+	}
 	return nil
 }
 
 // getFragment621 returns the $621 yj.location_pid_map fragment data if available.
 func (bpl *BookPosLoc) getFragment621() map[string]interface{} {
-	// In the full Python port, this looks up self.fragments.get("$621", first=True)
+	if bpl.Store != nil {
+		return bpl.Store.Get("$621")
+	}
 	return nil
 }
 
@@ -1662,7 +1751,7 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 			if contentVal := v["$145"]; contentVal != nil {
 				if strVal, ok := asString(contentVal); ok {
 					haveContent(currentEID, unicodeLen(strVal), advance,
-						func(cc *ContentChunk) { cc.Text = strVal })
+						func(cc *ContentChunk) { cc.Text = strVal; cc.HasText = true })
 				}
 			}
 
@@ -1722,7 +1811,7 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 				length -= 1
 			}
 			haveContent(currentEID, length, advance,
-				func(cc *ContentChunk) { cc.Text = v })
+				func(cc *ContentChunk) { cc.Text = v; cc.HasText = true })
 		}
 	}
 
@@ -1761,8 +1850,13 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 
 	// Validate section→story constraints — Python lines 548–564
 	for sectionName, stories := range sectionStories {
-		if len(stories) > 1 && !bpl.IsPrintReplica && !bpl.IsPDFBacked {
-			storyList := make([]string, 0, len(stories))
+		numStories := len(stories)
+		valid := numStories == 1 ||
+			(bpl.IsPrintReplica && numStories == 2) ||
+			(bpl.IsPDFBacked && (numStories == 2 || numStories == 3)) ||
+			(bpl.IsScribeNotebook && numStories > 0)
+		if !valid {
+			storyList := make([]string, 0, numStories)
 			for s := range stories {
 				storyList = append(storyList, s)
 			}

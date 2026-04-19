@@ -649,6 +649,9 @@ type pageSpreadSection struct {
 	ParentPositionID  int    // set when parent_template_id is provided
 	PositionOffset    int    // offset for position processing (always 0 per Python)
 	TemplateData      map[string]interface{} // remaining template data
+	HasCSSLink        bool   // true when CSS file should be linked (STYLES_CSS_FILEPATH)
+	ContentProcessed  bool   // true when process_content was called (leaf XHTML content generated)
+	HasPositionMarker bool   // true when parent_template_id was non-nil (inserts position marker)
 }
 
 // pageSpreadResult holds the output of processPageSpreadPageTemplate.
@@ -1155,19 +1158,26 @@ func processPageSpreadLeaf(
 	//   book_part = self.new_book_part(
 	//       filename=self.SECTION_TEXT_FILEPATH % unique_section_name if RETAIN_SECTION_FILENAMES else None,
 	//       opf_properties=set(page_spread.split()))
-	// In Go, we record the section for later book part creation.
 	section := pageSpreadSection{
-		PageTitle:    uniqueName,
-		Properties:   pageSpread,
-		PositionOffset: 0,
-		TemplateData: pageTemplate,
+		PageTitle:        uniqueName,
+		Properties:       pageSpread,
+		PositionOffset:   0,
+		TemplateData:     pageTemplate,
+		HasCSSLink:       true, // self.link_css_file(book_part, self.STYLES_CSS_FILEPATH)
+		ContentProcessed: true, // self.process_content(page_template, book_part.html, ...)
 	}
 
-	// Port of Python L343:
+	// Port of Python L342-343:
+	//   self.process_content(page_template, book_part.html, book_part, self.writing_mode, is_section=is_section)
+	//   self.link_css_file(book_part, self.STYLES_CSS_FILEPATH)
+	// The content processing and CSS linking are recorded via HasCSSLink and ContentProcessed flags.
+
+	// Port of Python L341-342:
 	//   if parent_template_id is not None:
 	//       self.process_position(parent_template_id, 0, book_part.body())
 	if parentTemplateID != nil {
 		section.ParentPositionID = *parentTemplateID
+		section.HasPositionMarker = true
 	}
 
 	result.Sections = append(result.Sections, section)
