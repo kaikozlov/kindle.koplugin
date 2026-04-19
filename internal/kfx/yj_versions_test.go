@@ -646,15 +646,16 @@ func TestIsKnownFeatureLookup(t *testing.T) {
 	if !IsKnownFeature("com.amazon.yjconversion", "yj_audio", 2) {
 		t.Error("IsKnownFeature(yj_audio, 2) should be true")
 	}
-	// Nonexistent version
-	if IsKnownFeature("com.amazon.yjconversion", "yj_audio", "NONEXISTENT") {
-		t.Error("IsKnownFeature(yj_audio, NONEXISTENT) should be false")
+	// Nonexistent version is still "known" because Python's ANY=True==1,
+	// and key 1 exists in the map, so ANY in vals is True.
+	if !IsKnownFeature("com.amazon.yjconversion", "yj_audio", "NONEXISTENT") {
+		t.Error("IsKnownFeature(yj_audio, NONEXISTENT) should be true (Python ANY==1 matches key 1)")
 	}
 	// Nonexistent category
 	if IsKnownFeature("nonexistent_cat", "key", "val") {
 		t.Error("IsKnownFeature(nonexistent_cat, key, val) should be false")
 	}
-	// Nonexistent key
+	// Nonexistent key in existing category
 	if IsKnownFeature("com.amazon.yjconversion", "nonexistent_key", "val") {
 		t.Error("IsKnownFeature(nonexistent_key) should be false")
 	}
@@ -665,13 +666,15 @@ func TestIsKnownFeatureLookup(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestIsKnownFeatureAnySentinel(t *testing.T) {
-	// reflow-section-size has ANY sentinel, not reflow-style
+	// reflow-section-size has explicit ANY sentinel key
 	if !IsKnownFeature("com.amazon.yjconversion", "reflow-section-size", 99999) {
 		t.Error("IsKnownFeature(reflow-section-size, 99999) should be true (ANY sentinel)")
 	}
-	// reflow-style does NOT have ANY sentinel - it has specific version keys
-	if IsKnownFeature("com.amazon.yjconversion", "reflow-style", 99999) {
-		t.Error("IsKnownFeature(reflow-style, 99999) should be false (no ANY sentinel)")
+	// reflow-style does NOT have an explicit ANY sentinel, but Python's
+	// ANY=True equals 1, so since key 1 exists, ANY in vals is True.
+	// Our Go port replicates this by checking IntVersionKey(1).
+	if !IsKnownFeature("com.amazon.yjconversion", "reflow-style", 99999) {
+		t.Error("IsKnownFeature(reflow-style, 99999) should be true (Python ANY==True==1 matches key 1)")
 	}
 }
 

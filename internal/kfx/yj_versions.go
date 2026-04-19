@@ -843,6 +843,11 @@ func IsKnownGenerator(kfxgenApplicationVersion, kfxgenPackageVersion string) boo
 // IsKnownFeature checks if a feature value is known for a given category and key.
 // Port of Python is_known_feature (lines 1095-1098).
 // val should be an int, [2]int (tuple), or string matching a VersionKey.
+//
+// Python's implementation is: return val in vals or ANY in vals
+// Since Python's ANY=True and True==1 (bool is subclass of int), ANY in vals
+// matches when integer key 1 is present OR when True is an explicit key.
+// We replicate this by checking both AnyVersionKey() and IntVersionKey(1).
 func IsKnownFeature(cat, key string, val interface{}) bool {
 	vals := KnownFeatures[cat][key]
 	if vals == nil {
@@ -852,9 +857,14 @@ func IsKnownFeature(cat, key string, val interface{}) bool {
 	if _, ok := vals[vk]; ok {
 		return true
 	}
-	// Check for ANY sentinel
+	// Check for ANY sentinel (Python: ANY in vals)
+	// Python's ANY=True equals 1, so check both explicit ANY key and int key 1
 	_, hasAny := vals[AnyVersionKey()]
-	return hasAny
+	if hasAny {
+		return true
+	}
+	_, hasOne := vals[IntVersionKey(1)]
+	return hasOne
 }
 
 // KindleFeatureVersion returns the Kindle firmware version that first supported
