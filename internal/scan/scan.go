@@ -80,6 +80,24 @@ func Run(root string) (jsonout.ScanResult, error) {
 			}
 			book.OpenMode = mode
 			book.BlockReason = reason
+
+			// Extract metadata from unencrypted sidecar (works for DRM books too)
+			sidecarDir := ""
+			if stat, err := os.Stat(strings.TrimSuffix(path, ext) + ".sdr"); err == nil && stat.IsDir() {
+				sidecarDir = strings.TrimSuffix(path, ext) + ".sdr"
+			}
+			if sidecarDir == "" {
+				sidecarDir = kfx.SidecarDirForBook(path)
+			}
+			if meta := kfx.ExtractSidecarMetadata(sidecarDir); meta != nil {
+				if meta.Title != "" {
+					book.Title = meta.Title
+					book.DisplayName = meta.Title
+				}
+				if len(meta.Authors) > 0 {
+					book.Authors = meta.Authors
+				}
+			}
 		}
 
 		books = append(books, book)
