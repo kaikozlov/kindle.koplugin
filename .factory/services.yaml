@@ -1,8 +1,0 @@
-commands:
-  build: cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin && go build ./internal/kfx/...
-  test: cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin && go test ./internal/kfx/... -count=1 -timeout 120s
-  lint: ""
-  typecheck: ""
-  python-convert: cd /home/kai/gitrepos/kobo.koplugin/kindle.koplugin && python3 scripts/convert_kfx_python.py
-
-services: {}
