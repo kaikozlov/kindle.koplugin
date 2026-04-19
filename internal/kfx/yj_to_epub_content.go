@@ -1,6 +1,7 @@
 package kfx
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -1195,4 +1196,157 @@ func mergeSectionProperties(left string, right string) string {
 		merged = append(merged, raw)
 	}
 	return strings.Join(merged, " ")
+}
+
+// =============================================================================
+// Region magnification — VAL-M3-ILLUST-001/002/003
+// Port of Python yj_to_epub_content.py:674-694 (process_content $426 handling)
+// =============================================================================
+
+// regionMagnificationConfig holds the current region magnification state.
+// Port of self.region_magnification boolean from Python's KFX_EPUB mixin.
+type regionMagnificationConfig struct {
+	RegionMagnification bool // self.region_magnification
+}
+
+// linkRegistration represents a register_link_id call result.
+// Port of Python: self.register_link_id(eid, kind) → anchor_name.
+type linkRegistration struct {
+	Kind string // "magnify_target" or "magnify_source"
+	EID  string // the entity ID from $163 or $474
+}
+
+// regionMagnificationResult holds the output of processRegionMagnification.
+type regionMagnificationResult struct {
+	ActivateElements      []htmlElement       // <a class="app-amzn-magnify"> elements
+	LinkRegistrations     []linkRegistration  // magnify_target/magnify_source registrations
+	AutoEnabled           bool                // set when $426 found without prior region_magnification
+	HasUnknownActionError bool                // set when $428 action is not "$468"
+}
+
+// processRegionMagnification handles $426 (activate) entries within container content.
+// Port of Python yj_to_epub_content.py:674-694.
+//
+// Python reference:
+//
+//	if "$426" in content:
+//	    if not self.region_magnification:
+//	        log.error("activate found without region magnification")
+//	        self.region_magnification = True
+//	    ordinal = content.pop("$427")
+//	    for activate in content.pop("$426"):
+//	        action = activate.pop("$428")
+//	        if action == "$468":
+//	            activate_elem = etree.SubElement(content_elem, "a")
+//	            activate_elem.set("class", "app-amzn-magnify")
+//	            activate_elem.set("data-app-amzn-magnify", json_serialize_compact(OD(
+//	                "targetId", self.register_link_id(activate.pop("$163"), "magnify_target"),
+//	                "sourceId", self.register_link_id(activate.pop("$474"), "magnify_source"),
+//	                "ordinal", ordinal)))
+//	            self.check_empty(activate, ...)
+//	        else:
+//	            log.error(...)
+func processRegionMagnification(content map[string]interface{}, cfg *regionMagnificationConfig) regionMagnificationResult {
+	result := regionMagnificationResult{}
+
+	// Check if $426 (activate) is present
+	activatesRaw, hasActivates := content["$426"]
+	if !hasActivates {
+		return result
+	}
+
+	// Auto-enable region magnification if not already enabled
+	// Python: if not self.region_magnification: log.error("activate found without region magnification"); self.region_magnification = True
+	if !cfg.RegionMagnification {
+		log.Printf("kfx: error: activate found without region magnification")
+		cfg.RegionMagnification = true
+		result.AutoEnabled = true
+	}
+
+	// Pop ordinal ($427)
+	// Python: ordinal = content.pop("$427")
+	ordinalRaw := popInterfaceDefault(content, "$427")
+	ordinal := 0
+	if ordinalRaw != nil {
+		if iv, ok := asInt(ordinalRaw); ok {
+			ordinal = iv
+		}
+	}
+
+	// Pop activate list ($426)
+	// Python: for activate in content.pop("$426"):
+	activates, ok := asSlice(activatesRaw)
+	if !ok {
+		return result
+	}
+
+	for _, actRaw := range activates {
+		activate, ok := asMap(actRaw)
+		if !ok {
+			continue
+		}
+
+		// Pop action ($428)
+		// Python: action = activate.pop("$428")
+		actionRaw := popInterfaceDefault(activate, "$428")
+		action, _ := asString(actionRaw)
+
+		if action == "$468" {
+			// Pop target ($163) and source ($474)
+			// Python:
+			//   activate.pop("$163") → register_link_id(eid, "magnify_target")
+			//   activate.pop("$474") → register_link_id(eid, "magnify_source")
+			targetEIDRaw := popInterfaceDefault(activate, "$163")
+			targetEID, _ := asString(targetEIDRaw)
+			sourceEIDRaw := popInterfaceDefault(activate, "$474")
+			sourceEID, _ := asString(sourceEIDRaw)
+
+			// Register link IDs (Python: register_link_id creates "magnify_target_<eid>" anchor)
+			targetAnchor := "magnify_target_" + targetEID
+			sourceAnchor := "magnify_source_" + sourceEID
+
+			result.LinkRegistrations = append(result.LinkRegistrations,
+				linkRegistration{Kind: "magnify_target", EID: targetEID},
+				linkRegistration{Kind: "magnify_source", EID: sourceEID},
+			)
+
+			// Build JSON data attribute (Python: json_serialize_compact(OD(...)))
+			// OD creates an OrderedDict with keys in insertion order:
+			//   targetId, sourceId, ordinal
+			magnifyData := map[string]interface{}{
+				"targetId": targetAnchor,
+				"sourceId": sourceAnchor,
+				"ordinal":  ordinal,
+			}
+			jsonBytes, err := json.Marshal(magnifyData)
+			if err != nil {
+				log.Printf("kfx: error: failed to serialize magnify data: %v", err)
+				continue
+			}
+			// json.Marshal produces compact JSON with sorted keys by default.
+			// Python's json_serialize_compact with OD preserves insertion order.
+			// We need to produce ordered JSON matching Python: {"targetId":...,"sourceId":...,"ordinal":...}
+			// Since Go's json.Marshal sorts keys alphabetically, we need manual ordering.
+			jsonStr := `{"targetId":"` + targetAnchor + `","sourceId":"` + sourceAnchor + `","ordinal":` + fmt.Sprintf("%d", ordinal) + `}`
+
+			_ = jsonBytes // used for debugging, jsonStr is manually ordered
+
+			// Create <a class="app-amzn-magnify"> element
+			elem := htmlElement{
+				Tag: "a",
+				Attrs: map[string]string{
+					"class":                   "app-amzn-magnify",
+					"data-app-amzn-magnify":   jsonStr,
+				},
+			}
+
+			result.ActivateElements = append(result.ActivateElements, elem)
+		} else {
+			// Python: log.error("%s has unknown %s action: %s" % ...)
+			log.Printf("kfx: error: activate has unknown action: %s", action)
+			result.HasUnknownActionError = true
+		}
+	}
+
+	return result
 }
