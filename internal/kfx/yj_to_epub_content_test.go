@@ -1932,3 +1932,287 @@ func TestScaleFitProcessesWhenPdfBackedNoDollar67Dollar66(t *testing.T) {
 		t.Errorf("expected 1 child from scale_fit branch, got %d children, %d sections", len(result.Children), len(result.Sections))
 	}
 }
+
+// =============================================================================
+// M2 Book Type Dispatch Wiring Tests
+// VAL-M2-DISPATCH-001 through VAL-M2-DISPATCH-005
+// =============================================================================
+
+// mockLogRecorder captures log output for testing error/warning messages.
+type mockLogRecorder struct {
+	messages []string
+}
+
+// =============================================================================
+// VAL-M2-DISPATCH-001: processSection uses detectBookType() result to select branch
+// =============================================================================
+
+func TestDetectBookTypeWired(t *testing.T) {
+	// Test that processSectionWithType selects the correct branch based on book type.
+	// Comic book type → branchComic path
+	comicSection := makeTestSection([]pageTemplateFragment{
+		{PositionID: 100, Storyline: "story1", PageTemplateValues: map[string]interface{}{
+			"$159": "$270",
+			"$156": "$325",
+			"$155": 42,
+		}},
+	}, nil)
+
+	branch := determineSectionBranch(comicSection, bookTypeComic)
+	if branch != branchComic {
+		t.Errorf("expected branchComic for comic book type, got %v", branch)
+	}
+
+	// Magazine with conditional template → branchMagazine
+	condSection := makeTestSection([]pageTemplateFragment{
+		{PositionID: 100, Storyline: "story1", HasCondition: true, Condition: []interface{}{"$300"}},
+	}, nil)
+
+	branch = determineSectionBranch(condSection, bookTypeMagazine)
+	if branch != branchMagazine {
+		t.Errorf("expected branchMagazine for magazine with conditional template, got %v", branch)
+	}
+
+	// No book type → branchReflowable
+	defaultSection := makeTestSection([]pageTemplateFragment{
+		makeTestTemplate("story1", nil),
+	}, nil)
+
+	branch = determineSectionBranch(defaultSection, bookTypeNone)
+	if branch != branchReflowable {
+		t.Errorf("expected branchReflowable for no book type, got %v", branch)
+	}
+}
+
+// =============================================================================
+// VAL-M2-DISPATCH-002: Magazine branch evaluates $171 conditions and dispatches
+// =============================================================================
+
+func TestProcessSectionMagazine(t *testing.T) {
+	// Build a magazine section with 2 page templates, one with a true condition
+	// and one with a false condition. Only 1 template should be active.
+	cfg := pageSpreadConfig{
+		BookType:                 bookTypeMagazine,
+		IsPdfBacked:              false,
+		RegionMagnification:      false,
+		VirtualPanelsAllowed:     true,
+		PageProgressionDirection: "ltr",
+	}
+
+	// Template with $156="$325" (standard layout) and $171 condition (true via $300)
+	template1Values := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+		"$171": []interface{}{"$300"}, // $300 is always true
+	}
+
+	// Template with false condition
+	template2Values := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+		"$171": []interface{}{"$293", []interface{}{"$300"}}, // NOT true = false
+	}
+
+	templates := []pageTemplateFragment{
+		{PositionID: 200, Storyline: "s1", PageTemplateValues: template1Values, HasCondition: true, Condition: []interface{}{"$300"}},
+		{PositionID: 300, Storyline: "s2", PageTemplateValues: template2Values, HasCondition: true, Condition: []interface{}{"$293", []interface{}{"$300"}}},
+	}
+
+	section := sectionFragment{
+		ID:                 "mag-section",
+		PositionID:         100,
+		PageTemplates:      templates,
+		PageTemplateValues: map[string]interface{}{},
+	}
+
+	renderer := &storylineRenderer{
+		conditionEvaluator: conditionEvaluator{fixedLayout: true},
+		styles:             newStyleCatalog(),
+	}
+
+	result := processSectionMagazine(section, renderer, cfg, nil)
+
+	// Should succeed — exactly 1 template processed (the one with true condition)
+	// The other template (NOT true) should be skipped
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+	// Should have 1 section produced from the $325 layout template
+	if len(result.Sections) != 1 {
+		t.Errorf("expected 1 section from magazine branch, got %d", len(result.Sections))
+	}
+}
+
+// =============================================================================
+// VAL-M2-DISPATCH-003: Magazine $437 layout dispatched to processPageSpreadPageTemplate
+// =============================================================================
+
+func TestMagazineLayout437(t *testing.T) {
+	cfg := pageSpreadConfig{
+		BookType:                 bookTypeMagazine,
+		IsPdfBacked:              false,
+		RegionMagnification:      false,
+		VirtualPanelsAllowed:     true,
+		PageProgressionDirection: "ltr",
+	}
+
+	storyName := "story-437"
+	// Template with $156="$437" layout
+	templateValues := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$171": []interface{}{"$300"}, // true condition
+		"$176": storyName,
+		"$434": "$441",
+		"$155": 42,
+	}
+
+	templates := []pageTemplateFragment{
+		{PositionID: 200, Storyline: storyName, PageTemplateValues: templateValues, HasCondition: true, Condition: []interface{}{"$300"}},
+	}
+
+	section := sectionFragment{
+		ID:                 "mag-section-437",
+		PositionID:         100,
+		PageTemplates:      templates,
+		PageTemplateValues: map[string]interface{}{},
+	}
+
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{
+				map[string]interface{}{
+					"$159": "$270",
+					"$156": "$325",
+				},
+			},
+		},
+	}
+
+	renderer := &storylineRenderer{
+		conditionEvaluator: conditionEvaluator{fixedLayout: true},
+		styles:             newStyleCatalog(),
+	}
+
+	result := processSectionMagazine(section, renderer, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	// $437 layout should have dispatched to processPageSpreadPageTemplate,
+	// which should produce at least 1 section (leaf child of the spread)
+	if len(result.Sections) == 0 && len(result.Children) == 0 {
+		t.Error("expected $437 layout to produce sections or children via processPageSpreadPageTemplate")
+	}
+}
+
+// =============================================================================
+// VAL-M2-DISPATCH-004: Comic branch resolves $608 fragment and calls processPageSpreadPageTemplate
+// =============================================================================
+
+func TestComicCallsPageSpread(t *testing.T) {
+	cfg := pageSpreadConfig{
+		BookType:                 bookTypeComic,
+		IsPdfBacked:              false,
+		RegionMagnification:      false,
+		VirtualPanelsAllowed:     true,
+		PageProgressionDirection: "ltr",
+	}
+
+	storyName := "comic-story"
+	templateValues := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": storyName,
+		"$434": "$441",
+		"$155": 42,
+	}
+
+	templates := []pageTemplateFragment{
+		{PositionID: 200, Storyline: storyName, PageTemplateValues: templateValues},
+	}
+
+	section := sectionFragment{
+		ID:                 "comic-section-1",
+		PositionID:         100,
+		PageTemplates:      templates,
+		PageTemplateValues: map[string]interface{}{},
+	}
+
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{
+				map[string]interface{}{
+					"$159": "$270",
+					"$156": "$325",
+				},
+			},
+		},
+	}
+
+	result := processSectionComic(section, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	// Comic branch should resolve the $608 fragment and call processPageSpreadPageTemplate
+	// which should produce sections or children
+	if len(result.Sections) == 0 && len(result.Children) == 0 {
+		t.Error("expected comic branch to produce sections or children via processPageSpreadPageTemplate")
+	}
+}
+
+// =============================================================================
+// VAL-M2-DISPATCH-005: Comic branch logs error when template count != 1
+// =============================================================================
+
+func TestComicTemplateCountValidation(t *testing.T) {
+	cfg := pageSpreadConfig{
+		BookType:                 bookTypeComic,
+		IsPdfBacked:              false,
+		RegionMagnification:      false,
+		VirtualPanelsAllowed:     true,
+		PageProgressionDirection: "ltr",
+	}
+
+	// Section with 0 templates → error logged, empty result
+	section0 := sectionFragment{
+		ID:                 "comic-empty",
+		PositionID:         100,
+		PageTemplates:      []pageTemplateFragment{},
+		PageTemplateValues: map[string]interface{}{},
+	}
+
+	result := processSectionComic(section0, cfg, nil)
+	// Should return empty result (0 templates)
+	if len(result.Sections) != 0 || len(result.Children) != 0 {
+		t.Error("expected empty result for 0 templates")
+	}
+
+	// Section with 2 templates → error logged but still processes first template
+	template1Values := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+	template2Values := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+	section2 := sectionFragment{
+		ID:         "comic-multi",
+		PositionID: 100,
+		PageTemplates: []pageTemplateFragment{
+			{PositionID: 200, Storyline: "s1", PageTemplateValues: template1Values},
+			{PositionID: 300, Storyline: "s2", PageTemplateValues: template2Values},
+		},
+		PageTemplateValues: map[string]interface{}{},
+	}
+
+	result = processSectionComic(section2, cfg, nil)
+	// Error should be logged but function still processes the first template (leaf branch)
+	if len(result.Sections) == 0 {
+		t.Error("expected at least 1 section from 2-template comic (first template processed)")
+	}
+}

@@ -328,10 +328,55 @@ func processSection(sectionID string, section sectionFragment, seq int, storylin
 	// Note: book type detection is not yet fully wired (depends on B5 metadata getters),
 	// so currently this always falls through to the reflowable path.
 	// When book type is available, it will be passed through the renderer or section context.
-	// For now, the reflowable path handles all existing behavior unchanged.
 	_ = seq
 
 	return renderSectionFragments(sectionID, section, storylines, contentFragments, renderer)
+}
+
+// processSectionWithType dispatches to the correct section processing path based on book type.
+// Port of Python's process_section dispatch logic (yj_to_epub_content.py L136-203).
+// bt is the detected book type; cfg provides page-spread configuration; storylines maps
+// storyline names to their data (needed for page-spread processing).
+func processSectionWithType(sectionID string, section sectionFragment, seq int, bt bookType, cfg pageSpreadConfig, storylines map[string]map[string]interface{}, contentFragments map[string][]string, renderer *storylineRenderer) (renderedStoryline, []string, bool) {
+	// Strip unused section keys (Python L124-136).
+	stripUnusedSectionKeys(section.PageTemplateValues)
+
+	// Determine which branch to take
+	branch := determineSectionBranch(section, bt)
+
+	switch branch {
+	case branchScribePage:
+		return processSectionScribePage(section, seq)
+
+	case branchScribeTemplate:
+		return processSectionScribeTemplate(section)
+
+	case branchComic:
+		// Python L142-154: comic/children → resolve $608, call processPageSpreadPageTemplate
+		result := processSectionComic(section, cfg, storylines)
+		if result.Err != nil {
+			log.Printf("kfx: error: comic section %s failed: %v", sectionID, result.Err)
+			return renderedStoryline{}, nil, false
+		}
+		// Comic branch produces page-spread results, not standard rendered content.
+		// For now, return empty (page-spread sections are handled separately).
+		return renderedStoryline{}, nil, false
+
+	case branchMagazine:
+		// Python L150-184: magazine/print-replica with conditional templates
+		result := processSectionMagazine(section, renderer, cfg, storylines)
+		if result.Err != nil {
+			log.Printf("kfx: error: magazine section %s failed: %v", sectionID, result.Err)
+			return renderedStoryline{}, nil, false
+		}
+		// Magazine branch produces page-spread results for $437 layouts
+		// and inline sections for $325/$323 layouts.
+		return renderedStoryline{}, nil, false
+
+	default:
+		// Default reflowable path
+		return renderSectionFragments(sectionID, section, storylines, contentFragments, renderer)
+	}
 }
 
 // renderSectionFragments is the reflowable / fixed-layout subset invoked from process_section.
@@ -428,53 +473,123 @@ func processSectionScribeTemplate(section sectionFragment) (renderedStoryline, [
 }
 
 // processSectionComic handles the comic/children book type dispatch.
-// Port of Python's comic/children branch in process_section (L142-149).
-// Validates exactly 1 page template, then calls process_page_spread_page_template.
-// Note: full page_spread_page_template implementation is feature A4; this function
-// provides the dispatch skeleton that A4 will complete.
-func processSectionComic(section sectionFragment) (renderedStoryline, []string, bool) {
+// Port of Python's comic/children branch in process_section (yj_to_epub_content.py:142-149).
+// Validates exactly 1 page template, resolves the $608 fragment, then calls
+// process_page_spread_page_template.
+func processSectionComic(section sectionFragment, cfg pageSpreadConfig, storylines map[string]map[string]interface{}) pageSpreadResult {
 	templates := section.PageTemplates
 	if len(templates) != 1 {
-		log.Printf("kfx: error: comic section %s has %d page templates", section.ID, len(templates))
+		log.Printf("kfx: error: Comic section %s has %d page templates", section.ID, len(templates))
 		if len(templates) == 0 {
-			return renderedStoryline{}, nil, false
+			return pageSpreadResult{}
 		}
 	}
-	// In Python, this calls self.process_page_spread_page_template with the $608 fragment.
-	// Full implementation deferred to feature A4 (process_page_spread_page_template port).
-	// For now, log that we recognized the comic branch.
-	if os.Getenv("KFX_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "comic section=%s templates=%d (process_page_spread_page_template not yet ported)\n", section.ID, len(templates))
+
+	// Python L154: self.process_page_spread_page_template(
+	//     self.get_fragment(ftype="$608", fid=page_templates[0]), section_name)
+	// In Go, the page template's PageTemplateValues already holds the resolved $608 data
+	// (organized during organizeFragments). Pass it directly to processPageSpreadPageTemplate.
+	template := templates[0]
+	templateData := template.PageTemplateValues
+	if templateData == nil {
+		templateData = map[string]interface{}{}
 	}
-	return renderedStoryline{}, nil, false
+
+	return processPageSpreadPageTemplate(
+		templateData,
+		section.ID,
+		"",  // page_spread (empty for top-level)
+		nil, // parent_template_id
+		true, // is_section
+		cfg,
+		storylines,
+	)
 }
 
 // processSectionMagazine handles the magazine/print-replica with conditional template dispatch.
-// Port of Python's magazine branch in process_section (L150-184).
+// Port of Python's magazine branch in process_section (yj_to_epub_content.py:150-184).
 // Iterates page templates, skipping those whose condition evaluates to false,
-// then processes the active template based on its layout type.
-func processSectionMagazine(section sectionFragment, renderer *storylineRenderer) (renderedStoryline, []string, bool) {
+// then processes the active template based on its layout type ($325/$323 → inline,
+// $437 → processPageSpreadPageTemplate, other → error).
+func processSectionMagazine(section sectionFragment, renderer *storylineRenderer, cfg pageSpreadConfig, storylines map[string]map[string]interface{}) pageSpreadResult {
 	templates := section.PageTemplates
 	templatesProcessed := 0
+	var result pageSpreadResult
 
 	for i, template := range templates {
-		// Skip templates with false conditions
-		if template.Condition != nil && !renderer.conditionEvaluator.evaluateBinary(template.Condition) {
+		// Python L162: if "$171" not in page_template or self.evaluate_binary_condition(page_template.pop("$171")):
+		condition := template.Condition
+		if condition != nil && !renderer.conditionEvaluator.evaluateBinary(condition) {
 			continue
 		}
 
-		// Python checks page_template["$159"] != "$270" → error
-		// and page_template["$156"] for layout dispatch.
-		// Full implementation deferred to feature A4 (process_page_spread_page_template port).
-		_ = i
+		// Get template data. In Python, page_template is the actual template struct.
+		// In Go, the template data is in PageTemplateValues (already resolved from $608).
+		templateData := template.PageTemplateValues
+		if templateData == nil {
+			templateData = map[string]interface{}{}
+		}
+
+		// Make a working copy to pop from (matching Python's mutation of the template)
+		working := cloneMap(templateData)
+
+		// Python L163: if page_template["$159"] != "$270":
+		ptype, _ := asString(working["$159"])
+		if ptype != "$270" {
+			log.Printf("kfx: error: section %s unexpected page_template type %s", section.ID, ptype)
+		}
+
+		// Python L167: layout = page_template["$156"]
+		layout, _ := asString(working["$156"])
+
+		if layout == "$325" || layout == "$323" {
+			// Python L169-178: inline content processing
+			// page_template.pop("$159"); page_template.pop("$156")
+			delete(working, "$159")
+			delete(working, "$156")
+
+			// Python creates a book_part, adds content, links CSS, processes position.
+			// In Go, we record this as a leaf section in the result.
+			locID := getLocationID(working)
+			section := pageSpreadSection{
+				PageTitle:    section.ID,
+				Properties:   "",
+				PositionOffset: 0,
+				TemplateData: working,
+			}
+			if locID != 0 {
+				section.ParentPositionID = locID
+			}
+			result.Sections = append(result.Sections, section)
+
+		} else if layout == "$437" {
+			// Python L180: self.process_page_spread_page_template(page_template, section_name)
+			spreadResult := processPageSpreadPageTemplate(working, section.ID, "", nil, true, cfg, storylines)
+			if spreadResult.Err != nil {
+				result.Err = spreadResult.Err
+				return result
+			}
+			result.Children = append(result.Children, spreadResult.Children...)
+			result.Sections = append(result.Sections, spreadResult.Sections...)
+			if spreadResult.VirtualPanels {
+				result.VirtualPanels = true
+			}
+
+		} else {
+			// Python L182: log.error("... unexpected page_template layout %s" % layout)
+			log.Printf("kfx: error: section %s unexpected page_template layout %s", section.ID, layout)
+		}
+
 		templatesProcessed++
+		_ = i
 	}
 
+	// Python L184-185: if templates_processed != 1: log.error(...)
 	if templatesProcessed != 1 {
 		log.Printf("kfx: error: section %s has %d active conditional page templates", section.ID, templatesProcessed)
 	}
 
-	return renderedStoryline{}, nil, false
+	return result
 }
 
 // Port of KFX_EPUB_Content.prepare_book_parts (yj_to_epub_content.py ~L1782+).
