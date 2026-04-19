@@ -473,7 +473,6 @@ end
 --- Preserves successful entries with metadata/covers so they don't need
 --- to be re-extracted on every startup.
 function BookInfoManagerExt:clearStaleVirtualEntries(BookInfoManager)
-    local CacheManager = require("cache_manager")
     local SQ3 = require("lua-ljsqlite3/init")
     local ok, db_conn = pcall(SQ3.open, self.db_location)
     if not ok or not db_conn then return end
@@ -482,7 +481,7 @@ function BookInfoManagerExt:clearStaleVirtualEntries(BookInfoManager)
     -- Check if converter version changed since last extraction.
     -- Store version in the config table (key/value) and only
     -- nuke virtual-path bookinfo rows when it changes.
-    local current_version = CacheManager.CONVERTER_VERSION
+    local current_version = self.cache_manager.CONVERTER_VERSION
     local stored_version = nil
     local stmt = db_conn:prepare(
         "SELECT value FROM config WHERE key='kindle_converter_version';"
