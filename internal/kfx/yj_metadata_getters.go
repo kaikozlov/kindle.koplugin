@@ -1,6 +1,9 @@
 package kfx
 
 import (
+	"bytes"
+	"fmt"
+	"image/jpeg"
 	"log"
 )
 
@@ -316,32 +319,49 @@ func isIllustratedLayout(cat *fragmentCatalog, ci *cacheInfo) bool {
 // isImageBasedFixedLayout — Python yj_metadata.py:286-296 (cached property)
 //
 // Tests if getOrderedImageResources() would succeed.
-// Simplified: returns true if there are resource fragments with locations.
+// Python: try: self.get_ordered_image_resources()
+//
+//	except Exception: cached = False
+//	else: cached = True
+//
+// Must return true only if getOrderedImageResources succeeds (fixed-layout AND
+// valid ordered images with no text).
 // ---------------------------------------------------------------------------
 func isImageBasedFixedLayout(cat *fragmentCatalog, ci *cacheInfo) bool {
 	if ci.isImageBasedFXL != nil {
 		return *ci.isImageBasedFXL
 	}
-	result := len(cat.ResourceFragments) > 0
+	// Python calls get_ordered_image_resources which checks is_fixed_layout first.
+	// We pass the result of isFixedLayout to the function.
+	isFXL := isFixedLayout(cat, false, ci)
+	_, _, err := getOrderedImageResources(*cat, isFXL)
+	result := err == nil
 	ci.isImageBasedFXL = &result
 	return result
 }
 
 // ---------------------------------------------------------------------------
-// isKfxV1 — Python yj_metadata.py:338-347 (cached property)
+// isKfxV1 — Python yj_metadata.py:338-341 (cached property)
 //
-// Checks $270 fragment's version field == 1.
-// $270 fragments are stored in Generators map (keyed by fragment ID).
+// Checks the FIRST $270 fragment's version field == 1 (default 0).
+// Python: fragment = self.fragments.get("$270", first=True)
+//         fragment.value.get("version", 0) == 1 if fragment is not None else False
 // ---------------------------------------------------------------------------
 func isKfxV1(cat *fragmentCatalog, ci *cacheInfo) bool {
 	if ci.isKfxV1 != nil {
 		return *ci.isKfxV1
 	}
 	result := false
-	for _, gen := range cat.Generators {
-		if versionVal, ok := asInt(gen["version"]); ok && versionVal == 1 {
-			result = true
-			break
+	// Get the first $270 fragment ID (Python: first=True)
+	if ids, ok := cat.FragmentIDsByType["$270"]; ok && len(ids) > 0 {
+		firstID := ids[0]
+		if gen, exists := cat.Generators[firstID]; exists {
+			// Python: fragment.value.get("version", 0) == 1
+			versionVal := 0
+			if v, ok := asInt(gen["version"]); ok {
+				versionVal = v
+			}
+			result = versionVal == 1
 		}
 	}
 	ci.isKfxV1 = &result
@@ -428,7 +448,8 @@ func getCoverImageData(cat *fragmentCatalog) *coverImageData {
 // fixCoverImageData — Python yj_metadata.py:556-578
 //
 // Ensures JPEG cover images start with JFIF marker.
-// In Go, we do minimal validation (no PIL Image re-encoding available).
+// Re-encodes using Go's image/jpeg package (equivalent to Python's PIL).
+// If re-encoding fails or still doesn't produce JFIF, returns original data.
 // ---------------------------------------------------------------------------
 func fixCoverImageData(coverData *coverImageData) *coverImageData {
 	if coverData == nil {
@@ -441,13 +462,107 @@ func fixCoverImageData(coverData *coverImageData) *coverImageData {
 	// For JPEG images, check if they have the JFIF marker
 	if (fmt == "jpg" || fmt == "jpeg") && len(data) >= 4 {
 		if !isJFIFJPEG(data) {
-			log.Printf("kfx: warning: cover image is JPEG but not JFIF format")
-			// Python re-encodes with PIL; in Go we accept the data as-is
-			// but could add image re-encoding if needed
+			origData := data
+
+			// Python: cover = Image.open(io.BytesIO(data)); cover.save(outfile, "JPEG", quality="keep")
+			// Go equivalent: decode and re-encode as JPEG
+			reencoded, err := reencodeJPEG(data)
+			if err == nil {
+				data = reencoded
+			} else {
+				// Python: except Exception: data = orig_data
+				data = origData
+			}
+
+			if isJFIFJPEG(data) {
+				log.Printf("kfx: info: Changed cover image from %s to JPEG/JFIF for Kindle lockscreen display", jpegType(origData))
+			} else {
+				log.Printf("kfx: error: Failed to change cover image from %s to JPEG/JFIF", jpegType(origData))
+				data = origData
+			}
 		}
 	}
 
-	return coverData
+	return &coverImageData{
+		Format: coverData.Format,
+		Data:   data,
+	}
+}
+
+// reencodeJPEG decodes JPEG bytes and re-encodes them with a JFIF APP0 marker.
+// Go's image/jpeg.Encode doesn't produce JFIF markers, so we prepend one manually.
+// This matches Python's PIL behavior where cover.save(outfile, "JPEG", quality="keep")
+// produces a JFIF-compatible JPEG.
+func reencodeJPEG(data []byte) ([]byte, error) {
+	img, err := jpeg.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95})
+	if err != nil {
+		return nil, err
+	}
+
+	// Go's encoder doesn't write JFIF APP0 marker. Prepend one.
+	// JFIF APP0 marker: FF E0 [length_hi length_lo] 4A 46 49 46 00 [version_major version_minor] [density units] [x_density_hi x_density_lo] [y_density_hi y_density_lo] [thumbnail_w] [thumbnail_h]
+	encoded := buf.Bytes()
+	if len(encoded) >= 4 && encoded[0] == 0xFF && encoded[1] == 0xD8 {
+		// Insert JFIF APP0 marker after SOI (FF D8)
+		jfifAPP0 := []byte{
+			0xFF, 0xE0, // APP0 marker
+			0x00, 0x10, // Length (16 bytes including length itself)
+			0x4A, 0x46, 0x49, 0x46, 0x00, // "JFIF\0"
+			0x01, 0x01, // Version 1.1
+			0x00, // Density units: no units
+			0x00, 0x01, // X density: 1
+			0x00, 0x01, // Y density: 1
+			0x00, 0x00, // No thumbnail
+		}
+		result := make([]byte, 0, len(encoded)+len(jfifAPP0))
+		result = append(result, encoded[:2]...) // SOI
+		result = append(result, jfifAPP0...)    // JFIF APP0
+		result = append(result, encoded[2:]...) // Rest of JPEG
+		return result, nil
+	}
+
+	return encoded, nil
+}
+
+// jpegType returns a description of the JPEG header type for logging.
+// Port of Python resources.py:725-747 (jpeg_type).
+func jpegType(data []byte) string {
+	if len(data) < 2 || data[0] != 0xFF || data[1] != 0xD8 {
+		if len(data) >= 12 {
+			return fmt.Sprintf("UNKNOWN(%x)", data[:12])
+		}
+		return "UNKNOWN"
+	}
+
+	if len(data) >= 10 && data[2] == 0xFF && data[3] == 0xE0 && string(data[6:10]) == "JFIF" {
+		return "JPEG"
+	}
+
+	if len(data) >= 10 && data[2] == 0xFF && data[3] == 0xE1 && string(data[6:10]) == "Exif" {
+		return "JPEG/Exif"
+	}
+
+	if len(data) >= 4 && data[2] == 0xFF && data[3] == 0xE8 {
+		return "JPEG/SPIFF"
+	}
+
+	if len(data) >= 4 && data[2] == 0xFF && (data[3] == 0xED || data[3] == 0xEE) {
+		return "JPEG/Adobe"
+	}
+
+	if len(data) >= 4 && data[2] == 0xFF && (data[3] == 0xDB || data[3] == 0xDE) {
+		return "JPEG/no-app-marker"
+	}
+
+	if len(data) >= 12 {
+		return fmt.Sprintf("JPEG/UNKNOWN(%x)", data[:12])
+	}
+	return "JPEG/UNKNOWN"
 }
 
 func isJFIFJPEG(data []byte) bool {
@@ -478,15 +593,25 @@ func hasCoverData(cat *fragmentCatalog) bool {
 }
 
 // ---------------------------------------------------------------------------
-// getGenerators — Python yj_metadata.py (get_generators)
+// getGenerators — Python yj_metadata.py:393-398 (get_generators)
 //
 // Returns all (generator_name, package_version) pairs from $270 fragments.
+// Filters out PACKAGE_VERSION_PLACEHOLDERS, returning "" for placeholder versions.
+// Only includes generators that have a "version" key in their fragment value.
 // ---------------------------------------------------------------------------
 func getGenerators(cat *fragmentCatalog) []generatorInfo {
 	var result []generatorInfo
 	for _, gen := range cat.Generators {
+		// Python: if "version" in fragment.value
+		if _, hasVersion := gen["version"]; !hasVersion {
+			continue
+		}
 		name, _ := asString(gen["$587"])
 		pkgVersion, _ := asString(gen["$588"])
+		// Python: package_version if package_version not in PACKAGE_VERSION_PLACEHOLDERS else ""
+		if PackageVersionPlaceholders[pkgVersion] {
+			pkgVersion = ""
+		}
 		result = append(result, generatorInfo{
 			Name:    name,
 			Version: pkgVersion,

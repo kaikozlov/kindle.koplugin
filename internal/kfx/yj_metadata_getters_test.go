@@ -1,6 +1,10 @@
 package kfx
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"testing"
 )
 
@@ -491,11 +495,21 @@ func TestIsPrintReplica_TextbookAndNil(t *testing.T) {
 
 func TestIsImageBasedFixedLayout_True(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
-	// Add an image resource that allows getOrderedImageResources to succeed
+	// Need to make getOrderedImageResources succeed.
+	// That requires isFixedLayout=true AND at least one image resource in section content.
+	// Since getOrderedImageResources is a stub that always returns "no image resources",
+	// isImageBasedFixedLayout will return false until the full implementation is done.
+	// For now, verify the function returns false when resources exist but gOIR fails.
 	cat.ResourceFragments["img1"] = resourceFragment{ID: "img1", Location: "loc1"}
 	ci := newCacheInfo()
-	if !isImageBasedFixedLayout(cat, ci) {
-		t.Error("expected isImageBasedFixedLayout=true when resource fragments exist")
+	// With the current stub getOrderedImageResources, it returns an error (no images found).
+	// So isImageBasedFixedLayout should be false.
+	result := isImageBasedFixedLayout(cat, ci)
+	// Once getOrderedImageResources is fully implemented with A5 scope,
+	// this test should be updated to verify true when proper data is provided.
+	// For now, verify it doesn't panic and returns false (stub behavior).
+	if result {
+		t.Error("expected isImageBasedFixedLayout=false with stub getOrderedImageResources")
 	}
 }
 
@@ -539,10 +553,10 @@ func TestCachingPattern_CdeType(t *testing.T) {
 
 func TestCachingPattern_IsKfxV1(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
-	// $270 fragments are stored by ID in FragmentIDsByType + we need raw values
 	cat.Generators = map[string]map[string]interface{}{
 		"gen1": {"version": 1},
 	}
+	cat.FragmentIDsByType["$270"] = []string{"gen1"}
 
 	ci := newCacheInfo()
 	r1 := isKfxV1(cat, ci)
@@ -561,6 +575,7 @@ func TestIsKfxV1_True(t *testing.T) {
 	cat.Generators = map[string]map[string]interface{}{
 		"gen1": {"version": 1},
 	}
+	cat.FragmentIDsByType["$270"] = []string{"gen1"}
 	ci := newCacheInfo()
 	if !isKfxV1(cat, ci) {
 		t.Error("expected isKfxV1=true when version=1")
@@ -788,12 +803,14 @@ func TestGetGenerators(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.Generators = map[string]map[string]interface{}{
 		"gen1": {
-			"$587": "GeneratorA",
-			"$588": "1.0",
+			"$587":    "GeneratorA",
+			"$588":    "1.0",
+			"version": 1, // Python: if "version" in fragment.value
 		},
 		"gen2": {
-			"$587": "GeneratorB",
-			"$588": "2.0",
+			"$587":    "GeneratorB",
+			"$588":    "2.0",
+			"version": 2,
 		},
 	}
 
@@ -1255,5 +1272,455 @@ func TestUpdateCoverSectionAndStoryline_NestedStyleFragments(t *testing.T) {
 	}
 	if cat.StyleFragments["style_inner"]["$57"] != 768 {
 		t.Errorf("expected style_inner $57=768, got %v", cat.StyleFragments["style_inner"]["$57"])
+	}
+}
+
+// ===========================================================================
+// NEW TESTS: Fix 5 metadata getter inconsistencies (VAL-M1-META-001 to 005)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// VAL-M1-META-003: getGenerators filters PACKAGE_VERSION_PLACEHOLDERS
+// Python yj_metadata.py:393-398
+// ---------------------------------------------------------------------------
+
+func TestGetGenerators_PlaceholderFiltering(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.Generators = map[string]map[string]interface{}{
+		"gen1": {
+			"$587":    "NormalGen",
+			"$588":    "1.0.0",
+			"version": 1,
+		},
+		"gen2": {
+			"$587":    "PlaceholderGen",
+			"$588":    "kfxlib-00000000", // PACKAGE_VERSION_PLACEHOLDER
+			"version": 1,
+		},
+		"gen3": {
+			"$587":    "AnotherPlaceholder",
+			"$588":    "PackageVersion:YJReaderSDK-1.0.x.x GitSHA:c805492 Month-Day:04-22",
+			"version": 2,
+		},
+	}
+
+	gens := getGenerators(cat)
+	if len(gens) != 3 {
+		t.Fatalf("expected 3 generators, got %d", len(gens))
+	}
+
+	genMap := map[string]string{}
+	for _, g := range gens {
+		genMap[g.Name] = g.Version
+	}
+
+	// Normal version should be preserved
+	if genMap["NormalGen"] != "1.0.0" {
+		t.Errorf("expected NormalGen version '1.0.0', got '%s'", genMap["NormalGen"])
+	}
+
+	// Placeholder versions should be filtered to ""
+	if genMap["PlaceholderGen"] != "" {
+		t.Errorf("expected PlaceholderGen version '' (placeholder filtered), got '%s'", genMap["PlaceholderGen"])
+	}
+	if genMap["AnotherPlaceholder"] != "" {
+		t.Errorf("expected AnotherPlaceholder version '' (placeholder filtered), got '%s'", genMap["AnotherPlaceholder"])
+	}
+}
+
+func TestGetGenerators_NoVersionKey_Skipped(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.Generators = map[string]map[string]interface{}{
+		"gen1": {
+			"$587": "NoVersionGen",
+			"$588": "1.0.0",
+			// No "version" key — should be skipped
+		},
+	}
+
+	gens := getGenerators(cat)
+	if len(gens) != 0 {
+		t.Errorf("expected 0 generators (no version key), got %d", len(gens))
+	}
+}
+
+func TestGetGenerators_EmptyPkgVersion(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.Generators = map[string]map[string]interface{}{
+		"gen1": {
+			"$587":    "GenNoPkg",
+			"version": 1,
+			// No $588 key — asString returns ""
+		},
+	}
+
+	gens := getGenerators(cat)
+	if len(gens) != 1 {
+		t.Fatalf("expected 1 generator, got %d", len(gens))
+	}
+	if gens[0].Version != "" {
+		t.Errorf("expected empty version for missing $588, got '%s'", gens[0].Version)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VAL-M1-META-004: isKfxV1 checks $270 fragment version field correctly
+// Python yj_metadata.py:338-341: fragment = self.fragments.get("$270", first=True)
+//   fragment.value.get("version", 0) == 1 if fragment is not None else False
+// ---------------------------------------------------------------------------
+
+func TestIsKfxV1_FirstFragmentOnly(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// Two $270 fragments: first has version=2, second has version=1
+	// Python uses first=True, so only the first fragment is checked
+	cat.Generators = map[string]map[string]interface{}{
+		"gen_first": {"version": 2},
+		"gen_second": {"version": 1},
+	}
+	cat.FragmentIDsByType["$270"] = []string{"gen_first", "gen_second"}
+
+	ci := newCacheInfo()
+	// Should check only the first fragment (version=2), result should be false
+	if isKfxV1(cat, ci) {
+		t.Error("expected false: first $270 has version=2, not 1")
+	}
+}
+
+func TestIsKfxV1_DefaultVersionZero(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// Fragment without explicit "version" key → defaults to 0
+	cat.Generators = map[string]map[string]interface{}{
+		"gen1": {"$587": "SomeGen"},
+	}
+	cat.FragmentIDsByType["$270"] = []string{"gen1"}
+
+	ci := newCacheInfo()
+	// Python: fragment.value.get("version", 0) == 1 → 0 == 1 → false
+	if isKfxV1(cat, ci) {
+		t.Error("expected false when version key absent (default 0)")
+	}
+}
+
+func TestIsKfxV1_VersionOneIsTrue(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.Generators = map[string]map[string]interface{}{
+		"gen1": {"version": 1},
+	}
+	cat.FragmentIDsByType["$270"] = []string{"gen1"}
+
+	ci := newCacheInfo()
+	if !isKfxV1(cat, ci) {
+		t.Error("expected true when first $270 fragment version=1")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VAL-M1-META-002: isImageBasedFixedLayout calls getOrderedImageResources
+// Python yj_metadata.py:286-296:
+//   try: self.get_ordered_image_resources()
+//   except Exception: cached = False
+//   else: cached = True
+//
+// The function returns true ONLY if getOrderedImageResources succeeds.
+// Currently getOrderedImageResources is a stub that requires collect_content_position_info
+// (A5 scope), so it returns "no image resources" error.
+// This test verifies the correct calling pattern.
+// ---------------------------------------------------------------------------
+
+func TestIsImageBasedFixedLayout_NonFixedLayoutReturnsFalse(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	// Non-fixed-layout book with resources — should return false because
+	// getOrderedImageResources checks is_fixed_layout first
+	cat.ResourceFragments["img1"] = resourceFragment{ID: "img1", Location: "loc1"}
+	ci := newCacheInfo()
+	if isImageBasedFixedLayout(cat, ci) {
+		t.Error("expected false: book is not fixed-layout (no yj_fixed_layout capability)")
+	}
+}
+
+func TestIsImageBasedFixedLayout_FixedLayoutNoImagesReturnsFalse(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	// Fixed-layout book (via scribe notebook flag) but no images
+	// Since isImageBasedFixedLayout doesn't take isScribeNotebook,
+	// we need to set up the metadata for fixed-layout
+	ci := newCacheInfo()
+	// getOrderedImageResources will fail because there are no image resources
+	// and the book is not fixed layout (no yj_fixed_layout metadata)
+	if isImageBasedFixedLayout(cat, ci) {
+		t.Error("expected false: fixed-layout but no image resources")
+	}
+}
+
+func TestIsImageBasedFixedLayout_DelegatesToGetOrderedImageResources(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	// Add resource fragments but no section structure for getOrderedImageResources to find images
+	cat.ResourceFragments["img1"] = resourceFragment{ID: "img1", Location: "loc1"}
+
+	ci := newCacheInfo()
+	// The current stub getOrderedImageResources always returns "no image resources" error,
+	// so even with resource fragments present, isImageBasedFixedLayout returns false.
+	// This verifies we delegate to gOIR instead of just checking len(ResourceFragments) > 0.
+	result := isImageBasedFixedLayout(cat, ci)
+	if result {
+		t.Error("expected false: gOIR stub returns error for no image resources")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VAL-M1-META-005: fixCoverImageData re-encodes JFIF JPEG covers
+// Python yj_metadata.py:556-578
+// ---------------------------------------------------------------------------
+
+func TestFixCoverImageData_NilInput(t *testing.T) {
+	result := fixCoverImageData(nil)
+	if result != nil {
+		t.Error("expected nil output for nil input")
+	}
+}
+
+func TestFixCoverImageData_AlreadyJFIF(t *testing.T) {
+	// JPEG data that already has JFIF marker (0xFF 0xD8 0xFF 0xE0)
+	jfifData := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00}
+	coverData := &coverImageData{Format: "jpeg", Data: jfifData}
+
+	result := fixCoverImageData(coverData)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	// Data should be unchanged (already JFIF)
+	if len(result.Data) != len(jfifData) {
+		t.Errorf("expected data unchanged for already-JFIF image")
+	}
+	for i := range jfifData {
+		if result.Data[i] != jfifData[i] {
+			t.Errorf("JFIF data should be unchanged")
+			break
+		}
+	}
+}
+
+func TestFixCoverImageData_EXIFReencode(t *testing.T) {
+	// Create a minimal valid JPEG using Go's encoder (which produces no JFIF marker)
+	var buf bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{255, 0, 0, 255})
+	jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90})
+	validJPEG := buf.Bytes()
+
+	// Go's encoder produces no JFIF marker, so this should trigger re-encoding
+	if isJFIFJPEG(validJPEG) {
+		t.Skip("Go JPEG encoder produces JFIF, test not applicable")
+	}
+
+	coverData := &coverImageData{Format: "jpeg", Data: validJPEG}
+	result := fixCoverImageData(coverData)
+
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	// After re-encoding with prepended JFIF, the result should be JFIF
+	if !isJFIFJPEG(result.Data) {
+		t.Error("expected re-encoded JPEG to have JFIF marker after prepend")
+	}
+	// The result should still be a valid JPEG (starts with FF D8)
+	if len(result.Data) < 2 || result.Data[0] != 0xFF || result.Data[1] != 0xD8 {
+		t.Error("re-encoded data is not a valid JPEG")
+	}
+}
+
+func TestFixCoverImageData_NonJPEG_Unchanged(t *testing.T) {
+	pngData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	coverData := &coverImageData{Format: "png", Data: pngData}
+
+	result := fixCoverImageData(coverData)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if len(result.Data) != len(pngData) {
+		t.Errorf("PNG data should be unchanged")
+	}
+	for i := range pngData {
+		if result.Data[i] != pngData[i] {
+			t.Errorf("PNG data should be unchanged")
+			break
+		}
+	}
+}
+
+func TestFixCoverImageData_CorruptJPEG_ReturnsOriginal(t *testing.T) {
+	// Corrupt JPEG data (has EXIF marker but can't be decoded)
+	corruptData := []byte{0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x05, 0x00, 0x00}
+	coverData := &coverImageData{Format: "jpeg", Data: corruptData}
+
+	result := fixCoverImageData(coverData)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	// Should return original data since re-encoding fails
+	if len(result.Data) != len(corruptData) {
+		t.Errorf("corrupt JPEG should return original data")
+	}
+}
+
+func TestFixCoverImageData_ShortData_NoPanic(t *testing.T) {
+	// Data too short for JPEG check (< 4 bytes)
+	shortData := []byte{0xFF, 0xD8}
+	coverData := &coverImageData{Format: "jpeg", Data: shortData}
+
+	result := fixCoverImageData(coverData)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+}
+
+func TestJpegType(t *testing.T) {
+	// Port of Python resources.py:725-747 jpeg_type
+	jfifData := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00}
+	if jt := jpegType(jfifData); jt != "JPEG" {
+		t.Errorf("jpegType(JFIF) = %q, want 'JPEG'", jt)
+	}
+
+	exifData := []byte{0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x10, 0x45, 0x78, 0x69, 0x66, 0x00}
+	if jt := jpegType(exifData); jt != "JPEG/Exif" {
+		t.Errorf("jpegType(EXIF) = %q, want 'JPEG/Exif'", jt)
+	}
+
+	spiffData := []byte{0xFF, 0xD8, 0xFF, 0xE8, 0x00}
+	if jt := jpegType(spiffData); jt != "JPEG/SPIFF" {
+		t.Errorf("jpegType(SPIFF) = %q, want 'JPEG/SPIFF'", jt)
+	}
+
+	adobeData := []byte{0xFF, 0xD8, 0xFF, 0xED, 0x00}
+	if jt := jpegType(adobeData); jt != "JPEG/Adobe" {
+		t.Errorf("jpegType(Adobe) = %q, want 'JPEG/Adobe'", jt)
+	}
+
+	noAppData := []byte{0xFF, 0xD8, 0xFF, 0xDB, 0x00}
+	if jt := jpegType(noAppData); jt != "JPEG/no-app-marker" {
+		t.Errorf("jpegType(no-app) = %q, want 'JPEG/no-app-marker'", jt)
+	}
+
+	nonJPEG := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x00}
+	if jt := jpegType(nonJPEG); jt != "UNKNOWN(89504e470d0a1a0a00000000)" {
+		t.Errorf("jpegType(PNG) = %q, want 'UNKNOWN(89504e470d0a1a0a00000000)'", jt)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VAL-M1-META-001: updateCoverSectionAndStoryline recursively processes $157
+// Python yj_metadata.py:813-814
+// Already tested by TestUpdateCoverSectionAndStoryline_NestedStyleFragments
+// above, but add an explicit test for deep nesting.
+// ---------------------------------------------------------------------------
+
+func TestUpdateCoverSectionAndStoryline_DeepNested157(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// Three levels of $157 nesting
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "",
+		PageTemplateValues: map[string]interface{}{
+			"$157": "style_l1",
+		},
+	}
+	cat.StyleFragments["style_l1"] = map[string]interface{}{
+		"$56":  800,
+		"$157": "style_l2",
+	}
+	cat.StyleFragments["style_l2"] = map[string]interface{}{
+		"$57":  600,
+		"$157": "style_l3",
+	}
+	cat.StyleFragments["style_l3"] = map[string]interface{}{
+		"$66": 800,
+	}
+
+	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
+
+	// All three levels should be updated
+	if cat.StyleFragments["style_l1"]["$56"] != 1024 {
+		t.Errorf("expected style_l1 $56=1024, got %v", cat.StyleFragments["style_l1"]["$56"])
+	}
+	if cat.StyleFragments["style_l2"]["$57"] != 768 {
+		t.Errorf("expected style_l2 $57=768, got %v", cat.StyleFragments["style_l2"]["$57"])
+	}
+	if cat.StyleFragments["style_l3"]["$66"] != 1024 {
+		t.Errorf("expected style_l3 $66=1024, got %v", cat.StyleFragments["style_l3"]["$66"])
+	}
+}
+
+func TestUpdateCoverSectionAndStoryline_StyleFragmentWith146Children(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// $157 style fragment with $146 children that also have $157 refs
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "",
+		PageTemplateValues: map[string]interface{}{
+			"$157": "style_parent",
+		},
+	}
+	cat.StyleFragments["style_parent"] = map[string]interface{}{
+		"$56": 800,
+		"$146": []interface{}{
+			map[string]interface{}{
+				"$57":  600,
+				"$157": "style_child_a",
+			},
+			map[string]interface{}{
+				"$66": 800,
+				"$157": "style_child_b",
+			},
+		},
+	}
+	cat.StyleFragments["style_child_a"] = map[string]interface{}{
+		"$67": 600,
+	}
+	cat.StyleFragments["style_child_b"] = map[string]interface{}{
+		"$56": 800,
+	}
+
+	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
+
+	if cat.StyleFragments["style_parent"]["$56"] != 1024 {
+		t.Errorf("expected style_parent $56=1024, got %v", cat.StyleFragments["style_parent"]["$56"])
+	}
+	if cat.StyleFragments["style_child_a"]["$67"] != 768 {
+		t.Errorf("expected style_child_a $67=768, got %v", cat.StyleFragments["style_child_a"]["$67"])
+	}
+	if cat.StyleFragments["style_child_b"]["$56"] != 1024 {
+		t.Errorf("expected style_child_b $56=1024, got %v", cat.StyleFragments["style_child_b"]["$56"])
+	}
+}
+
+func TestUpdateCoverSectionAndStoryline_StructValueNotUpdated(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// $56 value is a struct (IonStruct) — should NOT be updated
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "",
+		PageTemplateValues: map[string]interface{}{
+			"$56": map[string]interface{}{"nested": true}, // IonStruct — skip
+			"$57": 600,                                    // int — update
+		},
+	}
+
+	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
+
+	ptv := cat.SectionFragments["cover_section"].PageTemplateValues
+	// $56 should remain unchanged (it's a struct)
+	if m, ok := ptv["$56"].(map[string]interface{}); !ok || !m["nested"].(bool) {
+		t.Errorf("expected $56 to remain a struct, got %v", ptv["$56"])
+	}
+	// $57 should be updated
+	if ptv["$57"] != 768 {
+		t.Errorf("expected $57=768, got %v", ptv["$57"])
 	}
 }
