@@ -137,13 +137,21 @@ func getMetadataValue(cat *fragmentCatalog, name, category string, defaultVal in
 func getFeatureValue(cat *fragmentCatalog, feature, namespace string, defaultVal interface{}) interface{} {
 	if namespace == "format_capabilities" {
 		// Search $593 fragments (stored in FormatCapabilities map)
+		// Python iterates fragment.value directly as a list of IonStruct.
+		// In Go, $593 fragment value is decoded as a map with "$146" key containing
+		// the list of capability entries, or the map itself may be a list-like value.
 		for _, fragment := range cat.FormatCapabilities {
-			items, ok := asSlice(fragment["items"])
-			if !ok {
-				// Try the value directly as a list (some formats store differently)
+			// Try $146 (children list) first — most common encoding
+			var entries []interface{}
+			if children, ok := asSlice(fragment["$146"]); ok {
+				entries = children
+			} else if direct, ok := asSlice(fragment["items"]); ok {
+				entries = direct
+			} else {
+				// Fragment value may itself be the list (unwrapped IonList)
 				continue
 			}
-			for _, rawFC := range items {
+			for _, rawFC := range entries {
 				fc, ok := asMap(rawFC)
 				if !ok {
 					continue
@@ -521,6 +529,7 @@ func getPageCount(cat *fragmentCatalog) int {
 //
 // Updates cover section and storyline dimensions when cover image size changes.
 // Processes $56/$57 (width/height) and $66/$67 (fixed_width/fixed_height) properties.
+// Also recursively processes $157 style fragments referenced via content keys.
 // ---------------------------------------------------------------------------
 func updateCoverSectionAndStoryline(cat *fragmentCatalog, origWidth, origHeight, width, height int) {
 	// Get first section from section order
@@ -533,26 +542,29 @@ func updateCoverSectionAndStoryline(cat *fragmentCatalog, origWidth, origHeight,
 		return
 	}
 
-	// Process the section's page template values
-	processContentDimensions(section.PageTemplateValues, origWidth, origHeight, width, height)
+	// Get page template: first from $141 list, or empty map if multiple
+	pageTemplate := section.PageTemplateValues
+
+	// Process the page template
+	processContentDimensions(cat, pageTemplate, "section", origWidth, origHeight, width, height)
 
 	// Process the storyline
 	if section.Storyline != "" {
 		if storyline, ok := cat.Storylines[section.Storyline]; ok {
-			processStorylineDimensions(storyline, origWidth, origHeight, width, height)
+			processStorylineDimensions(cat, storyline, "storyline", origWidth, origHeight, width, height)
 		}
 	}
 }
 
-func processContentDimensions(content map[string]interface{}, origWidth, origHeight, width, height int) {
+func processContentDimensions(cat *fragmentCatalog, content map[string]interface{}, desc string, origWidth, origHeight, width, height int) {
 	if content == nil {
 		return
 	}
 
 	type dimUpdate struct {
-		prop     string
-		origVal  int
-		newVal   int
+		prop    string
+		origVal int
+		newVal  int
 	}
 	updates := []dimUpdate{
 		{"$56", origWidth, width},
@@ -567,10 +579,19 @@ func processContentDimensions(content map[string]interface{}, origWidth, origHei
 			if _, ok := asMap(val); !ok {
 				currentVal, ok := asInt(val)
 				if ok && currentVal != u.origVal {
-					log.Printf("kfx: warning: Unexpected cover section %s %d (expected %d)", u.prop, currentVal, u.origVal)
+					log.Printf("kfx: warning: Unexpected cover %s %s %d (expected %d)", desc, u.prop, currentVal, u.origVal)
 				}
 				content[u.prop] = u.newVal
 			}
+		}
+	}
+
+	// Python yj_metadata.py:813-814: recursively process $157 style fragments
+	//   if "$157" in content:
+	//       process_content(self.fragments.get(ftype="$157", fid=content.get("$157")).value, desc)
+	if styleRef, ok := asString(content["$157"]); ok && styleRef != "" {
+		if styleFragment, exists := cat.StyleFragments[styleRef]; exists {
+			processContentDimensions(cat, styleFragment, desc, origWidth, origHeight, width, height)
 		}
 	}
 
@@ -579,18 +600,18 @@ func processContentDimensions(content map[string]interface{}, origWidth, origHei
 		for _, rawChild := range children {
 			child, ok := asMap(rawChild)
 			if ok {
-				processContentDimensions(child, origWidth, origHeight, width, height)
+				processContentDimensions(cat, child, desc, origWidth, origHeight, width, height)
 			}
 		}
 	}
 }
 
-func processStorylineDimensions(storyline map[string]interface{}, origWidth, origHeight, width, height int) {
+func processStorylineDimensions(cat *fragmentCatalog, storyline map[string]interface{}, desc string, origWidth, origHeight, width, height int) {
 	if children, ok := asSlice(storyline["$146"]); ok {
 		for _, rawChild := range children {
 			child, ok := asMap(rawChild)
 			if ok {
-				processContentDimensions(child, origWidth, origHeight, width, height)
+				processContentDimensions(cat, child, desc, origWidth, origHeight, width, height)
 			}
 		}
 	}

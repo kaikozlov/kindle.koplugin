@@ -200,10 +200,12 @@ func TestGetFeatureValue_YJConversionNamespace_MajorMinor(t *testing.T) {
 func TestGetFeatureValue_FormatCapabilities(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 
-	// $593 fragments stored by their fragment IDs
+	// $593 fragments stored by their fragment IDs.
+	// Python iterates fragment.value directly as a list of IonStruct.
+	// In Go, the decoded IonList is stored under "$146" key.
 	cat.FormatCapabilities = map[string]map[string]interface{}{
 		"fc1": {
-			"items": []interface{}{
+			"$146": []interface{}{
 				map[string]interface{}{
 					"$492":    "some_feat",
 					"version": "1.2",
@@ -969,5 +971,289 @@ func TestGetPageCount_NoNavRoot(t *testing.T) {
 	count := getPageCount(cat)
 	if count != 0 {
 		t.Errorf("expected 0 pages, got %d", count)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FIX 1: getFeatureValue format_capabilities iterates $593 correctly
+// Python yj_metadata.py:374 iterates fragment.value directly as a list.
+// In Go, the decoded $593 fragment has its list entries under "$146" key.
+// ---------------------------------------------------------------------------
+
+func TestGetFeatureValue_FormatCapabilities_MultipleFeatures(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	cat.FormatCapabilities = map[string]map[string]interface{}{
+		"fc1": {
+			"$146": []interface{}{
+				map[string]interface{}{
+					"$492":    "feat_a",
+					"version": "1.0",
+				},
+				map[string]interface{}{
+					"$492":    "feat_b",
+					"version": "2.0",
+				},
+			},
+		},
+	}
+
+	result := getFeatureValue(cat, "feat_a", "format_capabilities", nil)
+	if result != "1.0" {
+		t.Errorf("expected '1.0' for feat_a, got %v", result)
+	}
+
+	result = getFeatureValue(cat, "feat_b", "format_capabilities", nil)
+	if result != "2.0" {
+		t.Errorf("expected '2.0' for feat_b, got %v", result)
+	}
+}
+
+func TestGetFeatureValue_FormatCapabilities_FallbackToItems(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// Backward compat: also accept "items" key
+	cat.FormatCapabilities = map[string]map[string]interface{}{
+		"fc1": {
+			"items": []interface{}{
+				map[string]interface{}{
+					"$492":    "legacy_feat",
+					"version": "0.9",
+				},
+			},
+		},
+	}
+
+	result := getFeatureValue(cat, "legacy_feat", "format_capabilities", nil)
+	if result != "0.9" {
+		t.Errorf("expected '0.9' for legacy_feat, got %v", result)
+	}
+}
+
+func TestGetFeatureValue_FormatCapabilities_NotFound(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	cat.FormatCapabilities = map[string]map[string]interface{}{
+		"fc1": {
+			"$146": []interface{}{
+				map[string]interface{}{
+					"$492":    "other_feat",
+					"version": "3.0",
+				},
+			},
+		},
+	}
+
+	result := getFeatureValue(cat, "nonexistent", "format_capabilities", "default")
+	if result != "default" {
+		t.Errorf("expected default, got %v", result)
+	}
+}
+
+func TestGetFeatureValue_FormatCapabilities_MultipleFragments(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	cat.FormatCapabilities = map[string]map[string]interface{}{
+		"fc1": {
+			"$146": []interface{}{
+				map[string]interface{}{
+					"$492":    "feat_one",
+					"version": "1.0",
+				},
+			},
+		},
+		"fc2": {
+			"$146": []interface{}{
+				map[string]interface{}{
+					"$492":    "feat_two",
+					"version": "2.0",
+				},
+			},
+		},
+	}
+
+	result := getFeatureValue(cat, "feat_two", "format_capabilities", nil)
+	if result != "2.0" {
+		t.Errorf("expected '2.0' for feat_two in second fragment, got %v", result)
+	}
+}
+
+func TestGetFeatureValue_FormatCapabilities_EmptyFragment(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// Fragment with no $146 or items — should skip gracefully
+	cat.FormatCapabilities = map[string]map[string]interface{}{
+		"fc1": {},
+	}
+
+	result := getFeatureValue(cat, "any_feat", "format_capabilities", "default")
+	if result != "default" {
+		t.Errorf("expected default for empty fragment, got %v", result)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FIX 2: updateCoverSectionAndStoryline processes $157 style fragments
+// Python yj_metadata.py:813-814 recursively processes style fragments via:
+//   if "$157" in content:
+//       process_content(self.fragments.get(ftype="$157", fid=content.get("$157")).value, desc)
+// ---------------------------------------------------------------------------
+
+func TestUpdateCoverSectionAndStoryline_StyleFragmentProcessing(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// Set up section with a page template that references a $157 style
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:   "cover_section",
+		Storyline: "story1",
+		PageTemplateValues: map[string]interface{}{
+			"$56":  800,
+			"$57":  600,
+			"$157": "style_123",
+			"$146": []interface{}{
+				map[string]interface{}{
+					"$56":  800,
+					"$66":  800,
+					"$157": "style_child",
+				},
+			},
+		},
+	}
+
+	// Set up style fragments
+	cat.StyleFragments["style_123"] = map[string]interface{}{
+		"$56": 800,
+		"$57": 600,
+	}
+	cat.StyleFragments["style_child"] = map[string]interface{}{
+		"$66": 800,
+	}
+
+	// Set up storyline
+	cat.Storylines["story1"] = map[string]interface{}{
+		"$146": []interface{}{
+			map[string]interface{}{
+				"$56":  800,
+				"$157": "style_story",
+			},
+		},
+	}
+	cat.StyleFragments["style_story"] = map[string]interface{}{
+		"$56": 800,
+	}
+
+	// Update dimensions from 800x600 to 1024x768
+	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
+
+	// Check page template dimensions were updated
+	ptv := cat.SectionFragments["cover_section"].PageTemplateValues
+	if ptv["$56"] != 1024 {
+		t.Errorf("expected page template $56=1024, got %v", ptv["$56"])
+	}
+	if ptv["$57"] != 768 {
+		t.Errorf("expected page template $57=768, got %v", ptv["$57"])
+	}
+
+	// Check $157 style fragment was updated
+	if cat.StyleFragments["style_123"]["$56"] != 1024 {
+		t.Errorf("expected style_123 $56=1024, got %v", cat.StyleFragments["style_123"]["$56"])
+	}
+	if cat.StyleFragments["style_123"]["$57"] != 768 {
+		t.Errorf("expected style_123 $57=768, got %v", cat.StyleFragments["style_123"]["$57"])
+	}
+
+	// Check child's $157 style fragment was also updated
+	if cat.StyleFragments["style_child"]["$66"] != 1024 {
+		t.Errorf("expected style_child $66=1024, got %v", cat.StyleFragments["style_child"]["$66"])
+	}
+
+	// Check storyline child's $157 style fragment was updated
+	if cat.StyleFragments["style_story"]["$56"] != 1024 {
+		t.Errorf("expected style_story $56=1024, got %v", cat.StyleFragments["style_story"]["$56"])
+	}
+}
+
+func TestUpdateCoverSectionAndStoryline_NoStyleRef(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// Section without $157 references — should still update dimensions
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "",
+		PageTemplateValues: map[string]interface{}{
+			"$56": 800,
+			"$57": 600,
+		},
+	}
+
+	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
+
+	ptv := cat.SectionFragments["cover_section"].PageTemplateValues
+	if ptv["$56"] != 1024 {
+		t.Errorf("expected $56=1024, got %v", ptv["$56"])
+	}
+	if ptv["$57"] != 768 {
+		t.Errorf("expected $57=768, got %v", ptv["$57"])
+	}
+}
+
+func TestUpdateCoverSectionAndStoryline_NoSections(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	// No sections — should not panic
+	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
+}
+
+func TestUpdateCoverSectionAndStoryline_MissingStyleFragment(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// Section references a $157 style that doesn't exist — should skip gracefully
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "",
+		PageTemplateValues: map[string]interface{}{
+			"$56":  800,
+			"$157": "nonexistent_style",
+		},
+	}
+
+	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
+
+	ptv := cat.SectionFragments["cover_section"].PageTemplateValues
+	if ptv["$56"] != 1024 {
+		t.Errorf("expected $56=1024, got %v", ptv["$56"])
+	}
+}
+
+func TestUpdateCoverSectionAndStoryline_NestedStyleFragments(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+
+	// Style fragment that itself references another style fragment
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "",
+		PageTemplateValues: map[string]interface{}{
+			"$157": "style_outer",
+		},
+	}
+	cat.StyleFragments["style_outer"] = map[string]interface{}{
+		"$56":  800,
+		"$157": "style_inner",
+	}
+	cat.StyleFragments["style_inner"] = map[string]interface{}{
+		"$57": 600,
+	}
+
+	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
+
+	// Both style fragments should be updated recursively
+	if cat.StyleFragments["style_outer"]["$56"] != 1024 {
+		t.Errorf("expected style_outer $56=1024, got %v", cat.StyleFragments["style_outer"]["$56"])
+	}
+	if cat.StyleFragments["style_inner"]["$57"] != 768 {
+		t.Errorf("expected style_inner $57=768, got %v", cat.StyleFragments["style_inner"]["$57"])
 	}
 }
