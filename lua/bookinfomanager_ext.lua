@@ -478,12 +478,10 @@ function BookInfoManagerExt:clearStaleVirtualEntries(BookInfoManager)
     if not ok or not db_conn then return end
     db_conn:set_busy_timeout(5000)
 
-    -- Only delete rows that are stuck in "in_progress" (failed mid-extraction)
-    -- or marked "unsupported" (failed extraction). Preserve successful rows
-    -- that have cover_fetched='Y' and no unsupported flag.
+    -- Delete ALL virtual-path bookinfo rows so they get re-extracted
+    -- from freshly converted EPUBs (covers, titles, etc. may have changed).
     local stmt = db_conn:prepare(
-        "DELETE FROM bookinfo WHERE directory LIKE 'KINDLE_VIRTUAL://%'"
-        .. " AND (in_progress > 0 OR unsupported IS NOT NULL);"
+        "DELETE FROM bookinfo WHERE directory LIKE 'KINDLE_VIRTUAL://%';"
     )
     if stmt then
         stmt:step()
