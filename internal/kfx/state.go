@@ -266,6 +266,8 @@ func validateEntityOffsets(src *containerSource) bool {
 		start := src.HeaderLen + entityOffset
 		end := start + entityLength
 		if start < 0 || end > len(src.Data) || start >= end {
+			log.Printf("kfx: invalid entity in %s: headerLen=%d entityOffset=%d entityLength=%d dataLen=%d",
+				src.Path, src.HeaderLen, entityOffset, entityLength, len(src.Data))
 			return false
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"io"
 	"os"
 	"path/filepath"
@@ -385,6 +386,8 @@ func processEncryptedPage(r ion.Reader, pageKey []byte) ([]byte, error) {
 		return nil, fmt.Errorf("aes decrypt: %w", err)
 	}
 
+	log.Printf("drm: encrypted page ct=%d iv=%d decrypted=%d decompress=%v", len(ct), len(civ), len(decrypted), decompress)
+
 	if decompress {
 		// LZMA decompression: first byte is a "use filter" flag (must be 0),
 		// rest is LZMA1 data.
@@ -395,7 +398,16 @@ func processEncryptedPage(r ion.Reader, pageKey []byte) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("lzma decompress: %w", err)
 		}
+		log.Printf("drm: encrypted page decompressed %d -> %d", len(decrypted), len(decompressed))
 		return decompressed, nil
+	}
+
+	// Check for LZMA signature even without Compressed annotation
+	if len(decrypted) > 1 && decrypted[0] == 0x00 && decrypted[1] == 0x5d {
+		decompressed, err := lzmaDecompress(decrypted[1:])
+		if err == nil {
+			return decompressed, nil
+		}
 	}
 
 	return decrypted, nil
@@ -437,6 +449,14 @@ func processPlainTextPage(r ion.Reader) ([]byte, error) {
 
 	if plaintext == nil {
 		return nil, nil
+	}
+
+	// Some DRMION files use PlainText pages that are LZMA-compressed
+	// but don't have the Compressed@1.0 annotation. Detect by checking
+	// for LZMA signature (0x00 filter byte + 0x5d properties byte).
+	if !decompress && len(plaintext) > 1 && plaintext[0] == 0x00 && plaintext[1] == 0x5d {
+		decompress = true
+		log.Printf("drm: plaintext page has LZMA signature without Compressed annotation")
 	}
 
 	if decompress {
