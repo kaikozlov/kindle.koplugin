@@ -12,6 +12,7 @@ local DocumentExt = require("lua/document_ext")
 local FileChooserExt = require("lua/filechooser_ext")
 local HelperClient = require("lua/helper_client")
 local LibraryIndex = require("lua/library_index")
+local BookInfoManagerExt = require("lua/bookinfomanager_ext")
 local ShowReaderExt = require("lua/showreader_ext")
 local VirtualLibrary = require("lua/virtual_library")
 
@@ -65,6 +66,17 @@ local function applyFileChooserExtensions()
     ext:apply(FileChooser)
 end
 
+local function applyBookInfoManagerExtensions()
+    local ok, BookInfoManager = pcall(require, "plugins/coverbrowser.koplugin/bookinfomanager")
+    if ok and BookInfoManager then
+        local ext = BookInfoManagerExt
+        ext:init(virtual_library, cache_manager)
+        ext:apply(BookInfoManager)
+    else
+        logger.dbg("KindlePlugin: CoverBrowser plugin not loaded, skipping BookInfoManager patches")
+    end
+end
+
 local plugin_settings = G_reader_settings:readSetting("kindle_plugin") or cloneDefaults()
 helper_client:setSettings(plugin_settings)
 library_index:setSettings(plugin_settings)
@@ -77,6 +89,7 @@ if plugin_settings.enable_virtual_library ~= false then
     applyDocumentExtensions()
     applyDocSettingsExtensions()
     applyFileChooserExtensions()
+    applyBookInfoManagerExtensions()
 end
 
 local KindlePlugin = WidgetContainer:extend({
