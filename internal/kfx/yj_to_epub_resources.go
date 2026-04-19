@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image/jpeg"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,6 +13,330 @@ import (
 	"github.com/kaikozlov/kindle-koplugin/internal/epub"
 	"github.com/kaikozlov/kindle-koplugin/internal/jxr"
 )
+
+// ---------------------------------------------------------------------------
+// Resource variant handling & deduplication
+// Port of yj_to_epub_resources.py lines 20-245
+// ---------------------------------------------------------------------------
+
+// USE_HIGHEST_RESOLUTION_IMAGE_VARIANT mirrors the Python constant of the same name.
+const USE_HIGHEST_RESOLUTION_IMAGE_VARIANT = true
+
+// resourceObj mirrors Python's Obj class (yj_to_epub_resources.py line 25)
+// and the resource object created in get_external_resource.
+type resourceObj struct {
+	rawMedia          []byte
+	filename          string
+	extension         string
+	format            string // resource format symbol (e.g., "$285" for jpg)
+	mime              string
+	location          string
+	width             int
+	height            int
+	referredResources []string
+	manifestEntry     *manifestEntry
+	isSaved           bool
+}
+
+// outputFile mirrors Python's OutputFile (epub_output.py line 213).
+type outputFile struct {
+	binaryData []byte
+	mimetype   string
+	height     int
+	width      int
+}
+
+// manifestEntry mirrors Python's ManifestEntry (epub_output.py line 181).
+type manifestEntry struct {
+	filename      string
+	id            string
+	mimetype      string // set only for referred resources (Python line 219)
+	referenceCount int
+}
+
+// resourceProcessor implements the KFX_EPUB_Resources mixin class from
+// yj_to_epub_resources.py, handling resource caching, variant selection,
+// and deduplication.
+type resourceProcessor struct {
+	resourceCache    map[string]*resourceObj    // cache of processed resources by name
+	usedRawMedia     map[string]bool            // set of accessed raw media locations
+	fragments        map[string]map[string]interface{} // synthetic fragment store: "$164:name" → fragment data
+	rawMedia         map[string][]byte          // raw media data ($417 equivalent)
+	oebpsFiles       map[string]*outputFile     // saved files (dedup target)
+	manifestFiles    map[string]*manifestEntry  // filename → manifest entry
+	manifestRefCount map[string]int             // reference counting by filename
+	usedOEBPSNames   map[string]struct{}        // used OEBPS filenames for dedup
+}
+
+// getExternalResource implements Python get_external_resource (yj_to_epub_resources.py lines 35-183).
+// It looks up a resource fragment ($164), resolves its raw media, handles variant selection,
+// and caches the result.
+func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_variants bool) *resourceObj {
+	// 1. Check cache
+	if cached, ok := rp.resourceCache[resource_name]; ok && cached != nil {
+		return cached
+	}
+
+	// 2. Get fragment $164
+	resource, ok := rp.fragments["$164:"+resource_name]
+	if !ok {
+		log.Printf("kfx: error: resource fragment $164:%s not found", resource_name)
+		return nil
+	}
+
+	// 3. Validate internal name
+	intResourceName, _ := asString(resource["$175"])
+	if intResourceName != resource_name {
+		log.Printf("kfx: error: Name of resource %s is incorrect: %s", resource_name, intResourceName)
+	}
+
+	// 4. Extract dimensions
+	resourceFormat, _ := asString(resource["$161"])
+	fixedHeight := asIntDefault(resource["$67"], 0)
+	fixedWidth := asIntDefault(resource["$66"], 0)
+	resourceHeight := asIntDefault(resource["$423"], 0)
+	if resourceHeight == 0 {
+		resourceHeight = fixedHeight
+	}
+	resourceWidth := asIntDefault(resource["$422"], 0)
+	if resourceWidth == 0 {
+		resourceWidth = fixedWidth
+	}
+
+	// 5. Get location and raw media
+	location, _ := asString(resource["$165"])
+	rawMedia := rp.locateRawMedia(location, true)
+
+	// 6. Early return for ignore_variants with missing raw_media
+	if ignore_variants && rawMedia == nil {
+		return nil
+	}
+
+	// 7. Determine extension from format
+	extension := extensionForFormatSymbol(resourceFormat)
+
+	// 8. Get MIME type from fragment
+	mime, _ := asString(resource["$162"])
+
+	// 9. Determine filename from location
+	locationFn := location
+	if !strings.HasSuffix(locationFn, extension) {
+		dotIdx := strings.Index(locationFn, ".")
+		if dotIdx >= 0 {
+			locationFn = locationFn[:dotIdx] + extension
+		} else {
+			locationFn = locationFn + extension
+		}
+	}
+
+	// 9. Get referred resources
+	referredResources := []string{}
+	if rr, ok := asSlice(resource["$167"]); ok {
+		for _, v := range rr {
+			if s, ok := asString(v); ok {
+				referredResources = append(referredResources, s)
+			}
+		}
+	}
+
+	// 10. Generate filename using existing helper
+	filename := uniquePackageResourceFilename(resourceFragment{
+		ID:        resource_name,
+		Location:  locationFn,
+		MediaType: "image/jpeg", // simplified; full parity uses SYMBOL_FORMATS
+	}, symOriginal, rp.usedOEBPSNames)
+
+	// 11. VARIANT SELECTION — key logic (Python lines 170-179)
+	if !ignore_variants {
+		variants, _ := asSlice(resource["$635"])
+		for _, vr := range variants {
+			variantName, _ := asString(vr)
+			if variantName == "" {
+				continue
+			}
+			variant := rp.getExternalResource(variantName, true) // ignore_variants=True to prevent infinite recursion
+			if USE_HIGHEST_RESOLUTION_IMAGE_VARIANT && variant != nil &&
+				variant.width > resourceWidth && variant.height > resourceHeight {
+				// Replace with higher-resolution variant
+				rawMedia = variant.rawMedia
+				filename = variant.filename
+				resourceWidth = variant.width
+				resourceHeight = variant.height
+			}
+		}
+	}
+
+	// 12. Cache result
+	result := &resourceObj{
+		rawMedia:          rawMedia,
+		filename:          filename,
+		extension:         extension,
+		format:            resourceFormat,
+		mime:              mime,
+		location:          location,
+		width:             resourceWidth,
+		height:            resourceHeight,
+		referredResources: referredResources,
+		manifestEntry:     nil,
+	}
+	rp.resourceCache[resource_name] = result
+	return result
+}
+
+// processExternalResource implements Python process_external_resource (yj_to_epub_resources.py lines 185-233).
+// It handles resource deduplication via binary data comparison and manifest management.
+func (rp *resourceProcessor) processExternalResource(resource_name string, save, process_referred, save_referred, is_plugin, is_referred bool) *resourceObj {
+	resourceObj := rp.getExternalResource(resource_name, false)
+	if resourceObj == nil {
+		return nil
+	}
+
+	if save && resourceObj.rawMedia != nil {
+		if resourceObj.manifestEntry == nil {
+			// Determine filename: root_filename(location) if is_referred, else resource_obj.filename
+			filename := resourceObj.filename
+			if is_referred {
+				filename = rootFilename(resourceObj.location)
+			}
+
+			// Handle fragment separator (#page=...)
+			filename, fragmentSep, fragment := partitionOnHash(filename)
+			baseFilename := filename
+
+			// Handle duplicates: check if same data already exists in oebps_files
+			// Python: while filename in self.oebps_files: ... else: ...
+			cnt := 0
+			for {
+				existing, exists := rp.oebpsFiles[filename]
+				if !exists {
+					// Filename is free — exit loop (Python's "else" clause)
+					break
+				}
+				if existing.binaryData != nil && bytes.Equal(existing.binaryData, resourceObj.rawMedia) {
+					// Same binary data — reuse manifest entry (dedup)
+					me, ok := rp.manifestFiles[filename]
+					if ok && me != nil {
+						resourceObj.manifestEntry = me
+						me.referenceCount++
+						break
+					}
+				}
+				// Generate unique filename with _N suffix
+				fn, ext := splitExt(baseFilename)
+				filename = fmt.Sprintf("%s_%d%s", fn, cnt, ext)
+				cnt++
+			}
+
+			if resourceObj.manifestEntry == nil {
+				// New file: add to manifest
+				me := &manifestEntry{
+					filename:      filename,
+					referenceCount: 1,
+				}
+				// Python line 219: mimetype set only for referred resources
+				if is_referred {
+					me.mimetype = resourceObj.mime
+				}
+				resourceObj.manifestEntry = me
+				rp.manifestFiles[filename] = me
+				rp.oebpsFiles[filename] = &outputFile{
+					binaryData: resourceObj.rawMedia,
+					height:     resourceObj.height,
+					width:      resourceObj.width,
+				}
+			}
+
+			resourceObj.filename = filename + fragmentSep + fragment
+			resourceObj.isSaved = true
+		} else {
+			resourceObj.manifestEntry.referenceCount++
+		}
+	}
+
+	// Process referred resources
+	if process_referred || save_referred {
+		for _, rr := range resourceObj.referredResources {
+			rp.processExternalResource(rr, save_referred, false, false, false, true)
+		}
+	}
+
+	return resourceObj
+}
+
+// locateRawMedia implements Python locate_raw_media (yj_to_epub_resources.py lines 235-245).
+// It looks up raw binary data from the raw_media store ($417 equivalent) and records
+// the location as used.
+func (rp *resourceProcessor) locateRawMedia(location string, report_missing bool) []byte {
+	data, ok := rp.rawMedia[location]
+	if !ok {
+		if report_missing {
+			log.Printf("kfx: error: Missing bcRawMedia %s", location)
+		}
+		return nil
+	}
+	rp.usedRawMedia[location] = true
+	return data
+}
+
+// extensionForFormatSymbol maps a YJ resource format symbol to a file extension.
+// Mirrors Python's SYMBOL_FORMATS reverse lookup (resources.py).
+func extensionForFormatSymbol(format string) string {
+	switch format {
+	case "$285":
+		return ".jpg"
+	case "$284":
+		return ".png"
+	case "$548":
+		return ".jxr"
+	case "$286":
+		return ".gif"
+	case "$565":
+		return ".pdf"
+	case "$287":
+		return ".pobject"
+	case "$420":
+		return ".pbm"
+	case "$600":
+		return ".tiff"
+	case "$612":
+		return ".bpg"
+	default:
+		return ".bin"
+	}
+}
+
+// rootFilename implements Python utilities.root_filename (utilities.py line 341).
+// If name starts with "/" return name, else return "/" + name.
+func rootFilename(name string) string {
+	if strings.HasPrefix(name, "/") {
+		return name
+	}
+	return "/" + name
+}
+
+// partitionOnHash splits a string at the first "#" character, returning
+// (before, "#", after) or (s, "", "") if no "#" is found.
+func partitionOnHash(s string) (before, sep, after string) {
+	idx := strings.Index(s, "#")
+	if idx < 0 {
+		return s, "", ""
+	}
+	return s[:idx], "#", s[idx+1:]
+}
+
+// splitExt splits a filename into base and extension.
+// Equivalent to Python's posixpath.splitext.
+func splitExt(filename string) (string, string) {
+	dot := strings.LastIndex(filename, ".")
+	if dot < 0 {
+		return filename, ""
+	}
+	return filename[:dot], filename[dot:]
+}
+
+// ---------------------------------------------------------------------------
+// End resource variant handling
+// ---------------------------------------------------------------------------
 
 func mapFontStyle(value interface{}) string {
 	switch text, _ := asString(value); text {
