@@ -1,0 +1,50 @@
+{
+  "featureId": "b1-epub-packaging-parity",
+  "reviewedAt": "2026-04-19T05:30:00Z",
+  "commitId": "f221032",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The worker session primarily added 38 comprehensive tests verifying all 18 VAL-B-001 through VAL-B-018 assertions, plus a minor bug fix to romanToInt(\"\") edge case. The existing epub.go implementation was already substantially complete from prior work — this session validated its correctness rather than adding new ported code. All tests pass, go vet is clean, and the implementation correctly maps the Python epub_output.py logic for manifest ordering, spine order, OPF metadata, NCX structure, EPUB3 nav, container.xml, ZIP packaging, manifest ID generation, section XHTML, default navigation, and default title. One minor difference from Python was identified: Python's default title is 'Unknown' while Go uses 'Untitled', but this was already documented in the validation contract as intentional. The romanToInt fix correctly adds an empty-string guard that Python didn't explicitly have (Python's version has different flow control).",
+    "issues": [
+      {
+        "file": "internal/epub/epub.go",
+        "line": 33,
+        "severity": "non_blocking",
+        "description": "Default title is 'Untitled' while Python epub_output.py line 438 sets default to 'Unknown'. The validation contract (VAL-B-018) explicitly acknowledges this difference. This is an intentional adaptation, not a bug."
+      },
+      {
+        "file": "internal/epub/epub.go",
+        "line": 380,
+        "severity": "non_blocking",
+        "description": "fixHTMLID allows periods (.) in IDs via the regex [^A-Za-z0-9_.-], but Python's fix_html_id also allows periods. However, Python has an additional illustrated_layout branch that replaces '.' with '_' (line 539-540). The Go version omits this illustrated_layout-specific behavior, which is a pre-existing gap unrelated to this feature commit but worth noting for future illustrated layout parity work."
+      },
+      {
+        "file": "internal/epub/epub.go",
+        "line": 200,
+        "severity": "non_blocking",
+        "description": "The sort in contentOPF uses items[i].href < items[j].href for manifest ordering, which is simple string comparison. Python uses sorted(self.manifest, key=lambda m: m.filename) which is also simple string sort. This matches correctly. The naturalSortKeyEpub function is computed but the actual sort uses plain href comparison, meaning the natural sort key is unused dead code in the current implementation."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The AGENTS.md mission file says 'Python reference is READ ONLY' and 'THE FUNDAMENTAL LOGIC WILL ALWAYS STAY THE SAME IN THE PYTHON', but there's an accepted deviation where Go's default title is 'Untitled' instead of Python's 'Unknown'. The validation contract explicitly documents this, but AGENTS.md doesn't mention that intentional deviations from Python behavior are acceptable when documented in the validation contract.",
+      "evidence": "VAL-B-018 validation contract says 'note Go uses \"Untitled\" per epub.go line 32' while Python uses 'Unknown' at line 438"
+    },
+    {
+      "area": "skills",
+      "observation": "The go-port-worker skill says to write tests FIRST (RED) then implement (GREEN). This worker session found the implementation already existed and wrote tests to verify it. The skill doesn't cover the scenario where existing code needs validation tests rather than new implementation. The worker followed a reasonable adaptation of the procedure.",
+      "evidence": "Transcript shows worker read existing epub.go code, then wrote tests to verify it, finding only one minor edge case (romanToInt) that needed fixing."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The naturalSortKeyEpub function in epub.go is computed for each manifest item but the actual sort uses plain string comparison (items[i].href < items[j].href). This dead code could be confusing for future workers who might wonder why natural sort isn't being applied. Should either be removed or the sort should use it.",
+      "evidence": "internal/epub/epub.go lines ~194-200: naturalSortKeyEpub is set on each item's sortKey field but sort.SliceStable compares items[i].href directly"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The feature commit (f221032) adds 38 comprehensive tests covering all 18 VAL-B validation assertions for EPUB packaging parity, plus a minor bug fix to romanToInt empty-string handling. The existing epub.go implementation was already complete from prior sessions — this session's primary contribution is thorough validation testing confirming correct behavior for manifest ordering, spine order, OPF metadata (including defaults, creators with refines, optional fields, modified timestamps, cover image, and Kindle fonts meta), NCX structure (sequential nav IDs, page list types), EPUB3 nav (toc/landmarks/page-list sections, guide type mapping), container.xml, ZIP packaging (mimetype first/stored, alphabetical content), manifest ID generation/sanitization/dedup, section XHTML serialization, default navigation generation, and default title. All tests pass, go vet is clean, and the implementation correctly maps the Python epub_output.py reference logic."
+}

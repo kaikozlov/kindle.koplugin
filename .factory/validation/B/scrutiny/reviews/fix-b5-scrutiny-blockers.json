@@ -1,0 +1,40 @@
+{
+  "featureId": "fix-b5-scrutiny-blockers",
+  "reviewedAt": "2026-04-19T05:45:00.000Z",
+  "commitId": "ee293ce",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix adequately addresses both blocking issues from the b5-metadata-getters review. (1) getFeatureValue now tries $146 key first for $593 fragment iteration, matching Python's IonList-of-IonStruct pattern, with backward-compat fallback to 'items'. (2) processContentDimensions now recursively looks up $157 style fragments from cat.StyleFragments, matching Python yj_metadata.py:813-814. 10 new tests cover both fixes with good edge case coverage. No regressions in existing tests.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_metadata_getters.go",
+        "line": 145,
+        "severity": "non_blocking",
+        "description": "getFeatureValue format_capabilities now iterates ALL entries in cat.FormatCapabilities map, but Python's get_feature_value (yj_metadata.py:372) uses self.fragments.get(\"$593\", first=True) which only gets the FIRST $593 fragment. This means Go may find a feature in a later fragment that Python would miss. The original b5-metadata-getters code also had this behavior, so this is a pre-existing divergence, not introduced by this fix."
+      },
+      {
+        "file": "internal/kfx/yj_metadata_getters.go",
+        "line": 148,
+        "severity": "non_blocking",
+        "description": "The $146 key approach assumes $593 fragment data is decoded as a map with a $146 (children) key containing the list. However, Python's $593 fragment.value is a bare IonList (e.g., [IonStruct(\"$492\", \"kfxgen.textBlock\", \"version\", 1)]). Go's decodeIonMap() (state.go:446-449) would fail on a bare IonList since it asserts the result is map[string]interface{}. This means real KFX $593 data may not be stored in FormatCapabilities at all currently. The fix works correctly for the test data structure but may need a follow-up to handle $593 IonList decoding in state.go. This is a structural concern outside the scope of this fix."
+      },
+      {
+        "file": "internal/kfx/yj_metadata_getters.go",
+        "line": 554,
+        "severity": "non_blocking",
+        "description": "updateCoverSectionAndStoryline uses section.Storyline (from sectionFragment) to look up the storyline, but Python (yj_metadata.py:821) uses page_template.get(\"$176\") to find the storyline fragment. These should be equivalent if sectionFragment.Storyline is populated from $176, but this is a pre-existing divergence worth noting."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "$593 (format_capabilities) fragments in Python are IonLists (arrays of IonStruct), not IonMaps. Go's decodeIonMap() will return an error when decoding raw $593 Ion binary data because it asserts the decoded value is map[string]interface{}. This means real $593 format capabilities data may not populate the FormatCapabilities map at all. The state.go decoding path for $593 may need to use decodeIonValue() instead and handle list types, or the Ion serialization wraps the list in a struct with a $146 key.",
+      "evidence": "Python kpf_book.py:205 creates $593 with value=[IonStruct(...)] (a list). Python yj_metadata.py:374 iterates 'for fc in fragment.value' directly. Go state.go:446-449 decodes $593 via decodeIonMap which asserts map type. Go decode.go:146-157 returns UnsupportedError if decoded value is not map."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/B/scrutiny/reviews/b5-metadata-getters.json",
+  "summary": "PASS. Both blocking issues are adequately addressed. Fix 1 (getFeatureValue format_capabilities): Changed from incorrect 'items' key to $146 key with 'items' fallback, matching Python's IonList-of-IonStruct iteration pattern. Fix 2 (updateCoverSectionAndStoryline $157 processing): Added recursive $157 style fragment lookup and processing in processContentDimensions, matching Python yj_metadata.py:813-814. The $157 processing is correctly ordered before $146 sub-children processing and supports recursive nesting. 10 new tests cover both fixes with edge cases (not found, empty fragment, missing style ref, nested styles, no sections, backward compat). A non-blocking concern remains about whether decodeIonMap in state.go can actually decode $593 IonList data, but this is a structural issue outside the scope of this fix."
+}

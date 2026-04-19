@@ -1,13 +1,13 @@
 {
   "milestone": "B",
-  "round": 2,
-  "status": "pass",
+  "round": 1,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
       "command": "go test ./... -count=1",
       "exitCode": 0,
-      "note": "All synthetic/unit tests pass. Fixture-dependent test failures in internal/jxr, internal/kfx (pipeline), internal/scan are expected (missing REFERENCE/ files). Packages: cmd/kindle-helper OK, internal/epub OK, internal/kfx OK (synthetic)."
+      "note": "All synthetic/unit tests pass. 18 fixture-dependent tests fail due to missing REFERENCE/ files (expected). Packages: cmd/kindle-helper OK, internal/epub OK, internal/kfx OK (synthetic), internal/jxr FAIL (fixtures), internal/scan FAIL (fixtures)."
     },
     "typecheck": {
       "passed": true,
@@ -21,12 +21,27 @@
     }
   },
   "reviewsSummary": {
-    "total": 6,
-    "passed": 6,
-    "failed": 0,
-    "failedFeatures": []
+    "total": 5,
+    "passed": 4,
+    "failed": 1,
+    "failedFeatures": ["b5-metadata-getters"]
   },
-  "blockingIssues": [],
+  "blockingIssues": [
+    {
+      "featureId": "b5-metadata-getters",
+      "file": "internal/kfx/yj_metadata_getters.go",
+      "line": 140,
+      "severity": "blocking",
+      "description": "getFeatureValue format_capabilities path uses incorrect 'items' key to iterate $593 fragment data. Python iterates fragment.value directly as a list (yj_metadata.py:374). The test data fabricates an 'items' key that won't exist in real KFX data. FormatCapabilities should store $593 fragments as lists or iterate the map values directly."
+    },
+    {
+      "featureId": "b5-metadata-getters",
+      "file": "internal/kfx/yj_metadata_getters.go",
+      "line": 555,
+      "severity": "blocking",
+      "description": "updateCoverSectionAndStoryline is missing the $157 style fragment recursive processing present in Python (yj_metadata.py:814). The Go code only processes $146 subcontent children but does not recursively process style fragments referenced via $157 keys."
+    }
+  ],
   "nonBlockingIssues": [
     {
       "featureId": "b1-epub-packaging-parity",
@@ -87,18 +102,6 @@
     {
       "featureId": "b5-metadata-getters",
       "description": "reportFeaturesAndMetadata heavily simplified from Python (debug function)"
-    },
-    {
-      "featureId": "fix-b5-scrutiny-blockers",
-      "description": "Go iterates ALL FormatCapabilities entries while Python only checks the first $593 fragment (pre-existing divergence)"
-    },
-    {
-      "featureId": "fix-b5-scrutiny-blockers",
-      "description": "decodeIonMap() may fail on raw $593 IonList data — structural concern in state.go outside this fix's scope"
-    },
-    {
-      "featureId": "fix-b5-scrutiny-blockers",
-      "description": "Storyline lookup uses section.Storyline vs Python's page_template.get($176) (pre-existing divergence)"
     }
   ],
   "appliedUpdates": [],
@@ -119,7 +122,7 @@
   "rejectedObservations": [
     {
       "observation": "Go DOM lacks parent pointers — architectural constraint for future porting",
-      "reason": "Already known architectural limitation; documenting in AGENTS.md is not the right place. This belongs in library/ architecture docs."
+      "reason": "Already known architectural limitation; documenting in AGENTS.md is not the right place. This belongs in library/ architecture docs, which already exists."
     },
     {
       "observation": "Map-based style manipulation pattern should be documented as Go convention",
@@ -130,5 +133,5 @@
       "reason": "Already captured in non-blocking issues; not a shared state observation requiring documentation update"
     }
   ],
-  "previousRound": ".factory/validation/B/scrutiny/synthesis.json.round1"
+  "previousRound": null
 }
