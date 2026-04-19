@@ -947,10 +947,17 @@ func IsKnownKCBData(cat, key string, val interface{}) bool {
 // ---------------------------------------------------------------------------
 
 // toVersionKey converts a Go value to a VersionKey for lookup in KnownFeatures.
+// In Python, True==1 (bool is a subclass of int), so we treat bool true as int 1.
 func toVersionKey(val interface{}) VersionKey {
 	switch v := val.(type) {
 	case int:
 		return IntVersionKey(v)
+	case bool:
+		// Python: True==1, False==0
+		if v {
+			return IntVersionKey(1)
+		}
+		return IntVersionKey(0)
 	case [2]int:
 		return TupleVersionKey(v[0], v[1])
 	case string:

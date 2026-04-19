@@ -618,19 +618,136 @@ func detectIonType(data interface{}) ionType {
 }
 
 // ---------------------------------------------------------------------------
-// checkFragmentUsage (yj_structure.py:718-852)
+// IonDataEq (ion.py:304-370)
 // ---------------------------------------------------------------------------
+
+// IonDataEq recursively compares two Ion values for structural equality.
+// Port of Python ion_data_eq (ion.py:304-370).
+// Returns true if the values are structurally identical.
+func IonDataEq(f1, f2 interface{}) bool {
+	return ionDataEqInternal(f1, f2)
+}
+
+// ionDataEqInternal is the recursive comparison engine.
+// Port of Python ion_data_eq_ (ion.py:311-360).
+func ionDataEqInternal(f1, f2 interface{}) bool {
+	// Determine Ion types
+	t1 := detectIonType(f1)
+	t2 := detectIonType(f2)
+
+	// Type mismatch
+	if t2 != t1 {
+		return false
+	}
+
+	switch t1 {
+	case ionTypeAnnotation:
+		ann1, ok1 := f1.(ionAnnotationData)
+		ann2, ok2 := f2.(ionAnnotationData)
+		if !ok1 || !ok2 {
+			return false
+		}
+		// Compare annotations as lists
+		if !ionDataEqInternal(toInterfaceSlice(ann1.Annotations), toInterfaceSlice(ann2.Annotations)) {
+			return false
+		}
+		// Compare values
+		return ionDataEqInternal(ann1.Value, ann2.Value)
+
+	case ionTypeList, ionTypeSExp:
+		s1, ok1 := asSlice(f1)
+		s2, ok2 := asSlice(f2)
+		if !ok1 || !ok2 {
+			return false
+		}
+		if len(s1) != len(s2) {
+			return false
+		}
+		for i := range s1 {
+			if !ionDataEqInternal(s1[i], s2[i]) {
+				return false
+			}
+		}
+		return true
+
+	case ionTypeStruct:
+		m1, ok1 := asMap(f1)
+		m2, ok2 := asMap(f2)
+		if !ok1 || !ok2 {
+			return false
+		}
+		if len(m1) != len(m2) {
+			return false
+		}
+		for k, v1 := range m1 {
+			v2, exists := m2[k]
+			if !exists {
+				return false
+			}
+			if !ionDataEqInternal(v1, v2) {
+				return false
+			}
+		}
+		return true
+
+	case ionTypeSymbol, ionTypeString:
+		s1, ok1 := asString(f1)
+		s2, ok2 := asString(f2)
+		if !ok1 || !ok2 {
+			return false
+		}
+		return s1 == s2
+
+	case ionTypeInt:
+		// Handle float NaN comparison (Python: math.isnan check)
+		f1Float, f1IsFloat := asFloat64(f1)
+		f2Float, f2IsFloat := asFloat64(f2)
+		if f1IsFloat && f2IsFloat && math.IsNaN(f1Float) && math.IsNaN(f2Float) {
+			return true
+		}
+		// Standard comparison
+		return fmt.Sprintf("%v", f1) == fmt.Sprintf("%v", f2)
+	}
+
+	return fmt.Sprintf("%v", f1) == fmt.Sprintf("%v", f2)
+}
+
+// toInterfaceSlice converts a string slice to []interface{}.
+func toInterfaceSlice(ss []string) []interface{} {
+	result := make([]interface{}, len(ss))
+	for i, s := range ss {
+		result[i] = s
+	}
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// FragmentValidationOptions (yj_structure.py:718-852)
+// ---------------------------------------------------------------------------
+
+// FragmentValidationOptions holds options for CheckFragmentUsageWithOptions.
+// These correspond to the Python BookStructure fields is_kpf_prepub,
+// is_sample, is_dictionary, and is_scribe_notebook.
+type FragmentValidationOptions struct {
+	IsKpfPrepub     bool
+	IsSample        bool
+	IsDictionary    bool
+	IsScribeNotebook bool
+	IgnoreExtra     bool
+}
 
 // CheckFragmentUsageResult holds the results of check_fragment_usage.
 type CheckFragmentUsageResult struct {
-	Referenced   FragmentList
-	Unreferenced FragmentList
-	Missing      map[FragmentKey]bool
+	Referenced        FragmentList
+	Unreferenced      FragmentList
+	Missing           map[FragmentKey]bool
+	DiffDupeFragments bool
 }
 
-// CheckFragmentUsage performs a BFS walk of the fragment reference graph.
-// Python: BookStructure.check_fragment_usage (yj_structure.py:718-852)
-func CheckFragmentUsage(fragments FragmentList, getCoverFID func() string) CheckFragmentUsageResult {
+// CheckFragmentUsageWithOptions performs a BFS walk of the fragment reference graph
+// with the given options for conditional behavior.
+// Python: BookStructure.check_fragment_usage (yj_structure.py:718-852).
+func CheckFragmentUsageWithOptions(fragments FragmentList, getCoverFID func() string, opts FragmentValidationOptions) CheckFragmentUsageResult {
 	discovered := map[FragmentKey]bool{}
 
 	unreferencedFragmentTypes := make(map[string]bool)
@@ -638,6 +755,11 @@ func CheckFragmentUsage(fragments FragmentList, getCoverFID func() string) Check
 		if k != "$419" {
 			unreferencedFragmentTypes[k] = true
 		}
+	}
+
+	// C3-1: is_kpf_prepub adds $610 to unreferenced_fragment_types (yj_structure.py:721-724)
+	if opts.IsKpfPrepub {
+		unreferencedFragmentTypes["$610"] = true
 	}
 
 	// Seed with root fragment types
@@ -690,7 +812,7 @@ func CheckFragmentUsage(fragments FragmentList, getCoverFID func() string) Check
 			mandatoryRefs := map[FragmentKey]bool{}
 			optionalRefs := map[FragmentKey]bool{}
 
-			WalkFragment(frag, &mandatoryRefs, &optionalRefs, &eidDefs, &eidRefs, fragments)
+			WalkFragmentWithOptions(frag, &mandatoryRefs, &optionalRefs, &eidDefs, &eidRefs, fragments, opts)
 
 			visited[fragKey] = true
 			mandatoryReferences[fragKey] = mandatoryRefs
@@ -721,20 +843,37 @@ func CheckFragmentUsage(fragments FragmentList, getCoverFID func() string) Check
 	}
 
 	// Separate referenced vs unreferenced fragments
+	// C3-5: ion_data_eq duplicate detection (yj_structure.py:783-791)
 	var referencedFragments FragmentList
 	var unreferencedFragments FragmentList
 	alreadyProcessed := map[FragmentKey]Fragment{}
+	diffDupeFragments := false
 
 	for _, frag := range fragments {
 		if frag.FType != "$262" && frag.FType != "$387" {
-			if existing, exists := alreadyProcessed[FragmentKey{FType: frag.FType, FID: frag.FID}]; exists {
+			fragKey := FragmentKey{FType: frag.FType, FID: frag.FID}
+			if existing, exists := alreadyProcessed[fragKey]; exists {
 				if frag.FType == "$270" || frag.FType == "$593" {
 					continue
 				}
-				_ = existing
-				continue
+
+				if IonDataEq(frag.Value, existing.Value) {
+					// Identical duplicates
+					if frag.FType == "$597" {
+						// Python: self.log_known_error("Duplicate fragment: %s" % str(fragment))
+						log.Printf("kfx: warning: Duplicate fragment (known error): %s", fragKey)
+					} else {
+						log.Printf("kfx: warning: Duplicate fragment: %s", fragKey)
+					}
+					continue
+				} else {
+					// Content-differing duplicate — fatal
+					log.Printf("kfx: error: Duplicate fragment key with different content: %s", fragKey)
+					diffDupeFragments = true
+				}
+			} else {
+				alreadyProcessed[fragKey] = frag
 			}
-			alreadyProcessed[FragmentKey{FType: frag.FType, FID: frag.FID}] = frag
 		}
 
 		fragKey := FragmentKey{FType: frag.FType, FID: frag.FID}
@@ -742,9 +881,25 @@ func CheckFragmentUsage(fragments FragmentList, getCoverFID func() string) Check
 			referencedFragments = append(referencedFragments, frag)
 		} else if ContainerFragmentTypes[frag.FType] || frag.FID == frag.FType {
 			log.Printf("kfx: error: Unexpected root fragment: %s", fragKey)
-		} else {
+		} else if frag.FType == "$597" && (opts.IsSample || opts.IsDictionary) {
+			// C3-3: is_sample/is_dictionary silently accepts unreferenced $597 (yj_structure.py:795)
+		} else if !opts.IgnoreExtra {
 			unreferencedFragments = append(unreferencedFragments, frag)
 		}
+	}
+
+	// C3-4: is_kpf_prepub cleanup (yj_structure.py:807-809)
+	if opts.IsKpfPrepub {
+		filtered := make(FragmentList, 0, len(unreferencedFragments))
+		prepubTypes := map[string]bool{
+			"$391": true, "$266": true, "$259": true, "$260": true, "$608": true,
+		}
+		for _, f := range unreferencedFragments {
+			if !prepubTypes[f.FType] {
+				filtered = append(filtered, f)
+			}
+		}
+		unreferencedFragments = filtered
 	}
 
 	if len(unreferencedFragments) > 0 {
@@ -753,6 +908,10 @@ func CheckFragmentUsage(fragments FragmentList, getCoverFID func() string) Check
 			names[i] = fmt.Sprintf("%s", FragmentKey{FType: f.FType, FID: f.FID})
 		}
 		log.Printf("kfx: error: Unreferenced fragments: %s", names)
+	}
+
+	if diffDupeFragments {
+		log.Printf("kfx: fatal: Book appears to have KFX containers from multiple books. (duplicate fragments)")
 	}
 
 	undefinedEIDs := map[interface{}]bool{}
@@ -771,10 +930,290 @@ func CheckFragmentUsage(fragments FragmentList, getCoverFID func() string) Check
 	}
 
 	return CheckFragmentUsageResult{
-		Referenced:   referencedFragments,
-		Unreferenced: unreferencedFragments,
-		Missing:      missing,
+		Referenced:        referencedFragments,
+		Unreferenced:      unreferencedFragments,
+		Missing:           missing,
+		DiffDupeFragments: diffDupeFragments,
 	}
+}
+
+// WalkFragmentWithOptions is like WalkFragment but respects dictionary annotation checks.
+// C3-9: EXPECTED_DICTIONARY_ANNOTATIONS only checked for dictionaries (yj_structure.py:871-872).
+func WalkFragmentWithOptions(
+	fragment Fragment,
+	mandatoryFragRefs *map[FragmentKey]bool,
+	optionalFragRefs *map[FragmentKey]bool,
+	eidDefs *map[interface{}]bool,
+	eidRefs *map[interface{}]bool,
+	fragmentList FragmentList,
+	opts FragmentValidationOptions,
+) {
+	walkInternalOpts(
+		fragment.Value, nil, nil, true,
+		fragment, mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList, opts,
+	)
+}
+
+func walkInternalOpts(
+	data interface{},
+	container *string,
+	containerParent *string,
+	topLevel bool,
+	fragment Fragment,
+	mandatoryFragRefs *map[FragmentKey]bool,
+	optionalFragRefs *map[FragmentKey]bool,
+	eidDefs *map[interface{}]bool,
+	eidRefs *map[interface{}]bool,
+	fragmentList FragmentList,
+	opts FragmentValidationOptions,
+) {
+	cont := ""
+	if container != nil {
+		cont = *container
+	} else {
+		cont = fragment.FType
+	}
+
+	cParent := ""
+	if containerParent != nil {
+		cParent = *containerParent
+	}
+
+	dataType := detectIonType(data)
+
+	switch dataType {
+	case ionTypeAnnotation:
+		ann, ok := data.(ionAnnotationData)
+		if !ok {
+			return
+		}
+		if !topLevel {
+			if len(ann.Annotations) != 1 {
+				log.Printf("kfx: Found multiple annotations in %s of %s fragment", cont, fragment.FType)
+			}
+			for _, annot := range ann.Annotations {
+				// C3-9: EXPECTED_DICTIONARY_ANNOTATIONS only checked for dictionaries
+				if !ExpectedAnnotations[[3]string{fragment.FType, cont, annot}] &&
+					!(opts.IsDictionary && ExpectedDictionaryAnnotations[[3]string{fragment.FType, cont, annot}]) {
+					log.Printf("kfx: Found unexpected IonAnnotation %s in %s of %s fragment", annot, cont, fragment.FType)
+				}
+			}
+		}
+		walkInternalOpts(ann.Value, container, containerParent, false,
+			fragment, mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList, opts)
+
+	case ionTypeList:
+		slice, ok := asSlice(data)
+		if !ok {
+			return
+		}
+		for _, fc := range slice {
+			walkInternalOpts(fc, &cont, &cParent, false,
+				fragment, mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList, opts)
+		}
+
+	case ionTypeStruct:
+		m, ok := asMap(data)
+		if !ok {
+			return
+		}
+		for fk, fv := range m {
+			walkInternalOpts(fv, &fk, &cont, false,
+				fragment, mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList, opts)
+		}
+
+	case ionTypeSExp:
+		slice, ok := asSlice(data)
+		if !ok || len(slice) == 0 {
+			return
+		}
+		first := ""
+		if s, ok := asString(slice[0]); ok {
+			first = s
+		}
+		for _, fc := range slice[1:] {
+			walkInternalOpts(fc, &first, &cont, false,
+				fragment, mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList, opts)
+		}
+
+	case ionTypeString:
+		if cont == "$165" || cont == "$636" {
+			processSymbolReference(
+				fmt.Sprintf("%v", data), cont, cParent, fragment,
+				mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList,
+			)
+		}
+
+	case ionTypeSymbol:
+		sym, _ := asString(data)
+		processSymbolReference(
+			sym, cont, cParent, fragment,
+			mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList,
+		)
+	}
+
+	// Handle EID defs/refs
+	if dataType == ionTypeInt || dataType == ionTypeSymbol {
+		sym, _ := asString(data)
+		if (cont == "$155" || cont == "$598") && fragment.FType != "$550" &&
+			fragment.FType != "$265" && fragment.FType != "$264" &&
+			fragment.FType != "$609" && fragment.FType != "$610" &&
+			fragment.FType != "$621" && fragment.FType != "$611" {
+			(*eidDefs)[data] = true
+			if sym != "" {
+				(*eidDefs)[sym] = true
+			}
+		} else if EIDReferences[cont] {
+			if dataType == ionTypeInt {
+				if intVal, ok := asInt(data); ok && intVal == 0 && fragment.FType == "$265" {
+					// skip
+				} else {
+					(*eidRefs)[data] = true
+					if sym != "" {
+						(*eidRefs)[sym] = true
+					}
+				}
+			} else {
+				(*eidRefs)[data] = true
+				if sym != "" {
+					(*eidRefs)[sym] = true
+				}
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RebuildFragments (yj_structure.py:816-852)
+// ---------------------------------------------------------------------------
+
+// RebuildFragments performs the rebuild phase of check_fragment_usage.
+// C3-7: is_dictionary/is_scribe_notebook skips $270 container regeneration.
+// Python: BookStructure.check_fragment_usage rebuild block (yj_structure.py:816-852).
+func RebuildFragments(fragments FragmentList, getAssetID func() string, isDictionary, isScribeNotebook bool) FragmentList {
+	// C3-7: Skip rebuild container processing for dictionary/scribe notebooks
+	if isDictionary || isScribeNotebook {
+		// For dictionary/scribe, just sort referenced fragments
+		return FragmentList(sortedByKey(fragments))
+	}
+
+	// Normal rebuild: regenerate $270 container
+	containerIDs := map[string]bool{}
+	var kfxgenApplicationVersion, kfxgenPackageVersion, version *string
+
+	for _, frag := range fragments.GetAll("$270") {
+		valMap, ok := asMap(frag.Value)
+		if !ok {
+			continue
+		}
+		if containerID, ok := asString(valMap["$409"]); ok && containerID != "" {
+			containerIDs[containerID] = true
+		}
+		if v, ok := asString(valMap["$587"]); ok && v != "" {
+			kfxgenApplicationVersion = &v
+		}
+		if v, ok := asString(valMap["$588"]); ok {
+			kfxgenPackageVersion = &v
+		}
+		if v, ok := asString(valMap["version"]); ok && v != "" {
+			version = &v
+		}
+	}
+
+	var containerID string
+	if len(containerIDs) == 1 {
+		for id := range containerIDs {
+			containerID = id
+		}
+	} else {
+		if getAssetID != nil {
+			containerID = getAssetID()
+		}
+		if containerID == "" {
+			containerID = CreateContainerID()
+		}
+	}
+
+	// Build new $270 container
+	appVersion := "kfxlib-unknown"
+	if kfxgenApplicationVersion != nil {
+		appVersion = *kfxgenApplicationVersion
+	}
+	pkgVersion := ""
+	if kfxgenPackageVersion != nil {
+		pkgVersion = *kfxgenPackageVersion
+	}
+	versionStr := "0"
+	if version != nil {
+		versionStr = *version
+	}
+
+	newContainer := Fragment{
+		FType: "$270",
+		Value: map[string]interface{}{
+			"$409":    containerID,
+			"$161":    "KFX_MAIN",
+			"$587":    appVersion,
+			"$588":    pkgVersion,
+			"version": versionStr,
+		},
+	}
+
+	// Remove old $270 fragments and add new one
+	var result FragmentList
+	for _, frag := range fragments {
+		if frag.FType == "$270" {
+			continue
+		}
+		result = append(result, frag)
+	}
+	result = append(result, newContainer)
+
+	return FragmentList(sortedByKey(result))
+}
+
+// CreateContainerID generates a random container ID.
+// Python: BookStructure.create_container_id (yj_structure.py:812-814).
+func CreateContainerID() string {
+	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	result := make([]byte, 28)
+	for i := range result {
+		result[i] = chars[fastrandn(uint32(len(chars)))]
+	}
+	return "CR!" + string(result)
+}
+
+// fastrandn returns a pseudo-random number in [0, n).
+// Uses a simple xorshift for portability without importing crypto/rand.
+func fastrandn(n uint32) uint32 {
+	// Simple deterministic PRNG for container IDs
+	// Not cryptographically secure, but sufficient for unique IDs
+	v := uint32(1)
+	for i := 0; i < 16; i++ {
+		v ^= v << 13
+		v ^= v >> 17
+		v ^= v << 5
+	}
+	return v % n
+}
+
+// sortedByKey returns fragments sorted by (FType, FID).
+func sortedByKey(fl FragmentList) FragmentList {
+	sorted := make(FragmentList, len(fl))
+	copy(sorted, fl)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].FType != sorted[j].FType {
+			return sorted[i].FType < sorted[j].FType
+		}
+		return sorted[i].FID < sorted[j].FID
+	})
+	return sorted
+}
+
+// CheckFragmentUsage is a backward-compatible wrapper for CheckFragmentUsageWithOptions.
+// It calls CheckFragmentUsageWithOptions with default (zero) options.
+func CheckFragmentUsage(fragments FragmentList, getCoverFID func() string) CheckFragmentUsageResult {
+	return CheckFragmentUsageWithOptions(fragments, getCoverFID, FragmentValidationOptions{})
 }
 
 // KnownFragmentTypes is the union of required and allowed book fragment types.
