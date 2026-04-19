@@ -6,13 +6,14 @@ local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local _ = require("gettext")
 local logger = require("logger")
 
-local CacheManager = require("src/cache_manager")
-local DocSettingsExt = require("src/docsettings_ext")
-local DocumentExt = require("src/document_ext")
-local FileChooserExt = require("src/filechooser_ext")
-local HelperClient = require("src/helper_client")
-local LibraryIndex = require("src/library_index")
-local VirtualLibrary = require("src/virtual_library")
+local CacheManager = require("lua/cache_manager")
+local DocSettingsExt = require("lua/docsettings_ext")
+local DocumentExt = require("lua/document_ext")
+local FileChooserExt = require("lua/filechooser_ext")
+local HelperClient = require("lua/helper_client")
+local LibraryIndex = require("lua/library_index")
+local ShowReaderExt = require("lua/showreader_ext")
+local VirtualLibrary = require("lua/virtual_library")
 
 local default_settings = {
     enable_virtual_library = true,
@@ -20,6 +21,7 @@ local default_settings = {
     cache_dir = DataStorage:getFullDataDir() .. "/cache/kindle.koplugin",
     index_ttl_seconds = 300,
     last_scan_at = 0,
+    drm_initialized = false,
 }
 
 local function cloneDefaults()
@@ -35,6 +37,12 @@ local library_index = LibraryIndex:new(helper_client)
 local virtual_library = VirtualLibrary:new(library_index)
 local cache_manager = CacheManager:new(helper_client, virtual_library)
 virtual_library:setCacheManager(cache_manager)
+
+local function applyShowReaderExtensions()
+    local ext = ShowReaderExt
+    ext:init(virtual_library)
+    ext:apply()
+end
 
 local function applyDocumentExtensions()
     local DocumentRegistry = require("document/documentregistry")
@@ -65,6 +73,7 @@ cache_manager:setSettings(plugin_settings)
 
 if plugin_settings.enable_virtual_library ~= false then
     logger.info("KindlePlugin: enabling virtual library patches")
+    applyShowReaderExtensions()
     applyDocumentExtensions()
     applyDocSettingsExtensions()
     applyFileChooserExtensions()
@@ -139,6 +148,91 @@ function KindlePlugin:clearAllCache()
     self:showInfo(_("Kindle cache cleared."), 2)
 end
 
+function KindlePlugin:setupDRM()
+    self:showInfo(_("Setting up DRM decryption…\nThis may take a moment."), 0)
+
+    UIManager:scheduleIn(0.1, function()
+        local result, err = helper_client:drmInit()
+        if not result then
+            UIManager:show(InfoMessage:new({
+                text = _("DRM setup failed:\n") .. (err or _("unknown error")),
+                timeout = 5,
+            }))
+            return
+        end
+
+        if not result.ok then
+            UIManager:show(InfoMessage:new({
+                text = _("DRM setup failed:\n") .. (result.message or _("unknown error")),
+                timeout = 5,
+            }))
+            return
+        end
+
+        self.settings.drm_initialized = true
+        self:saveSettings()
+
+        -- Refresh the library to pick up new DRM book statuses
+        virtual_library:refresh(true)
+
+        local msg = _("DRM setup complete.\n")
+        msg = msg .. string.format(_("Books found: %d\nKeys extracted: %d"), result.books_found, result.keys_found)
+
+        UIManager:show(InfoMessage:new({
+            text = msg,
+            timeout = 5,
+        }))
+    end)
+end
+
+function KindlePlugin:showAbout()
+    local books, _ = library_index:getBooks(false)
+    local total = books and #books or 0
+    local drm_count = 0
+    local convert_count = 0
+    local direct_count = 0
+    local blocked_count = 0
+
+    if books then
+        for _, book in ipairs(books) do
+            if book.open_mode == "drm" then
+                drm_count = drm_count + 1
+            elseif book.open_mode == "convert" then
+                convert_count = convert_count + 1
+            elseif book.open_mode == "direct" then
+                direct_count = direct_count + 1
+            elseif book.open_mode == "blocked" then
+                blocked_count = blocked_count + 1
+            end
+        end
+    end
+
+    local drm_status = _("Not set up")
+    if self.settings.drm_initialized then
+        drm_status = _("Ready")
+    end
+
+    local msg = string.format(
+        _([[Kindle Virtual Library
+
+Total books: %d
+  DRM-protected: %d
+  Convertible: %d
+  Direct open: %d
+  Blocked: %d
+
+DRM: %s
+Root: %s
+Cache: %s]]),
+        total, drm_count, convert_count, direct_count, blocked_count,
+        drm_status,
+        self.settings.documents_root or default_settings.documents_root,
+        self.settings.cache_dir or default_settings.cache_dir
+    )
+
+    UIManager:show(InfoMessage:new({ text = msg }))
+end
+
 function KindlePlugin:addToMainMenu(menu_items)
     menu_items.kindle_plugin = {
         text = _("Kindle Library"),
@@ -155,6 +249,14 @@ function KindlePlugin:addToMainMenu(menu_items)
                 callback = function()
                     self:refreshLibrary()
                 end,
+            },
+            {
+                text = _("Setup DRM Decryption"),
+                help_text = _("Extract decryption keys from the device to open DRM-protected Kindle books."),
+                callback = function()
+                    self:setupDRM()
+                end,
+                separator = true,
             },
             {
                 text = _("Clear Kindle Cache"),
@@ -192,6 +294,13 @@ function KindlePlugin:addToMainMenu(menu_items)
                 end,
                 enabled_func = function()
                     return false
+                end,
+                separator = true,
+            },
+            {
+                text = _("About Kindle Library"),
+                callback = function()
+                    self:showAbout()
                 end,
             },
         },

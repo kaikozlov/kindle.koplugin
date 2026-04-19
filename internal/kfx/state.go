@@ -82,6 +82,21 @@ func buildBookState(path string) (*bookState, error) {
 	return organizeFragments(path, sources)
 }
 
+// buildBookStateFromData creates a bookState from in-memory CONT KFX data.
+// This is used after DRMION decryption produces a valid CONT container.
+func buildBookStateFromData(contData []byte) (*bookState, error) {
+	if len(contData) < 18 || !bytes.HasPrefix(contData, contSignature) {
+		return nil, &UnsupportedError{Message: "data is not a valid CONT KFX container"}
+	}
+
+	source, err := loadContainerSourceData("<decrypted>", contData)
+	if err != nil {
+		return nil, err
+	}
+
+	return organizeFragments("<decrypted>", []*containerSource{source})
+}
+
 func loadBookSources(path string) ([]*containerSource, error) {
 	blobs, hasDRM, err := collectContainerBlobs(path)
 	if err != nil {

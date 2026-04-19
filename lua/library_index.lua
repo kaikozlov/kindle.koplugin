@@ -34,12 +34,15 @@ function LibraryIndex:refresh(force)
     local now = os.time()
 
     if not force and self.books and (now - self.loaded_at) < ttl then
+        logger.dbg("KindlePlugin: library index cache is fresh (age:", now - self.loaded_at, "s, ttl:", ttl, "s)")
         return self.books
     end
 
     local root = self.settings.documents_root or "/mnt/us/documents"
+    logger.info("KindlePlugin: refreshing library index from:", root)
     local result, err = self.helper_client:scan(root)
     if not result then
+        logger.warn("KindlePlugin: library scan failed:", err)
         return nil, err
     end
 
@@ -52,6 +55,13 @@ function LibraryIndex:refresh(force)
     sortBooks(self.books)
     self.loaded_at = now
     self.settings.last_scan_at = now
+
+    local modes = {}
+    for _, book in ipairs(self.books) do
+        local m = book.open_mode or "unknown"
+        modes[m] = (modes[m] or 0) + 1
+    end
+    logger.info("KindlePlugin: library index refreshed,", #self.books, "books, modes:", modes)
 
     return self.books
 end

@@ -2,6 +2,7 @@ local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
+local logger = require("logger")
 local _ = require("gettext")
 
 local FileChooserExt = {}
@@ -113,6 +114,7 @@ function FileChooserExt:showBookDialog(fc_self, item)
 end
 
 function FileChooserExt:apply(FileChooser)
+    logger.info("KindlePlugin: applying FileChooser patches")
     self.original_methods.changeToPath = FileChooser.changeToPath
     self.original_methods.refreshPath = FileChooser.refreshPath
     self.original_methods.genItemTable = FileChooser.genItemTable
@@ -182,6 +184,7 @@ function FileChooserExt:apply(FileChooser)
     end
 
     FileChooser.showKindleVirtualLibrary = function(fc_self)
+        logger.info("KindlePlugin: showing virtual library")
         fc_self.path = "KINDLE_VIRTUAL://"
         local book_entries, err = self.virtual_library:getBookEntries(true)
         if not book_entries then

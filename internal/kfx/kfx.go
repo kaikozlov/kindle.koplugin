@@ -160,6 +160,19 @@ type pageEntry struct {
 }
 
 func Classify(path string) (openMode string, blockReason string, err error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", err
+	}
+
+	if bytes.HasPrefix(data, drmionSignature) {
+		return "drm", "", nil
+	}
+
+	if !bytes.HasPrefix(data, contSignature) && !bytes.HasPrefix(data, []byte("PK\x03\x04")) {
+		return "blocked", "unsupported_kfx_layout", nil
+	}
+
 	blobs, hasDRM, err := collectContainerBlobs(path)
 	if err != nil {
 		return "", "", err
@@ -174,16 +187,33 @@ func Classify(path string) (openMode string, blockReason string, err error) {
 	return "convert", "", nil
 }
 
-func ConvertFile(inputPath, outputPath string) error {
+func ConvertFile(inputPath, outputPath string, cacheDir string) error {
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		return err
+	}
+
+	// Handle DRMION: decrypt to CONT first
+	if bytes.HasPrefix(data, drmionSignature) {
+		pageKey, err := FindPageKey(inputPath, cacheDir)
+		if err != nil {
+			return &DRMError{Message: err.Error()}
+		}
+
+		contData, err := decryptDRMION(data, pageKey)
+		if err != nil {
+			return &DRMError{Message: fmt.Sprintf("decryption failed: %s", err)}
+		}
+
+		return convertFromCONTData(contData, outputPath)
+	}
+
 	mode, reason, err := Classify(inputPath)
 	if err != nil {
 		return err
 	}
 	if mode == "blocked" {
-		if reason == "drm" {
-			return &DRMError{Message: "DRM-protected KFX is not supported"}
-		}
-		return &UnsupportedError{Message: "KFX book layout is not supported by the proof-of-concept converter"}
+		return &UnsupportedError{Message: "KFX book layout is not supported by the proof-of-concept converter: " + reason}
 	}
 
 	book, err := decodeKFX(inputPath)
@@ -222,6 +252,46 @@ func decodeKFX(path string) (*decodedBook, error) {
 		fmt.Fprintf(os.Stderr, "docSymbols length=%d first=% x\n", len(state.Source.DocSymbols), state.Source.DocSymbols[:minInt(16, len(state.Source.DocSymbols))])
 	}
 	return renderBookState(state)
+}
+
+// convertFromCONTData takes raw CONT KFX data and converts it to EPUB.
+// This is used after DRMION decryption produces a valid CONT container.
+func convertFromCONTData(contData []byte, outputPath string) error {
+	if !bytes.HasPrefix(contData, contSignature) {
+		return &UnsupportedError{Message: "decrypted data is not a valid CONT KFX container"}
+	}
+
+	// Feed the CONT data through the normal decode pipeline
+	state, err := buildBookStateFromData(contData)
+	if err != nil {
+		return err
+	}
+
+	book, err := renderBookState(state)
+	if err != nil {
+		return err
+	}
+	if len(book.Sections) == 0 {
+		return &UnsupportedError{Message: "no readable sections were extracted from the decrypted KFX file"}
+	}
+
+	return epub.Write(outputPath, epub.Book{
+		Identifier:          book.Identifier,
+		Title:               book.Title,
+		Language:            book.Language,
+		Authors:             book.Authors,
+		Published:           book.Published,
+		Description:         book.Description,
+		Publisher:           book.Publisher,
+		OverrideKindleFonts: book.OverrideKindleFonts,
+		CoverImageHref:      book.CoverImageHref,
+		Stylesheet:          book.Stylesheet,
+		Sections:            book.Sections,
+		Resources:           book.Resources,
+		Navigation:          book.Navigation,
+		Guide:               book.Guide,
+		PageList:            book.PageList,
+	})
 }
 
 // styleBaseName returns a simplified class base name from a style ID, applying

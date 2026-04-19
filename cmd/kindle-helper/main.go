@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
+	"github.com/kaikozlov/kindle-koplugin/internal/drm"
 	"github.com/kaikozlov/kindle-koplugin/internal/jsonout"
 	"github.com/kaikozlov/kindle-koplugin/internal/kfx"
 	"github.com/kaikozlov/kindle-koplugin/internal/scan"
@@ -16,7 +18,7 @@ const version = 1
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "usage: kindle-helper <scan|convert> [flags]\n")
+		fmt.Fprintf(os.Stderr, "usage: kindle-helper <scan|convert|drm-init> [flags]\n")
 		os.Exit(2)
 	}
 
@@ -25,6 +27,8 @@ func main() {
 		cmdScan(os.Args[2:])
 	case "convert":
 		cmdConvert(os.Args[2:])
+	case "drm-init":
+		cmdDrmInit(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(2)
@@ -60,6 +64,7 @@ func cmdConvert(args []string) {
 	fs := flag.NewFlagSet("convert", flag.ExitOnError)
 	input := fs.String("input", "", "input KFX file path")
 	output := fs.String("output", "", "output EPUB file path")
+	cacheDir := fs.String("cache-dir", "", "cache directory for drm_keys.json")
 	fs.Parse(args)
 
 	if *input == "" {
@@ -71,7 +76,7 @@ func cmdConvert(args []string) {
 		os.Exit(2)
 	}
 
-	err := kfx.ConvertFile(*input, *output)
+	err := kfx.ConvertFile(*input, *output, *cacheDir)
 	if err == nil {
 		writeJSON(jsonout.ConvertResult{
 			Version:    version,
@@ -102,6 +107,31 @@ func cmdConvert(args []string) {
 	})
 }
 
+func cmdDrmInit(args []string) {
+	fs := flag.NewFlagSet("drm-init", flag.ExitOnError)
+	root := fs.String("root", "/mnt/us/documents", "root directory to scan for DRM books")
+	cacheDir := fs.String("cache-dir", "", "cache directory for drm_keys.json")
+	fs.Parse(args)
+
+	result, err := drm.Run(*root, getPluginDir(), *cacheDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "drm-init: %v\n", err)
+		writeJSON(jsonout.DrmInitResult{
+			Version: version,
+			OK:      false,
+			Message: err.Error(),
+		})
+		os.Exit(1)
+	}
+
+	writeJSON(jsonout.DrmInitResult{
+		Version:    version,
+		OK:         true,
+		BooksFound: result.BooksFound,
+		KeysFound:  result.KeysFound,
+	})
+}
+
 func writeJSON(v interface{}) {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -110,4 +140,12 @@ func writeJSON(v interface{}) {
 	}
 	os.Stdout.Write(data)
 	os.Stdout.Write([]byte("\n"))
+}
+
+func getPluginDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(exe)
 }

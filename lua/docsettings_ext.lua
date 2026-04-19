@@ -1,4 +1,5 @@
 local DataStorage = require("datastorage")
+local logger = require("logger")
 
 local DocSettingsExt = {}
 
@@ -28,6 +29,7 @@ function DocSettingsExt:init(virtual_library)
 end
 
 function DocSettingsExt:apply(DocSettings)
+    logger.info("KindlePlugin: applying DocSettings patches")
     self.original_methods.getSidecarDir = DocSettings.getSidecarDir
     self.original_methods.getSidecarFilename = DocSettings.getSidecarFilename
     self.original_methods.getHistoryPath = DocSettings.getHistoryPath
