@@ -62,6 +62,7 @@ function VirtualLibrary:buildMappings(force)
         self.real_to_virtual[book.source_path] = book.virtual_path
     end
 
+    logger.info("KindlePlugin: built mappings for", #books, "books")
     return books
 end
 
@@ -133,6 +134,10 @@ function VirtualLibrary:registerOpenAlias(real_path, virtual_path)
     self.virtual_to_open_alias[virtual_path] = real_path
 end
 
+function VirtualLibrary:isOpenAlias(real_path)
+    return self.open_alias_to_virtual[real_path] ~= nil
+end
+
 function VirtualLibrary:clearOpenAlias(path)
     local virtual_path = self:getVirtualPath(path)
     if not virtual_path then
@@ -153,10 +158,11 @@ end
 function VirtualLibrary:getBlockedReasonText(book)
     local reason = book and book.block_reason or "unsupported_kfx_layout"
     local text = {
-        drm = "This Kindle book is DRM-protected.",
+        drm = "This Kindle book is DRM-protected. Run DRM setup to decrypt.",
         unsupported_kfx_layout = "This KFX layout is not supported by the proof-of-concept converter yet.",
         missing_source = "The source file is missing.",
         conversion_failed = "Conversion failed.",
+        drm_not_initialized = "DRM decryption has not been set up. Run DRM setup in the Kindle Library menu.",
     }
     return text[reason] or "This book cannot be opened yet."
 end
@@ -165,6 +171,8 @@ local function createBookEntry(book)
     local suffix = ""
     if book.open_mode == "blocked" then
         suffix = " [blocked]"
+    elseif book.open_mode == "drm" then
+        suffix = " [drm]"
     elseif book.open_mode == "convert" then
         suffix = " [convert]"
     end
@@ -213,15 +221,22 @@ function VirtualLibrary:resolveBookPath(book)
         return nil, "missing book"
     end
 
+    logger.info("KindlePlugin: resolveBookPath for", book.id,
+        "mode:", book.open_mode, "source:", book.source_path)
+
     if book.open_mode == "blocked" then
+        logger.warn("KindlePlugin: book is blocked:", book.block_reason)
         return nil, book.block_reason or "unsupported_kfx_layout"
     end
 
     if book.open_mode == "direct" then
+        logger.info("KindlePlugin: direct open:", book.source_path)
         self:registerOpenAlias(book.source_path, book.virtual_path)
         return book.source_path
     end
 
+    -- open_mode "convert" or "drm" — both go through cache/conversion pipeline
+    -- For "drm", the Go binary handles DRMION decryption internally
     if not self.cache_manager then
         logger.warn("KindlePlugin: cache manager is not configured")
         return nil, "conversion_failed"
@@ -229,10 +244,12 @@ function VirtualLibrary:resolveBookPath(book)
 
     local cached_path, err = self.cache_manager:ensureCachedEpub(book)
     if cached_path then
+        logger.info("KindlePlugin: resolved to cached EPUB:", cached_path)
         self:registerOpenAlias(cached_path, book.virtual_path)
         return cached_path
     end
 
+    logger.warn("KindlePlugin: resolveBookPath failed:", err or "unknown")
     return nil, err or "conversion_failed"
 end
 

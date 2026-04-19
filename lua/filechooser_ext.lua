@@ -2,6 +2,7 @@ local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
+local logger = require("logger")
 local _ = require("gettext")
 
 local FileChooserExt = {}
@@ -113,14 +114,57 @@ function FileChooserExt:showBookDialog(fc_self, item)
 end
 
 function FileChooserExt:apply(FileChooser)
+    logger.info("KindlePlugin: applying FileChooser patches")
+    self.original_methods.init = FileChooser.init
     self.original_methods.changeToPath = FileChooser.changeToPath
     self.original_methods.refreshPath = FileChooser.refreshPath
     self.original_methods.genItemTable = FileChooser.genItemTable
     self.original_methods.onMenuSelect = FileChooser.onMenuSelect
     self.original_methods.onMenuHold = FileChooser.onMenuHold
 
+    -- Patch FileManager:updateTitleBarPath to show "Kindle Library" instead
+    -- of "KINDLE_VIRTUAL://" in the title bar subtitle.
+    local FileManager = require("apps/filemanager/filemanager")
+    if not self.original_methods.updateTitleBarPath then
+        self.original_methods.updateTitleBarPath = FileManager.updateTitleBarPath
+    end
+    local orig_updateTitleBarPath = self.original_methods.updateTitleBarPath
+    local vl = self.virtual_library
+
+    FileManager.updateTitleBarPath = function(fm_self, path)
+        if path and path:match("^KINDLE_VIRTUAL://") then
+            fm_self.title_bar:setSubTitle(vl.VIRTUAL_LIBRARY_NAME)
+        else
+            orig_updateTitleBarPath(fm_self, path)
+        end
+    end
+    FileManager.onPathChanged = FileManager.updateTitleBarPath
+
+    local cache_dir = self.cache_manager and self.cache_manager:getCacheDir() or ""
+    logger.info("KindlePlugin: FileChooser cache_dir =", cache_dir)
+
+    -- Patch init: when a NEW FileManager is created pointing at the cache
+    -- directory (happens when reader closes and creates a fresh FileManager),
+    -- redirect to the virtual library. This is the Kobo plugin's approach.
+    FileChooser.init = function(fc_self)
+        self.original_methods.init(fc_self)
+
+        if cache_dir ~= "" and fc_self.path and fc_self.path:sub(1, #cache_dir) == cache_dir then
+            logger.info("KindlePlugin: FileChooser initialized with cache path, showing virtual library")
+            fc_self:showKindleVirtualLibrary()
+        end
+    end
+
     FileChooser.changeToPath = function(fc_self, new_path, ...)
         if new_path and new_path:match("^KINDLE_VIRTUAL://") then
+            fc_self:showKindleVirtualLibrary()
+            return
+        end
+
+        -- Intercept navigation to the cache directory (happens when closing
+        -- a book opened from the virtual library) and redirect to virtual library.
+        if cache_dir ~= "" and new_path and new_path:sub(1, #cache_dir) == cache_dir then
+            logger.info("KindlePlugin: intercepting navigation to cache dir, showing virtual library")
             fc_self:showKindleVirtualLibrary()
             return
         end
@@ -182,6 +226,7 @@ function FileChooserExt:apply(FileChooser)
     end
 
     FileChooser.showKindleVirtualLibrary = function(fc_self)
+        logger.info("KindlePlugin: showing virtual library")
         fc_self.path = "KINDLE_VIRTUAL://"
         local book_entries, err = self.virtual_library:getBookEntries(true)
         if not book_entries then

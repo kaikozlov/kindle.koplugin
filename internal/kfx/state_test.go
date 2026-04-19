@@ -60,7 +60,6 @@ func makeTestSource(indexEntries [][4]uint32, entities [][]byte) *containerSourc
 		Data:      data,
 		HeaderLen: len(header),
 		IndexData: indexData,
-		Resolver:  &symbolResolver{localStart: 100, locals: []string{}},
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"image/jpeg"
 	"io"
 	"os"
@@ -13,11 +14,52 @@ import (
 	"testing"
 )
 
+func TestClassifyDRMION(t *testing.T) {
+	// Create a minimal DRMION file
+	tmpDir := t.TempDir()
+	drmionPath := filepath.Join(tmpDir, "book.kfx")
+	data := append([]byte{0xea, 'D', 'R', 'M', 'I', 'O', 'N', 0xee}, make([]byte, 100)...)
+	if err := os.WriteFile(drmionPath, data, 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	mode, reason, err := Classify(drmionPath)
+	if err != nil {
+		t.Fatalf("Classify error: %v", err)
+	}
+	if mode != "drm" {
+		t.Errorf("Classify mode = %q, want %q", mode, "drm")
+	}
+	if reason != "" {
+		t.Errorf("Classify reason = %q, want empty", reason)
+	}
+}
+
+func TestConvertFileDRMIONMissingKeys(t *testing.T) {
+	// Create a minimal DRMION file without a key cache
+	tmpDir := t.TempDir()
+	drmionPath := filepath.Join(tmpDir, "book.kfx")
+	data := append([]byte{0xea, 'D', 'R', 'M', 'I', 'O', 'N', 0xee}, make([]byte, 100)...)
+	if err := os.WriteFile(drmionPath, data, 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	err := ConvertFile(drmionPath, filepath.Join(tmpDir, "out.epub"), "")
+	if err == nil {
+		t.Fatal("expected error for DRMION without key cache")
+	}
+
+	var drmErr *DRMError
+	if !errors.As(err, &drmErr) {
+		t.Errorf("expected DRMError, got %T: %v", err, err)
+	}
+}
+
 func TestConvertFileCreatesReadableEPUB(t *testing.T) {
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 
@@ -86,10 +128,10 @@ func TestConvertFileFromKFXZipMatchesMonolithicConversion(t *testing.T) {
 	outputZip := filepath.Join(t.TempDir(), "elvis-zip.epub")
 	outputMono := filepath.Join(t.TempDir(), "elvis-mono.epub")
 
-	if err := ConvertFile(inputZip, outputZip); err != nil {
+	if err := ConvertFile(inputZip, outputZip, ""); err != nil {
 		t.Fatalf("ConvertFile(KFX-ZIP) error = %v", err)
 	}
-	if err := ConvertFile(inputMono, outputMono); err != nil {
+	if err := ConvertFile(inputMono, outputMono, ""); err != nil {
 		t.Fatalf("ConvertFile(monolithic KFX) error = %v", err)
 	}
 
@@ -122,7 +164,7 @@ func TestConvertFileFromKFXZipPreservesResolvedPageAnchors(t *testing.T) {
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "decrypted", "The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip")
 	output := filepath.Join(t.TempDir(), "hunger.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile(KFX-ZIP) error = %v", err)
 	}
 
@@ -157,7 +199,7 @@ func TestConvertFileFromKFXZipPreservesInlinePageMarkerAnchors(t *testing.T) {
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "decrypted", "The Familiars_B003VIWNQW_decrypted.kfx-zip")
 	output := filepath.Join(t.TempDir(), "familiars.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile(KFX-ZIP) error = %v", err)
 	}
 
@@ -200,7 +242,7 @@ func TestConvertFilePhase1PreservesCoverAndPackageResources(t *testing.T) {
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 
@@ -267,7 +309,7 @@ func TestConvertFilePhase2PreservesSectionIDsAndLinkedContents(t *testing.T) {
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 
@@ -340,7 +382,7 @@ func TestConvertFilePhase3UsesCanonicalSectionFilesForNavigationAndSpine(t *test
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 
@@ -375,7 +417,7 @@ func TestConvertFilePhase4EmitsStyleClassesForTitleAndChapterPages(t *testing.T)
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 
@@ -429,7 +471,7 @@ func TestConvertFilePhase5ConvertsJPEGXRResourcesToJPEG(t *testing.T) {
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 
@@ -495,7 +537,7 @@ func TestConvertFilePhase6TracksCalibrePackageAndNavigationSemantics(t *testing.
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 
@@ -609,7 +651,7 @@ func TestConvertFilePhase7UsesPageTemplateStylesForSectionBodyClasses(t *testing
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 
@@ -648,7 +690,7 @@ func TestConvertFilePhase8MatchesInlineStyleEventsAndFitWidthContainers(t *testi
 	input := filepath.Join("..", "..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 

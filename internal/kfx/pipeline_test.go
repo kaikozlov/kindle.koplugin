@@ -1261,7 +1261,7 @@ func TestConvertFileMatchesReferenceStructureIgnoringImages(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 	reference := filepath.Join("..", "..", "..", "REFERENCE", "martyr_calibre.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 
@@ -1303,7 +1303,7 @@ func TestConvertFileThreeBelowKFXZipMatchesCalibreComparableArchivePaths(t *test
 	output := filepath.Join(t.TempDir(), "three-below.epub")
 	reference := filepath.Join("..", "..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "Three Below (Floors #2)_B008PL1YQ0_decrypted.epub")
 
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 
@@ -1327,7 +1327,7 @@ func testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T
 		t.Skip("reference epub not found:", reference)
 	}
 	output := filepath.Join(t.TempDir(), filepath.Base(input)+".epub")
-	if err := ConvertFile(input, output); err != nil {
+	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
 	}
 	gotFiles := unzipFiles(t, output)

@@ -18,9 +18,8 @@ type containerSource struct {
 	Data          []byte
 	HeaderLen     int
 	ContainerInfo map[string]interface{}
-	DocSymbols    []byte
+	DocSymbols    []byte // raw ION symbol table data from this container (may be empty)
 	IndexData     []byte
-	Resolver      *symbolResolver
 }
 
 type fragmentCatalog struct {
@@ -82,6 +81,21 @@ func buildBookState(path string) (*bookState, error) {
 	return organizeFragments(path, sources)
 }
 
+// buildBookStateFromData creates a bookState from in-memory CONT KFX data.
+// This is used after DRMION decryption produces a valid CONT container.
+func buildBookStateFromData(contData []byte) (*bookState, error) {
+	if len(contData) < 18 || !bytes.HasPrefix(contData, contSignature) {
+		return nil, &UnsupportedError{Message: "data is not a valid CONT KFX container"}
+	}
+
+	source, err := loadContainerSourceData("<decrypted>", contData)
+	if err != nil {
+		return nil, err
+	}
+
+	return organizeFragments("<decrypted>", []*containerSource{source})
+}
+
 func loadBookSources(path string) ([]*containerSource, error) {
 	blobs, hasDRM, err := collectContainerBlobs(path)
 	if err != nil {
@@ -121,12 +135,12 @@ func collectContainerBlobs(path string) ([]containerBlob, bool, error) {
 		blobs = append(blobs, containerBlob{Path: path, Data: data})
 
 		sidecarRoot := strings.TrimSuffix(path, filepath.Ext(path)) + ".sdr"
-		sidecarBlobs, sidecarDRM, err := collectSidecarContainerBlobs(sidecarRoot)
+		sidecarBlobs, sidecarDRMionBlobs, err := collectSidecarContainerBlobs(sidecarRoot)
 		if err != nil {
 			return nil, false, err
 		}
 		blobs = append(blobs, sidecarBlobs...)
-		hasDRM = hasDRM || sidecarDRM
+		hasDRM = hasDRM || len(sidecarDRMionBlobs) > 0
 	case bytes.HasPrefix(data, []byte("PK\x03\x04")):
 		zipBlobs, zipDRM, err := collectZipContainerBlobs(path, data)
 		if err != nil {
@@ -141,16 +155,16 @@ func collectContainerBlobs(path string) ([]containerBlob, bool, error) {
 	return blobs, hasDRM, nil
 }
 
-func collectSidecarContainerBlobs(root string) ([]containerBlob, bool, error) {
+func collectSidecarContainerBlobs(root string) ([]containerBlob, []containerBlob, error) {
 	info, err := os.Stat(root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, false, nil
+			return nil, nil, nil
 		}
-		return nil, false, err
+		return nil, nil, err
 	}
 	if !info.IsDir() {
-		return nil, false, nil
+		return nil, nil, nil
 	}
 
 	var names []string
@@ -164,25 +178,25 @@ func collectSidecarContainerBlobs(root string) ([]containerBlob, bool, error) {
 		names = append(names, path)
 		return nil
 	}); err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
 	sort.Strings(names)
 
-	blobs := make([]containerBlob, 0, len(names))
-	hasDRM := false
+	contBlobs := make([]containerBlob, 0, len(names))
+	drmionBlobs := make([]containerBlob, 0)
 	for _, name := range names {
 		data, err := os.ReadFile(name)
 		if err != nil {
-			return nil, false, err
+			return nil, nil, err
 		}
 		switch {
 		case bytes.HasPrefix(data, contSignature):
-			blobs = append(blobs, containerBlob{Path: name, Data: data})
+			contBlobs = append(contBlobs, containerBlob{Path: name, Data: data})
 		case bytes.HasPrefix(data, drmionSignature):
-			hasDRM = true
+			drmionBlobs = append(drmionBlobs, containerBlob{Path: name, Data: data})
 		}
 	}
-	return blobs, hasDRM, nil
+	return contBlobs, drmionBlobs, nil
 }
 
 func collectZipContainerBlobs(path string, data []byte) ([]containerBlob, bool, error) {
@@ -241,6 +255,25 @@ func loadContainerSource(path string) (*containerSource, error) {
 	return loadContainerSourceData(path, data)
 }
 
+// validateEntityOffsets checks that all entity offsets in the container's
+// index table are within the data bounds. Decrypted DRMION sidecars may
+// have index entries referencing positions in the original encrypted data
+// that don't match the decrypted CONT structure.
+func validateEntityOffsets(src *containerSource) bool {
+	for offset := 0; offset+24 <= len(src.IndexData); offset += 24 {
+		entityOffset := int(binary.LittleEndian.Uint64(src.IndexData[offset+8 : offset+16]))
+		entityLength := int(binary.LittleEndian.Uint64(src.IndexData[offset+16 : offset+24]))
+		start := src.HeaderLen + entityOffset
+		end := start + entityLength
+		if start < 0 || end > len(src.Data) || start >= end {
+			log.Printf("kfx: invalid entity in %s: headerLen=%d entityOffset=%d entityLength=%d dataLen=%d",
+				src.Path, src.HeaderLen, entityOffset, entityLength, len(src.Data))
+			return false
+		}
+	}
+	return true
+}
+
 func loadContainerSourceData(path string, data []byte) (*containerSource, error) {
 	if len(data) < 18 || !bytes.HasPrefix(data, contSignature) {
 		return nil, &UnsupportedError{Message: "file is not a CONT KFX container"}
@@ -281,10 +314,6 @@ func loadContainerSourceData(path string, data []byte) (*containerSource, error)
 
 	docSymbols := data[docSymbolOffset : docSymbolOffset+docSymbolLength]
 	indexData := data[indexOffset : indexOffset+indexLength]
-	resolver, err := newSymbolResolver(docSymbols)
-	if err != nil {
-		return nil, err
-	}
 
 	return &containerSource{
 		Path:          path,
@@ -293,7 +322,6 @@ func loadContainerSourceData(path string, data []byte) (*containerSource, error)
 		ContainerInfo: containerInfo,
 		DocSymbols:    docSymbols,
 		IndexData:     indexData,
-		Resolver:      resolver,
 	}, nil
 }
 
@@ -327,15 +355,26 @@ func mergeIonReferencedStringSymbols(value interface{}, bookSymbols map[string]s
 	}
 }
 
-func combineContainerDocSymbols(sources []*containerSource) []byte {
-	var combined []byte
-	for _, source := range sources {
-		if len(source.DocSymbols) == 0 {
-			continue
-		}
-		combined = append(combined, source.DocSymbols...)
+// sharedDocSymbols maintains the shared symbol table state as containers are
+// processed sequentially, matching Calibre's LocalSymbolTable pattern.
+// The first container with docSymbols populates the shared state; subsequent
+// containers with empty docSymbols (symLen=0) inherit the shared state.
+type sharedDocSymbols struct {
+	current []byte // accumulated docSymbols from all processed containers
+}
+
+// update sets the shared docSymbols from a container's docSymbols.
+// If the container has docSymbols, they become the new shared state.
+// If the container has no docSymbols, the shared state is unchanged.
+func (s *sharedDocSymbols) update(containerDocSymbols []byte) {
+	if len(containerDocSymbols) > 0 {
+		s.current = containerDocSymbols
 	}
-	return combined
+}
+
+// get returns the current shared docSymbols for decoding a container's fragments.
+func (s *sharedDocSymbols) get() []byte {
+	return s.current
 }
 
 // Port of KFX_EPUB.organize_fragments_by_type (yj_to_epub.py) adapted to the Go fragmentCatalog layout.
@@ -368,19 +407,42 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 		Language:   "en",
 	}
 
-	docSymbols := combineContainerDocSymbols(sources)
-	resolver, err := newSymbolResolver(docSymbols)
+	// Two-pass approach matching Calibre's yj_book.decode_book():
+	//   Pass 1: container.deserialize() → loads doc_symbols into shared symtab
+	//   Pass 2: container.get_fragments() → decodes entities with accumulated symtab
+	//
+	// Calibre processes all containers in loop 1 (loading symbols), then all
+	// containers in loop 2 (decoding fragments). This ensures ALL docSymbols
+	// are accumulated before any entity is decoded.
+	sharedSym := &sharedDocSymbols{}
+
+	// Sort sources alphabetically by path, matching Calibre's sequential
+	// processing order.
+	sort.Slice(sources, func(i, j int) bool {
+		return sources[i].Path < sources[j].Path
+	})
+
+	// Pass 1: Accumulate docSymbols from all sources (Calibre: deserialize loop).
+	for _, source := range sources {
+		sharedSym.update(source.DocSymbols)
+	}
+
+	// Build resolver from fully accumulated docSymbols.
+	srcDocSymbols := sharedSym.get()
+	if len(srcDocSymbols) == 0 {
+		return nil, &UnsupportedError{Message: "no document symbol table found in any container"}
+	}
+	resolver, err := newSymbolResolver(srcDocSymbols)
 	if err != nil {
 		return nil, err
 	}
 
 	bookSymbols := map[string]struct{}{}
 	fontCount := 0
-
-	// categorizedData tracks per-type ID sets for duplicate/null ID detection
-	// (parity with Python organize_fragments_by_type L202-214).
 	categorizedData := map[string]map[string]bool{}
 
+	// Pass 2: Decode all fragments using the fully accumulated resolver
+	// (Calibre: get_fragments loop).
 	for _, source := range sources {
 		lastContainerID := ""
 		for offset := 0; offset+24 <= len(source.IndexData); offset += 24 {
@@ -406,7 +468,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 			summaryID := fragmentID
 			switch fragmentType {
 			case "$270":
-				value, err := decodeIonMap(payload, docSymbols, resolver)
+				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
@@ -423,7 +485,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 				// The value is decoded later in the fragment type switch below.
 				summaryID = fragmentID
 			case "$387":
-				value, err := decodeIonMap(payload, docSymbols, resolver)
+				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
@@ -442,7 +504,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 
 			switch fragmentType {
 			case "$145", "$157", "$164", "$258", "$259", "$260", "$262", "$266", "$270", "$391", "$490", "$538", "$585", "$593", "$608", "$609", "$756":
-				value, err := decodeIonMap(payload, docSymbols, resolver)
+				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
@@ -530,7 +592,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 					}
 				}
 			case "$389":
-				value, err := decodeIonValue(payload, docSymbols, resolver)
+				value, err := decodeIonValue(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}

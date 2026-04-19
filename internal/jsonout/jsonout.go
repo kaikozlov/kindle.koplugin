@@ -28,3 +28,11 @@ type ConvertResult struct {
 	Message    string `json:"message,omitempty"`
 	OutputPath string `json:"output_path,omitempty"`
 }
+
+type DrmInitResult struct {
+	Version    int    `json:"version"`
+	OK         bool   `json:"ok"`
+	BooksFound int    `json:"books_found"`
+	KeysFound  int    `json:"keys_found"`
+	Message    string `json:"message,omitempty"`
+}
