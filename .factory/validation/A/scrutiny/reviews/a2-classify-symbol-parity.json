@@ -1,0 +1,62 @@
+{
+  "featureId": "a2-classify-symbol-parity",
+  "reviewedAt": "2026-04-19T03:15:00Z",
+  "commitId": "3ade57f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation correctly ports 8 functions from yj_structure.py:1042-1298 with strong parity to the Python reference. All 7 symbol type groups are handled with correct priority ordering matching Python: SHARED > COMMON > DICTIONARY > ORIGINAL > BASE64 > SHORT > UNKNOWN. 31 comprehensive tests cover all branches, edge cases, and validation contracts. Minor note: getOrderedImageResources and checkSymbolTable are intentionally partial stubs (documented as deferred to A5/future milestones).",
+    "issues": [
+      {
+        "file": "internal/kfx/symbol_format.go",
+        "line": 39,
+        "severity": "non_blocking",
+        "description": "classifySymbol checks isCommonSymbol() first, but the Python classify_symbol checks SHARED first via is_shared_symbol(IS(name)). The split is intentional — classifySymbolWithResolver handles SHARED, then delegates to classifySymbol for the remaining types. This is correct but the function naming could be clearer (classifySymbolNonShared would be more descriptive). Not a bug."
+      },
+      {
+        "file": "internal/kfx/symbol_format.go",
+        "line": 163,
+        "severity": "non_blocking",
+        "description": "getReadingOrders returns nil when no reading orders exist, while Python returns []. Functionally equivalent for callers that check len(), but deviates from Python's explicit empty-list return. TestGetReadingOrdersEmpty correctly validates this works (len(nil) == 0)."
+      },
+      {
+        "file": "internal/kfx/symbol_format.go",
+        "line": 254,
+        "severity": "non_blocking",
+        "description": "getOrderedImageResources is a partial stub that always returns 'does not contain image resources' error because the image collection loop body is a no-op (_ = pt). This is explicitly documented as requiring A5 scope (collect_content_position_info). Tests only validate constraint checking (non-fixed-layout and no-images errors), not actual resource collection."
+      },
+      {
+        "file": "internal/kfx/symbol_format.go",
+        "line": 265,
+        "severity": "non_blocking",
+        "description": "checkSymbolTable collects used/new symbols but then discards them with _ = newSymbols, _ = rebuild, _ = ignoreUnused. The actual missing/unused symbol checking and rebuild logic is deferred. The Python code also checks CONTAINER_FRAGMENT_TYPES to skip container fragments and extracts original_symbols from $ion_symbol_table — neither is present in the Go version. This is explicitly documented as a partial implementation."
+      },
+      {
+        "file": "internal/kfx/symbol_format.go",
+        "line": 74,
+        "severity": "non_blocking",
+        "description": "allowedSymbolPrefix uses strings.Contains which matches Python's substring containment behavior exactly, but the function is semantically checking single-character prefix validity. Both Python and Go allow multi-character strings like 'ab' to return true since 'ab' is a substring of 'abcdefilnpstz'. Test validates this explicitly. This is correct parity."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The Python classify_symbol priority ordering is SHARED > COMMON > DICTIONARY > ORIGINAL > BASE64 > SHORT > UNKNOWN, but the feature description in features.json incorrectly states 'Priority ordering: SHARED > COMMON > ORIGINAL > SHORT > BASE64 > DICTIONARY > UNKNOWN'. This could mislead future workers.",
+      "evidence": "Compare features.json expectedBehavior[1] ('SHARED > COMMON > ORIGINAL > SHORT > BASE64 > DICTIONARY > UNKNOWN') with Python yj_structure.py:1042-1087 and Go symbol_format.go:29-52 where the actual order is SHARED > COMMON > DICTIONARY > ORIGINAL > BASE64 > SHORT > UNKNOWN"
+    },
+    {
+      "area": "knowledge",
+      "observation": "The Go test for $0 (sid=0) returns UNKNOWN because isSharedSymbolText explicitly rejects sid==0. This matches Python's is_shared_symbol which returns symbol_id > 0 (so 0 is not shared). The edge case handling is correct.",
+      "evidence": "decode.go:96 — sid64 == 0 check returns false. ion_symbol_table.py:262 — symbol_id > 0. Test TestClassifySymbolSharedNumeric validates $0 → symUnknown."
+    },
+    {
+      "area": "conventions",
+      "observation": "The worker correctly followed the project convention of splitting classifySymbol (non-shared path) and classifySymbolWithResolver (full path including SHARED) rather than having a single method with optional resolver parameter. This matches the Go idiom of having separate functions for different contexts.",
+      "evidence": "symbol_format.go:29 (classifySymbol) and symbol_format.go:38 (classifySymbolWithResolver)"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS — Strong implementation with faithful Python parity across all 7 symbol classification groups, correct priority ordering, proper fallback behavior in getReadingOrders and orderedSectionNames, and thorough recursive condition scanning in hasIllustratedLayoutPageTemplateCondition. The 31 new tests provide excellent coverage of all branches and edge cases. The two partial stubs (getOrderedImageResources, checkSymbolTable) are explicitly documented as requiring future milestones (A5 and fragment list manipulation respectively) and their tests correctly validate the constraint-checking portions that are implemented. One minor concern: the feature description had an incorrect priority ordering which could mislead, but the code and tests have it correct."
+}
