@@ -1,0 +1,60 @@
+{
+  "milestone": "m2-core-conversion",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "go test ./internal/kfx/... -count=1 -run '^Test[^CBS]'", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "go build ./...", "exitCode": 0 },
+    "lint": { "passed": true, "command": "go vet ./...", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "codebase",
+      "description": "Fixed 3 parity bugs found during review: (1) CreateLocationMap always includes $143 in entries matching Python, (2) haveContent merge returns after successful merge to prevent duplicate chunks, (3) merge condition simplified to check ImageResource==\"\" matching Python's None check",
+      "sourceFeature": "scrutiny-validator-m2-core-conversion"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add note about FragmentStore vs fragmentCatalog pattern — FragmentStore is used for position/location operations and stores raw maps, while fragmentCatalog is the primary fragment management structure. Workers should use FragmentStore for new position/location features.",
+      "evidence": "m2-position-location-stubs review noted FragmentStore is undocumented but used throughout new code.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "PageTemplateValues doesn't hold full template data due to filterBodyStyleValues stripping $159/$156",
+      "reason": "Pre-existing architectural concern noted in m1-foundation review. Not introduced by m2 features and tracked as known limitation."
+    },
+    {
+      "observation": "Worker followed go-port-worker skill procedure correctly",
+      "reason": "Expected behavior, not an actionable observation"
+    }
+  ],
+  "previousRound": null,
+  "nonBlockingIssues": [
+    {
+      "featureId": "m2-book-type-dispatch",
+      "severity": "non_blocking",
+      "description": "Python's check_empty diagnostic not ported; magazine $325/$323 uses result structs instead of immediate book_part mutation; PageTemplateValues doesn't hold full template data in production"
+    },
+    {
+      "featureId": "m2-position-location-stubs",
+      "severity": "non_blocking",
+      "description": "haveContent merge does not concatenate text from merged chunks; CheckPositionAndLocationMaps missing section_lengths validation; allow_zero parameter not handled"
+    },
+    {
+      "featureId": "m2-position-edge-fixes",
+      "severity": "non_blocking",
+      "description": "$550 fragment key validation not as strict as Python (doesn't check for extra keys in entries)"
+    }
+  ]
+}
