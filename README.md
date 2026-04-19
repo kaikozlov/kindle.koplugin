@@ -66,3 +66,22 @@ The port maintains strict three-fold parity with the Python reference:
 3. **Logic-level** — Matching control flow, return values, and edge-case behavior
 
 All three layers are validated by tests that compare Go output against expected results derived from the Python implementation.
+
+## Conversion Coverage
+
+The Go port covers the full KFX→EPUB conversion pipeline:
+
+- **Fragment organization** — Ion fragment parsing, symbol table resolution, metadata extraction
+- **Section processing** — Book type dispatch (reflowable, comic, magazine), page spread templates, conditional layouts
+- **Position/location mapping** — Content position info, position maps, location maps, approximate page lists
+- **EPUB packaging** — OPF/NCX/NAV generation, EPUB2/3 version switching, RTL support, mbp: namespace
+- **Resource handling** — Tile reassembly, JXR-to-JPEG conversion, PDF page extraction, variant selection
+- **Illustrated layout** — Region magnification, conditional page templates, KFXConditionalNav
+- **Notebook/scribe** — Stroke SVG paths, PNG density maps, handwriting recognition annotations
+- **Image book output** — CBZ with ComicBookInfo metadata, PDF with outline bookmarks
+- **Fragment validation** — ion_data_eq duplicate detection, kpf_prepub handling, dictionary/sample exceptions
+
+## Mission History
+
+- **Phase 2 (Function-Level Parity):** 16 work items across 4 streams — 247/247 assertions passed
+- **Inconsistency Fix Mission:** 121 parity fixes across 5 milestones — 104/104 assertions passed
