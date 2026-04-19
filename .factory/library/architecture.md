@@ -47,7 +47,7 @@ KFX file → decodeKFX() → buildBookState() → renderBookState() → epub.Wri
 The Python code uses a mixin class pattern where `KFX_EPUB` inherits from multiple modules:
 - `YJ_Structure` → `symbol_format.go`, `state.go`, `fragments.go`
 - `YJ_Metadata` → `yj_to_epub_metadata.go`
-- `YJ_PositionLocation` → `yj_to_epub_navigation.go` (partial)
+- `YJ_PositionLocation` → `yj_position_location.go`
 - `YJ_ToEPUB` → `kfx.go`, `state.go`, `render.go`
 - `YJ_ToEPUBContent` → `yj_to_epub_content.go`, `storyline.go`, `container.go`
 - `YJ_ToEPUBProperties` → `yj_to_epub_properties.go`, `yj_property_info.go`
