@@ -115,6 +115,7 @@ end
 
 function FileChooserExt:apply(FileChooser)
     logger.info("KindlePlugin: applying FileChooser patches")
+    self.original_methods.init = FileChooser.init
     self.original_methods.changeToPath = FileChooser.changeToPath
     self.original_methods.refreshPath = FileChooser.refreshPath
     self.original_methods.genItemTable = FileChooser.genItemTable
@@ -122,6 +123,19 @@ function FileChooserExt:apply(FileChooser)
     self.original_methods.onMenuHold = FileChooser.onMenuHold
 
     local cache_dir = self.cache_manager and self.cache_manager:getCacheDir() or ""
+    logger.info("KindlePlugin: FileChooser cache_dir =", cache_dir)
+
+    -- Patch init: when a NEW FileManager is created pointing at the cache
+    -- directory (happens when reader closes and creates a fresh FileManager),
+    -- redirect to the virtual library. This is the Kobo plugin's approach.
+    FileChooser.init = function(fc_self)
+        self.original_methods.init(fc_self)
+
+        if cache_dir ~= "" and fc_self.path and fc_self.path:sub(1, #cache_dir) == cache_dir then
+            logger.info("KindlePlugin: FileChooser initialized with cache path, showing virtual library")
+            fc_self:showKindleVirtualLibrary()
+        end
+    end
 
     FileChooser.changeToPath = function(fc_self, new_path, ...)
         if new_path and new_path:match("^KINDLE_VIRTUAL://") then
@@ -131,7 +145,6 @@ function FileChooserExt:apply(FileChooser)
 
         -- Intercept navigation to the cache directory (happens when closing
         -- a book opened from the virtual library) and redirect to virtual library.
-        -- This follows the Kobo plugin's approach.
         if cache_dir ~= "" and new_path and new_path:sub(1, #cache_dir) == cache_dir then
             logger.info("KindlePlugin: intercepting navigation to cache dir, showing virtual library")
             fc_self:showKindleVirtualLibrary()
