@@ -609,6 +609,9 @@ func isDecimal(value string) bool {
 }
 
 func romanToInt(value string) (int, bool) {
+	if value == "" {
+		return 0, false
+	}
 	numerals := map[rune]int{'i': 1, 'v': 5, 'x': 10, 'l': 50, 'c': 100, 'd': 500, 'm': 1000}
 	value = strings.ToLower(value)
 	total := 0
