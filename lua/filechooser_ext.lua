@@ -121,8 +121,19 @@ function FileChooserExt:apply(FileChooser)
     self.original_methods.onMenuSelect = FileChooser.onMenuSelect
     self.original_methods.onMenuHold = FileChooser.onMenuHold
 
+    local cache_dir = self.cache_manager and self.cache_manager:getCacheDir() or ""
+
     FileChooser.changeToPath = function(fc_self, new_path, ...)
         if new_path and new_path:match("^KINDLE_VIRTUAL://") then
+            fc_self:showKindleVirtualLibrary()
+            return
+        end
+
+        -- Intercept navigation to the cache directory (happens when closing
+        -- a book opened from the virtual library) and redirect to virtual library.
+        -- This follows the Kobo plugin's approach.
+        if cache_dir ~= "" and new_path and new_path:sub(1, #cache_dir) == cache_dir then
+            logger.info("KindlePlugin: intercepting navigation to cache dir, showing virtual library")
             fc_self:showKindleVirtualLibrary()
             return
         end

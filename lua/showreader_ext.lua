@@ -21,13 +21,9 @@ function ShowReaderExt:apply()
     if not self.original_showReader then
         self.original_showReader = ReaderUI.showReader
     end
-    if not self.original_showFileManager then
-        self.original_showFileManager = ReaderUI.showFileManager
-    end
 
     local virtual_library = self.virtual_library
     local original_showReader = self.original_showReader
-    local original_showFileManager = self.original_showFileManager
 
     ReaderUI.showReader = function(reader_self, file, provider, seamless, is_provider_forced, after_open_callback)
         if not virtual_library:isVirtualPath(file) then
@@ -83,23 +79,6 @@ function ShowReaderExt:apply()
         return original_showReader(reader_self, real_file, provider, seamless, is_provider_forced, after_open_callback)
     end
 
-    -- Patch showFileManager: when closing a book that was opened from the
-    -- virtual library, schedule returning to the Kindle Library on next tick.
-    ReaderUI.showFileManager = function(reader_self, file, selected_files)
-        if file and virtual_library:isOpenAlias(file) then
-            logger.info("KindlePlugin: scheduling return to Kindle Library after close")
-            UIManager:scheduleIn(0.1, function()
-                local FileChooser = require("ui/widget/filechooser")
-                local FileManager = require("apps/filemanager/filemanager")
-                if FileChooser.showKindleVirtualLibrary and FileManager.instance then
-                    FileManager.instance.path = "KINDLE_VIRTUAL://"
-                    FileChooser.showKindleVirtualLibrary(FileManager.instance.file_chooser or FileManager.instance)
-                end
-            end)
-        end
-        return original_showFileManager(reader_self, file, selected_files)
-    end
-
     logger.info("KindlePlugin: patched ReaderUI:showReader for virtual library paths")
 end
 
@@ -110,12 +89,8 @@ function ShowReaderExt:unapply()
 
     local ReaderUI = require("apps/reader/readerui")
     ReaderUI.showReader = self.original_showReader
-    if self.original_showFileManager then
-        ReaderUI.showFileManager = self.original_showFileManager
-    end
     logger.info("KindlePlugin: restored original ReaderUI:showReader")
     self.original_showReader = nil
-    self.original_showFileManager = nil
 end
 
 return ShowReaderExt
