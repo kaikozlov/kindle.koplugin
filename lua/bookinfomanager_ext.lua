@@ -114,16 +114,9 @@ function BookInfoManagerExt:apply(BookInfoManager)
         -- from trying again and hitting "too many attempts"
         self:writeInProgressRow(filepath)
 
-        -- Resolve to cached EPUB
-        local real_path = vl:resolveBookPath(book)
-        if not real_path or not lfs.attributes(real_path, "mode") then
-            logger.warn("KindlePlugin: cannot resolve virtual path:", filepath)
-            self:writeUnsupportedRow(filepath, "conversion_failed")
-            return nil
-        end
-
-        -- Build bookinfo from the cached EPUB
-        local bookinfo = self:buildBookInfoFromEpub(filepath, real_path, cover_specs ~= nil)
+        -- Build bookinfo: use scan metadata (title/authors from sidecar)
+        -- for the cheap fields, only open EPUB for cover image.
+        local bookinfo = self:buildBookInfoFromScanAndEpub(filepath, book, cover_specs ~= nil)
         if not bookinfo then
             logger.warn("KindlePlugin: failed to build bookinfo for:", filepath)
             self:writeUnsupportedRow(filepath, "metadata_extraction_failed")
@@ -144,6 +137,101 @@ function BookInfoManagerExt:apply(BookInfoManager)
     end
 
     logger.info("KindlePlugin: BookInfoManager patches applied")
+end
+
+--- Build bookinfo using scan metadata (title/authors from sidecar) for cheap fields
+--- and optionally opening the cached EPUB only for the cover image.
+function BookInfoManagerExt:buildBookInfoFromScanAndEpub(virtual_filepath, book, get_cover)
+    local directory, filename = util.splitFilePathName(virtual_filepath)
+
+    local bookinfo = {
+        directory = directory,
+        filename = filename,
+        filesize = book.source_size or 0,
+        filemtime = book.source_mtime or 0,
+        in_progress = 0,
+        unsupported = nil,
+        cover_fetched = "Y",
+        has_meta = nil,
+        has_cover = nil,
+        cover_sizetag = nil,
+        ignore_meta = nil,
+        ignore_cover = nil,
+        title = book.title or nil,
+        authors = book.authors and table.concat(book.authors, ", ") or nil,
+        series = nil,
+        series_index = nil,
+        language = nil,
+        keywords = nil,
+        description = nil,
+        pages = nil,
+    }
+
+    -- Mark has_meta if we have title/authors from scan
+    if bookinfo.title or bookinfo.authors then
+        bookinfo.has_meta = "Y"
+    end
+
+    -- Only open the EPUB if we need a cover image
+    if not get_cover then
+        return bookinfo
+    end
+
+    -- Resolve to cached EPUB
+    local real_path = self.virtual_library:resolveBookPath(book)
+    if not real_path or not lfs.attributes(real_path, "mode") then
+        logger.warn("KindlePlugin: cannot resolve virtual path for cover:", virtual_filepath)
+        return bookinfo
+    end
+
+    -- Open the EPUB with crengine to get the cover image
+    local ok, document = pcall(function()
+        local DocumentRegistry = require("document/documentregistry")
+        local CreDocument = require("document/credocument")
+        return DocumentRegistry:openDocument(real_path, CreDocument)
+    end)
+
+    if not ok or not document then
+        logger.warn("KindlePlugin: failed to open cached EPUB for cover:", real_path_path)
+        return bookinfo
+    end
+
+    -- If scan didn't provide metadata, try getting it from the EPUB too
+    if not bookinfo.has_meta then
+        if document.loadDocument then
+            pcall(function() document:loadDocument(false) end)
+        end
+        local ok2, props = pcall(function() return document:getProps() end)
+        if ok2 and props and next(props) then
+            bookinfo.has_meta = "Y"
+            for k, v in pairs(props) do
+                if not bookinfo[k] then
+                    bookinfo[k] = v
+                end
+            end
+        end
+    end
+
+    -- Extract cover image
+    local ok3, cover_bb = pcall(function()
+        local FileManagerBookInfo = require("apps/filemanager/filemanagerbookinfo")
+        return FileManagerBookInfo:getCoverImage(document)
+    end)
+
+    if ok3 and cover_bb then
+        bookinfo.has_cover = "Y"
+        bookinfo.cover_bb = cover_bb
+        bookinfo.cover_w = cover_bb:getWidth()
+        bookinfo.cover_h = cover_bb:getHeight()
+        bookinfo.cover_sizetag = string.format("%dx%d", bookinfo.cover_w, bookinfo.cover_h)
+        logger.info("KindlePlugin: got cover:", bookinfo.cover_w, "x", bookinfo.cover_h)
+    else
+        logger.warn("KindlePlugin: cover extraction failed")
+    end
+
+    pcall(function() document:close() end)
+
+    return bookinfo
 end
 
 --- Open the cached EPUB with crengine and extract metadata + cover.
@@ -380,16 +468,23 @@ function BookInfoManagerExt:writeUnsupportedRow(filepath, reason)
     self:writeBookInfoToDb(filepath, bookinfo)
 end
 
---- Clear stale database entries for virtual paths that have unsupported/unsupported
---- status from previous failed extraction attempts.
+--- Clear stale database entries for virtual paths that have failed extraction
+--- (in_progress or unsupported status from previous attempts).
+--- Preserves successful entries with metadata/covers so they don't need
+--- to be re-extracted on every startup.
 function BookInfoManagerExt:clearStaleVirtualEntries(BookInfoManager)
     local SQ3 = require("lua-ljsqlite3/init")
     local ok, db_conn = pcall(SQ3.open, self.db_location)
     if not ok or not db_conn then return end
     db_conn:set_busy_timeout(5000)
 
-    -- Delete all entries under the virtual path directory
-    local stmt = db_conn:prepare("DELETE FROM bookinfo WHERE directory LIKE 'KINDLE_VIRTUAL://%';")
+    -- Only delete rows that are stuck in "in_progress" (failed mid-extraction)
+    -- or marked "unsupported" (failed extraction). Preserve successful rows
+    -- that have cover_fetched='Y' and no unsupported flag.
+    local stmt = db_conn:prepare(
+        "DELETE FROM bookinfo WHERE directory LIKE 'KINDLE_VIRTUAL://%'"
+        .. " AND (in_progress > 0 OR unsupported IS NOT NULL);"
+    )
     if stmt then
         stmt:step()
         stmt:clearbind():reset()
