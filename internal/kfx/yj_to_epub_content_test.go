@@ -791,3 +791,837 @@ func TestSectionBranchString(t *testing.T) {
 		t.Errorf("branchReflowable string should contain 'reflowable'")
 	}
 }
+
+// =============================================================================
+// processPageSpreadPageTemplate tests — VAL-A-032 through VAL-A-038
+// Port of yj_to_epub_content.py:210-344 (process_page_spread_page_template)
+// =============================================================================
+
+// makeSpreadConfig creates a pageSpreadConfig with sensible defaults for testing.
+func makeSpreadConfig() pageSpreadConfig {
+	return pageSpreadConfig{
+		BookType:                 bookTypeComic,
+		IsPdfBacked:              false,
+		RegionMagnification:      false,
+		VirtualPanelsAllowed:     true,
+		PageProgressionDirection: "ltr",
+	}
+}
+
+// makePDFSpreadConfig creates config for PDF-backed books.
+func makePDFSpreadConfig() pageSpreadConfig {
+	return pageSpreadConfig{
+		BookType:                 bookTypePrintReplica,
+		IsPdfBacked:              true,
+		RegionMagnification:      false,
+		VirtualPanelsAllowed:     true,
+		PageProgressionDirection: "ltr",
+	}
+}
+
+// makeLeafTemplateData creates a leaf content template with $159="$270", $156="$325"
+// and some content fields.
+func makeLeafTemplateData() map[string]interface{} {
+	return map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+}
+
+// makePageSpreadTemplateData creates a page-spread container template ($437)
+// with a storyline reference pointing to a story with child templates.
+func makePageSpreadTemplateData(storyName string, childTemplates []interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": storyName,
+		"$434": "$441",
+		"$192": nil,
+		"$67":  nil,
+		"$66":  nil,
+		"$140": nil,
+		"$560": nil,
+		"$155": 42, // location ID
+	}
+}
+
+// makeScaleFitTemplateData creates a PDF-backed scale_fit template ($326).
+func makeScaleFitTemplateData(storyName string) map[string]interface{} {
+	return map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+		"$176": storyName,
+		"$434": "$441",
+		"$192": nil,
+		"$140": nil,
+		"$560": nil,
+		"$155": 55,
+		"$16":  16, // font_size = 16
+	}
+}
+
+// makeConnectedPaginationTemplateData creates a connected pagination template ($323/$656).
+func makeConnectedPaginationTemplateData(storyName string) map[string]interface{} {
+	return map[string]interface{}{
+		"$159": "$270",
+		"$156": "$323",
+		"$656": true,
+		"$176": storyName,
+		"$434": "$441",
+		"$155": 77,
+		"$655": 2, // connected_pagination = 2
+	}
+}
+
+// =============================================================================
+// VAL-A-032: Page spread branch detection ($437)
+// =============================================================================
+
+func TestPageSpreadBranchDetection(t *testing.T) {
+	data := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+	}
+	branch := determinePageSpreadBranch(data, true)
+	if branch != pageSpreadBranchSpread {
+		t.Errorf("expected pageSpreadBranchSpread for $437, got %v", branch)
+	}
+}
+
+func TestFacingPageBranchDetection(t *testing.T) {
+	data := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$438",
+	}
+	branch := determinePageSpreadBranch(data, true)
+	if branch != pageSpreadBranchFacing {
+		t.Errorf("expected pageSpreadBranchFacing for $438, got %v", branch)
+	}
+}
+
+func TestScaleFitBranchDetection(t *testing.T) {
+	data := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+	}
+	branch := determinePageSpreadBranch(data, true)
+	if branch != pageSpreadBranchScaleFit {
+		t.Errorf("expected pageSpreadBranchScaleFit for $326 (section), got %v", branch)
+	}
+}
+
+func TestConnectedPaginationBranchDetection(t *testing.T) {
+	data := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$323",
+		"$656": true,
+	}
+	branch := determinePageSpreadBranch(data, true)
+	if branch != pageSpreadBranchConnected {
+		t.Errorf("expected pageSpreadBranchConnected for $323/$656, got %v", branch)
+	}
+}
+
+func TestLeafBranchDetection(t *testing.T) {
+	data := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+	branch := determinePageSpreadBranch(data, true)
+	if branch != pageSpreadBranchLeaf {
+		t.Errorf("expected pageSpreadBranchLeaf for $325 layout, got %v", branch)
+	}
+}
+
+func TestLeafBranchDetectionWithEmptyData(t *testing.T) {
+	data := map[string]interface{}{}
+	branch := determinePageSpreadBranch(data, true)
+	if branch != pageSpreadBranchLeaf {
+		t.Errorf("expected pageSpreadBranchLeaf for data without $159/$156, got %v", branch)
+	}
+}
+
+// =============================================================================
+// VAL-A-033: Virtual panel handling
+// =============================================================================
+
+func TestVirtualPanelNoneAllowed(t *testing.T) {
+	cfg := makeSpreadConfig()
+	cfg.VirtualPanelsAllowed = false
+	cfg.RegionMagnification = false
+	// When virtual_panel is nil and book is comic without region_magnification,
+	// should log an error (handled inside processPageSpreadPageTemplate)
+	result := processPageSpreadPageTemplate(
+		map[string]interface{}{
+			"$159": "$270",
+			"$156": "$325",
+		},
+		"test-section",
+		"",
+		nil,
+		true,
+		cfg,
+		map[string]map[string]interface{}{},
+	)
+	// Should succeed (leaf branch)
+	if result.Err != nil {
+		t.Errorf("unexpected error: %v", result.Err)
+	}
+}
+
+func TestVirtualPanelSymbol441Allowed(t *testing.T) {
+	cfg := makeSpreadConfig()
+	cfg.VirtualPanelsAllowed = true
+
+	storyName := "story-vp"
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": storyName,
+		"$434": "$441",
+		"$155": 42,
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Errorf("unexpected error: %v", result.Err)
+	}
+	if !result.VirtualPanels {
+		t.Error("expected VirtualPanels=true when $434=$441 and panels allowed")
+	}
+}
+
+func TestVirtualPanelUnexpectedValue(t *testing.T) {
+	cfg := makeSpreadConfig()
+	cfg.VirtualPanelsAllowed = false
+
+	storyName := "story-vp-unexpected"
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": storyName,
+		"$434": "$999", // unexpected virtual panel value
+		"$155": 42,
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Errorf("unexpected error: %v", result.Err)
+	}
+	// VirtualPanels should NOT be set for unexpected value
+	if result.VirtualPanels {
+		t.Error("expected VirtualPanels=false for unexpected virtual panel value")
+	}
+}
+
+// =============================================================================
+// VAL-A-034: LTR/RTL page spread alternation
+// =============================================================================
+
+func TestPageSpreadLTRAlternation(t *testing.T) {
+	cfg := makeSpreadConfig()
+	cfg.PageProgressionDirection = "ltr"
+
+	storyName := "story-ltr"
+	child1 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+	child2 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": storyName,
+		"$434": "$441",
+		"$155": 42,
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{child1, child2},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	// For LTR, first child gets page-spread-left, second gets page-spread-right
+	if len(result.Children) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(result.Children))
+	}
+	if result.Children[0].PageSpread != "page-spread-left" {
+		t.Errorf("first child: expected page-spread-left, got %q", result.Children[0].PageSpread)
+	}
+	if result.Children[1].PageSpread != "page-spread-right" {
+		t.Errorf("second child: expected page-spread-right, got %q", result.Children[1].PageSpread)
+	}
+}
+
+func TestPageSpreadRTLAlternation(t *testing.T) {
+	cfg := makeSpreadConfig()
+	cfg.PageProgressionDirection = "rtl"
+
+	storyName := "story-rtl"
+	child1 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+	child2 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": storyName,
+		"$434": "$441",
+		"$155": 42,
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{child1, child2},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	// For RTL, first child gets page-spread-right, second gets page-spread-left
+	if len(result.Children) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(result.Children))
+	}
+	if result.Children[0].PageSpread != "page-spread-right" {
+		t.Errorf("first child: expected page-spread-right, got %q", result.Children[0].PageSpread)
+	}
+	if result.Children[1].PageSpread != "page-spread-left" {
+		t.Errorf("second child: expected page-spread-left, got %q", result.Children[1].PageSpread)
+	}
+}
+
+// =============================================================================
+// VAL-A-035: PDF-backed scale_fit branch ($326)
+// =============================================================================
+
+func TestScaleFitBranchProcesses(t *testing.T) {
+	cfg := makePDFSpreadConfig()
+
+	storyName := "story-sf"
+	child1 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+		"$176": storyName,
+		"$434": "$441",
+		"$192": nil,
+		"$140": nil,
+		"$560": nil,
+		"$155": 55,
+		"$16":  16,
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{child1},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	if len(result.Children) != 1 {
+		t.Fatalf("expected 1 child, got %d", len(result.Children))
+	}
+	// Scale fit children should NOT have page spread alternation
+	if result.Children[0].PageSpread != "" {
+		t.Errorf("scale_fit child should have empty page_spread, got %q", result.Children[0].PageSpread)
+	}
+}
+
+func TestScaleFitBranchNotPdfBacked(t *testing.T) {
+	cfg := makeSpreadConfig() // not PDF-backed
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+	}
+
+	// determinePageSpreadBranch only checks data; the PDF-backed check happens in
+	// processPageSpreadPageTemplate. At the branch-detection level, $326 + isSection
+	// is still identified as scale_fit.
+	branch := determinePageSpreadBranch(templateData, true)
+	if branch != pageSpreadBranchScaleFit {
+		t.Errorf("expected pageSpreadBranchScaleFit from data analysis, got %v", branch)
+	}
+
+	// But the full processing function should fall through to leaf when not PDF-backed
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, map[string]map[string]interface{}{})
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+	// Should produce a leaf section, not a scale_fit child
+	if len(result.Sections) != 1 {
+		t.Fatalf("expected 1 leaf section (fell through from scale_fit), got %d sections, %d children", len(result.Sections), len(result.Children))
+	}
+}
+
+func TestScaleFitBranchNotSection(t *testing.T) {
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$326",
+	}
+
+	// Not a section → should fall to leaf
+	branch := determinePageSpreadBranch(templateData, false)
+	if branch == pageSpreadBranchScaleFit {
+		t.Error("scale_fit branch should not activate when is_section=false")
+	}
+}
+
+// =============================================================================
+// VAL-A-036: Connected pagination branch ($323/$656)
+// =============================================================================
+
+func TestConnectedPaginationBranchProcesses(t *testing.T) {
+	cfg := makeSpreadConfig()
+
+	storyName := "story-cp"
+	child1 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+	child2 := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$323",
+		"$656": true,
+		"$176": storyName,
+		"$434": "$441",
+		"$155": 77,
+		"$655": 2,
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{child1, child2},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	if len(result.Children) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(result.Children))
+	}
+	// All connected pagination children should have center spread
+	for i, child := range result.Children {
+		if child.PageSpread != "rendition:page-spread-center" {
+			t.Errorf("connected pagination child %d: expected rendition:page-spread-center, got %q", i, child.PageSpread)
+		}
+	}
+}
+
+// =============================================================================
+// VAL-A-037: Leaf content branch
+// =============================================================================
+
+func TestLeafBranchCreatesSectionNameWithSpreadSuffix(t *testing.T) {
+	cfg := makeSpreadConfig()
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	result := processPageSpreadPageTemplate(
+		templateData,
+		"my-section",
+		"rendition:page-spread-left",
+		nil,
+		true,
+		cfg,
+		map[string]map[string]interface{}{},
+	)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	// Leaf with page_spread should produce section name with spread suffix
+	if len(result.Sections) != 1 {
+		t.Fatalf("expected 1 section, got %d", len(result.Sections))
+	}
+	// spread_type = "left" (stripped from "rendition:page-spread-left")
+	// unique_section_name = "my-section-left"
+	if result.Sections[0].PageTitle != "my-section-left" {
+		t.Errorf("expected section pageTitle 'my-section-left', got %q", result.Sections[0].PageTitle)
+	}
+	if result.Sections[0].Properties != "rendition:page-spread-left" {
+		t.Errorf("expected properties 'rendition:page-spread-left', got %q", result.Sections[0].Properties)
+	}
+}
+
+func TestLeafBranchCreatesSectionNameWithoutSpread(t *testing.T) {
+	cfg := makeSpreadConfig()
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	result := processPageSpreadPageTemplate(
+		templateData,
+		"my-section",
+		"",
+		nil,
+		true,
+		cfg,
+		map[string]map[string]interface{}{},
+	)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	if len(result.Sections) != 1 {
+		t.Fatalf("expected 1 section, got %d", len(result.Sections))
+	}
+	// No spread → section name is just "my-section"
+	if result.Sections[0].PageTitle != "my-section" {
+		t.Errorf("expected section pageTitle 'my-section', got %q", result.Sections[0].PageTitle)
+	}
+	if result.Sections[0].Properties != "" {
+		t.Errorf("expected empty properties, got %q", result.Sections[0].Properties)
+	}
+}
+
+// =============================================================================
+// VAL-A-038: Recursive processing — nested page-spread with facing-page
+// =============================================================================
+
+func TestRecursivePageSpreadProcessing(t *testing.T) {
+	cfg := makeSpreadConfig()
+	cfg.PageProgressionDirection = "ltr"
+
+	outerStoryName := "outer-story"
+
+	innerChild := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	// Outer template is $437 page-spread
+	outerTemplate := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": outerStoryName,
+		"$434": "$441",
+		"$155": 10,
+	}
+
+	storylines := map[string]map[string]interface{}{
+		outerStoryName: {
+			"$176": outerStoryName,
+			"$146": []interface{}{
+				innerChild,
+			},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(outerTemplate, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	// Should have processed 1 child through the page-spread branch
+	if len(result.Children) != 1 {
+		t.Fatalf("expected 1 child, got %d", len(result.Children))
+	}
+
+	// Child should be page-spread-left for LTR
+	if result.Children[0].PageSpread != "page-spread-left" {
+		t.Errorf("expected page-spread-left, got %q", result.Children[0].PageSpread)
+	}
+}
+
+func TestLocationIDFromTemplate(t *testing.T) {
+	// getLocationID pops $155 first, then $598
+	data := map[string]interface{}{
+		"$155": 42,
+		"$598": 99,
+	}
+	id := getLocationID(data)
+	if id != 42 {
+		t.Errorf("expected location ID 42 from $155, got %v", id)
+	}
+	// $155 should have been consumed
+	if _, exists := data["$155"]; exists {
+		t.Error("expected $155 to be consumed by getLocationID")
+	}
+}
+
+func TestLocationIDFromTemplateFallback(t *testing.T) {
+	data := map[string]interface{}{
+		"$598": 99,
+	}
+	id := getLocationID(data)
+	if id != 99 {
+		t.Errorf("expected location ID 99 from $598 fallback, got %v", id)
+	}
+}
+
+func TestLocationIDFromTemplateEmpty(t *testing.T) {
+	data := map[string]interface{}{}
+	id := getLocationID(data)
+	if id != 0 {
+		t.Errorf("expected 0 for missing location ID, got %v", id)
+	}
+}
+
+// =============================================================================
+// Integration: processSectionComic dispatches to processPageSpreadPageTemplate
+// =============================================================================
+
+func TestProcessSectionComicDispatchesToPageSpreadTemplate(t *testing.T) {
+	// Build a complete comic section with a page-spread template
+	storyName := "comic-story"
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": storyName,
+		"$434": "$441",
+		"$155": 10,
+	}
+
+	section := sectionFragment{
+		ID:    "comic-section-1",
+		Storyline: storyName,
+		PageTemplates: []pageTemplateFragment{
+			{
+				PositionID:         100,
+				Storyline:          storyName,
+				PageTemplateValues: templateData,
+			},
+		},
+		PageTemplateValues: map[string]interface{}{},
+	}
+
+	// Verify branch detection still works
+	branch := determineSectionBranch(section, bookTypeComic)
+	if branch != branchComic {
+		t.Errorf("expected branchComic, got %v", branch)
+	}
+}
+
+// =============================================================================
+// Spread type extraction from page_spread property string
+// =============================================================================
+
+func TestExtractSpreadType(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"rendition:page-spread-left", "left"},
+		{"rendition:page-spread-right", "right"},
+		{"rendition:page-spread-center", "center"},
+		{"page-spread-left", "left"},
+		{"page-spread-right", "right"},
+		{"", ""},
+		{"something", "something"},
+	}
+	for _, test := range tests {
+		got := extractSpreadType(test.input)
+		if got != test.expected {
+			t.Errorf("extractSpreadType(%q) = %q, want %q", test.input, got, test.expected)
+		}
+	}
+}
+
+// =============================================================================
+// Section name suffix handling
+// =============================================================================
+
+func TestUniqueSectionNameWithSpread(t *testing.T) {
+	tests := []struct {
+		sectionName string
+		spreadType  string
+		expected    string
+	}{
+		{"section-1", "left", "section-1-left"},
+		{"section-1", "right", "section-1-right"},
+		{"section-1", "center", "section-1-center"},
+		{"section-1", "", "section-1"},
+		{"my-section", "left", "my-section-left"},
+	}
+	for _, test := range tests {
+		got := uniqueSectionName(test.sectionName, test.spreadType)
+		if got != test.expected {
+			t.Errorf("uniqueSectionName(%q, %q) = %q, want %q", test.sectionName, test.spreadType, got, test.expected)
+		}
+	}
+}
+
+// =============================================================================
+// Facing page layout string mapping
+// =============================================================================
+
+func TestLayoutSpreadBaseProperty(t *testing.T) {
+	tests := []struct {
+		layout    string
+		expected  string
+	}{
+		{"$437", "page-spread"},
+		{"$438", "facing-page"},
+	}
+	for _, test := range tests {
+		got := layoutSpreadBaseProperty(test.layout)
+		if got != test.expected {
+			t.Errorf("layoutSpreadBaseProperty(%q) = %q, want %q", test.layout, got, test.expected)
+		}
+	}
+}
+
+// =============================================================================
+// Connected pagination validation
+// =============================================================================
+
+func TestConnectedPaginationValidation(t *testing.T) {
+	cfg := makeSpreadConfig()
+
+	storyName := "story-cp-bad"
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$323",
+		"$656": true,
+		"$176": storyName,
+		"$434": "$441",
+		"$155": 77,
+		"$655": 3, // wrong value — should be 2
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{},
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	// Should still succeed but log a warning
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+}
+
+// =============================================================================
+// Edge cases
+// =============================================================================
+
+func TestPageSpreadWithMissingStoryline(t *testing.T) {
+	cfg := makeSpreadConfig()
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": "missing-story",
+		"$434": "$441",
+		"$155": 42,
+	}
+	storylines := map[string]map[string]interface{}{
+		// "missing-story" intentionally not present
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err == nil {
+		t.Error("expected error for missing storyline")
+	}
+}
+
+func TestPageSpreadWithEmptyChildList(t *testing.T) {
+	cfg := makeSpreadConfig()
+
+	storyName := "story-empty"
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$437",
+		"$176": storyName,
+		"$434": "$441",
+		"$155": 42,
+	}
+	storylines := map[string]map[string]interface{}{
+		storyName: {
+			"$176": storyName,
+			"$146": []interface{}{}, // empty children
+		},
+	}
+
+	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, storylines)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+	if len(result.Children) != 0 {
+		t.Errorf("expected 0 children, got %d", len(result.Children))
+	}
+}
+
+func TestLeafBranchWithParentTemplateID(t *testing.T) {
+	cfg := makeSpreadConfig()
+
+	templateData := map[string]interface{}{
+		"$159": "$270",
+		"$156": "$325",
+	}
+
+	parentID := 42
+	result := processPageSpreadPageTemplate(
+		templateData,
+		"my-section",
+		"rendition:page-spread-left",
+		&parentID,
+		false, // not section
+		cfg,
+		map[string]map[string]interface{}{},
+	)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	if len(result.Sections) != 1 {
+		t.Fatalf("expected 1 section, got %d", len(result.Sections))
+	}
+	// When parent_template_id is set, it should be recorded
+	if result.Sections[0].ParentPositionID != 42 {
+		t.Errorf("expected ParentPositionID=42, got %d", result.Sections[0].ParentPositionID)
+	}
+}

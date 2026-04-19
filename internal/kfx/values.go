@@ -62,6 +62,13 @@ func asBool(value interface{}) (bool, bool) {
 	return typed, ok
 }
 
+func asIntDefault(value interface{}, defaultVal int) int {
+	if v, ok := asInt(value); ok {
+		return v
+	}
+	return defaultVal
+}
+
 func toStringSlice(value interface{}) []string {
 	items, ok := asSlice(value)
 	if !ok {

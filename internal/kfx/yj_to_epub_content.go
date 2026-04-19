@@ -448,6 +448,544 @@ func pageTemplatesHaveConditions(templates []pageTemplateFragment) bool {
 	return hasConditionalTemplate(templates)
 }
 
+// =============================================================================
+// process_page_spread_page_template — Port of yj_to_epub_content.py:210-344
+// =============================================================================
+
+// pageSpreadBranch identifies which sub-branch of process_page_spread_page_template applies.
+type pageSpreadBranch int
+
+const (
+	pageSpreadBranchSpread    pageSpreadBranch = iota // $437 page-spread / $438 facing-page
+	pageSpreadBranchFacing                             // $438 facing-page (grouped with spread for alternation)
+	pageSpreadBranchScaleFit                           // $326 PDF-backed scale_fit
+	pageSpreadBranchConnected                          // $323/$656 connected pagination
+	pageSpreadBranchLeaf                               // default leaf content page
+)
+
+// pageSpreadConfig holds book-level configuration needed for page spread processing.
+// Port of Python's self.is_comic, self.is_pdf_backed, self.region_magnification, etc.
+type pageSpreadConfig struct {
+	BookType                 bookType
+	IsPdfBacked              bool
+	RegionMagnification      bool
+	VirtualPanelsAllowed     bool
+	VirtualPanels            bool // set to true when $434==$441 and VirtualPanelsAllowed
+	PageProgressionDirection string // "ltr" or "rtl"
+}
+
+// pageSpreadChild represents a recursively processed child template from the spread/story.
+type pageSpreadChild struct {
+	PageSpread string                 // e.g. "page-spread-left", "page-spread-right", "rendition:page-spread-center"
+	Data       map[string]interface{} // the child template data (consumed)
+}
+
+// pageSpreadSection represents a leaf content section produced by the leaf branch.
+type pageSpreadSection struct {
+	PageTitle         string // unique section name (with spread suffix if applicable)
+	Properties        string // OPF properties (page spread direction)
+	ParentPositionID  int    // set when parent_template_id is provided
+	PositionOffset    int    // offset for position processing (always 0 per Python)
+	TemplateData      map[string]interface{} // remaining template data
+}
+
+// pageSpreadResult holds the output of processPageSpreadPageTemplate.
+type pageSpreadResult struct {
+	Children      []pageSpreadChild   // child templates processed from story $146
+	Sections      []pageSpreadSection // leaf sections created
+	VirtualPanels bool                // whether virtual panels were activated
+	Err           error               // non-nil on fatal errors (e.g. missing storyline)
+}
+
+// determinePageSpreadBranch determines which sub-branch of process_page_spread_page_template
+// applies based on the template's $159 (type) and $156 (layout) keys.
+// Port of Python's conditional branching at yj_to_epub_content.py:213-338.
+func determinePageSpreadBranch(pageTemplate map[string]interface{}, isSection bool) pageSpreadBranch {
+	ptype, _ := asString(pageTemplate["$159"])
+	layout, _ := asString(pageTemplate["$156"])
+
+	// Branch A: page-spread ($437) / facing-page ($438)
+	if ptype == "$270" && (layout == "$437" || layout == "$438") {
+		if layout == "$438" {
+			return pageSpreadBranchFacing
+		}
+		return pageSpreadBranchSpread
+	}
+
+	// Branch B: PDF-backed scale_fit ($326) — only for section-level templates
+	if ptype == "$270" && layout == "$326" && isSection {
+		return pageSpreadBranchScaleFit
+	}
+
+	// Branch C: connected pagination ($323/$656)
+	if ptype == "$270" && layout == "$323" {
+		if hasBool, _ := asBool(pageTemplate["$656"]); hasBool {
+			return pageSpreadBranchConnected
+		}
+	}
+
+	// Branch D: leaf content (default)
+	return pageSpreadBranchLeaf
+}
+
+// getLocationID extracts the location ID from a template by popping $155, then $598.
+// Port of Python's get_location_id (yj_to_epub_navigation.py:372-373).
+func getLocationID(data map[string]interface{}) int {
+	if id, ok := popInt(data, "$155"); ok {
+		return id
+	}
+	if id, ok := popInt(data, "$598"); ok {
+		return id
+	}
+	return 0
+}
+
+// popInt removes a key from a map and returns its int value.
+func popInt(data map[string]interface{}, key string) (int, bool) {
+	val, exists := data[key]
+	if !exists {
+		return 0, false
+	}
+	delete(data, key)
+	return asIntDefault(val, 0), true
+}
+
+// popString removes a key from a map and returns its string value.
+func popString(data map[string]interface{}, key string) (string, bool) {
+	val, exists := data[key]
+	if !exists {
+		return "", false
+	}
+	delete(data, key)
+	s, _ := asString(val)
+	return s, true
+}
+
+// popInterface removes a key from a map and returns its value.
+func popInterface(data map[string]interface{}, key string) (interface{}, bool) {
+	val, exists := data[key]
+	if !exists {
+		return nil, false
+	}
+	delete(data, key)
+	return val, true
+}
+
+// extractSpreadType extracts the spread type from a page_spread property string.
+// E.g. "rendition:page-spread-left" → "left", "rendition:page-spread-right" → "right"
+// Port of Python's spread_type = page_spread.replace("rendition:", "").replace("page-spread-", "")
+func extractSpreadType(pageSpread string) string {
+	s := strings.ReplaceAll(pageSpread, "rendition:", "")
+	s = strings.ReplaceAll(s, "page-spread-", "")
+	return s
+}
+
+// uniqueSectionName constructs a unique section name from the base name and spread type.
+// Port of Python's unique_section_name = "%s-%s" % (section_name, spread_type) if spread_type else section_name
+func uniqueSectionName(sectionName, spreadType string) string {
+	if spreadType == "" {
+		return sectionName
+	}
+	return sectionName + "-" + spreadType
+}
+
+// layoutSpreadBaseProperty maps layout symbols to their CSS base property name.
+// Port of Python's LAYOUTS dict at yj_to_epub_content.py:246-249.
+func layoutSpreadBaseProperty(layout string) string {
+	switch layout {
+	case "$437":
+		return "page-spread"
+	case "$438":
+		return "facing-page"
+	default:
+		return ""
+	}
+}
+
+// processVirtualPanel handles the $434 (virtual_panel) key from a page template.
+// Port of Python's virtual_panel handling at yj_to_epub_content.py:219-226, 265-272, 303-310.
+// Returns true if virtual_panels should be activated.
+func processVirtualPanel(data map[string]interface{}, cfg *pageSpreadConfig, sectionName string) bool {
+	virtualPanel := popInterfaceDefault(data, "$434")
+	if virtualPanel == nil {
+		if cfg.BookType == bookTypeComic && !cfg.RegionMagnification {
+			log.Printf("kfx: error: section %s has missing virtual panel in comic without region magnification", sectionName)
+		}
+		return false
+	}
+	vpStr, _ := asString(virtualPanel)
+	if vpStr == "$441" && cfg.VirtualPanelsAllowed {
+		return true
+	}
+	if vpStr != "" {
+		log.Printf("kfx: warning: unexpected %s page_template virtual_panel: %s", cfg.BookType, virtualPanel)
+	}
+	return false
+}
+
+// popInterfaceDefault removes a key and returns its value, or nil if absent.
+func popInterfaceDefault(data map[string]interface{}, key string) interface{} {
+	val, exists := data[key]
+	if !exists {
+		return nil
+	}
+	delete(data, key)
+	return val
+}
+
+// processPageSpreadPageTemplate processes a page template within a page spread.
+// Port of Python's process_page_spread_page_template (yj_to_epub_content.py:210-344).
+//
+// Parameters:
+//   - pageTemplate: the template data (map with $159, $156, etc.)
+//   - sectionName: the section name
+//   - pageSpread: the current page spread direction (e.g. "rendition:page-spread-left")
+//   - parentTemplateID: position ID of the parent template (nil if none)
+//   - isSection: whether this is a top-level section template
+//   - cfg: book-level page spread configuration
+//   - storylines: map of storyline name → storyline data
+func processPageSpreadPageTemplate(
+	pageTemplate map[string]interface{},
+	sectionName string,
+	pageSpread string,
+	parentTemplateID *int,
+	isSection bool,
+	cfg pageSpreadConfig,
+	storylines map[string]map[string]interface{},
+) pageSpreadResult {
+	result := pageSpreadResult{}
+
+	// Python L211-212: if ion_type(page_template) is IonSymbol → resolve to $608 fragment
+	// In Go, this resolution already happened during organizeFragments, so pageTemplate
+	// is already the resolved map. If it's a string (symbol reference), look it up.
+	if ptStr, ok := asString(pageTemplate["$159"]); !ok || ptStr == "" {
+		// Template might be a symbol reference — in Go's pipeline this is already resolved
+		// via pageTemplateFragment. For standalone calls, skip.
+		if len(pageTemplate) == 0 {
+			// Empty template → leaf branch
+			return processPageSpreadLeaf(pageTemplate, sectionName, pageSpread, parentTemplateID, isSection, cfg)
+		}
+	}
+
+	branch := determinePageSpreadBranch(pageTemplate, isSection)
+
+	// Check if this is a scale_fit branch that requires PDF backing but we're not PDF-backed
+	if branch == pageSpreadBranchScaleFit && !cfg.IsPdfBacked {
+		// Python condition: self.is_pdf_backed and "$67" not in page_template and "$66" not in page_template
+		// If not PDF-backed, fall through to leaf
+		if _, has67 := pageTemplate["$67"]; has67 {
+			branch = pageSpreadBranchLeaf
+		} else if _, has66 := pageTemplate["$66"]; has66 {
+			branch = pageSpreadBranchLeaf
+		} else {
+			branch = pageSpreadBranchLeaf
+		}
+	}
+
+	switch branch {
+	case pageSpreadBranchSpread, pageSpreadBranchFacing:
+		result = processPageSpreadStoryBranch(pageTemplate, sectionName, parentTemplateID, isSection, cfg, storylines)
+
+	case pageSpreadBranchScaleFit:
+		result = processPageSpreadScaleFitBranch(pageTemplate, sectionName, parentTemplateID, isSection, cfg, storylines)
+
+	case pageSpreadBranchConnected:
+		result = processPageSpreadConnectedBranch(pageTemplate, sectionName, parentTemplateID, isSection, cfg, storylines)
+
+	default:
+		result = processPageSpreadLeaf(pageTemplate, sectionName, pageSpread, parentTemplateID, isSection, cfg)
+	}
+
+	return result
+}
+
+// processPageSpreadStoryBranch handles Branch A: page-spread ($437) / facing-page ($438).
+// Port of yj_to_epub_content.py:213-258.
+func processPageSpreadStoryBranch(
+	pageTemplate map[string]interface{},
+	sectionName string,
+	parentTemplateID *int,
+	isSection bool,
+	cfg pageSpreadConfig,
+	storylines map[string]map[string]interface{},
+) pageSpreadResult {
+	result := pageSpreadResult{}
+
+	// Pop $159 and $156
+	delete(pageTemplate, "$159")
+	layout, _ := popString(pageTemplate, "$156")
+
+	// Handle virtual panel
+	if vp := processVirtualPanel(pageTemplate, &cfg, sectionName); vp {
+		result.VirtualPanels = true
+	}
+
+	// Pop unused keys
+	delete(pageTemplate, "$192")
+	delete(pageTemplate, "$67")
+	delete(pageTemplate, "$66")
+	delete(pageTemplate, "$140")
+	delete(pageTemplate, "$560")
+
+	// Get location ID for parent
+	locID := getLocationID(pageTemplate)
+	_ = locID // stored as parent for recursive calls
+
+	// Get story from storyline reference
+	storyName, _ := popString(pageTemplate, "$176")
+	story, ok := storylines[storyName]
+	if !ok {
+		result.Err = fmt.Errorf("page spread template references missing storyline %q", storyName)
+		return result
+	}
+
+	// Pop storyline name from story data
+	delete(story, "$176")
+
+	// Determine base property and initial page property
+	baseProperty := layoutSpreadBaseProperty(layout)
+	leftProperty := baseProperty + "-left"
+	rightProperty := baseProperty + "-right"
+
+	var pageProperty string
+	if cfg.PageProgressionDirection == "ltr" {
+		pageProperty = leftProperty
+	} else {
+		pageProperty = rightProperty
+	}
+
+	// Process children from $146 (content_list)
+	children, _ := asSlice(popInterfaceDefault(story, "$146"))
+	result.Children = make([]pageSpreadChild, 0, len(children))
+
+	for _, child := range children {
+		childData, ok := asMap(child)
+		if !ok {
+			continue
+		}
+
+		// Recursively process each child template
+		childResult := processPageSpreadPageTemplate(
+			childData, sectionName, pageProperty, nil, false, cfg, storylines,
+		)
+		if childResult.Err != nil {
+			result.Err = childResult.Err
+			return result
+		}
+
+		// Merge child results
+		if childResult.VirtualPanels {
+			result.VirtualPanels = true
+		}
+		result.Children = append(result.Children, pageSpreadChild{
+			PageSpread: pageProperty,
+			Data:       childData,
+		})
+		result.Sections = append(result.Sections, childResult.Sections...)
+		result.Children = append(result.Children, childResult.Children...)
+
+		// Alternate left/right
+		if pageProperty == rightProperty {
+			pageProperty = leftProperty
+		} else {
+			pageProperty = rightProperty
+		}
+	}
+
+	return result
+}
+
+// processPageSpreadScaleFitBranch handles Branch B: PDF-backed scale_fit ($326).
+// Port of yj_to_epub_content.py:260-297.
+func processPageSpreadScaleFitBranch(
+	pageTemplate map[string]interface{},
+	sectionName string,
+	parentTemplateID *int,
+	isSection bool,
+	cfg pageSpreadConfig,
+	storylines map[string]map[string]interface{},
+) pageSpreadResult {
+	result := pageSpreadResult{}
+
+	// Pop $159 and $156
+	delete(pageTemplate, "$159")
+	delete(pageTemplate, "$156")
+
+	// Handle virtual panel
+	if vp := processVirtualPanel(pageTemplate, &cfg, sectionName); vp {
+		result.VirtualPanels = true
+	}
+
+	// Pop unused keys
+	delete(pageTemplate, "$192")
+	delete(pageTemplate, "$140")
+	delete(pageTemplate, "$560")
+
+	// Validate font_size == 16
+	fontSize, _ := popInt(pageTemplate, "$16")
+	if fontSize != 16 {
+		log.Printf("kfx: warning: unexpected font size in PDF backed scale_fit page template: %d", fontSize)
+	}
+
+	// Get location ID
+	locID := getLocationID(pageTemplate)
+	_ = locID
+
+	// Get story
+	storyName, _ := popString(pageTemplate, "$176")
+	story, ok := storylines[storyName]
+	if !ok {
+		result.Err = fmt.Errorf("scale_fit template references missing storyline %q", storyName)
+		return result
+	}
+	delete(story, "$176")
+
+	// Process children without page_spread alternation
+	children, _ := asSlice(popInterfaceDefault(story, "$146"))
+	result.Children = make([]pageSpreadChild, 0, len(children))
+
+	for _, child := range children {
+		childData, ok := asMap(child)
+		if !ok {
+			continue
+		}
+
+		childResult := processPageSpreadPageTemplate(
+			childData, sectionName, "", nil, false, cfg, storylines,
+		)
+		if childResult.Err != nil {
+			result.Err = childResult.Err
+			return result
+		}
+
+		if childResult.VirtualPanels {
+			result.VirtualPanels = true
+		}
+		result.Children = append(result.Children, pageSpreadChild{
+			PageSpread: "",
+			Data:       childData,
+		})
+		result.Sections = append(result.Sections, childResult.Sections...)
+		result.Children = append(result.Children, childResult.Children...)
+	}
+
+	return result
+}
+
+// processPageSpreadConnectedBranch handles Branch C: connected pagination ($323/$656).
+// Port of yj_to_epub_content.py:299-335.
+func processPageSpreadConnectedBranch(
+	pageTemplate map[string]interface{},
+	sectionName string,
+	parentTemplateID *int,
+	isSection bool,
+	cfg pageSpreadConfig,
+	storylines map[string]map[string]interface{},
+) pageSpreadResult {
+	result := pageSpreadResult{}
+
+	// Pop $159, $156, $656
+	delete(pageTemplate, "$159")
+	delete(pageTemplate, "$156")
+	delete(pageTemplate, "$656")
+
+	// Handle virtual panel
+	if vp := processVirtualPanel(pageTemplate, &cfg, sectionName); vp {
+		result.VirtualPanels = true
+	}
+
+	// Validate connected_pagination == 2
+	connectedPagination, _ := popInt(pageTemplate, "$655")
+	if connectedPagination != 2 {
+		log.Printf("kfx: error: unexpected connected_pagination: %d", connectedPagination)
+	}
+
+	// Get location ID
+	locID := getLocationID(pageTemplate)
+	_ = locID
+
+	// Get story
+	storyName, _ := popString(pageTemplate, "$176")
+	story, ok := storylines[storyName]
+	if !ok {
+		result.Err = fmt.Errorf("connected pagination template references missing storyline %q", storyName)
+		return result
+	}
+	delete(story, "$176")
+
+	// Process children with "rendition:page-spread-center"
+	children, _ := asSlice(popInterfaceDefault(story, "$146"))
+	result.Children = make([]pageSpreadChild, 0, len(children))
+
+	for _, child := range children {
+		childData, ok := asMap(child)
+		if !ok {
+			continue
+		}
+
+		childResult := processPageSpreadPageTemplate(
+			childData, sectionName, "rendition:page-spread-center", nil, false, cfg, storylines,
+		)
+		if childResult.Err != nil {
+			result.Err = childResult.Err
+			return result
+		}
+
+		if childResult.VirtualPanels {
+			result.VirtualPanels = true
+		}
+		result.Children = append(result.Children, pageSpreadChild{
+			PageSpread: "rendition:page-spread-center",
+			Data:       childData,
+		})
+		result.Sections = append(result.Sections, childResult.Sections...)
+		result.Children = append(result.Children, childResult.Children...)
+	}
+
+	return result
+}
+
+// processPageSpreadLeaf handles Branch D: leaf content page (default).
+// Port of yj_to_epub_content.py:337-343.
+func processPageSpreadLeaf(
+	pageTemplate map[string]interface{},
+	sectionName string,
+	pageSpread string,
+	parentTemplateID *int,
+	isSection bool,
+	cfg pageSpreadConfig,
+) pageSpreadResult {
+	result := pageSpreadResult{}
+
+	// Port of Python L337-338:
+	//   spread_type = page_spread.replace("rendition:", "").replace("page-spread-", "")
+	//   unique_section_name = "%s-%s" % (section_name, spread_type) if spread_type else section_name
+	spreadType := extractSpreadType(pageSpread)
+	uniqueName := uniqueSectionName(sectionName, spreadType)
+
+	// Port of Python L339-341:
+	//   book_part = self.new_book_part(
+	//       filename=self.SECTION_TEXT_FILEPATH % unique_section_name if RETAIN_SECTION_FILENAMES else None,
+	//       opf_properties=set(page_spread.split()))
+	// In Go, we record the section for later book part creation.
+	section := pageSpreadSection{
+		PageTitle:    uniqueName,
+		Properties:   pageSpread,
+		PositionOffset: 0,
+		TemplateData: pageTemplate,
+	}
+
+	// Port of Python L343:
+	//   if parent_template_id is not None:
+	//       self.process_position(parent_template_id, 0, book_part.body())
+	if parentTemplateID != nil {
+		section.ParentPositionID = *parentTemplateID
+	}
+
+	result.Sections = append(result.Sections, section)
+	return result
+}
+
 func mergeSectionProperties(left string, right string) string {
 	seen := map[string]bool{}
 	merged := make([]string, 0, 2)
