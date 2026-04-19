@@ -1,0 +1,96 @@
+{
+  "groupId": "m1-epub",
+  "milestone": "m1-foundation",
+  "testedAt": "2026-04-19T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "testPackage": "./internal/epub/...",
+    "runFlags": "TestDefaultTitle_Unknown|TestFixHTMLID_ArabicIndic|TestFixHTMLID_IllustratedLayoutDots|TestEPUBVersionSwitching|TestGuideSectionConditional|TestNCX_MBPNamespace|TestSpinePageProgressionDirection|TestOPFMetadataRefinements|TestOPFManifestOrdering_MatchPython|TestFontFaceOrdering"
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-M1-EPUB-001",
+      "title": "Default title for empty books is \"Unknown\"",
+      "status": "pass",
+      "testName": "TestDefaultTitle_Unknown",
+      "testOutput": "--- PASS: TestDefaultTitle_Unknown (0.01s)",
+      "evidence": "Test passed. Go constructs EPUB with empty title and asserts title == \"Unknown\"."
+    },
+    {
+      "id": "VAL-M1-EPUB-002",
+      "title": "Arabic-Indic numerals converted to ASCII digits in HTML IDs",
+      "status": "pass",
+      "testName": "TestFixHTMLID_ArabicIndic",
+      "testOutput": "--- PASS: TestFixHTMLID_ArabicIndic (0.00s) with 8 subtests: arabic_indic_1, arabic_indic_9, extended_arabic_indic_0, extended_arabic_indic_9, mixed_arabic_indic, all_zero, preserve_ascii_digits, arabic_after_alpha",
+      "evidence": "All 8 subtests passed covering Arabic-Indic (U+0660-U+0669) and Extended Arabic-Indic (U+06F0-U+06F9) digit conversion."
+    },
+    {
+      "id": "VAL-M1-EPUB-003",
+      "title": "Dots replaced with underscores in illustrated layout HTML IDs",
+      "status": "pass",
+      "testName": "TestFixHTMLID_IllustratedLayoutDots",
+      "testOutput": "--- PASS: TestFixHTMLID_IllustratedLayoutDots (0.00s) with 6 subtests: dot_illustrated, dot_not_illustrated, multiple_dots_illustrated, multiple_dots_not_illustrated, no_dots_illustrated, no_dots_not_illustrated",
+      "evidence": "All 6 subtests passed. Dots replaced with underscores when illustrated_layout=true, preserved when false."
+    },
+    {
+      "id": "VAL-M1-EPUB-004",
+      "title": "EPUB version switches from 3 to 2 when no EPUB3 features needed",
+      "status": "pass",
+      "testName": "TestEPUBVersionSwitching",
+      "testOutput": "--- PASS: TestEPUBVersionSwitching (0.01s) with 2 subtests: default_epub3, epub2_desired_generates_epub2",
+      "evidence": "Both subtests passed. Default is EPUB3; epub2_desired with no EPUB3 features produces version 2.0."
+    },
+    {
+      "id": "VAL-M1-EPUB-005",
+      "title": "Guide section emitted only for EPUB2 or EPUB2-compatible",
+      "status": "pass",
+      "testName": "TestGuideSectionConditional",
+      "testOutput": "--- PASS: TestGuideSectionConditional (0.01s) with 4 subtests: epub3_no_guide, epub2_has_guide, epub2_compatible_has_guide, no_guide_entries_no_guide_section",
+      "evidence": "All 4 subtests passed. EPUB3 omits guide, EPUB2 and EPUB2-compatible emit guide when entries exist."
+    },
+    {
+      "id": "VAL-M1-EPUB-006",
+      "title": "NCX includes mbp: namespace for descriptions, masthead, periodical",
+      "status": "pass",
+      "testName": "TestNCX_MBPNamespace",
+      "testOutput": "--- PASS: TestNCX_MBPNamespace (0.02s) with 5 subtests: mbp_namespace_declaration, mbp_meta_description, mbp_meta_img_masthead, periodical_ncx_classes, no_periodical_classes_when_not_magazine",
+      "evidence": "All 5 subtests passed. xmlns:mbp declaration, mbp:meta description, mbp:meta-img masthead, and periodical NCX classes all verified."
+    },
+    {
+      "id": "VAL-M1-EPUB-007",
+      "title": "Spine includes page-progression-direction for RTL books",
+      "status": "pass",
+      "testName": "TestSpinePageProgressionDirection",
+      "testOutput": "--- PASS: TestSpinePageProgressionDirection (0.02s) with 4 subtests: rtl_spine, ltr_no_attribute, empty_no_attribute, rtl_epub2_no_attribute",
+      "evidence": "All 4 subtests passed. RTL non-EPUB2 gets attribute; LTR, empty, and RTL-EPUB2 omit it."
+    },
+    {
+      "id": "VAL-M1-EPUB-008",
+      "title": "OPF metadata refinements for alternate-script and file-as",
+      "status": "pass",
+      "testName": "TestOPFMetadataRefinements",
+      "testOutput": "--- PASS: TestOPFMetadataRefinements (0.01s) with 4 subtests: title_pronunciation_refines, author_pronunciation_refines, epub2_no_refines, author_role_refines",
+      "evidence": "All 4 subtests passed. Title/author pronunciation refines emitted in EPUB3; EPUB2 omits refines; author role meta present."
+    },
+    {
+      "id": "VAL-M1-EPUB-009",
+      "title": "OPF manifest item ordering matches Python",
+      "status": "pass",
+      "testName": "TestOPFManifestOrdering_MatchPython",
+      "testOutput": "--- PASS: TestOPFManifestOrdering_MatchPython (0.00s)",
+      "evidence": "Test passed. Manifest items ordered: stylesheets, fonts, images, other resources in add order matching Python."
+    },
+    {
+      "id": "VAL-M1-EPUB-010",
+      "title": "Font @font-face emission ordering matches Python",
+      "status": "pass",
+      "testName": "TestFontFaceOrdering",
+      "testOutput": "--- PASS: TestFontFaceOrdering (0.00s)",
+      "evidence": "Test passed. @font-face CSS rules emitted in natural-sorted order matching Python."
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 10 assertions: all 10 passed. All EPUB packaging tests in ./internal/epub/... passed with exit code 0."
+}

@@ -1,0 +1,147 @@
+{
+  "groupId": "m1-meta",
+  "milestone": "m1-foundation",
+  "testedAt": "2026-04-19T12:28:15Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "testPackage": "./internal/kfx/...",
+    "runFlags": "specific -run patterns per assertion"
+  },
+  "toolsUsed": ["go test"],
+  "assertions": [
+    {
+      "id": "VAL-M1-META-001",
+      "title": "updateCoverSectionAndStoryline recursively processes $157 style fragments",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/... -count=1 -v -run TestUpdateCoverSectionAndStoryline_*",
+          "expected": "All tests pass, confirming $157 recursive style processing, nested style fragments, $146 child processing",
+          "observed": "8 tests ran, all PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": [
+          "TestUpdateCoverSectionAndStoryline_StyleFragmentProcessing",
+          "TestUpdateCoverSectionAndStoryline_NoStyleRef",
+          "TestUpdateCoverSectionAndStoryline_NoSections",
+          "TestUpdateCoverSectionAndStoryline_MissingStyleFragment",
+          "TestUpdateCoverSectionAndStoryline_NestedStyleFragments",
+          "TestUpdateCoverSectionAndStoryline_DeepNested157",
+          "TestUpdateCoverSectionAndStoryline_StyleFragmentWith146Children",
+          "TestUpdateCoverSectionAndStoryline_StructValueNotUpdated"
+        ],
+        "testOutput": "PASS ok github.com/kaikozlov/kindle-koplugin/internal/kfx 0.206s",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M1-META-002",
+      "title": "isImageBasedFixedLayout calls getOrderedImageResources for validation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/... -count=1 -v -run 'TestIsImageBasedFixedLayout_*|TestGetOrderedImageResources*'",
+          "expected": "All tests pass, confirming isImageBasedFixedLayout delegates to getOrderedImageResources",
+          "observed": "7 tests ran, all PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": [
+          "TestIsImageBasedFixedLayout_True",
+          "TestIsImageBasedFixedLayout_False",
+          "TestIsImageBasedFixedLayout_NonFixedLayoutReturnsFalse",
+          "TestIsImageBasedFixedLayout_FixedLayoutNoImagesReturnsFalse",
+          "TestIsImageBasedFixedLayout_DelegatesToGetOrderedImageResources",
+          "TestGetOrderedImageResourcesNotFixedLayout",
+          "TestGetOrderedImageResourcesNoImages"
+        ],
+        "testOutput": "PASS ok github.com/kaikozlov/kindle-koplugin/internal/kfx 0.192s",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M1-META-003",
+      "title": "getGenerators filters PACKAGE_VERSION_PLACEHOLDERS",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/... -count=1 -v -run 'TestGetGenerators*'",
+          "expected": "All tests pass, confirming placeholder filtering works",
+          "observed": "5 tests ran, all PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": [
+          "TestGetGenerators",
+          "TestGetGenerators_Empty",
+          "TestGetGenerators_PlaceholderFiltering",
+          "TestGetGenerators_NoVersionKey_Skipped",
+          "TestGetGenerators_EmptyPkgVersion"
+        ],
+        "testOutput": "PASS ok github.com/kaikozlov/kindle-koplugin/internal/kfx 0.181s",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M1-META-004",
+      "title": "isKfxV1 checks $270 fragment version field correctly",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/... -count=1 -v -run 'TestIsKfxV1_*|TestCachingPattern_IsKfxV1'",
+          "expected": "All tests pass, confirming $270 version field check, default version 0, first-fragment-only logic",
+          "observed": "7 tests ran, all PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": [
+          "TestIsKfxV1_True",
+          "TestIsKfxV1_Version2_False",
+          "TestIsKfxV1_NoFragment_False",
+          "TestIsKfxV1_FirstFragmentOnly",
+          "TestIsKfxV1_DefaultVersionZero",
+          "TestIsKfxV1_VersionOneIsTrue",
+          "TestCachingPattern_IsKfxV1"
+        ],
+        "testOutput": "PASS ok github.com/kaikozlov/kindle-koplugin/internal/kfx 0.191s",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-M1-META-005",
+      "title": "fixCoverImageData re-encodes JFIF JPEG covers",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/... -count=1 -v -run 'TestFixCoverImageData_*|TestGetCoverImageData_*'",
+          "expected": "All tests pass, confirming EXIF-only JPEG re-encoded to JFIF, nil/non-JPEG/corrupt edge cases handled",
+          "observed": "9 tests ran, all PASS"
+        }
+      ],
+      "evidence": {
+        "testNames": [
+          "TestFixCoverImageData_NilInput",
+          "TestFixCoverImageData_AlreadyJFIF",
+          "TestFixCoverImageData_EXIFReencode",
+          "TestFixCoverImageData_NonJPEG_Unchanged",
+          "TestFixCoverImageData_CorruptJPEG_ReturnsOriginal",
+          "TestFixCoverImageData_ShortData_NoPanic",
+          "TestGetCoverImageData_JPEG",
+          "TestGetCoverImageData_NoCoverMetadata_Nil",
+          "TestGetCoverImageData_NoRawMedia_Nil"
+        ],
+        "testOutput": "PASS ok github.com/kaikozlov/kindle-koplugin/internal/kfx 0.183s. EXIFReencode test logged: 'info: Changed cover image from JPEG/no-app-marker to JPEG/JFIF for Kindle lockscreen display'",
+        "consoleErrors": "none (expected error log for corrupt JPEG test)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. Total 36 tests ran across 5 test groups with 0 failures."
+}

@@ -178,6 +178,38 @@ The Go test surface validates milestone D features by running `go test` on speci
 - VAL-D-008: Contract claims adjustColorForDensity(0xffffff, 2.0) returns 0x000000, but Python returns 0xffffff.
 - VAL-D-015: Contract claims delta decoding produces [5,13,20,27,36] but Python's algorithm produces [5,8,10,12,16].
 
+## Flow Validator Guidance: Go Test (Milestone M1)
+
+The Go test surface validates milestone M1 (foundation fixes) features by running `go test` on specific test patterns in `./internal/epub/...` and `./internal/kfx/...`.
+
+**Test tool**: `go test ./internal/epub/... ./internal/kfx/... -count=1 -v` (direct shell execution)
+
+**Isolation rules:**
+- Each validator runs `go test` with specific `-run` flags targeting its assigned assertions
+- Tests are independent — they construct their own synthetic data
+- No shared mutable state between tests
+- Validators can run concurrently since `go test` builds and caches independently
+
+**Boundaries:**
+- Do NOT modify source files
+- Only inspect test results (pass/fail/output)
+- Ignore the pre-existing fixture-dependent failures
+- Focus ONLY on the assigned assertion IDs
+
+**How to test:**
+1. Run `go test ./internal/epub/... -count=1 -v -run "<TestPattern>"` for EPUB packaging assertions
+2. Run `go test ./internal/kfx/... -count=1 -v -run "<TestPattern>"` for KFX library assertions
+3. Check exit code: 0 = all tests pass, 1 = some tests fail
+4. Parse output for specific test names matching the assertion
+5. Report pass/fail per assertion based on whether the corresponding test passes
+
+**Known test name mappings (milestone M1):**
+- M1-EPUB (10 assertions): TestDefaultTitle_Unknown, TestFixHTMLID_ArabicIndic, TestFixHTMLID_IllustratedLayoutDots, TestEPUBVersionSwitching, TestGuideSectionConditional, TestNCX_MBPNamespace, TestSpinePageProgressionDirection, TestOPFMetadataRefinements, TestOPFManifestOrdering_MatchPython, TestFontFaceOrdering
+- M1-META (5 assertions): TestUpdateCoverSection_Recursive157, TestIsImageBasedFixedLayout_FullValidation, TestGetGenerators_PlaceholderFiltering, TestIsKfxV1_VersionField, TestFixCoverImageData_JFIFReencode
+- M1-VERS (9 assertions): TestKindleFeatureVersion_TrueEq1, TestKindleFeatureVersion_BoolIntEquivalence, TestIsKnownFeature_BoolIntEquivalence, TestColorAlphaThresholdConsistency, TestColorAlphaConsistency_ColorStrVsCssColor, TestFragmentValidation_KpfPrepub610, TestIonDataEq_*, TestFragmentValidation_DuplicateDetection, TestFragmentValidation_KpfPrepubCleanup, TestFragmentValidation_SampleDict597, TestDictionaryAnnotations_OnlyForDicts, TestRebuild_SkipsDictionary
+- M1-FLOAT (4 assertions): TestValueStr_NilInterface, TestValueStr_NilFloat64Ptr, TestCropImage_ResourceScaling, TestCropImage_UnsupportedFormat, TestColorStr_*, TestFixColorValue*
+- M1-STRM (6 assertions): TestMetadataProcessing258NoOverride, TestSymbolFormatNonShortLog*, TestCheckSymbolTable*, TestHasIllustratedLayoutCondition*, TestHasIllustratedLayoutPageTemplateCondition*, TestOverlayTemplate171*, TestFontSizeRem*
+
 ## Pre-existing Known Failures (IGNORE)
 
 These test failures are expected because fixture files are missing:

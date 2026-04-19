@@ -1,0 +1,67 @@
+{
+  "milestone": "m1-foundation",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 34,
+    "passed": 34,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-M1-EPUB-001",
+    "VAL-M1-EPUB-002",
+    "VAL-M1-EPUB-003",
+    "VAL-M1-EPUB-004",
+    "VAL-M1-EPUB-005",
+    "VAL-M1-EPUB-006",
+    "VAL-M1-EPUB-007",
+    "VAL-M1-EPUB-008",
+    "VAL-M1-EPUB-009",
+    "VAL-M1-EPUB-010",
+    "VAL-M1-META-001",
+    "VAL-M1-META-002",
+    "VAL-M1-META-003",
+    "VAL-M1-META-004",
+    "VAL-M1-META-005",
+    "VAL-M1-VERS-001",
+    "VAL-M1-VERS-002",
+    "VAL-M1-VERS-003",
+    "VAL-M1-VERS-004",
+    "VAL-M1-VERS-005",
+    "VAL-M1-VERS-006",
+    "VAL-M1-VERS-007",
+    "VAL-M1-VERS-008",
+    "VAL-M1-VERS-009",
+    "VAL-M1-FLOAT-001",
+    "VAL-M1-FLOAT-002",
+    "VAL-M1-FLOAT-003",
+    "VAL-M1-FLOAT-004",
+    "VAL-M1-STRM-001",
+    "VAL-M1-STRM-002",
+    "VAL-M1-STRM-003",
+    "VAL-M1-STRM-004",
+    "VAL-M1-STRM-005",
+    "VAL-M1-STRM-006"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance for Milestone M1 with test name mappings for all 5 M1 feature areas",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/m1-foundation/user-testing/flows/m1-epub.json",
+    ".factory/validation/m1-foundation/user-testing/flows/m1-meta.json",
+    ".factory/validation/m1-foundation/user-testing/flows/m1-vers.json",
+    ".factory/validation/m1-foundation/user-testing/flows/m1-float.json",
+    ".factory/validation/m1-foundation/user-testing/flows/m1-strm.json"
+  ],
+  "totalTestsRun": 124,
+  "concurrencyUsed": 5,
+  "subagentGroups": 5
+}
