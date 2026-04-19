@@ -1,0 +1,90 @@
+{
+  "milestone": "m1-foundation",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "go test ./internal/kfx/... -count=1 -run '^Test[^CBS]' && go test ./internal/epub/... -count=1",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "go build ./...",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "go vet ./...",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 3,
+    "failed": 2,
+    "failedFeatures": ["m1-epub-packaging", "m1-version-fragment-validation"]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m1-epub-packaging",
+      "severity": "blocking",
+      "description": "PERIODICAL_NCX_CLASSES map does not match Python. Go has {0:'periodical', 1:'section', 2:'article'} with 3 entries, but Python (epub_output.py:56-59) has {0:'section', 1:'article'} with 2 entries. The 'periodical' class name does not exist in the Python constant. At depth 0, Go emits class='periodical' but Python emits class='section'. The test also incorrectly validates this wrong behavior.",
+      "suggestedFix": "Remove the {0:'periodical'} entry and shift remaining entries so PERIODICAL_NCX_CLASSES = {0:'section', 1:'article'}. Update the test to match."
+    },
+    {
+      "featureId": "m1-epub-packaging",
+      "severity": "blocking",
+      "description": "EPUB2 author opf:role attribute is missing. Python (epub_output.py:893-894) sets opf:role='aut' on <dc:creator> elements in EPUB2 mode. Go outputs <dc:creator>author</dc:creator> without the role attribute. The test TestOPFMetadataRefinements/epub2_no_refines only verifies refines are not present but does not check for opf:role.",
+      "suggestedFix": "Add opf:role='aut' attribute to <dc:creator> in EPUB2 mode in contentOPF(). Update test to verify."
+    },
+    {
+      "featureId": "m1-version-fragment-validation",
+      "severity": "blocking",
+      "description": "RebuildFragments uses 'KFX_MAIN' for $161 container format but Python's CONTAINER_FORMAT_KFX_MAIN is 'KFX main' (yj_container.py:15). This is a logic-level parity violation — the generated container fragment will have the wrong format string.",
+      "suggestedFix": "Change 'KFX_MAIN' to 'KFX main' at yj_structure.go:1155. Define a constant CONTAINER_FORMAT_KFX_MAIN = 'KFX main' for future reference. Update tests that validate against 'KFX_MAIN'."
+    },
+    {
+      "featureId": "m1-version-fragment-validation",
+      "severity": "blocking",
+      "description": "fastrandn() always starts with v=1 and performs the same xorshift sequence, always returning the same value (3385103793 % n). CreateContainerID() always produces the same 28-character string. Python's random.choice uses a proper PRNG seeded from OS entropy. Multiple calls produce identical IDs.",
+      "suggestedFix": "Replace fastrandn with crypto/rand or math/rand seeded from time.Now().UnixNano() to produce different IDs per call, matching Python's non-deterministic behavior."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add guidance: when porting Python constants to Go, workers must verify the constant definition against the Python source directly, not assume the constant name matches the value. E.g., PERIODICAL_NCX_CLASSES name suggests 'periodical' but Python defines {0:'section', 1:'article'}.",
+      "evidence": "m1-epub-packaging feature introduced PERIODICAL_NCX_CLASSES with an extra 'periodical' entry not in Python. The reviewer found the Python source at epub_output.py:56-59 has only 2 entries.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add guidance: when implementing random ID generation, workers must use non-deterministic randomness (crypto/rand or math/rand with proper seeding) rather than deterministic PRNGs. Python's random module uses OS entropy by default.",
+      "evidence": "m1-version-fragment-validation feature implemented fastrandn with a deterministic xorshift starting from v=1, producing identical IDs on every call.",
+      "isSystemic": false
+    },
+    {
+      "target": "python-porting-guide.md (library)",
+      "suggestion": "Document the pattern where Python constants from yj_container.py (like CONTAINER_FORMAT_KFX_MAIN) should be defined as Go constants rather than inlined as strings, to prevent typos and parity violations.",
+      "evidence": "m1-version-fragment-validation inlined 'KFX_MAIN' instead of 'KFX main' from yj_container.py:15. A defined constant would have caught this at review time.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "EPUB2 namespace attribute handling pattern (ALT_OPF_NS_URI trick)",
+      "reason": "ambiguous — no concrete implementation scope identified; the observation describes a Python serialization trick but doesn't specify what Go code needs to change beyond the blocking opf:role issue already captured"
+    },
+    {
+      "observation": "jpegType placed in yj_metadata_getters.go instead of resources.go",
+      "reason": "non-blocking structural issue; no resources.go file exists yet and creating one is out of scope for a scrutiny validator. Will be naturally addressed when more resources.py functions are ported."
+    },
+    {
+      "observation": "isScribeNotebook hardcoding pattern in metadata getters",
+      "reason": "non-blocking; currently mitigated by getOrderedImageResources being a stub. Will need addressing when A5 scope is implemented but not a current parity issue."
+    }
+  ],
+  "previousRound": null
+}
