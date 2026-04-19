@@ -95,8 +95,12 @@ func (b *KFXImageBook) getOrderedImages(splitLandscape, isComic, isRTL bool) []I
 			splitImageCount++
 			newWidth := imgRes.Width / 2
 
-			// Crop left half
-			leftData := cropImage(imgRes.RawMedia, imgRes.Width, imgRes.Height, 0, newWidth, 0, 0)
+			// Crop left half: margins (0, newWidth, 0, 0)
+			leftData, err := cropImage(imgRes.RawMedia, imgRes.Location, imgRes.Width, imgRes.Height, 0, newWidth, 0, 0)
+			if err != nil {
+				log.Printf("kfx: error: %v", err)
+				continue
+			}
 			left := ImageResource{
 				Format:   imgRes.Format,
 				Location: suffixLocation(imgRes.Location, "-L"),
@@ -105,8 +109,12 @@ func (b *KFXImageBook) getOrderedImages(splitLandscape, isComic, isRTL bool) []I
 				Width:    newWidth,
 			}
 
-			// Crop right half
-			rightData := cropImage(imgRes.RawMedia, imgRes.Width, imgRes.Height, newWidth, 0, 0, 0)
+			// Crop right half: margins (newWidth, 0, 0, 0)
+			rightData, err := cropImage(imgRes.RawMedia, imgRes.Location, imgRes.Width, imgRes.Height, newWidth, 0, 0, 0)
+			if err != nil {
+				log.Printf("kfx: error: %v", err)
+				continue
+			}
 			right := ImageResource{
 				Format:   imgRes.Format,
 				Location: suffixLocation(imgRes.Location, "-R"),
@@ -234,32 +242,37 @@ func intFromVal(vals ...interface{}) int {
 	return 0
 }
 
-// cropImage crops an image to the specified region.
-// Parameters: offLeft, cropWidth (0=full width), offTop (0=from top), offBottom (pixels from bottom to remove).
-// Port of Python resources.crop_image.
-func cropImage(data []byte, width, height, offLeft, cropWidth, offTop, offBottom int) []byte {
-	// Decode the image
+// cropImage crops an image by scaling margins from resource-space to pixel-space.
+// Port of Python resources.crop_image (resources.py:696-717).
+//
+// Margins (in resource-space) are scaled by orig_width/resource_width and
+// orig_height/resource_height to get pixel-space crop coordinates.
+// Returns an error if the image cannot be decoded (unexpected format).
+func cropImage(data []byte, resourceName string, resourceWidth, resourceHeight, marginLeft, marginRight, marginTop, marginBottom int) ([]byte, error) {
 	img, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		log.Printf("kfx: error: cropImage failed to decode: %v", err)
-		return data
+		return nil, fmt.Errorf("cropImage: failed to decode image %q: %w", resourceName, err)
+	}
+	_ = format
+
+	origWidth := img.Bounds().Dx()
+	origHeight := img.Bounds().Dy()
+
+	// Scale margins from resource-space to pixel-space
+	// Python: crop_left = int(margin_left * orig_width / resource_width)
+	cropLeft := marginLeft * origWidth / resourceWidth
+	cropRight := origWidth - marginRight*origWidth/resourceWidth - 1
+	cropTop := marginTop * origHeight / resourceHeight
+	cropBottom := origHeight - marginBottom*origHeight/resourceHeight - 1
+
+	if cropRight < cropLeft || cropBottom < cropTop {
+		log.Printf("kfx: warning: cropping entire image resource %s (%d, %d) by (%d, %d, %d, %d)",
+			resourceName, origWidth, origHeight, cropLeft, cropTop, cropRight, cropBottom)
 	}
 
-	// Compute crop rectangle
-	cropRight := width
-	if cropWidth > 0 {
-		cropRight = offLeft + cropWidth
-	}
-	cropBottom := height - offBottom
-	if offTop > 0 {
-		cropBottom = offTop
-	}
-
-	// Clamp bounds
-	bounds := image.Rect(offLeft, 0, cropRight, cropBottom)
 	subImg := img.(interface {
 		SubImage(r image.Rectangle) image.Image
-	}).SubImage(bounds)
+	}).SubImage(image.Rect(cropLeft, cropTop, cropRight, cropBottom))
 
 	// Re-encode in the same format
 	var buf bytes.Buffer
@@ -269,7 +282,7 @@ func cropImage(data []byte, width, height, offLeft, cropWidth, offTop, offBottom
 	default:
 		jpeg.Encode(&buf, subImg, &jpeg.Options{Quality: 95})
 	}
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 // ---------------------------------------------------------------------------

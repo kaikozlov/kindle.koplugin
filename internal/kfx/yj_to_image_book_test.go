@@ -371,6 +371,166 @@ func TestGetOrderedImagesLandscapeSplitting(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// VAL-M1-FLOAT-002: cropImage scales margins from resource-space to pixel-space
+// ---------------------------------------------------------------------------
+
+func TestCropImage_ResourceScaling(t *testing.T) {
+	// Create a 200x100 image, resource dimensions 100x50 (2x scale factor)
+	imgData := createTestPNG(t, 200, 100)
+
+	// Margin of 10 in resource-space → 20 in pixel-space
+	// crop_left = 10 * 200/100 = 20
+	// crop_right = 200 - 10*200/100 - 1 = 200 - 20 - 1 = 179
+	result, err := cropImage(imgData, "test.png", 100, 50, 10, 10, 0, 0)
+	if err != nil {
+		t.Fatalf("cropImage returned error: %v", err)
+	}
+
+	// Decode result to verify dimensions
+	resultImg, _, err := image.Decode(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("Failed to decode cropped image: %v", err)
+	}
+	bounds := resultImg.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	// Expected: crop_left=20, crop_right=179, width=159; crop_top=0, crop_bottom=99, height=99
+	if width != 159 {
+		t.Errorf("Cropped image width = %d, want 159", width)
+	}
+	if height != 99 {
+		t.Errorf("Cropped image height = %d, want 99", height)
+	}
+}
+
+func TestCropImage_NoScaling(t *testing.T) {
+	// When resource dimensions match image dimensions, no scaling
+	imgData := createTestPNG(t, 200, 100)
+
+	result, err := cropImage(imgData, "test.png", 200, 100, 50, 50, 0, 0)
+	if err != nil {
+		t.Fatalf("cropImage returned error: %v", err)
+	}
+
+	resultImg, _, err := image.Decode(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("Failed to decode cropped image: %v", err)
+	}
+	bounds := resultImg.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	// crop_left = 50*200/200 = 50, crop_right = 200 - 50*200/200 - 1 = 149
+	// crop_top = 0, crop_bottom = 100 - 0 - 1 = 99
+	// width = 149 - 50 = 99, height = 99
+	if width != 99 {
+		t.Errorf("Cropped image width = %d, want 99", width)
+	}
+	if height != 99 {
+		t.Errorf("Cropped image height = %d, want 99", height)
+	}
+}
+
+func TestCropImage_LeftHalf(t *testing.T) {
+	// Match the Python caller: crop_image(data, name, width, height, 0, newWidth, 0, 0)
+	// where newWidth = width/2. For a 200x100 image, newWidth=100
+	imgData := createTestPNG(t, 200, 100)
+
+	result, err := cropImage(imgData, "test.png", 200, 100, 0, 100, 0, 0)
+	if err != nil {
+		t.Fatalf("cropImage returned error: %v", err)
+	}
+
+	resultImg, _, err := image.Decode(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("Failed to decode cropped image: %v", err)
+	}
+	bounds := resultImg.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	// crop_left = 0, crop_right = 200 - 100*200/200 - 1 = 99
+	// crop_top = 0, crop_bottom = 100 - 0 - 1 = 99
+	// width = 99, height = 99
+	if width != 99 {
+		t.Errorf("Cropped image width = %d, want 99", width)
+	}
+	if height != 99 {
+		t.Errorf("Cropped image height = %d, want 99", height)
+	}
+}
+
+func TestCropImage_RightHalf(t *testing.T) {
+	// Match the Python caller: crop_image(data, name, width, height, newWidth, 0, 0, 0)
+	imgData := createTestPNG(t, 200, 100)
+
+	result, err := cropImage(imgData, "test.png", 200, 100, 100, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("cropImage returned error: %v", err)
+	}
+
+	resultImg, _, err := image.Decode(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("Failed to decode cropped image: %v", err)
+	}
+	bounds := resultImg.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	// crop_left = 100, crop_right = 200 - 0 - 1 = 199
+	// crop_top = 0, crop_bottom = 100 - 0 - 1 = 99
+	// width = 199 - 100 = 99, height = 99
+	if width != 99 {
+		t.Errorf("Cropped image width = %d, want 99", width)
+	}
+	if height != 99 {
+		t.Errorf("Cropped image height = %d, want 99", height)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VAL-M1-FLOAT-003: Unexpected image format produces hard failure
+// ---------------------------------------------------------------------------
+
+func TestCropImage_UnsupportedFormat(t *testing.T) {
+	// Corrupt/garbage data should produce an error, not silently return original
+	garbageData := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}
+
+	result, err := cropImage(garbageData, "corrupt.img", 100, 100, 0, 0, 0, 0)
+	if err == nil {
+		t.Error("cropImage should return error for unsupported format, got nil")
+	}
+	if result != nil {
+		t.Error("cropImage should return nil data for unsupported format")
+	}
+}
+
+func TestCropImage_ValidJPEG(t *testing.T) {
+	imgData := createTestJPEG(t, 100, 100)
+
+	result, err := cropImage(imgData, "test.jpg", 100, 100, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("cropImage returned error for valid JPEG: %v", err)
+	}
+	if len(result) == 0 {
+		t.Error("cropImage returned empty result for valid JPEG")
+	}
+}
+
+func TestCropImage_ValidPNG(t *testing.T) {
+	imgData := createTestPNG(t, 100, 100)
+
+	result, err := cropImage(imgData, "test.png", 100, 100, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("cropImage returned error for valid PNG: %v", err)
+	}
+	if len(result) == 0 {
+		t.Error("cropImage returned empty result for valid PNG")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Helper functions for creating test images
 // ---------------------------------------------------------------------------
 
