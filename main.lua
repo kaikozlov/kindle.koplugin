@@ -72,6 +72,9 @@ local function applyBookInfoManagerExtensions()
         local ext = BookInfoManagerExt
         ext:init(virtual_library, cache_manager)
         ext:apply(BookInfoManager)
+        -- Clear stale "too many attempts" entries for virtual paths
+        -- so they can be re-extracted with our patched extractor
+        ext:clearStaleVirtualEntries(BookInfoManager)
     else
         logger.dbg("KindlePlugin: CoverBrowser plugin not loaded, skipping BookInfoManager patches")
     end
