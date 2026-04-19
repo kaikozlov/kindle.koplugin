@@ -514,9 +514,7 @@ func (bpl *BookPosLoc) CreateLocationMap(locInfo []*ContentChunk) bool {
 		for _, loc := range locInfo {
 			entry := map[string]interface{}{
 				"$155": loc.EID,
-			}
-			if loc.EIDOffset != 0 {
-				entry["$143"] = loc.EIDOffset
+				"$143": loc.EIDOffset,
 			}
 			locations = append(locations, entry)
 		}
@@ -1573,7 +1571,7 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 		// Merge consecutive same-EID chunks (Python lines 215–220)
 		if len(sectionPosInfo) > 0 {
 			lastChunk := sectionPosInfo[len(sectionPosInfo)-1]
-			if eidsEqual(lastChunk.EID, eid) && lastChunk.ImageResource == "" {
+			if eidsEqual(lastChunk.EID, eid) && (lastChunk.ImageResource == "") {
 				sectionPosInfo = sectionPosInfo[:len(sectionPosInfo)-1]
 				bpl.cpiPID += length
 				eidOffset += length
@@ -1590,7 +1588,8 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 				if length == 0 {
 					return
 				}
-				length = 0
+				// Merged — prevent adding a duplicate chunk below
+				return
 			}
 		}
 
