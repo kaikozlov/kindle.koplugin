@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -369,6 +370,11 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 
 	bookSymbols := map[string]struct{}{}
 	fontCount := 0
+
+	// categorizedData tracks per-type ID sets for duplicate/null ID detection
+	// (parity with Python organize_fragments_by_type L202-214).
+	categorizedData := map[string]map[string]bool{}
+
 	for _, source := range sources {
 		lastContainerID := ""
 		for offset := 0; offset+24 <= len(source.IndexData); offset += 24 {
@@ -420,6 +426,15 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 				summaryID = fmt.Sprintf("%s:%s", fragmentID, asStringDefault(value["$215"]))
 			}
 			fragments.FragmentIDsByType[fragmentType] = append(fragments.FragmentIDsByType[fragmentType], summaryID)
+
+			// Track categorized IDs for duplicate/null detection (Python organize_fragments_by_type L202-204).
+			if categorizedData[fragmentType] == nil {
+				categorizedData[fragmentType] = map[string]bool{}
+			}
+			if categorizedData[fragmentType][summaryID] {
+				log.Printf("kfx: book contains multiple %s fragments with id %s", fragmentType, summaryID)
+			}
+			categorizedData[fragmentType][summaryID] = true
 
 			switch fragmentType {
 			case "$145", "$157", "$164", "$258", "$259", "$260", "$262", "$266", "$391", "$490", "$538", "$585", "$608", "$609", "$756":
@@ -527,6 +542,16 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 						Data: dataCopy,
 					})
 				}
+			}
+		}
+	}
+
+	// Null ID detection (Python organize_fragments_by_type L214):
+	// When a category has multiple entries including an empty/null ID, log an error.
+	for category, ids := range categorizedData {
+		if len(ids) > 1 {
+			if ids[""] || ids["\x00"] {
+				log.Printf("kfx: fragment list contains mixed null/non-null ids of type %q", category)
 			}
 		}
 	}
