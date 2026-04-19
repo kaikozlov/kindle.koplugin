@@ -67,7 +67,12 @@ local function applyFileChooserExtensions()
 end
 
 local function applyBookInfoManagerExtensions()
-    local ok, BookInfoManager = pcall(require, "plugins/coverbrowser.koplugin/bookinfomanager")
+    logger.info("KindlePlugin: attempting to apply BookInfoManager extensions")
+    local ok, BookInfoManager = pcall(require, "bookinfomanager")
+    logger.info("KindlePlugin: require result ok=" .. tostring(ok) .. " type=" .. type(BookInfoManager))
+    if not ok then
+        logger.warn("KindlePlugin: failed to require bookinfomanager:", tostring(BookInfoManager))
+    end
     if ok and BookInfoManager then
         local ext = BookInfoManagerExt
         ext:init(virtual_library, cache_manager)
