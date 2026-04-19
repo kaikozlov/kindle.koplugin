@@ -531,7 +531,7 @@ func (r *storylineRenderer) renderFittedContainer(node map[string]interface{}, d
 		return nil
 	}
 	outer := &htmlElement{Tag: "div", Attrs: map[string]string{}}
-	if styleAttr := r.containerClass(node); styleAttr != "" {
+	if styleAttr := r.fittedContainerClass(node); styleAttr != "" {
 		outer.Attrs["style"] = styleAttr
 	}
 	inner := &htmlElement{Tag: "div", Attrs: map[string]string{}}
@@ -1477,6 +1477,47 @@ func (r *storylineRenderer) tableColumnClass(node map[string]interface{}) string
 		return ""
 	}
 	return styleStringFromDeclarations("class", nil, declarations)
+}
+
+// fittedContainerClass generates the style class for the outer wrapper of a fitted container.
+// It handles -kfx-box-align by converting it to text-align on the outer wrapper (not margin-auto),
+// matching Python yj_to_epub_content.py:1375-1381 where fitted (inline-block) elements get
+// a wrapper with text-align from box-align so the inline-block is horizontally positioned.
+func (r *storylineRenderer) fittedContainerClass(node map[string]interface{}) string {
+	styleID, _ := asString(node["$157"])
+	style := effectiveStyle(r.styleFragments[styleID], node)
+	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
+	if len(style) == 0 {
+		return ""
+	}
+	cssMap := processContentProperties(style)
+
+	// Handle -kfx-box-align → text-align conversion for fitted containers.
+	// Python yj_to_epub_content.py:1375-1381:
+	//   if "-kfx-box-align" in content_style:
+	//       container_elem, container_style = self.create_container(
+	//           content_elem, content_style, "div", BLOCK_ALIGNED_CONTAINER_PROPERTIES)
+	//       container_style["text-align"] = container_style.pop("-kfx-box-align")
+	// The outer wrapper gets text-align, which positions the inline-block inner element.
+	if boxAlign, ok := cssMap["-kfx-box-align"]; ok {
+		delete(cssMap, "-kfx-box-align")
+		if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" {
+			cssMap["text-align"] = boxAlign
+		}
+	}
+
+	declarations := filterBodyDefaultDeclarations(cssDeclarationsFromMap(cssMap), r.activeBodyDefaults)
+	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
+		declarations = append(declarations, "font-style: normal")
+	}
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, r.nodeLayoutHints(node), declarations)
 }
 
 func (r *storylineRenderer) structuredContainerClass(node map[string]interface{}) string {

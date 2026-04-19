@@ -67,6 +67,17 @@ func rendererForBoxAlignTests() storylineRenderer {
 			"sImgPlain": {
 				"$56": map[string]interface{}{"$307": 25.0, "$306": "$314"}, // width: 25%
 			},
+			// Fitted container with box-align:center + width — exercises Python fit_width path:
+			// yj_to_epub_content.py:1360-1381: display:inline-block on inner, text-align on outer wrapper
+			"sFitCenter": {
+				"$580": "$320", // -kfx-box-align: center
+				"$56":  map[string]interface{}{"$307": 50.0, "$306": "$314"}, // width: 50%
+			},
+			// Fitted container with box-align:right + width
+			"sFitRight": {
+				"$580": "$61", // -kfx-box-align: right
+				"$56":  map[string]interface{}{"$307": 60.0, "$306": "$314"}, // width: 60%
+			},
 		},
 	}
 }
@@ -294,6 +305,83 @@ func TestContainerClassBoxAlign(t *testing.T) {
 					t.Errorf("missing property %q in %v", prop, props)
 				} else if gotVal != val {
 					t.Errorf("property %q = %q, want %q", prop, gotVal, val)
+				}
+			}
+		})
+	}
+}
+
+// TestFittedContainerClassBoxAlign converts -kfx-box-align to text-align on the outer
+// wrapper of a fitted (inline-block) container, matching Python yj_to_epub_content.py:1375-1381:
+//
+//	if "-kfx-box-align" in content_style:
+//	    container_elem, container_style = self.create_container(
+//	        content_elem, content_style, "div", BLOCK_ALIGNED_CONTAINER_PROPERTIES)
+//	    container_style["text-align"] = container_style.pop("-kfx-box-align")
+//
+// The outer wrapper should get text-align (NOT margin-left/right:auto), because the inner
+// element is display:inline-block and text-align is what horizontally positions it.
+func TestFittedContainerClassBoxAlign(t *testing.T) {
+	r := rendererForBoxAlignTests()
+
+	tests := []struct {
+		name       string
+		styleID    string
+		wantProps  []string // "prop: val" expected on outer wrapper
+		wantAbsent []string // properties that must NOT appear
+	}{
+		{
+			name:    "fitted center → text-align center",
+			styleID: "sFitCenter",
+			wantProps: []string{
+				"text-align: center",
+			},
+			wantAbsent: []string{
+				"margin-left",
+				"margin-right",
+			},
+		},
+		{
+			name:    "fitted right → text-align right",
+			styleID: "sFitRight",
+			wantProps: []string{
+				"text-align: right",
+			},
+			wantAbsent: []string{
+				"margin-left",
+				"margin-right",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := map[string]interface{}{"$157": tt.styleID}
+			got := r.fittedContainerClass(node)
+
+			if got == "" {
+				t.Fatalf("expected fitted container class, got empty")
+			}
+
+			props := parseCSSDeclarations(got)
+
+			// Check expected properties
+			for _, want := range tt.wantProps {
+				idx := strings.Index(want, ":")
+				prop := want[:idx]
+				val := strings.TrimSpace(want[idx+1:])
+				gotVal, ok := props[prop]
+				if !ok {
+					t.Errorf("missing property %q in %v", prop, props)
+				} else if gotVal != val {
+					t.Errorf("property %q = %q, want %q", prop, gotVal, val)
+				}
+			}
+
+			// Check absent properties
+			for _, prop := range tt.wantAbsent {
+				if val, ok := props[prop]; ok {
+					t.Errorf("unexpected property %q: %q (should not have margin-auto for fitted containers)", prop, val)
 				}
 			}
 		})
