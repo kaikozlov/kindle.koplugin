@@ -1,0 +1,21 @@
+{
+  "featureId": "d1-notebook-scribe",
+  "reviewedAt": "2026-04-19T02:33:00Z",
+  "commitId": "16fcc7a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Port of module constants, brush types, thickness choices, stroke colors, adjustColorForDensity, and decodeStrokeValues from yj_to_epub_notebook.py. All 28 tests pass with no regressions. Go code matches Python logic precisely across all ported functions and constants. Process methods remain as documented stubs pending book context integration.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "library",
+      "observation": "Worker documented validation contract discrepancies in .factory/library/d1-notebook-scribe.md — specifically that VAL-D-008 and VAL-D-015 contain incorrect expected values compared to the Python source of truth. This is useful context for future validation.",
+      "evidence": ".factory/library/d1-notebook-scribe.md 'Validation Contract Discrepancies' section"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The d1-notebook-scribe feature faithfully ports all module-level constants (12 values), brush type strings (9), THICKNESS_NAME (5 entries), THICKNESS_CHOICES (8×5 map), STROKE_COLORS (10 entries as struct), adjustColorForDensity (luminance-based grayscale with density), and decodeStrokeValues (binary stroke data with delta compression) from yj_to_epub_notebook.py. All values match the Python reference exactly. The Go implementation correctly mirrors Python's integer truncation semantics in adjustColorForDensity (using int() cast on the density product before rounding). decodeStrokeValues properly handles all instruction nibble patterns (0-3 byte increments, direct/increment modes, negate flag) and the delta decoding algorithm. Process methods remain as documented stubs. 28 tests cover constants, all function paths, and edge cases — all passing with no regressions. Build and vet clean."
+}

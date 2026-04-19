@@ -1,0 +1,40 @@
+{
+  "featureId": "d3-float-precision",
+  "reviewedAt": "2026-04-19T07:45:00.000Z",
+  "commitId": "3ee6e0d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation correctly ports Python's value_str, color_str, int_to_alpha, alpha_to_int, and related functions from epub_output.py:1373-1393 and yj_to_epub_properties.py:2121-2175. The core float formatting pipeline (near-zero → '0', %g formatting, scientific notation → %.4f fallback, trailing zero stripping) matches Python logic-level parity. Color formatting (named colors, hex, rgba with %0.3f alpha) is correctly ported. 42 comprehensive tests cover all branches and pass. There is one minor parity deviation: Go normalizes '-0' to '0' where Python preserves '-0' for negative values in the range [1e-6, ~1e-5) that fall through to the scientific notation fallback. This is a cosmetic edge case — '-0' is not a meaningful CSS value and the normalization is arguably an improvement.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_property_info.go",
+        "line": 493,
+        "severity": "non_blocking",
+        "description": "Go's formatCSSQuantity normalizes '-0' to '0' (lines 491-493: `if s == \"-0\" { s = \"0\" }`), but Python's value_str preserves '-0' for negative values with magnitude in [1e-6, ~1e-5). For example, value_str(-1e-6) returns '-0' in Python but formatCSSQuantity(-1e-6) returns '0' in Go. This is a strict logic-level parity deviation, though '-0' is not meaningful in CSS. The Python code has a minor quirk here (positive 1e-6 → '0', negative -1e-6 → '-0'), which Go intentionally normalizes."
+      },
+      {
+        "file": "internal/kfx/yj_property_info.go",
+        "line": 1099,
+        "severity": "non_blocking",
+        "description": "fixColorValue does not handle string-typed numeric inputs the way Python does. Python's fix_color_value checks `if isstring(value) and not re.match(r'^[0-9]+$', value): return value` — so string numerics like '12345' are converted to int. Go's fixColorValue falls through to `fmt.Sprintf('%v', v)` for all strings, returning them unchanged. In practice, this is non-blocking because fixColorValue is called from propertyValueNumeric (which receives float64) and propertyValueStruct (color from {$19: int}), so string numerics never reach fixColorValue in the current pipeline."
+      },
+      {
+        "file": "internal/kfx/yj_property_info.go",
+        "line": 949,
+        "severity": "non_blocking",
+        "description": "colorStr has dead code: the `#000000` and `#ffffff` short-circuit hex checks (lines 960-964) are unreachable because both '#000000' and '#ffffff' are in the colorName map and would be returned as 'black' and 'white' respectively. This matches Python which also has these as dead-code fallback lines. Acceptable since it maintains structural parity with Python."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The feature description mentions near-zero threshold as '< 1e-10' but both Python and Go use '< 1e-6'. The research reference file (stream-cd-reference-details.md) correctly shows '< 1e-6'. The feature description threshold value is misleading.",
+      "evidence": "Feature description: 'near-zero (< 1e-10) → 0'. Python value_str (epub_output.py:1377): 'if abs(quantity) < 1e-6'. Go formatCSSQuantity: 'if math.Abs(q) < 1e-6'. Research file .factory/research/stream-cd-reference-details.md line 531: correctly shows '< 1e-6'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS with minor notes. The d3-float-precision feature successfully ports Python's value_str, color_str, int_to_alpha/alpha_to_int to Go with correct logic-level parity for all meaningful CSS formatting cases. All 42 unit tests pass, go vet and go build succeed. One minor parity deviation: Go normalizes CSS '-0' to '0' where Python preserves '-0' for negative tiny values — this is a cosmetic edge case that doesn't affect CSS semantics. The fixColorValue function lacks Python's string-numeric guard but this is unreachable in the current pipeline. The implementation is well-tested and follows project conventions."
+}

@@ -1,0 +1,45 @@
+{
+  "featureId": "d2-cbz-pdf-image-book",
+  "reviewedAt": "2026-04-19T07:33:00Z",
+  "commitId": "ff9fb2b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation ports CBZ/PDF image book output from yj_to_image_book.py (353 lines) to Go. All required functions and types are present. Tests pass (14 new, no regressions). There are several intentional simplifications acknowledged in the handoff, but the core logic faithfully follows the Python reference for the supported paths. Three non-blocking issues noted below.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_to_image_book.go",
+        "line": 83,
+        "severity": "non_blocking",
+        "description": "getOrderedImages returns only []ImageResource, dropping ordered_image_pids and content_pos_info that Python returns as a 3-tuple (ordered_images, ordered_image_pids, content_pos_info). The pids are needed by convert_book_to_pdf for TOC page number mapping. This means convert_book_to_pdf cannot be fully implemented later without changing this return signature."
+      },
+      {
+        "file": "internal/kfx/yj_to_image_book.go",
+        "line": 83,
+        "severity": "non_blocking",
+        "description": "getOrderedImages drops the progress parameter that Python uses (progress.set_limit / progress.update_count). This is acceptable for the current port scope but should be noted for future integration."
+      },
+      {
+        "file": "internal/kfx/yj_to_image_book.go",
+        "line": 294,
+        "severity": "non_blocking",
+        "description": "combineImagesIntoCBZ raises an exception in Python for unexpected image formats (line 333: raise Exception(...)), but the Go version only logs an error and skips. This changes control flow — Python would abort the entire CBZ creation, Go silently continues."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "library",
+      "observation": "The worker built a minimal from-scratch PDF writer (~350 lines) in yj_to_image_book.go rather than using a Go PDF library. This is a significant implementation choice (no external PDF dependency). The approach and its tradeoffs should be documented in .factory/library/ so future workers working on PDF-related features are aware this custom PDF writer exists and can be extended rather than importing a competing library.",
+      "evidence": "Lines 443-814 of yj_to_image_book.go contain a self-contained PDF generator (buildPDF, serializePDF, buildOutlineObjects, etc.). The go.mod has no PDF library dependency. The handoff notes: 'Built a minimal PDF generator that creates valid PDF-1.4 with JPEG image embedding, outline/bookmarks, metadata, and RTL support — no external PDF library needed.'"
+    },
+    {
+      "area": "library",
+      "observation": "The Python resources.py contains crop_image, convert_image_to_pdf, combine_image_tiles, convert_pdf_page_to_image, and convert_jxr_to_jpeg_or_png — these are imported by yj_to_image_book.py but are NOT yet ported to Go. The Go implementation inlines a simplified cropImage and skips PDF page extraction and JXR conversion. This dependency gap should be tracked.",
+      "evidence": "yj_to_image_book.py lines 8-10 import from resources.py: crop_image, convert_image_to_pdf, convert_jxr_to_jpeg_or_png, convert_pdf_page_to_image, combine_image_tiles, ImageResource, PdfImageResource. The Go handoff acknowledges: 'PDF resource embedding ($565 format) uses a simplified skip approach', 'JXR-to-JPEG conversion in CBZ output is logged as a warning', 'Tile combining (combine_image_tiles) for $636 resources uses simplified first-tile extraction'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS with non-blocking observations. The feature successfully ports the core CBZ/PDF image book output from yj_to_image_book.py to Go. All 14 new tests pass with no regressions. Structurally, the Go file correctly mirrors the Python: KFXImageBook class with get_ordered_images/get_resource_image, and standalone functions combineImagesIntoCBZ, combineImagesIntoPDF, addPDFOutline, suffixLocation. The implementation uses a self-contained minimal PDF writer instead of an external library. Three non-blocking issues: (1) getOrderedImages drops the pids/content_pos_info return values needed for future convert_book_to_pdf TOC mapping, (2) the progress callback parameter is dropped, (3) CBZ creation silently skips unexpected formats instead of aborting like Python. The handoff honestly acknowledges the three simplified areas (PDF $565 handling, JXR conversion, tile combining) which depend on unported resources.py functions."
+}
