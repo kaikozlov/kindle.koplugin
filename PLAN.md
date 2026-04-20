@@ -14,340 +14,156 @@
 **Total: 341 match, 25 differ** (up from 258 match / 105 differ at start)
 
 ### Commits Made
-1. `6fb90c0` — Fix trailing newline in content.opf (D12)
-2. `2f9d6ec` — Enable reverse inheritance for text-indent and body style parity (D1)
-3. `674230c` — Resolve link color for heading `<a>` children (D4)
-4. `727ebe8` — Rename `class_` to `figure_` for figure elements (D8)
-5. `92a8532` — Strip vendor-prefixed alternate equivalents in simplify_styles
+1. `6fb90c0` — Fix trailing newline in content.opf (D12) ✅
+2. `2f9d6ec` — Enable reverse inheritance for text-indent and body style parity (D1) ✅ **THE BIG WIN: Hunger Games 25→105**
+3. `674230c` — Resolve link color for heading `<a>` children (D4) ✅
+4. `727ebe8` — Rename `class_` to `figure_` for figure elements (D8) ✅ **Throne of Glass 64→67**
+5. `92a8532` — Strip vendor-prefixed alternate equivalents in simplify_styles ✅
+6. `46c8217` — Update PLAN.md with session summary
 
-### Key Architectural Finding
-Go's simplify_styles processes children BEFORE reverse inheritance, while Python processes children AFTER. This means Go children don't inherit reverse-promoted properties (e.g., body-level `hyphens: none`, `font-weight: bold`). Fixing this requires reordering but impacts Martyr tests (reverse inheritance on original vs simplified child styles produces different results). Deferred.
+### Key Architectural Finding: Reverse Inheritance Ordering
 
-### Remaining Defects
-- **Familiars (5)**: Font-weight composite class splitting — requires rendering pipeline changes (bold text promotion)
-- **Throne of Glass (4)**: JXR images (D9), heading hyphens/font-weight (needs ordering fix), figure properties
-- **Elvis (2)**: Table `<p>` wrappers (D2), logo div (D3)
-- **Hunger Games (7)**: Table structure, image names, composite styles
+**Root cause of most remaining diffs.**
 
-All books also share:
-- `toc.ncx` has extra `xmlns:mbp` namespace (trivial fix)
-- `content.opf` missing trailing newline (trivial fix)
-- Image manifest items differ for Throne of Glass (.jxr vs .jpg — JXR decoder needed)
+Go's `simplifyStylesElementFull` (in `internal/kfx/yj_to_epub_properties.go`) processes children BEFORE reverse inheritance, while Python processes children AFTER:
 
----
+**Go order (current):**
+1. Build `parentStyle` from `sty` (before reverse inheritance)
+2. Process children with `parentStyle` (they don't get reverse-promoted properties)
+3. `applyReverseInheritance(childElements, sty)` — promotes shared heritable properties from children to parent
 
-## Defect Taxonomy
+**Python order (correct):**
+1. `apply_reverse_inheritance` — promotes shared heritable properties from children to parent
+2. `compute_inherited(sty)` — builds inherited from the UPDATED sty (with reverse-promoted properties)
+3. Process children with updated inherited
 
-Every remaining diff falls into one of these categories. Each is listed with:
-- **Root cause**: where the Go code diverges from Python
-- **Python reference**: exact file and line
-- **Go file**: where the fix goes
-- **Affected books**: which books have this defect
+**Impact**: Children don't inherit reverse-promoted properties from the parent. This causes:
+- Body-level `hyphens: none`, `font-weight: bold` not propagating to headings → headings keep properties that should be stripped
+- Body-level `text-indent` not propagating to some elements → missing `text-indent: 0` on tables
+- Font-weight not propagating from bold spans to their paragraph → font-weight class splitting
 
----
+**Why not just reorder?** Attempted reordering in `simplifyStylesElementFull`. The fix works for Throne of Glass but breaks Martyr tests. The issue is that `applyReverseInheritance` reads children's style attributes. In the original order, children have been through simplify_styles (their styles are cleaned up). In the reordered version, children have original rendering styles (which include extra properties). This causes reverse inheritance to see different property values and produce different promotion results.
 
-### D1: Missing `text-indent: 0` on block elements
+**Proper fix** (not yet implemented):
+- Reorder: collect childElements → run reverse inheritance → compute parentStyle → process children
+- Update Martyr test expectations to match Python's output (which is the correct behavior)
+- OR: make reverse inheritance work correctly on original rendering styles (match Python's behavior exactly)
 
-**Severity**: High — cascades into class index mismatches across all styles
+**Go file**: `internal/kfx/yj_to_epub_properties.go` lines 1486-1540 (the parentStyle/childElements/reverseInheritance block)
 
-**Affected**: Familiars (10 CSS rules), Hunger Games (image divs)
+**Python reference**: `yj_to_epub_properties.py` lines 1876-1920
 
-**Symptom**: Go omits `text-indent: 0` from CSS rules where Python includes it. In Familiars, styles like `class_s1E7-0` are missing `text-indent: 0`. In Hunger Games, image wrapper divs (`class_s6A`, `class_s3A`) produce `{margin-bottom: 3em}` instead of `{margin-bottom: 3em; text-indent: 0}`.
+### Remaining Defects (all trace to ordering or structural rendering)
 
-**Root cause**: Two sub-causes:
+#### D1-ORDERING: Reverse inheritance ordering (described above)
+**Affected**: All 4 remaining books (Throne of Glass headings, Hunger Games tables, Familiars font-weight)
+**Fix**: Reorder parentStyle computation after reverse inheritance, update Martyr tests
 
-#### D1a: Body style inference omits text-indent
+#### D2: Missing `<p class="tableright">` wrappers in table cells
+**Affected**: Elvis (1 file + stylesheet)
+**Root cause**: Python wraps `<td>` text content in `<p class="class_tableright">` elements. Go leaves text bare in `<td>`.
+**Python reference**: `yj_to_epub_content.py` lines 816-830
+**Go file**: `internal/kfx/storyline.go` table rendering
 
-**Python reference**: `yj_to_epub_content.py` lines 42-68 (body style inference), plus `yj_to_epub_properties.py` lines 1655-1670 (body default injection)
-
-**Go file**: `internal/kfx/storyline.go` `inferBodyStyleValues()`, `defaultInheritedBodyStyle()`, `renderStoryline()`
-
-Python's body style inference captures `text-indent` from the first content paragraph and includes it in the body's style. This causes the body's heritable defaults to override `text-indent: "0"` with the paragraph's text-indent (e.g., "1.65em"). Then when `activeTextIndentNeedsReset()` is true, headings and paragraphs that don't have their own text-indent get `text-indent: 0` explicitly added (to reset the non-zero body default).
-
-Go has `activeTextIndentNeedsReset()` in `storyline.go:2083` and uses it at lines 1728, 1779, but only for `headingClass()` and `paragraphClass()`. The body style inference in `inferBodyStyleValues()` may not include text-indent correctly.
-
-**Fix steps**:
-1. Verify `inferBodyStyleValues()` captures `$36` (text-indent) from the first content paragraph
-2. Verify `defaultInheritedBodyStyle()` includes `$36`
-3. Verify `activeTextIndentNeedsReset()` correctly detects non-zero body text-indent
-4. Check that `headingClass()` and `paragraphClass()` add `text-indent: 0` when reset is needed
-5. For image wrappers: verify `imageClasses()` also adds `text-indent: 0` when the style fragment doesn't include `$36` and reset is needed
-
-#### D1b: `simplifyStylesElementFull` strips text-indent inconsistently
-
-**Python reference**: `yj_to_epub_properties.py` lines 1958-1960 (stripping loop)
-
-**Go file**: `internal/kfx/yj_to_epub_properties.go` lines 1632-1640
-
-When the body has `text-indent: "0"` (from heritable defaults), the image wrapper div inherits `text-indent: "0"`. If the div's explicit style also has `text-indent: "0"` (added by D1a fix), then `sty["text-indent"]` = "0" matches `inherited["text-indent"]` = "0" → stripped. Python keeps it because Python's stripping loop runs against the *original* `inherited_properties` which may have a different value.
-
-**Fix**: Verify the `comparisonInherited` map used for stripping matches what Python uses. Python's `inherited_properties` at the stripping point (line 1958) has already been modified by the tree walk (line 1919 adds non-heritable defaults, lines 1921-1924 pop for heading conversion). The Go code needs to match this exactly.
-
----
-
-### D2: Missing `<p class="tableright">` wrappers in table cells
-
-**Severity**: Medium
-
-**Affected**: Elvis
-
-**Symptom**: Go renders `<td class="class_tableleft-0">2012028329</td>` but Python renders `<td class="class_tableleft-0"><p class="class_tableright">2012028329</p></td>`.
-
-**Python reference**: `yj_to_epub_content.py` lines 1279-1282 — Python wraps `<td>` content in `<p>` when the content style has paragraph-like properties.
-
-**Go file**: `internal/kfx/storyline.go` table rendering path
-
-**Fix steps**:
-1. Find the table cell rendering code in `storyline.go`
-2. Add logic to wrap `<td>` content in `<p class="class_tableright">` when the cell's style has no block-level children but has text content and a non-zero margin
-3. Register `class_tableright` as a static rule in the style catalog: `{margin-bottom: 0; margin-top: 0}`
-
----
-
-### D3: Extra `class_cpytxt2-3` class
-
-**Severity**: Low (cosmetic)
-
-**Affected**: Elvis
-
-**Symptom**: Go produces `.class_cpytxt2-3 {font-size: 0.769231em; margin-top: 0.3em; text-align: center}` which Python doesn't produce. The HTML uses `<div class="class_cpytxt2-3">` where Python uses `<p class="class_cpytxt2-0">`.
-
-**Root cause**: The element that gets `class_cpytxt2-3` is rendered as a `<div>` with an image and text content. Python renders it as a `<p>` with image + text inside. The difference is in how the rendering pipeline handles elements with mixed image/text content — Python keeps them as a single `<p>`, Go splits them into separate elements.
-
-**Python reference**: `yj_to_epub_content.py` lines 1294-1310 (inline render handling)
-
+#### D3: Logo+text rendering
+**Affected**: Elvis (1 file)
+**Root cause**: Go splits image+text into separate elements. Python keeps as single `<p>`.
+**Python reference**: `yj_to_epub_content.py` lines 1294-1310
 **Go file**: `internal/kfx/storyline.go` content rendering
 
-**Fix steps**:
-1. Identify the KFX content node that produces the logo + "FIRST EDITION" text
-2. Trace how Python keeps it as a single `<p>` element vs Go splitting it
-3. Fix the rendering to match Python's behavior for this case
+#### D5: Font-weight class splitting
+**Affected**: Familiars (5 files)
+**Root cause**: Rendering pipeline produces different HTML structure. Python promotes bold spans' content to paragraph level and wraps non-bold text in new spans. Go keeps original span structure.
+**Go file**: `internal/kfx/storyline.go` text event rendering + `internal/kfx/yj_to_epub_properties.go` simplify_styles
+
+#### D7: Missing `margin-bottom: 0; margin-top: 0` on paragraphs
+**Affected**: Hunger Games (class_s79F)
+**Root cause**: Related to D1-ORDERING — text-align is reverse-inherited but margins aren't
+
+#### D8: Figure class properties
+**Affected**: Throne of Glass (figure_s2C missing font-style/font-weight/margin defaults)
+**Root cause**: Figure elements don't get non-heritable defaults the same way Python does
+
+#### D9: JXR images
+**Affected**: Throne of Glass (4 files)
+**Root cause**: JXR decoder exists in `internal/jxr/` but not wired into EPUB resource pipeline
+
+#### D10: Heading font-weight/hyphens
+**Affected**: Throne of Glass (headings s20/s22/s24 keep font-weight: bold, heading_sF keeps -webkit-hyphens)
+**Root cause**: D1-ORDERING — body has these properties via reverse inheritance but children don't inherit them
 
 ---
 
-### D4: Heading color missing
+## Implementation History
 
-**Severity**: Low (cosmetic, only affects some heading styles)
+### Phase 1: Trivial fixes ✅
+1. D11 (xmlns:mbp) — Already fixed before this plan
+2. D12 (trailing newline) — Fixed in `6fb90c0`
 
-**Affected**: Familiars
+### Phase 2: text-indent: 0 (D1) ✅
+3. Removed `$36` (text-indent) from body style during rendering — `2f9d6ec`
+4. Flattened body children for reverse inheritance — `2f9d6ec`
+5. Removed `filterBodyDefaultDeclarations` from rendering pipeline — `2f9d6ec`
+6. **Result**: Hunger Games 25→105 match (+80 files)
 
-**Symptom**: Go's `heading_s2B3` and `heading_s3T` are missing `color: blue`. Python includes it.
+### Phase 3: Non-heritable defaults (D7) ✅
+7. Already working for most cases. The remaining D7 cases are caused by D1-ORDERING.
 
-**Root cause**: The KFX style fragment for these headings includes a color property that Go's `headingClass()` doesn't emit. The color property is likely filtered out during the heading style rendering.
+### Phase 4: Composite style merging (D6, D5) ✅ (partial)
+8. Added vendor-prefixed alternate equivalent stripping — `92a8532`
+9. D5/D6 require D1-ORDERING fix to fully resolve
 
-**Python reference**: `yj_to_epub_content.py` heading rendering
+### Phase 5: Table and content structure (D2, D3) — Deferred
+10. D2/D3 require deeper rendering pipeline investigation
 
-**Go file**: `internal/kfx/storyline.go` `headingClass()`
+### Phase 6: Heading properties (D4, D10) ✅ (partial)
+11. D4 heading color — Fixed in `674230c`
+12. D10 heading font-weight/hyphens — Requires D1-ORDERING fix
 
-**Fix steps**:
-1. Check if `$569` (text color) is in the style fragment for these headings
-2. Verify `headingClass()` preserves the color property in its CSS output
-3. Check if `filterBodyDefaultDeclarations` strips the color
+### Phase 7: Figure classes (D8) ✅ (partial)
+13. Figure class naming (`class_` → `figure_`) — Fixed in `727ebe8`
+14. Figure property defaults (margin, font-style, font-weight) — Still missing
 
----
-
-### D5: Font-weight class splitting
-
-**Severity**: Low (cosmetic, different class count)
-
-**Affected**: Familiars, Throne of Glass
-
-**Symptom**: Python produces `class-2 {font-weight: normal}` and `class-3 {font-weight: 800; text-align: center}` as separate classes. Go produces `class-2 {font-weight: 800; text-align: center}` — missing the separate `font-weight: normal` class.
-
-Also in Throne of Glass: Go produces `class_s2DN {font-weight: 800}` and `class_s2DP {font-weight: 800}` as two separate classes. Python deduplicates them into a single element with `<span>` wrapping.
-
-**Root cause**: The rendering pipeline produces different style strings for elements that share the same visual style. Python's simplifyStyles deduplicates more aggressively.
-
-**Fix**: Requires investigation of whether this is a rendering or simplification difference. Likely related to how `add_composite_and_equivalent_styles` works in Python (D8).
+### Phase 8: JXR images (D9) — Deferred
+15. JXR decoder exists but not wired into EPUB pipeline
 
 ---
 
-### D6: `class_s78S`/`class_s78V` composite style merging
+## Next Steps
 
-**Severity**: Low (functionally equivalent)
+### Critical: Fix reverse inheritance ordering (D1-ORDERING)
+This is the single highest-impact fix. It would resolve or improve:
+- Throne of Glass heading diffs (font-weight, hyphens)
+- Hunger Games text-indent on tables
+- Familiars font-weight class splitting
 
-**Affected**: Hunger Games
+**Implementation**:
+1. In `simplifyStylesElementFull`, move the `applyReverseInheritance` call before `parentStyle` computation
+2. Update `TestConvertFilePhase8MatchesInlineStyleEventsAndFitWidthContainers` and `TestConvertFileMatchesReferenceStructureIgnoringImages` expectations to match Python's output
+3. Run full comparison against all 6 books
+4. If Martyr no longer matches Python's output byte-for-byte, investigate whether the test expectations were correct
 
-**Symptom**: Go has two separate classes:
-```
-.class_s78S-0 {text-align: center}
-.class_s78S-1 {max-width: 70%; width: 70%}
-.class_s78V {padding-bottom: 0.0375em; ... vertical-align: middle}
-```
+### Then: Figure property defaults (D8)
+After ordering fix, check if figure properties are resolved. If not, investigate figure rendering.
 
-Python has:
-```
-.class_s78S {max-width: 70%; width: 70%}
-.class_s78V {padding-bottom: 0.0375em; ... text-align: center; vertical-align: middle}
-```
+### Then: JXR image wiring (D9)
+Wire `internal/jxr/` decoder into EPUB resource pipeline.
 
-Python merges `text-align: center` from the parent element into `class_s78V` and eliminates the redundant `class_s78S-0`.
-
-**Python reference**: `yj_to_epub_properties.py` lines 1973-2021 (`add_composite_and_equivalent_styles`)
-
-**Go file**: `internal/kfx/yj_to_epub_properties.go`
-
-**Fix steps**:
-1. Port `add_composite_and_equivalent_styles` as a new pass after `simplifyStylesElementFull`
-2. The function processes each element and its children:
-   - Merges composite side styles (e.g., `margin-left` + `margin-right` + `margin-top` + `margin-bottom` → `margin`)
-   - Applies alternate equivalent properties (`writing-mode` → `-webkit-writing-mode`)
-   - Removes ineffective properties for inline elements
-   - Moves shared heritable properties up from children to parent (and removes from children)
-3. The key logic: if a parent has a property and ALL children have the same value, move it to parent and remove from children
+### Then: Table p wrappers (D2) and logo rendering (D3)
+These require deeper rendering pipeline changes.
 
 ---
 
-### D7: Missing `margin-bottom: 0; margin-top: 0` on paragraphs
+## Key Python Files Reference
 
-**Severity**: Low (browsers default to this anyway)
-
-**Affected**: Hunger Games (`class_s79F`)
-
-**Symptom**: Go's `.class_s79F {font-size: 0.75em; line-height: 1; text-align: center}` vs Python's `.class_s79F {font-size: 0.75em; line-height: 1; margin-bottom: 0; margin-top: 0; text-align: center}`.
-
-**Root cause**: `margin-top: 0` and `margin-bottom: 0` are non-heritable defaults. For div/p/h elements, Go adds them to `explicitStyle` at line 1567 of `yj_to_epub_properties.go`. But `class_s79F` comes from a style that is applied to a `<p>` element. The margins should be present in the explicit style and survive stripping because the paragraph's inherited margins are `1em` (from paragraph conversion).
-
-If the margins are missing, it means either:
-1. The element isn't recognized as needing non-heritable defaults (not a div/p/h), or
-2. The margins are being stripped by comparison against inherited `0` (from non-heritable defaults)
-
-**Fix**: Debug why this specific class loses its margins. Check if the element tag is correctly set to `<p>` before the non-heritable defaults are added.
-
----
-
-### D8: Figure class properties
-
-**Severity**: Low
-
-**Affected**: Throne of Glass
-
-**Symptom**: Go produces `.figure_s2C {font-size: 1.04384em; margin-left: auto; margin-right: auto; text-transform: none; width: 30%}` while Python adds `font-style: normal; font-weight: normal; margin-bottom: 0; margin-top: 0`.
-
-Also, Python has separate `.figure_s1J`, `.figure_s3TJ`, `.figure_s3U5`, `.figure_s4N` classes that Go doesn't produce.
-
-**Root cause**: Python's figure rendering adds additional properties from the figure's style that Go doesn't include. The extra figure classes correspond to figure wrapper styles that Go merges differently.
-
-**Fix**: Check how figure styles are built in Go vs Python and add the missing properties.
-
----
-
-### D9: JXR image not converted
-
-**Severity**: Medium (broken images)
-
-**Affected**: Throne of Glass
-
-**Symptom**: Go's `content.opf` references `image_rsrc43M.jxr` (media-type: image/jxr) while Python has `image_rsrc43M.jpg` and an additional `image_rsrc43N.jpg`. The CSS `background-image: eAV` in Go vs `background-image: url(image_rsrc43N.jpg)` in Python shows the image reference is also broken.
-
-**Root cause**: The JXR decoder exists in `internal/jxr/` but isn't wired into the EPUB resource pipeline. When a `.jxr` image is encountered during conversion, it should be decoded to JPEG and the references updated.
-
-**Fix steps**:
-1. Wire `internal/jxr/` decoder into the resource pipeline in `internal/kfx/`
-2. In `processResources()` or wherever images are handled, detect `.jxr` extension
-3. Decode JXR → JPEG
-4. Replace the resource in the EPUB with the JPEG version
-5. Update all references (CSS `background-image`, HTML `<img src>`, manifest)
-
----
-
-### D10: Heading `font-weight` missing in CSS
-
-**Severity**: Low (cosmetic)
-
-**Affected**: Throne of Glass
-
-**Symptom**: Go produces `.heading_s20 {-webkit-hyphens: none; font-size: 3.34029em; font-weight: bold; ...}` but Python produces `.heading_s20 {-webkit-hyphens: none; font-size: 3.34029em; ...}` (no `font-weight: bold`). Conversely, some Go headings that omit `font-weight: bold` should include it.
-
-**Root cause**: Default stripping inconsistency. `font-weight: bold` is the non-default value (default is `normal`). If the heading's style has `font-weight: bold` but the inherited value from the body is also `bold` (because body style includes `font-weight: normal` → not stripped → heading converts div→h1 → inherited pops font-weight → heading's bold doesn't match inherited → kept).
-
-This is complex. Python's heading conversion pops `font-weight` from inherited (line 1922), which means the heading's own `font-weight: bold` doesn't match the empty inherited → kept. But if the heading's `font-weight` is `normal` (matching the default), and inherited was popped (empty), then `sty["font-weight"]` = "normal" ≠ "" → kept. This produces `font-weight: normal` in the CSS which Python then strips via some other mechanism.
-
-The inverse pattern: Go includes `font-weight: bold` on headings where Python doesn't. This suggests the heading's font-weight was inherited from the body (not explicit) and should have been stripped.
-
-**Fix**: Requires careful tracing of the inherited map flow through heading conversion for each affected heading style.
-
----
-
-### D11: `toc.ncx` extra `xmlns:mbp` namespace
-
-**Severity**: Trivial
-
-**Affected**: All books
-
-**Fix**: Remove `xmlns:mbp` from the NCX `<ncx>` element in `internal/epub/epub.go` line 248. Python never emits this namespace.
-
-### D12: Missing trailing newline in `content.opf`
-
-**Severity**: Trivial
-
-**Affected**: All books
-
-**Fix**: Add `\n` after `</package>` in `internal/epub/epub.go` OPF generation.
-
----
-
-## Implementation Order
-
-Ordered by impact (files fixed per effort unit):
-
-### Phase 1: Trivial fixes (30 min)
-1. **D11**: Remove `xmlns:mbp` from NCX
-2. **D12**: Add trailing newline to content.opf
-
-### Phase 2: text-indent: 0 (D1) ✅ DONE
-3. ✅ Removed `$36` (text-indent) from body style during rendering
-4. ✅ Flattened body children for reverse inheritance
-5. ✅ Removed filterBodyDefaultDeclarations from rendering pipeline
-6. Verified with: All books improved. Hunger Games 25→105 match.
-
-### Phase 3: Non-heritable defaults for all block elements (2-3 hours)
-6. **D7**: Fix missing `margin-bottom: 0; margin-top: 0` on paragraphs
-7. Audit all block-level elements to ensure non-heritable defaults are added and stripped correctly
-
-### Phase 4: Composite style merging (3-4 hours)
-8. **D6**: Port `add_composite_and_equivalent_styles` from Python
-9. This should also fix D5 (font-weight splitting) since composite merging deduplicates shared child properties
-
-### Phase 5: Table and content structure (2-3 hours)
-10. **D2**: Add `<p class="tableright">` wrappers in table cells
-11. **D3**: Fix logo + "FIRST EDITION" rendering to keep as single `<p>`
-
-### Phase 6: Heading properties (D4, D10)
-12. ✅ **D4**: Fixed heading color — always resolve link color in `linkClass`, let simplify_styles strip redundant color
-13. **D10**: Fix heading font-weight default stripping
-
-### Phase 7: Figure classes (2-3 hours)
-14. **D8**: Fix figure class properties to match Python
-
-### Phase 8: JXR images (4-8 hours)
-15. **D9**: Wire JXR decoder into EPUB resource pipeline
-
----
-
-## Verification
-
-After each phase, run the full comparison script against all 6 books. The target is:
-
-| Book | Target |
-|------|--------|
-| Martyr | 102/102 match |
-| Three Below | 23/23 match |
-| Elvis | 32/32 match |
-| Familiars | 54/54 match |
-| Hunger Games | 112/112 match |
-| Throne of Glass | 71/71 match |
-
-Note: Throne of Glass image count may differ (D9 JXR conversion may add/remove images). The "match" count refers to text-only files (HTML, CSS, OPF, NCX, nav).
-
----
-
-## Key Python Files to Port
-
-| Python File | Go Target | Purpose |
-|------------|-----------|---------|
-| `yj_to_epub_content.py:42-68` | `storyline.go` | Body style inference |
-| `yj_to_epub_content.py:1279-1310` | `storyline.go` | Table cell `<p>` wrapping |
+| Python File | Lines | Purpose |
+|------------|-------|---------|
+| `yj_to_epub_properties.py` | 1876-1920 | Reverse inheritance + simplify_styles order |
+| `yj_to_epub_properties.py` | 1973-2021 | `add_composite_and_equivalent_styles` |
+| `yj_to_epub_properties.py` | 1655-1670 | Body default injection |
+| `yj_to_epub_content.py` | 42-68 | Body style inference |
+| `yj_to_epub_content.py` | 816-830 | Table cell rendering |
+| `yj_to_epub_content.py` | 1294-1310 | Inline render handling |
 | `yj_to_epub_content.py:1324-1345` | `storyline.go` | Image wrapper property partition |
 | `yj_to_epub_properties.py:1973-2021` | `yj_to_epub_properties.go` | `add_composite_and_equivalent_styles` |
 | `yj_to_epub_properties.py:1655-1670` | `yj_to_epub_properties.go` | Body default font/line-height/text-indent injection |
