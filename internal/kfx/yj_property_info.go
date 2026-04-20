@@ -1223,8 +1223,8 @@ func formatCSSQuantity(q float64) string {
 		return "0"
 	}
 
-	// Rule 2: format with %g (6 significant digits)
-	s := strconv.FormatFloat(q, 'g', -1, 64)
+	// Rule 2: format with %g (6 significant digits, matching Python "%g" % quantity)
+	s := strconv.FormatFloat(q, 'g', 6, 64)
 
 	// Rule 3: if scientific notation detected → reformat with %.4f
 	if strings.Contains(s, "e") || strings.Contains(s, "E") {

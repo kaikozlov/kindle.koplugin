@@ -2,6 +2,7 @@ package kfx
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -685,9 +686,24 @@ func colorIntValue(value interface{}) (uint32, bool) {
 }
 
 func trimFloat(value float64) string {
-	return strconv.FormatFloat(value, 'f', -1, 64)
+	// Same formatting as formatStyleNumber but without units.
+	return formatStyleNumber(value)
 }
 
 func formatStyleNumber(value float64) string {
-	return strconv.FormatFloat(value, 'g', 6, 64)
+	// Port of Python epub_output.py value_str formatting logic.
+	if math.Abs(value) < 1e-6 {
+		return "0"
+	}
+	s := strconv.FormatFloat(value, 'g', 6, 64)
+	// Fall back to fixed-point if scientific notation appeared.
+	if strings.ContainsAny(s, "eE") {
+		s = strconv.FormatFloat(value, 'f', 4, 64)
+	}
+	// Strip trailing zeros then trailing decimal point.
+	if strings.Contains(s, ".") {
+		s = strings.TrimRight(s, "0")
+		s = strings.TrimRight(s, ".")
+	}
+	return s
 }
