@@ -72,6 +72,12 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 		bodyStyleID, _ = asString(storyline["$157"])
 	}
 	bodyStyle := effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
+	// Remove $36 (text-indent) from body style. In Python, text-indent is NOT set on
+	// the body element during rendering. Instead, it's promoted to the body by reverse
+	// inheritance during simplify_styles. If we include text-indent in the body's style,
+	// it gets inherited by children who then strip it (because it matches the inherited
+	// value), preventing reverse inheritance from detecting it.
+	delete(bodyStyle, "$36")
 	bodyDeclarations := cssDeclarationsFromMap(processContentProperties(bodyStyle))
 	if bodyStyleID == "" && len(bodyDeclarations) == 0 {
 		bodyStyleValues = map[string]interface{}{
@@ -1420,7 +1426,7 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 		}
 	}
 
-	declarations := filterBodyDefaultDeclarations(cssDeclarationsFromMap(cssMap), r.activeBodyDefaults)
+	declarations := cssDeclarationsFromMap(cssMap)
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
@@ -1503,7 +1509,7 @@ func (r *storylineRenderer) fittedContainerClass(node map[string]interface{}) st
 		}
 	}
 
-	declarations := filterBodyDefaultDeclarations(cssDeclarationsFromMap(cssMap), r.activeBodyDefaults)
+	declarations := cssDeclarationsFromMap(cssMap)
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
@@ -1721,7 +1727,7 @@ func (r *storylineRenderer) headingClass(styleID string) string {
 		return ""
 	}
 	className := r.headingClassName(styleID, style)
-	declarations := filterBodyDefaultDeclarations(cssDeclarationsFromMap(processContentProperties(style)), r.activeBodyDefaults)
+	declarations := cssDeclarationsFromMap(processContentProperties(style))
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
@@ -1772,7 +1778,7 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 			cssMap["color"] = linkColor
 		}
 	}
-	declarations := filterBodyDefaultDeclarations(cssDeclarationsFromMap(cssMap), r.activeBodyDefaults)
+	declarations := cssDeclarationsFromMap(cssMap)
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}

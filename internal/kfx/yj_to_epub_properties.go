@@ -800,26 +800,32 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 		bodyStyleMap := parseDeclarationString(book.RenderedSections[i].BodyStyle)
 		convertStyleUnits(bodyStyleMap, heritableDefaultProperties)
 
-		// Create a virtual body element wrapping Root, matching Python's architecture where
-		// simplify_styles is called on the actual <body> element.
+		// Create a virtual body element matching Python's architecture where
+		// simplify_styles is called on the <body> element.
 		// Python: self.simplify_styles(book_part.body(), book_part, heritable_default_properties)
-		// The body element has its own inline style and Root as its child content.
+		//
+		// IMPORTANT: Python's <body> has paragraphs, headings, and divs as DIRECT children.
+		// This allows reverse inheritance to detect shared heritable properties across all
+		// children (e.g., text-indent: 1.6em from most paragraphs). Go wraps body parts
+		// in a Root element; we must flatten Root's children here so the virtual body has
+		// the same child structure as Python. Without this, reverse inheritance on body
+		// only sees the single Root wrapper, preventing detection of shared properties.
+		var bodyChildren []htmlPart
+		if book.RenderedSections[i].Root != nil {
+			bodyChildren = book.RenderedSections[i].Root.Children
+		}
 		bodyElem := &htmlElement{
 			Tag:      "body",
 			Attrs:    map[string]string{"style": styleStringFromMap(bodyStyleMap)},
-			Children: []htmlPart{book.RenderedSections[i].Root},
+			Children: bodyChildren,
 		}
 
 		simplifyStylesElementFull(bodyElem, catalog, bodyInherited)
 
-		// Extract the updated Root and BodyStyle from the virtual body element.
-		// The body's style was processed by simplifyStylesElementFull: reverse inheritance,
-		// unit conversion, property stripping, etc.
-		if len(bodyElem.Children) > 0 {
-			if root, ok := bodyElem.Children[0].(*htmlElement); ok {
-				book.RenderedSections[i].Root = root
-			}
-		}
+		// Extract the updated children back into the Root wrapper.
+		// Reverse inheritance on the body may have modified children's styles
+		// (e.g., adding text-indent: 0 to image wrapper divs).
+		book.RenderedSections[i].Root.Children = bodyElem.Children
 		book.RenderedSections[i].BodyStyle = ""
 		if bodyElem.Attrs != nil {
 			book.RenderedSections[i].BodyStyle = bodyElem.Attrs["style"]
