@@ -346,7 +346,7 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 	if headingTag := r.layoutHintHeadingTag(node, children); headingTag != "" {
 		element := &htmlElement{Tag: headingTag, Attrs: map[string]string{}}
 		for _, child := range children {
-			if inline := r.renderInlinePart(child, depth+1); inline != nil {
+			if inline := r.renderInlineContent(child, depth+1); inline != nil {
 				element.Children = append(element.Children, inline)
 			}
 		}
@@ -370,7 +370,7 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 
 	container := &htmlElement{Tag: "div", Attrs: map[string]string{}}
 	for _, child := range children {
-		rendered := r.renderNode(child, depth+1)
+		rendered := r.renderContentChild(child, depth+1)
 		if rendered != nil {
 			container.Children = append(container.Children, rendered)
 		}
@@ -761,6 +761,14 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 	if rowspan, ok := asInt(node["$149"]); ok && rowspan > 1 {
 		cell.Attrs["rowspan"] = strconv.Itoa(rowspan)
 	}
+
+	// Python COMBINE_NESTED_DIVS check: when the cell $269 has a single $269 child with $145
+	// text, and the parent and child CSS have no overlapping properties, the nested divs
+	// merge into one. The merged result becomes <td>text</td> after retag + span strip.
+	// When there IS overlap, no merge happens: the child $269 keeps its own <div> which
+	// simplify_styles later promotes to <p>, giving <td><p class="child">text</p></td>.
+	merged := r.tableCellCombineNestedDivs(node)
+
 	if styleAttr := r.tableCellClass(node); styleAttr != "" {
 		cell.Attrs["style"] = styleAttr
 	}
@@ -773,19 +781,29 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 		for _, child := range children {
 			childNode, ok := asMap(child)
 			if !ok {
+				// Python process_content IonString case (line 397-399):
+				// bare string → <span>text</span>
+				if text, ok := asString(child); ok {
+					s := &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
+					cell.Children = append(cell.Children, s)
+				}
 				continue
 			}
-			if ref, ok := asMap(childNode["$145"]); ok {
+			if ref, ok := asMap(childNode["$145"]); ok && merged {
+				// COMBINE_NESTED_DIVS merged: extract text directly into <td>.
+				// Python: merge removes inner div, leaving <span>text</span> which
+				// epub_output.py later strips, giving bare text in <td>.
 				text := r.resolveText(ref)
 				if text != "" {
 					cell.Children = append(cell.Children, r.applyAnnotations(text, childNode)...)
 				}
 				continue
 			}
-			if rendered := r.renderNode(childNode, depth+1); rendered != nil {
+			// No merge: render child as full node. For a $269 with $145,
+			// renderTextNode produces <p class="child">text</p>, matching Python's
+			// simplify_styles div→p promotion.
+			if rendered := r.renderContentChild(child, depth+1); rendered != nil {
 				cell.Children = append(cell.Children, rendered)
-			} else if inline := r.renderInlinePart(childNode, depth+1); inline != nil {
-				cell.Children = append(cell.Children, inline)
 			}
 		}
 	}
@@ -794,6 +812,31 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 		r.applyPositionAnchors(cell, positionID, false)
 	}
 	return cell
+}
+
+// renderInlineContent dispatches a $146 list child the same way Python's process_content
+// handles IonString vs IonStruct (yj_to_epub_content.py:395-405).
+// - IonString (Go string): creates <span>text</span>  (Python line 397-399)
+// - IonStruct (Go map): delegates to renderInlinePart
+func (r *storylineRenderer) renderInlineContent(child interface{}, depth int) htmlPart {
+	if text, ok := asString(child); ok {
+		return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
+	}
+	return r.renderInlinePart(child, depth)
+}
+
+// renderContentChild dispatches a $146 list child the same way Python's process_content
+// handles IonString vs IonStruct for block-level container paths.
+// - IonString (Go string): creates <span>text</span>
+// - IonStruct (Go map): delegates to renderNode, falls back to renderInlinePart
+func (r *storylineRenderer) renderContentChild(child interface{}, depth int) htmlPart {
+	if text, ok := asString(child); ok {
+		return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
+	}
+	if rendered := r.renderNode(child, depth); rendered != nil {
+		return rendered
+	}
+	return r.renderInlinePart(child, depth)
 }
 
 func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPart {
@@ -1540,6 +1583,45 @@ func (r *storylineRenderer) structuredContainerClass(node map[string]interface{}
 		baseName = r.styleBaseName(styleID)
 	}
 	return styleStringFromDeclarations(baseName, nil, declarations)
+}
+
+// tableCellCombineNestedDivs returns true when Python's COMBINE_NESTED_DIVS
+// (yj_to_epub_content.py:1408-1448) would merge the cell $269 with its single child $269.
+// This happens when the parent and child CSS properties don't overlap (excluding -kfx-style-name).
+func (r *storylineRenderer) tableCellCombineNestedDivs(node map[string]interface{}) bool {
+	children, ok := asSlice(node["$146"])
+	if !ok || len(children) != 1 {
+		return false
+	}
+	child, ok := asMap(children[0])
+	if !ok {
+		return false
+	}
+	childContentType, _ := asString(child["$159"])
+	if childContentType != "$269" {
+		return false
+	}
+	if _, has145 := asMap(child["$145"]); !has145 {
+		return false // child doesn't have text content to merge
+	}
+	styleID, _ := asString(node["$157"])
+	childStyleID, _ := asString(child["$157"])
+	if styleID == "" || childStyleID == "" {
+		return true // no style conflict
+	}
+	ownStyle := effectiveStyle(r.styleFragments[styleID], node)
+	parentCSS := processContentProperties(ownStyle, r.resolveResource)
+	childStyle := effectiveStyle(r.styleFragments[childStyleID], child)
+	childCSS := processContentProperties(childStyle, r.resolveResource)
+	for prop := range parentCSS {
+		if prop == "-kfx-style-name" {
+			continue
+		}
+		if _, exists := childCSS[prop]; exists {
+			return false // overlap → no merge
+		}
+	}
+	return true // no overlap → merge
 }
 
 func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
