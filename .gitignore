@@ -1,3 +1,4 @@
 /kindle-helper
 build/
 *.zip
+__pycache__/
