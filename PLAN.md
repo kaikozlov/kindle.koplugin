@@ -295,8 +295,8 @@ Ordered by impact (files fixed per effort unit):
 10. **D2**: Add `<p class="tableright">` wrappers in table cells
 11. **D3**: Fix logo + "FIRST EDITION" rendering to keep as single `<p>`
 
-### Phase 6: Heading properties (2-3 hours)
-12. **D4**: Fix missing heading color
+### Phase 6: Heading properties (D4, D10)
+12. ✅ **D4**: Fixed heading color — always resolve link color in `linkClass`, let simplify_styles strip redundant color
 13. **D10**: Fix heading font-weight default stripping
 
 ### Phase 7: Figure classes (2-3 hours)
