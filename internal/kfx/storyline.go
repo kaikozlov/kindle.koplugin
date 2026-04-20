@@ -1808,23 +1808,22 @@ func (r *storylineRenderer) linkClass(styleID string, suppressColor bool) string
 		return ""
 	}
 	cssMap := processContentProperties(style)
-	// When suppressColor is true, remove color properties (used when paragraph
-	// already handles color via link style inheritance).
-	if suppressColor {
-		delete(cssMap, "color")
-		delete(cssMap, "-kfx-link-color")
-		delete(cssMap, "-kfx-visited-color")
-	} else {
-		// Resolve link color: if no explicit color but -kfx-link-color == -kfx-visited-color,
-		// set color to that value (matches simplifyStylesElementFull's <a> tag logic).
-		if _, hasColor := cssMap["color"]; !hasColor {
-			linkColor, hasLink := cssMap["-kfx-link-color"]
-			visitedColor, hasVisited := cssMap["-kfx-visited-color"]
-			if hasLink && hasVisited && linkColor == visitedColor {
-				cssMap["color"] = linkColor
-			}
+	// Always resolve link color: if no explicit color but -kfx-link-color == -kfx-visited-color,
+	// set color to that value. This matches simplifyStylesElementFull's <a> tag logic.
+	// Previously we suppressed color when suppressColor was true (for paragraphs that
+	// handle color via link style inheritance). But simplify_styles will strip the
+	// redundant color from <a> if it matches inherited, so we don't need to suppress.
+	if _, hasColor := cssMap["color"]; !hasColor {
+		linkColor, hasLink := cssMap["-kfx-link-color"]
+		visitedColor, hasVisited := cssMap["-kfx-visited-color"]
+		if hasLink && hasVisited && linkColor == visitedColor {
+			cssMap["color"] = linkColor
 		}
 	}
+	// Always strip -kfx- properties (they're not real CSS and will appear in the
+	// style catalog if not removed here).
+	delete(cssMap, "-kfx-link-color")
+	delete(cssMap, "-kfx-visited-color")
 	declarations := cssDeclarationsFromMap(cssMap)
 	if len(declarations) == 0 {
 		return ""
