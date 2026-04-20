@@ -7,7 +7,7 @@
 | **Martyr** | 102 | 0 | ✅ Perfect match |
 | **Three Below** | 23 | 0 | ✅ Perfect match |
 | **Hunger Games** | 105 | 7 | Table wrappers, composite styles, text-indent |
-| **Throne of Glass** | 67 | 4 | JXR images, heading font-weight/hyphens, figure properties |
+| **Throne of Glass** | 67 | 4 | JXR images (2), figure margins (2) |
 | **Elvis** | 30 | 2 | Missing `<p class="tableright">` wrappers; extra `class_cpytxt2-3` |
 | **Familiars** | 49 | 5 | Font-weight class splitting, composite styles |
 
@@ -20,6 +20,9 @@
 4. `727ebe8` — Rename `class_` to `figure_` for figure elements (D8) ✅ **Throne of Glass 64→67**
 5. `92a8532` — Strip vendor-prefixed alternate equivalents in simplify_styles ✅
 6. `46c8217` — Update PLAN.md with session summary
+7. `ce7174e` — Update PLAN.md with deep body style inheritance findings
+8. `2ac1cb2` — Fix body style inheritance for inferred sections (D1-BODY) ✅ **Fixes heading font-weight**
+9. `aa39fdf` — Strip vendor-prefixed alternates in reverse inheritance ✅ **Fixes heading -webkit-hyphens**
 
 ### Key Architectural Finding: Body Style Inheritance
 
