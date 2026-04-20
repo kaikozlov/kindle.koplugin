@@ -38,6 +38,20 @@ func appendTextHTMLParts(element *htmlElement, text string) {
 	if element == nil || text == "" {
 		return
 	}
+	// Merge with last htmlText child if possible, matching Python's etree text
+	// concatenation behavior. Without merging, the annotation event loop creates
+	// individual htmlText nodes per character, which breaks locateOffsetIn for
+	// page markers when wrapped in spans.
+	if len(element.Children) > 0 {
+		switch last := element.Children[len(element.Children)-1].(type) {
+		case htmlText:
+			element.Children[len(element.Children)-1] = htmlText{Text: last.Text + text}
+			return
+		case *htmlText:
+			element.Children[len(element.Children)-1] = &htmlText{Text: last.Text + text}
+			return
+		}
+	}
 	element.Children = append(element.Children, splitTextHTMLParts(text)...)
 }
 
