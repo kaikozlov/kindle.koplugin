@@ -1623,7 +1623,7 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	}
 
 	comparisonInherited := inherited
-	if tagChangedToParagraph || tagChangedToFigure || elem.Tag == "p" {
+	if tagChangedToParagraph || tagChangedToFigure || elem.Tag == "p" || elem.Tag == "figure" {
 		comparisonInherited = cloneStyleMap(inherited)
 		if sty["writing-mode"] == "horizontal-tb" || sty["writing-mode"] == "" {
 			comparisonInherited["margin-top"] = "1em"
