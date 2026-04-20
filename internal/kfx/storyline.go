@@ -2260,6 +2260,24 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 	if last < len(runes) {
 		appendTextHTMLParts(stack[len(stack)-1].opened, string(runes[last:]))
 	}
+
+	// Port of Python add_content (yj_to_epub_content.py:364-370):
+	// Python wraps ALL text in <span> elements via SubElement(parent, "span").
+	// This ensures no bare text nodes exist in the tree, which is critical for
+	// simplify_styles reverse inheritance (Python skips when elem.text or elem.tail
+	// is set, line 1875-1876). During simplify_styles, empty spans are unwrapped
+	// (matching etree.strip_tags in epub_output.py:783-789).
+	for i, child := range root.Children {
+		switch child.(type) {
+		case htmlText, *htmlText:
+			root.Children[i] = &htmlElement{
+				Tag:      "span",
+				Attrs:    map[string]string{},
+				Children: []htmlPart{child},
+			}
+		}
+	}
+
 	return root.Children
 }
 

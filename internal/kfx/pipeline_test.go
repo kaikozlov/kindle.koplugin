@@ -483,7 +483,7 @@ func TestRenderTextNodeSupportsDropCaps(t *testing.T) {
 	got := renderHTMLPart(node)
 	renderer.styles.markReferenced(got)
 
-	if !strings.Contains(got, "<span") || !strings.Contains(got, ">H</span>ello</p>") {
+	if !strings.Contains(got, "<span") || !strings.Contains(got, ">H</span><span>e</span>") {
 		t.Fatalf("drop cap html = %q", got)
 	}
 	stylesheet := renderer.styles.String()
