@@ -227,21 +227,22 @@ func ConvertFile(inputPath, outputPath string, cacheDir string) error {
 	}
 
 	return epub.Write(outputPath, epub.Book{
-		Identifier:          book.Identifier,
-		Title:               book.Title,
-		Language:            book.Language,
-		Authors:             book.Authors,
-		Published:           book.Published,
-		Description:         book.Description,
-		Publisher:           book.Publisher,
-		OverrideKindleFonts: book.OverrideKindleFonts,
-		CoverImageHref:      book.CoverImageHref,
-		Stylesheet:          book.Stylesheet,
-		Sections:            book.Sections,
-		Resources:           book.Resources,
-		Navigation:          book.Navigation,
-		Guide:               book.Guide,
-		PageList:            book.PageList,
+		Identifier:              book.Identifier,
+		Title:                   book.Title,
+		Language:                book.Language,
+		Authors:                 book.Authors,
+		Published:               book.Published,
+		Description:             book.Description,
+		Publisher:               book.Publisher,
+		OverrideKindleFonts:     book.OverrideKindleFonts,
+		CoverImageHref:          book.CoverImageHref,
+		Stylesheet:              book.Stylesheet,
+		Sections:                book.Sections,
+		Resources:               book.Resources,
+		Navigation:              book.Navigation,
+		Guide:                   book.Guide,
+		PageList:                book.PageList,
+		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
 	})
 }
 
@@ -369,7 +370,8 @@ func convertFromDRMIONData(contData []byte, outputPath string, originalPath stri
 		Resources:           book.Resources,
 		Navigation:          book.Navigation,
 		Guide:               book.Guide,
-		PageList:            book.PageList,
+		PageList:                book.PageList,
+		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
 	})
 }
 
@@ -407,7 +409,8 @@ func convertFromCONTData(contData []byte, outputPath string) error {
 		Resources:           book.Resources,
 		Navigation:          book.Navigation,
 		Guide:               book.Guide,
-		PageList:            book.PageList,
+		PageList:                book.PageList,
+		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
 	})
 }
 
