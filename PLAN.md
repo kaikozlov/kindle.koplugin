@@ -7,9 +7,9 @@
 | **Martyr** | 102 | 0 | ✅ Perfect match |
 | **Three Below** | 23 | 0 | ✅ Perfect match |
 | **Hunger Games** | 105 | 7 | Image names, table p wrappers, composite styles |
-| **Throne of Glass** | 64 | 7 | Figure classes, JXR images, heading font-weight |
+| **Throne of Glass** | 67 | 4 | JXR images, heading font-weight, figure properties |
 | **Elvis** | 30 | 2 | Missing `<p class="tableright">` wrappers; extra `class_cpytxt2-3` |
-| **Familiars** | 49 | 5 | Heading color, font-weight class splitting, composite styles |
+| **Familiars** | 49 | 5 | Font-weight class splitting, composite styles |
 
 All books also share:
 - `toc.ncx` has extra `xmlns:mbp` namespace (trivial fix)
