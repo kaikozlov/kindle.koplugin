@@ -96,9 +96,9 @@ func propertyValueSVG(propName string, yjValue interface{}) string {
 		if propName == "$98" {
 			return processTransform(v, true)
 		}
-		return propertyValue(propName, yjValue)
+		return propertyValue(propName, yjValue, nil)
 	default:
-		return propertyValue(propName, yjValue)
+		return propertyValue(propName, yjValue, nil)
 	}
 }
 

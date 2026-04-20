@@ -122,6 +122,15 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 			illustratedLayout: book.IllustratedLayout,
 		},
 	}
+	// Create resource resolver matching Python's self.process_external_resource
+	// (yj_to_epub_properties.py:1272-1273). Resolves $479/$528 symbol values
+	// (background-image) to CSS url() paths via the pre-built resource href map.
+	renderer.resolveResource = func(symbol string) string {
+		if href, ok := book.ResourceHrefByID[symbol]; ok {
+			return href
+		}
+		return ""
+	}
 	if os.Getenv("KFX_DEBUG_STYLES") != "" {
 		for _, styleID := range strings.Split(os.Getenv("KFX_DEBUG_STYLES"), ",") {
 			styleID = strings.TrimSpace(styleID)

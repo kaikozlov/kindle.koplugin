@@ -522,6 +522,8 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 		resource := resources[resourceID]
 		data := raw[resource.Location]
 		isImage := strings.HasPrefix(strings.ToLower(resource.MediaType), "image/")
+		if resourceID == "eAV" {
+		}
 		if isImage && !blobMatchesImageMediaType(data, resource.MediaType) {
 			data = nil
 		}
@@ -626,6 +628,7 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 	}
 	return output, coverImageHref, strings.TrimSpace(stylesheet.String()), resourceFilenameByID
 }
+
 // packageResourceStem mirrors KFX_EPUB.resource_location_filename name stem (yj_to_epub_resources.py):
 // unique_part_of_local_symbol + prefix_unique_part_of_symbol with image vs resource type.
 // Port of KFX_EPUB.resource_location_filename (yj_to_epub_resources.py L247+).

@@ -71,7 +71,7 @@ func (h Header) SupportsFixtureGraySubset() bool {
 		h.OutputColor == ColorYOnly &&
 		h.OutputBitDepth == BitDepth8 &&
 		h.Plane.InternalColor == ColorYOnly &&
-		h.Plane.Scaled == 1 &&
+		h.Plane.Scaled <= 1 &&
 		h.Plane.BandsPresent == BandsAll &&
 		h.Plane.NumBands == 4 &&
 		h.Plane.NumComponents == 1 &&

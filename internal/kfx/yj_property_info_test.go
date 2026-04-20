@@ -49,7 +49,7 @@ func TestConvertYJPropertiesFontFamily(t *testing.T) {
 		"$47":  map[string]interface{}{"$307": float64(1.04167), "$306": "$310"},
 		"$580": "$320", // text-align: center
 	}
-	result := convertYJProperties(props)
+	result := convertYJProperties(props, nil)
 
 	if result["font-family"] == "" {
 		t.Error("expected font-family to be set")
@@ -72,7 +72,7 @@ func TestConvertYJPropertiesBorderTop(t *testing.T) {
 		"$89": "$328",
 		"$94": map[string]interface{}{"$307": float64(0.45), "$306": "$318"},
 	}
-	result := convertYJProperties(props)
+	result := convertYJProperties(props, nil)
 
 	if result["border-top-color"] != "#636363" {
 		t.Errorf("expected border-top-color=#636363, got %q", result["border-top-color"])
@@ -92,7 +92,7 @@ func TestProcessContentPropertiesExtractsKnownKeys(t *testing.T) {
 		"$159": "$269",  // content type — NOT a property
 		"$156": "$323",  // layout — NOT a property
 	}
-	result := processContentProperties(content)
+	result := processContentProperties(content, nil)
 
 	if _, ok := result["font-family"]; !ok {
 		t.Error("expected font-family from $11")
@@ -119,7 +119,7 @@ func TestConvertYJPropertiesNoFontFamily(t *testing.T) {
 		"$89":  "$328",
 		"$94":  map[string]interface{}{"$307": float64(0.45), "$306": "$318"},
 	}
-	result := convertYJProperties(props)
+	result := convertYJProperties(props, nil)
 
 	if _, ok := result["font-family"]; ok {
 		t.Error("s36C should not have font-family")

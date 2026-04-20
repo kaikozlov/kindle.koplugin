@@ -31,6 +31,7 @@ type storylineRenderer struct {
 	lastKFXHeadingLevel int
 	symFmt              symType
 	conditionEvaluator  conditionEvaluator
+	resolveResource     ResourceResolver
 }
 
 type conditionEvaluator struct {
@@ -80,13 +81,13 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	// it gets inherited by children who then strip it (because it matches the inherited
 	// value), preventing reverse inheritance from detecting it.
 	delete(bodyStyle, "$36")
-	bodyDeclarations := cssDeclarationsFromMap(processContentProperties(bodyStyle))
+	bodyDeclarations := cssDeclarationsFromMap(processContentProperties(bodyStyle, r.resolveResource))
 	if bodyStyleID == "" && len(bodyDeclarations) == 0 {
 		bodyStyleValues = map[string]interface{}{
 			"$11": defaultInheritedBodyStyle()["$11"],
 		}
 		bodyStyle = effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
-		bodyDeclarations = cssDeclarationsFromMap(processContentProperties(bodyStyle))
+		bodyDeclarations = cssDeclarationsFromMap(processContentProperties(bodyStyle, r.resolveResource))
 	}
 	if len(bodyDeclarations) > 0 {
 		baseName := "class"
@@ -1004,7 +1005,7 @@ func (r *storylineRenderer) applyFirstLineStyle(element *htmlElement, node map[s
 	}
 	delete(style, "$173")
 	delete(style, "$625")
-	declarations := cssDeclarationsFromMap(processContentProperties(style))
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return
 	}
@@ -1388,7 +1389,7 @@ func (r *storylineRenderer) bodyClass(styleID string, values map[string]interfac
 	if len(style) == 0 {
 		return ""
 	}
-	declarations := cssDeclarationsFromMap(processContentProperties(style))
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -1409,7 +1410,7 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 	if len(style) == 0 {
 		return ""
 	}
-	cssMap := processContentProperties(style)
+	cssMap := processContentProperties(style, r.resolveResource)
 
 	// Handle -kfx-box-align → margin auto conversion, matching Python
 	// yj_to_epub_content.py:1390-1404. Container elements get margin-auto
@@ -1446,7 +1447,7 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
 	styleID, _ := asString(node["$157"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
-	cssMap := processContentProperties(style)
+	cssMap := processContentProperties(style, r.resolveResource)
 
 	// Handle -kfx-box-align → margin auto conversion for tables.
 	// Ported from Python yj_to_epub_content.py (~L1390-1404):
@@ -1478,7 +1479,7 @@ func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
 
 func (r *storylineRenderer) tableColumnClass(node map[string]interface{}) string {
 	style := effectiveStyle(nil, node)
-	declarations := cssDeclarationsFromMap(processContentProperties(style))
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -1496,7 +1497,7 @@ func (r *storylineRenderer) fittedContainerClass(node map[string]interface{}) st
 	if len(style) == 0 {
 		return ""
 	}
-	cssMap := processContentProperties(style)
+	cssMap := processContentProperties(style, r.resolveResource)
 
 	// Handle -kfx-box-align → text-align conversion for fitted containers.
 	// Python yj_to_epub_content.py:1375-1381:
@@ -1530,7 +1531,7 @@ func (r *storylineRenderer) structuredContainerClass(node map[string]interface{}
 	styleID, _ := asString(node["$157"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
-	declarations := cssDeclarationsFromMap(processContentProperties(style))
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -1558,9 +1559,9 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 			childStyleID, _ := asString(child["$157"])
 			if childStyleID != "" {
 				ownStyle := effectiveStyle(r.styleFragments[styleID], node)
-				parentCSS := processContentProperties(ownStyle)
+				parentCSS := processContentProperties(ownStyle, r.resolveResource)
 				childStyle := effectiveStyle(r.styleFragments[childStyleID], child)
-				childCSS := processContentProperties(childStyle)
+				childCSS := processContentProperties(childStyle, r.resolveResource)
 				// Python excludes -kfx-style-name from overlap check
 				hasOverlap := false
 				for prop := range parentCSS {
@@ -1579,7 +1580,7 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 		}
 	}
 
-	cssMap := processContentProperties(style)
+	cssMap := processContentProperties(style, r.resolveResource)
 
 	// Handle -kfx-box-align → text-align conversion for table cells.
 	// In Python's process_content (yj_to_epub_content.py), -kfx-box-align is popped from
@@ -1608,7 +1609,7 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 
 func (r *storylineRenderer) inlineContainerClass(styleID string, node map[string]interface{}) string {
 	style := effectiveStyle(r.styleFragments[styleID], node)
-	declarations := cssDeclarationsFromMap(processContentProperties(style))
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -1656,7 +1657,7 @@ func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, s
 	if len(style) == 0 {
 		return "", ""
 	}
-	cssMap := processContentProperties(style)
+	cssMap := processContentProperties(style, r.resolveResource)
 	baseName := "class"
 	if styleID != "" {
 		baseName = r.styleBaseName(styleID)
@@ -1730,7 +1731,7 @@ func (r *storylineRenderer) headingClass(styleID string) string {
 		return ""
 	}
 	className := r.headingClassName(styleID, style)
-	declarations := cssDeclarationsFromMap(processContentProperties(style))
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
 	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
@@ -1770,7 +1771,7 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 			}
 		}
 	}
-	cssMap := processContentProperties(style)
+	cssMap := processContentProperties(style, r.resolveResource)
 	// Resolve link color: if no explicit color but -kfx-link-color == -kfx-visited-color,
 	// set color to that value. This preserves what colorDeclarations(style, linkStyle) did
 	// in the old paragraphStyleDeclarations, and matches simplifyStylesElementFull's <a> tag logic.
@@ -1810,7 +1811,7 @@ func (r *storylineRenderer) linkClass(styleID string, suppressColor bool) string
 	if len(style) == 0 {
 		return ""
 	}
-	cssMap := processContentProperties(style)
+	cssMap := processContentProperties(style, r.resolveResource)
 	// Always resolve link color: if no explicit color but -kfx-link-color == -kfx-visited-color,
 	// set color to that value. This matches simplifyStylesElementFull's <a> tag logic.
 	// Previously we suppressed color when suppressColor was true (for paragraphs that
@@ -1843,7 +1844,7 @@ func (r *storylineRenderer) spanClass(styleID string) string {
 	if len(style) == 0 {
 		return ""
 	}
-	declarations := cssDeclarationsFromMap(processContentProperties(style))
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}

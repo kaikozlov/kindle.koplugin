@@ -467,7 +467,13 @@ var colorYJProperties = map[string]bool{
 // This is the core of the data-driven pipeline.
 // -----------------------------------------------------------------------
 
-func propertyValue(propName string, yjValue interface{}) string {
+// ResourceResolver resolves a KFX resource symbol (e.g. "eAV") to a relative URL
+// suitable for use in CSS url() values. Port of Python's self.process_external_resource
+// call in property_value for $479/$175/$528 (yj_to_epub_properties.py:1272-1273).
+// Returns empty string if the resource cannot be resolved.
+type ResourceResolver func(symbol string) string
+
+func propertyValue(propName string, yjValue interface{}, resolveResource ResourceResolver) string {
 	if yjValue == nil {
 		return ""
 	}
@@ -478,7 +484,7 @@ func propertyValue(propName string, yjValue interface{}) string {
 
 	// IonStruct — length, color, shadow, transform-origin, etc.
 	case map[string]interface{}:
-		return propertyValueStruct(propName, v, info, infoOK)
+		return propertyValueStruct(propName, v, info, infoOK, resolveResource)
 
 	// string — could be a raw string, an enum symbol, font-family, language, etc.
 	case string:
@@ -491,6 +497,16 @@ func propertyValue(propName string, yjValue interface{}) string {
 		if propName == "$173" {
 			// -kfx-style-name: pass through (Python uses unique_part_of_local_symbol here)
 			return v
+		}
+		// Python: property_value (yj_to_epub_properties.py:1272-1273):
+		//   elif yj_property_name in {"$479", "$175", "$528"}:
+		//       value = self.css_url(urlrelpath(
+		//           self.process_external_resource(yj_value).filename, ref_from=self.STYLES_CSS_FILEPATH))
+		// $479 = background-image, $528 = background-image (alt), $175 = resource name
+		if (propName == "$479" || propName == "$175" || propName == "$528") && resolveResource != nil {
+			if resolved := resolveResource(v); resolved != "" {
+				return "url(" + resolved + ")"
+			}
 		}
 		// Check if this is an enum symbol ("$328" etc.) that maps through propInfo.values
 		if infoOK && info.values != nil {
@@ -536,14 +552,14 @@ func propertyValue(propName string, yjValue interface{}) string {
 
 	// IonList — layout hints, collisions, transforms, shadows
 	case []interface{}:
-		return propertyValueList(propName, v, info, infoOK)
+		return propertyValueList(propName, v, info, infoOK, resolveResource)
 	}
 
 	return fmt.Sprintf("%v", yjValue)
 }
 
 // propertyValueStruct handles struct-type KFX property values (lengths, colors, shadows, etc.).
-func propertyValueStruct(propName string, v map[string]interface{}, info propInfo, infoOK bool) string {
+func propertyValueStruct(propName string, v map[string]interface{}, info propInfo, infoOK bool, resolveResource ResourceResolver) string {
 	// Length: {$307: magnitude, $306: unit}
 	if mag, ok := asFloat64(v["$307"]); ok {
 		unitSym, _ := asString(v["$306"])
@@ -577,7 +593,7 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 			parts := []string{}
 			for _, sub := range []string{"$499", "$500", "$501", "$502", "$498"} {
 				if subVal, ok := v[sub]; ok {
-					parts = append(parts, propertyValue(sub, subVal))
+					parts = append(parts, propertyValue(sub, subVal, resolveResource))
 				}
 			}
 			if _, inset := v["$336"]; inset {
@@ -593,7 +609,7 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 			parts := []string{}
 			for _, sub := range []string{"$59", "$58"} {
 				if subVal, ok := v[sub]; ok {
-					parts = append(parts, propertyValue(sub, subVal))
+					parts = append(parts, propertyValue(sub, subVal, resolveResource))
 				} else {
 					parts = append(parts, "50%")
 				}
@@ -604,7 +620,7 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 		parts := []string{}
 		for _, sub := range []string{"$58", "$61", "$60", "$59"} {
 			if subVal, ok := v[sub]; ok {
-				parts = append(parts, propertyValue(sub, subVal))
+				parts = append(parts, propertyValue(sub, subVal, resolveResource))
 			}
 		}
 		return strings.Join(parts, " ")
@@ -650,7 +666,7 @@ func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool
 }
 
 // propertyValueList handles list-type KFX property values.
-func propertyValueList(propName string, v []interface{}, info propInfo, infoOK bool) string {
+func propertyValueList(propName string, v []interface{}, info propInfo, infoOK bool, resolveResource ResourceResolver) string {
 	switch propName {
 	case "$761": // layout hints
 		hints := []string{}
@@ -678,14 +694,14 @@ func propertyValueList(propName string, v []interface{}, info propInfo, infoOK b
 	case "$497": // text-shadow list
 		vals := make([]string, 0, len(v))
 		for _, item := range v {
-			vals = append(vals, propertyValue(propName, item))
+			vals = append(vals, propertyValue(propName, item, resolveResource))
 		}
 		return strings.Join(vals, ", ")
 
 	case "$531": // stroke-dasharray
 		vals := make([]string, 0, len(v))
 		for _, item := range v {
-			vals = append(vals, propertyValue(propName, item))
+			vals = append(vals, propertyValue(propName, item, resolveResource))
 		}
 		return strings.Join(vals, " ")
 	}
@@ -706,11 +722,11 @@ var collisions = map[string]string{
 // CSS property → value map, exactly as Python's convert_yj_properties.
 // -----------------------------------------------------------------------
 
-func convertYJProperties(yjProperties map[string]interface{}) map[string]string {
+func convertYJProperties(yjProperties map[string]interface{}, resolveResource ResourceResolver) map[string]string {
 	declarations := map[string]string{}
 
 	for yjPropName, yjValue := range yjProperties {
-		value := propertyValue(yjPropName, yjValue)
+		value := propertyValue(yjPropName, yjValue, resolveResource)
 		if value == "" || value == "?" {
 			continue
 		}
@@ -821,14 +837,14 @@ func convertYJProperties(yjProperties map[string]interface{}) map[string]string 
 // CSS declaration map.
 // -----------------------------------------------------------------------
 
-func processContentProperties(content map[string]interface{}) map[string]string {
+func processContentProperties(content map[string]interface{}, resolveResource ResourceResolver) map[string]string {
 	contentProperties := map[string]interface{}{}
 	for k := range content {
 		if yjPropertyNames[k] {
 			contentProperties[k] = content[k]
 		}
 	}
-	return convertYJProperties(contentProperties)
+	return convertYJProperties(contentProperties, resolveResource)
 }
 
 // -----------------------------------------------------------------------
