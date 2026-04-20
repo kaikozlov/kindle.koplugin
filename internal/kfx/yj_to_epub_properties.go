@@ -1636,12 +1636,30 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	// This iterates the FULL merged sty (inherited + explicit + defaults),
 	// removing any property that matches the inherited value.
 	// Then self.set_style(elem, sty) stores the remaining properties.
+	//
+	// Additionally, when a property is stripped, also strip its vendor-prefixed
+	// alternate equivalent (e.g., strip hyphens → also strip -webkit-hyphens).
+	// In Python, add_composite_and_equivalent_styles adds the prefix BEFORE
+	// simplify_styles, so both get stripped together. In Go, the prefix is baked
+	// into the rendering style string, so stripping the original leaves the prefix.
 	for name, val := range sty {
 		if name == "-kfx-style-name" || name == "-kfx-layout-hints" {
 			continue
 		}
 		if comparisonInherited[name] == val {
 			delete(sty, name)
+			// Also strip the vendor-prefixed alternate equivalent.
+			if altName, ok := alternateEquivalentProperties[name]; ok {
+				delete(sty, altName)
+			}
+		}
+		// Check if this is a vendor-prefixed alternate whose original was stripped.
+		for origName, altName := range alternateEquivalentProperties {
+			if name == altName && comparisonInherited[origName] == val {
+				delete(sty, name)
+				delete(sty, origName)
+				break
+			}
 		}
 	}
 
