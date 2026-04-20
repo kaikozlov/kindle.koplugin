@@ -1011,6 +1011,7 @@ var heritableDefaultProperties = map[string]string{
 	"word-spacing":                      "normal",
 	"word-wrap":                         "normal",
 	"writing-mode":                      "horizontal-tb",
+	"-webkit-writing-mode":              "horizontal-tb",
 }
 
 // Non-heritable CSS properties with their default values, used in simplify_styles for comparison.
