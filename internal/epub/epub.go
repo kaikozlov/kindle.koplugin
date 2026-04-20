@@ -245,7 +245,7 @@ func tocNCX(book Book) string {
 	var out strings.Builder
 	out.WriteString(xmlDecl)
 	// B1-13: NCX includes mbp: namespace declaration (epub_output.py:1105-1107)
-	out.WriteString(`<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" xmlns:mbp="https://kindlegen.s3.amazonaws.com/AmazonKindlePublishingGuidelines.pdf" version="2005-1">` + "\n")
+	out.WriteString(`<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">` + "\n")
 	out.WriteString(`  <head>` + "\n")
 	out.WriteString(`    <meta name="dtb:uid" content="` + xmlEscape(book.Identifier) + `"/>` + "\n")
 	out.WriteString(`  </head>` + "\n")

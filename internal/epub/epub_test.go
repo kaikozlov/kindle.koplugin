@@ -1476,9 +1476,10 @@ func TestNCX_MBPNamespace(t *testing.T) {
 		files := readZIP(t, path)
 		ncxData := string(files["OEBPS/toc.ncx"])
 
-		// B1-13: NCX must declare mbp: namespace (epub_output.py:1105-1107)
-		if !strings.Contains(ncxData, `xmlns:mbp="https://kindlegen.s3.amazonaws.com/AmazonKindlePublishingGuidelines.pdf"`) {
-			t.Error("NCX should have mbp: namespace declaration")
+		// Python emits mbp: namespace (epub_output.py:1105-1107) but etree.cleanup_namespaces
+		// removes it since nothing uses the prefix. Go matches the final output.
+		if strings.Contains(ncxData, `xmlns:mbp=`) {
+			t.Error("NCX should not have mbp: namespace declaration (cleanup_namespaces removes it)")
 		}
 	})
 
