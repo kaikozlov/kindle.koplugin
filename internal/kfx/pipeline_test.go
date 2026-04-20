@@ -1361,7 +1361,7 @@ func referenceFragmentSnapshot(t *testing.T, input string) fragmentSnapshot {
 	t.Helper()
 
 	script := filepath.Join("..", "..", "scripts", "kfx_reference_snapshot.py")
-	cmd := exec.Command("python", script, "fragment-summary", "--input", input)
+	cmd := exec.Command("python3", script, "fragment-summary", "--input", input)
 	output, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("reference snapshot command failed: %v", err)
