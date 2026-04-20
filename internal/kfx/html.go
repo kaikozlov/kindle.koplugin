@@ -98,6 +98,25 @@ func locateOffsetIn(elem *htmlElement, offset int) (*htmlElement, bool) {
 			offset -= length
 		case *htmlElement:
 			if offset == 0 {
+				// Port of Python locate_offset_in (yj_to_epub_content.py:1600-1601):
+				// When offset is 0, return the element directly. However, Python processes
+				// position anchors BEFORE annotations, so the element is always a raw text
+				// span. Go processes annotations first, so we may find wrapper spans here.
+				// If this is a wrapper span (no attrs) containing only text, split it to
+				// create an empty span for the page marker, matching Python's zero_len split.
+				if child.Tag == "span" && len(child.Attrs) == 0 && len(child.Children) >= 1 {
+					// Check if first child is text — if so, insert empty span before it
+					firstIsText := false
+					switch child.Children[0].(type) {
+					case htmlText, *htmlText:
+						firstIsText = true
+					}
+					if firstIsText {
+						span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+						child.Children = insertHTMLParts(child.Children, 0, []htmlPart{span})
+						return span, true
+					}
+				}
 				return child, true
 			}
 			length := htmlPartLength(child)
