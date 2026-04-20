@@ -368,6 +368,10 @@ func renderHTMLElement(element *htmlElement) string {
 		attrOrder = []string{"id", "href", "class"}
 	case "img":
 		attrOrder = []string{"id", "src", "alt", "class"}
+	case "col":
+		attrOrder = []string{"span", "class"}
+	case "td":
+		attrOrder = []string{"id", "colspan", "rowspan", "class"}
 	}
 	for _, key := range attrOrder {
 		value, ok := element.Attrs[key]
