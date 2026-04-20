@@ -486,7 +486,7 @@ func contentOPF(book Book) string {
 		}
 		out.WriteString(`  </guide>` + "\n")
 	}
-	out.WriteString(`</package>`)
+	out.WriteString(`</package>` + "\n")
 	return out.String()
 }
 
