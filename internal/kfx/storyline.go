@@ -928,9 +928,6 @@ func (r *storylineRenderer) renderTextNode(node map[string]interface{}, depth in
 		level = r.lastKFXHeadingLevel
 	}
 	if level > 0 {
-		if annotationStyleID != "" {
-			removeSingleFullTextLinkClass(content)
-		}
 		firstVisible := r.consumeVisibleElement()
 		element := &htmlElement{
 			Tag:      fmt.Sprintf("h%d", level),
