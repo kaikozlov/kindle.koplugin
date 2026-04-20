@@ -136,9 +136,12 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 			fmt.Fprintf(os.Stderr, "anchor ids pos=%d offsets=%v raw=%v\n", pos, renderer.positionAnchorID[pos], renderer.positionAnchors[pos])
 		}
 	}
-	// Merge navigation-referenced sections (guide entries, TOC entries) into the reading order.
+	// Merge: include any navigation-referenced sections not already in the reading order.
+	// The KFX reading order ($170) is the authoritative order — Python processes
+	// sections strictly in reading order (yj_to_epub_content.py:105-112).
+	// Navigation only adds missing sections; it does not reorder existing ones.
 	if navOrder := orderedSectionIDsFromNavigation(selectedNav, positionToSectionID); len(navOrder) > 0 {
-		sectionOrder = mergeSectionOrder(navOrder, sectionOrder)
+		sectionOrder = mergeSectionOrder(sectionOrder, navOrder)
 	}
 	// Port of epub_output.py identify_cover: if a cover guide entry points to a section,
 	// ensure that section is first in the spine (Python expects cover to be first in reading order).

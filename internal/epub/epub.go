@@ -462,6 +462,10 @@ func contentOPF(book Book) string {
 		out.WriteString(` page-progression-direction="` + xmlEscape(book.PageProgressionDirection) + `"`)
 	}
 	out.WriteString(">\n")
+	// B1-8: Spine order follows the original book.Sections order (not sorted manifest).
+	// Python's manifest is sorted by filename for the <manifest> section, but
+	// the <spine> iterates the original unsorted self.manifest list (epub_output.py:1056).
+	// The original order reflects book_parts creation order = reading order from KFX.
 	for _, section := range book.Sections {
 		if section.Filename == "" {
 			continue
