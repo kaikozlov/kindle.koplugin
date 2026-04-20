@@ -6,10 +6,28 @@
 |------|-------|--------|---------|
 | **Martyr** | 102 | 0 | ✅ Perfect match |
 | **Three Below** | 23 | 0 | ✅ Perfect match |
-| **Hunger Games** | 105 | 7 | Image names, table p wrappers, composite styles |
-| **Throne of Glass** | 67 | 4 | JXR images, heading font-weight, figure properties |
+| **Hunger Games** | 105 | 7 | Table wrappers, composite styles, text-indent |
+| **Throne of Glass** | 67 | 4 | JXR images, heading font-weight/hyphens, figure properties |
 | **Elvis** | 30 | 2 | Missing `<p class="tableright">` wrappers; extra `class_cpytxt2-3` |
 | **Familiars** | 49 | 5 | Font-weight class splitting, composite styles |
+
+**Total: 341 match, 25 differ** (up from 258 match / 105 differ at start)
+
+### Commits Made
+1. `6fb90c0` — Fix trailing newline in content.opf (D12)
+2. `2f9d6ec` — Enable reverse inheritance for text-indent and body style parity (D1)
+3. `674230c` — Resolve link color for heading `<a>` children (D4)
+4. `727ebe8` — Rename `class_` to `figure_` for figure elements (D8)
+5. `92a8532` — Strip vendor-prefixed alternate equivalents in simplify_styles
+
+### Key Architectural Finding
+Go's simplify_styles processes children BEFORE reverse inheritance, while Python processes children AFTER. This means Go children don't inherit reverse-promoted properties (e.g., body-level `hyphens: none`, `font-weight: bold`). Fixing this requires reordering but impacts Martyr tests (reverse inheritance on original vs simplified child styles produces different results). Deferred.
+
+### Remaining Defects
+- **Familiars (5)**: Font-weight composite class splitting — requires rendering pipeline changes (bold text promotion)
+- **Throne of Glass (4)**: JXR images (D9), heading hyphens/font-weight (needs ordering fix), figure properties
+- **Elvis (2)**: Table `<p>` wrappers (D2), logo div (D3)
+- **Hunger Games (7)**: Table structure, image names, composite styles
 
 All books also share:
 - `toc.ncx` has extra `xmlns:mbp` namespace (trivial fix)
