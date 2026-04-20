@@ -1,12 +1,17 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/kaikozlov/kindle-koplugin/internal/drm"
 	"github.com/kaikozlov/kindle-koplugin/internal/jsonout"
@@ -18,7 +23,7 @@ const version = 1
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "usage: kindle-helper <scan|convert|drm-init> [flags]\n")
+		fmt.Fprintf(os.Stderr, "usage: kindle-helper <scan|convert|drm-init|decrypt> [flags]\n")
 		os.Exit(2)
 	}
 
@@ -29,6 +34,8 @@ func main() {
 		cmdConvert(os.Args[2:])
 	case "drm-init":
 		cmdDrmInit(os.Args[2:])
+	case "decrypt":
+		cmdDecrypt(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(2)
@@ -130,6 +137,131 @@ func cmdDrmInit(args []string) {
 		BooksFound: result.BooksFound,
 		KeysFound:  result.KeysFound,
 	})
+}
+
+func cmdDecrypt(args []string) {
+	fs := flag.NewFlagSet("decrypt", flag.ExitOnError)
+	input := fs.String("input", "", "input DRMION KFX file path")
+	output := fs.String("output", "", "output KFX-zip file path")
+	cacheDir := fs.String("cache-dir", "", "cache directory for drm_keys.json")
+	fs.Parse(args)
+
+	if *input == "" {
+		fmt.Fprintf(os.Stderr, "decrypt: --input is required\n")
+		os.Exit(2)
+	}
+	if *output == "" {
+		fmt.Fprintf(os.Stderr, "decrypt: --output is required\n")
+		os.Exit(2)
+	}
+
+	data, err := os.ReadFile(*input)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "decrypt: %v\n", err)
+		os.Exit(1)
+	}
+	if !bytes.HasPrefix(data, kfx.DRMIONSignature()) {
+		fmt.Fprintf(os.Stderr, "decrypt: not a DRMION file\n")
+		os.Exit(1)
+	}
+
+	pageKey, err := kfx.FindPageKey(*input, *cacheDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "decrypt: find page key: %v\n", err)
+		os.Exit(1)
+	}
+
+	contData, err := kfx.DecryptDRMION(data, pageKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "decrypt: %v\n", err)
+		os.Exit(1)
+	}
+	log.Printf("decrypted main container: %d bytes", len(contData))
+
+	// Collect sidecar CONT and DRMION blobs from .sdr/assets/
+	sidecarRoot := strings.TrimSuffix(*input, filepath.Ext(*input)) + ".sdr"
+	contBlobs, drmionBlobs := collectSidecarBlobs(sidecarRoot)
+
+	// Decrypt DRMION sidecar blobs
+	var allBlobs []blobEntry
+	allBlobs = append(allBlobs, blobEntry{name: "main.kfx", data: contData})
+	for _, b := range contBlobs {
+		allBlobs = append(allBlobs, b)
+	}
+	for _, b := range drmionBlobs {
+		dec, err := kfx.DecryptDRMION(b.data, pageKey)
+		if err != nil {
+			log.Printf("skipping DRMION sidecar %s: %v", b.name, err)
+			continue
+		}
+		allBlobs = append(allBlobs, blobEntry{name: b.name, data: dec})
+		log.Printf("decrypted sidecar %s: %d bytes", b.name, len(dec))
+	}
+
+	// Write as KFX-zip
+	if err := writeKFXZip(*output, allBlobs); err != nil {
+		fmt.Fprintf(os.Stderr, "decrypt: write: %v\n", err)
+		os.Exit(1)
+	}
+	log.Printf("wrote %s with %d entries", *output, len(allBlobs))
+}
+
+type blobEntry struct {
+	name string
+	data []byte
+}
+
+func collectSidecarBlobs(root string) (cont []blobEntry, drmion []blobEntry) {
+	var names []string
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		names = append(names, path)
+		return nil
+	})
+	sort.Strings(names)
+
+	for _, name := range names {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(root, name)
+		if err != nil {
+			rel = filepath.Base(name)
+		}
+		switch {
+		case len(data) >= 4 && data[0] == 'C' && data[1] == 'O' && data[2] == 'N' && data[3] == 'T':
+			cont = append(cont, blobEntry{name: rel, data: data})
+		case bytes.HasPrefix(data, kfx.DRMIONSignature()):
+			drmion = append(drmion, blobEntry{name: rel, data: data})
+		}
+	}
+	return
+}
+
+func writeKFXZip(outputPath string, entries []blobEntry) error {
+	os.MkdirAll(filepath.Dir(outputPath), 0755)
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := zip.NewWriter(f)
+	defer w.Close()
+
+	for _, e := range entries {
+		fw, err := w.Create(e.name)
+		if err != nil {
+			return err
+		}
+		if _, err := fw.Write(e.data); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeJSON(v interface{}) {

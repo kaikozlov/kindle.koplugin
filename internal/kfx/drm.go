@@ -488,6 +488,16 @@ func lzmaDecompress(data []byte) ([]byte, error) {
 }
 
 // bytesStartsWithDRMION checks if data begins with the DRMION magic.
+// DecryptDRMION is the exported version of decryptDRMION.
+func DecryptDRMION(data []byte, pageKey []byte) ([]byte, error) {
+	return decryptDRMION(data, pageKey)
+}
+
+// DRMIONSignature returns the 8-byte DRMION magic header.
+func DRMIONSignature() []byte {
+	return []byte{0xea, 'D', 'R', 'M', 'I', 'O', 'N', 0xee}
+}
+
 func bytesStartsWithDRMION(data []byte) bool {
 	return len(data) >= 8 &&
 		data[0] == 0xea &&
