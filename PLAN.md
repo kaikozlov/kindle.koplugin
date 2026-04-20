@@ -21,43 +21,53 @@
 5. `92a8532` — Strip vendor-prefixed alternate equivalents in simplify_styles ✅
 6. `46c8217` — Update PLAN.md with session summary
 
-### Key Architectural Finding: Reverse Inheritance Ordering
+### Key Architectural Finding: Body Style Inheritance
 
 **Root cause of most remaining diffs.**
 
-Go's `simplifyStylesElementFull` (in `internal/kfx/yj_to_epub_properties.go`) processes children BEFORE reverse inheritance, while Python processes children AFTER:
+Through extensive Python debugging (monkey-patching `simplify_styles`, `set_style`, and `add_composite_and_equivalent_styles`), the true root cause was identified:
 
-**Go order (current):**
-1. Build `parentStyle` from `sty` (before reverse inheritance)
-2. Process children with `parentStyle` (they don't get reverse-promoted properties)
-3. `applyReverseInheritance(childElements, sty)` — promotes shared heritable properties from children to parent
+**Python's `<body>` element has NO inline `style` attribute when `simplify_styles` runs.** Go's body element has the full section-specific body style (font-weight, text-align, text-transform, hyphens, etc.) as its inline `style` attribute.
 
-**Python order (correct):**
-1. `apply_reverse_inheritance` — promotes shared heritable properties from children to parent
-2. `compute_inherited(sty)` — builds inherited from the UPDATED sty (with reverse-promoted properties)
-3. Process children with updated inherited
+**Python's body flow** (confirmed by debugging):
+1. Body inline style: empty (no `style` attribute, `class=""`)
+2. `sty = inherited_properties.copy()` → heritable defaults (font-weight: normal, etc.)
+3. All defaults stripped in stripping loop (match inherited)
+4. Children processed with `parentStyle` = heritable defaults only
+5. Reverse inheritance promotes shared properties from children → body gets font-weight: bold, text-align: center, etc.
+6. Body's CSS class generated from final style (includes reverse-inherited properties)
 
-**Impact**: Children don't inherit reverse-promoted properties from the parent. This causes:
-- Body-level `hyphens: none`, `font-weight: bold` not propagating to headings → headings keep properties that should be stripped
-- Body-level `text-indent` not propagating to some elements → missing `text-indent: 0` on tables
-- Font-weight not propagating from bold spans to their paragraph → font-weight class splitting
+**Go's body flow** (current):
+1. Body inline style: full section style (font-weight: bold; text-align: center; text-transform: uppercase)
+2. Children inherit font-weight: bold, text-align: center via `parentStyle`
+3. Reverse inheritance sees body already has these properties → different promotion decisions
+4. Body's CSS class includes properties from both rendering pipeline AND reverse inheritance
 
-**Why not just reorder?** Attempted reordering in `simplifyStylesElementFull`. The fix works for Throne of Glass but breaks Martyr tests. The issue is that `applyReverseInheritance` reads children's style attributes. In the original order, children have been through simplify_styles (their styles are cleaned up). In the reordered version, children have original rendering styles (which include extra properties). This causes reverse inheritance to see different property values and produce different promotion results.
+**Impact on Throne of Glass heading font-weight:**
+- Go: body has font-weight: bold → headings inherit bold → heading conversion pops font-weight from comparisonInherited → bold ≠ "" → NOT stripped → heading CSS has font-weight: bold
+- Python: body has no font-weight initially → headings inherit normal → heading's explicit bold ≠ inherited normal → NOT stripped → heading CSS has font-weight: bold → BUT body's reverse inheritance then promotes font-weight (4/5 children have bold = 80%) and REMOVES it from all children → heading CSS ends up with NO font-weight
 
-**Proper fix** (not yet implemented):
-- Reorder: collect childElements → run reverse inheritance → compute parentStyle → process children
-- Update Martyr test expectations to match Python's output (which is the correct behavior)
-- OR: make reverse inheritance work correctly on original rendering styles (match Python's behavior exactly)
+**Python debug evidence** (c1U section containing heading_s20):
+```
+set_style #1: heading s20 fw='bold' (heading's own simplify_styles)
+set_style #2: heading s20 fw='(not set)' (body's reverse inheritance, line 1915)
+set_style #3: heading s20 fw='(not set)' (add_composite_and_equivalent_styles)
+```
 
-**Go file**: `internal/kfx/yj_to_epub_properties.go` lines 1486-1540 (the parentStyle/childElements/reverseInheritance block)
+**Why not just remove body inline style?** Attempted. Martyr regresses from 102/0 to 10/92 because:
+- Without body inline style, all body properties come from reverse inheritance
+- Reverse inheritance produces different results because children's post-simplify styles differ between Go and Python
+- Specifically: Go's paragraph rendering (paragraphClass) produces different styles than Python's YJ→EPUB content conversion
+- This causes class numbering to change completely
 
-**Python reference**: `yj_to_epub_properties.py` lines 1876-1920
+**Go file**: `internal/kfx/yj_to_epub_properties.go` lines 800-830 (body element creation)
+**Python reference**: `yj_to_epub_properties.py` line 1404 (`simplify_styles(book_part.body(), ...)`)
 
-### Remaining Defects (all trace to ordering or structural rendering)
+### Remaining Defects
 
-#### D1-ORDERING: Reverse inheritance ordering (described above)
-**Affected**: All 4 remaining books (Throne of Glass headings, Hunger Games tables, Familiars font-weight)
-**Fix**: Reorder parentStyle computation after reverse inheritance, update Martyr tests
+#### D1-BODY: Body style inheritance (described above)
+**Affected**: Throne of Glass (heading font-weight/hyphens), Hunger Games (text-indent on tables), Familiars (font-weight splitting)
+**Fix**: Either (a) restructure body element creation to match Python (no inline style) + fix children's styles, or (b) add post-simplify_styles reverse inheritance pass that mimics Python's body reverse inheritance behavior
 
 #### D2: Missing `<p class="tableright">` wrappers in table cells
 **Affected**: Elvis (1 file + stylesheet)
@@ -73,12 +83,12 @@ Go's `simplifyStylesElementFull` (in `internal/kfx/yj_to_epub_properties.go`) pr
 
 #### D5: Font-weight class splitting
 **Affected**: Familiars (5 files)
-**Root cause**: Rendering pipeline produces different HTML structure. Python promotes bold spans' content to paragraph level and wraps non-bold text in new spans. Go keeps original span structure.
-**Go file**: `internal/kfx/storyline.go` text event rendering + `internal/kfx/yj_to_epub_properties.go` simplify_styles
+**Root cause**: D1-BODY — body has font-weight in Go but not in Python during simplify_styles. Go's children inherit font-weight from body, changing how reverse inheritance counts and strips properties.
+**Go file**: `internal/kfx/yj_to_epub_properties.go` body element creation
 
 #### D7: Missing `margin-bottom: 0; margin-top: 0` on paragraphs
 **Affected**: Hunger Games (class_s79F)
-**Root cause**: Related to D1-ORDERING — text-align is reverse-inherited but margins aren't
+**Root cause**: Related to D1-BODY
 
 #### D8: Figure class properties
 **Affected**: Throne of Glass (figure_s2C missing font-style/font-weight/margin defaults)
@@ -90,7 +100,7 @@ Go's `simplifyStylesElementFull` (in `internal/kfx/yj_to_epub_properties.go`) pr
 
 #### D10: Heading font-weight/hyphens
 **Affected**: Throne of Glass (headings s20/s22/s24 keep font-weight: bold, heading_sF keeps -webkit-hyphens)
-**Root cause**: D1-ORDERING — body has these properties via reverse inheritance but children don't inherit them
+**Root cause**: D1-BODY — body has these properties in Go, preventing reverse inheritance from stripping them from headings
 
 ---
 
@@ -131,20 +141,24 @@ Go's `simplifyStylesElementFull` (in `internal/kfx/yj_to_epub_properties.go`) pr
 
 ## Next Steps
 
-### Critical: Fix reverse inheritance ordering (D1-ORDERING)
-This is the single highest-impact fix. It would resolve or improve:
-- Throne of Glass heading diffs (font-weight, hyphens)
-- Hunger Games text-indent on tables
-- Familiars font-weight class splitting
+### Critical: Fix body style inheritance (D1-BODY)
+This is the single highest-impact fix. Two approaches:
 
-**Implementation**:
-1. In `simplifyStylesElementFull`, move the `applyReverseInheritance` call before `parentStyle` computation
-2. Update `TestConvertFilePhase8MatchesInlineStyleEventsAndFitWidthContainers` and `TestConvertFileMatchesReferenceStructureIgnoringImages` expectations to match Python's output
-3. Run full comparison against all 6 books
-4. If Martyr no longer matches Python's output byte-for-byte, investigate whether the test expectations were correct
+**Approach A: Remove body inline style, fix children's styles**
+1. Set body element's inline style to empty (matching Python)
+2. Fix children's rendering styles to include properties currently inherited from body (e.g., paragraph s26 in TOG needs font-weight: bold)
+3. Let reverse inheritance promote properties from children to body
+4. Verify Martyr still works (may need to update test expectations)
+
+**Approach B: Post-simplify reverse inheritance pass**
+1. After simplify_styles on body, run a second reverse inheritance pass that only strips promoted properties from children (mimicking Python's behavior)
+2. This avoids changing the body's initial style or children's rendering
+3. May not fix all cases since the root cause is the body's parentStyle affecting children's stripping
+
+**Key insight**: In Python's TOG c1U section, paragraph s26 has font-weight: bold (from its KFX style fragment). This makes 4/5 children bold (80%) → promoted. In Go, paragraph s26 doesn't have font-weight because `paragraphClass` doesn't include it. This is a rendering pipeline difference.
 
 ### Then: Figure property defaults (D8)
-After ordering fix, check if figure properties are resolved. If not, investigate figure rendering.
+After body fix, check if figure properties are resolved. If not, investigate figure rendering.
 
 ### Then: JXR image wiring (D9)
 Wire `internal/jxr/` decoder into EPUB resource pipeline.
