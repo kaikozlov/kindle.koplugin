@@ -1280,6 +1280,10 @@ func applyReverseInheritance(childElements []*htmlElement, currentStyle map[stri
 			if val, ok := childStyle[name]; ok {
 				if val == newHeritableVal {
 					delete(childStyle, name)
+					// Also strip vendor-prefixed alternate equivalent
+					if altName, ok := alternateEquivalentProperties[name]; ok {
+						delete(childStyle, altName)
+					}
 				}
 			} else if currentStyle[name] != "" && currentStyle[name] != newHeritableVal {
 				childStyle[name] = currentStyle[name]
