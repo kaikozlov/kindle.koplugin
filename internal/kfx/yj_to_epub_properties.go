@@ -814,9 +814,34 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 		if book.RenderedSections[i].Root != nil {
 			bodyChildren = book.RenderedSections[i].Root.Children
 		}
+
+		// Determine the body element's initial style for simplify_styles.
+		// Python's body gets style from two sources:
+		//   1. Content rendering (add_kfx_style) — when the page template has a style ref
+		//   2. set_html_defaults — adds font-family, font-size, line-height, writing-mode if missing
+		//
+		// When the body has NO content-rendered style (inferred body), Python's body only
+		// gets set_html_defaults properties. Go's inferBodyStyleValues produces a FULLER
+		// style (including font-weight, text-align, etc.) that Python's body doesn't have.
+		// Using the full inferred style as the body's inline style causes children to inherit
+		// extra properties via parentStyle, changing stripping behavior.
+		//
+		// Fix: for inferred bodies, use minimal style (set_html_defaults properties only).
+		// Reverse inheritance will promote shared properties from children.
+		bodyStyleForSimplify := bodyStyleMap
+		if book.RenderedSections[i].BodyStyleInferred {
+			minimalBodyStyle := map[string]string{}
+			for _, prop := range []string{"font-family", "font-size", "line-height", "writing-mode"} {
+				if val, ok := bodyStyleMap[prop]; ok {
+					minimalBodyStyle[prop] = val
+				}
+			}
+			bodyStyleForSimplify = minimalBodyStyle
+		}
+
 		bodyElem := &htmlElement{
 			Tag:      "body",
-			Attrs:    map[string]string{"style": styleStringFromMap(bodyStyleMap)},
+			Attrs:    map[string]string{"style": styleStringFromMap(bodyStyleForSimplify)},
 			Children: bodyChildren,
 		}
 

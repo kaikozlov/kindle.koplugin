@@ -43,6 +43,7 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	result := renderedStoryline{}
 	contentNodes := nodes
 	promotedBody := false
+	inferredBody := false
 	if bodyStyleID == "" {
 		if promotedStyleID, promotedNodes, ok := promotedBodyContainer(nodes); ok {
 			bodyStyleID = promotedStyleID
@@ -56,6 +57,7 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	}
 	if bodyStyleID == "" && len(bodyStyleValues) == 0 {
 		bodyStyleValues = r.inferBodyStyleValues(contentNodes, defaultInheritedBodyStyle())
+		inferredBody = true
 		if len(bodyStyleValues) == 0 {
 			bodyStyleValues = map[string]interface{}{
 				"$11": defaultInheritedBodyStyle()["$11"],
@@ -94,8 +96,9 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 		result.BodyStyle = styleStringFromDeclarations(baseName, nil, bodyDeclarations)
 	}
 	if os.Getenv("KFX_DEBUG_BODY") != "" {
-		fmt.Fprintf(os.Stderr, "body resolved styleID=%s decls=%v style=%s\n", bodyStyleID, bodyDeclarations, result.BodyStyle)
+		fmt.Fprintf(os.Stderr, "body resolved styleID=%s decls=%v style=%s inferred=%v\n", bodyStyleID, bodyDeclarations, result.BodyStyle, inferredBody)
 	}
+	result.BodyStyleInferred = inferredBody
 	if len(bodyDeclarations) > 0 {
 		r.activeBodyDefaults = inheritedDefaultSet(bodyDeclarations)
 	}

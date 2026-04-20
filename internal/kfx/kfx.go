@@ -72,23 +72,25 @@ type decodedBook struct {
 }
 
 type renderedStoryline struct {
-	Root       *htmlElement
-	BodyHTML   string
-	BodyClass  string
-	BodyStyle  string
-	Properties string
+	Root             *htmlElement
+	BodyHTML         string
+	BodyClass        string
+	BodyStyle        string
+	BodyStyleInferred bool
+	Properties       string
 }
 
 type renderedSection struct {
-	Filename   string
-	Title      string
-	PageTitle  string
-	Language   string
-	BodyClass  string
-	BodyStyle  string
-	Paragraphs []string
-	Properties string
-	Root       *htmlElement
+	Filename       string
+	Title          string
+	PageTitle      string
+	Language       string
+	BodyClass      string
+	BodyStyle      string
+	BodyStyleInferred bool // true if body style was inferred from children (not from content rendering)
+	Paragraphs     []string
+	Properties     string
+	Root           *htmlElement
 }
 
 type resourceFragment struct {

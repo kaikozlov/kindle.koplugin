@@ -298,15 +298,16 @@ func processReadingOrder(
 			title = deriveSectionTitle(paragraphs, index+1)
 		}
 		book.RenderedSections = append(book.RenderedSections, renderedSection{
-			Filename:   sectionFilename(sectionID, symFmt),
-			Title:      title,
-			PageTitle:  sectionID,
-			Language:   normalizeLanguage(book.Language),
-			BodyClass:  rendered.BodyClass,
-			BodyStyle:  rendered.BodyStyle,
-			Paragraphs: paragraphs,
-			Properties: rendered.Properties,
-			Root:       rendered.Root,
+			Filename:         sectionFilename(sectionID, symFmt),
+			Title:            title,
+			PageTitle:        sectionID,
+			Language:         normalizeLanguage(book.Language),
+			BodyClass:        rendered.BodyClass,
+			BodyStyle:        rendered.BodyStyle,
+			BodyStyleInferred: rendered.BodyStyleInferred,
+			Paragraphs:       paragraphs,
+			Properties:       rendered.Properties,
+			Root:             rendered.Root,
 		})
 	}
 }
