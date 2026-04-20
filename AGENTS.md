@@ -318,6 +318,53 @@ The Go binary is statically compiled (`CGO_ENABLED=0`) for Linux ARM. No shared 
 
 ---
 
+## Test Fixtures & Comparison Books
+
+The project has 6 real books from a Kindle device. When comparing Go output against Calibre reference EPUBs, **always use the DRMION books as primary comparison targets**. Martyr is an unencrypted (CONT) book that produces byte-identical output — it is only useful for regression testing.
+
+### Book Inventory
+
+| Book | Format | Primary Use |
+|------|--------|-------------|
+| **Hunger Games Trilogy** | DRMION | Primary comparison — largest, most complex, exposes heading `<a>` class, CSS dedup, spine ordering |
+| **Throne of Glass** | DRMION | Primary comparison — has JXR images, heading `<a>` class issues |
+| **Elvis and the Underdogs** | DRMION | Primary comparison — many images, exposes CSS class naming/dedup gaps |
+| **The Familiars** | DRMION | Secondary comparison — moderate complexity |
+| **Three Below (Floors #2)** | DRMION | Secondary comparison — already matches closely |
+| **Martyr** | CONT (unencrypted) | Regression only — Go output matches Calibre byte-for-byte |
+
+### Fixture Paths
+
+| What | Path |
+|------|------|
+| Raw KFX (CONT) | `REFERENCE/kfx_examples/Martyr_*.kfx` |
+| Decrypted KFX-zip (DRMION) | `REFERENCE/kfx_new/decrypted/*.kfx-zip` |
+| Calibre reference EPUBs | `REFERENCE/kfx_new/calibre_epubs/*.epub` |
+| Martyr Calibre reference | `REFERENCE/martyr_calibre.epub` |
+| DRM keys cache | `REFERENCE/kindle_device/cache/drm_keys.json` |
+| Raw device files | `REFERENCE/kindle_device/Items01/` |
+
+### Current Parity Status (vs Calibre)
+
+| Book | Match | Known Gaps |
+|------|-------|------------|
+| Martyr | ✅ Byte-identical | None |
+| Three Below | ✅ Near-perfect | Only `xmlns:mbp` (fixed) |
+| Familiars | ⚠️ 7 files differ | Heading `<a>` class, stylesheet, content.opf |
+| Elvis | ❌ 21 files differ | Image CSS class naming/dedup, spine ordering |
+| Hunger Games | ❌ 87 files differ | Heading `<a>` class, CSS class naming, spine, stylesheet |
+| Throne of Glass | ❌ 65 files differ | Heading `<a>` class, CSS class naming, JXR images |
+
+### Known Parity Gaps (ordered by difficulty)
+
+1. **`toc.ncx` `xmlns:mbp`** — ✅ Fixed
+2. **Spine ordering** — Sections in different order in `<spine>` `<itemref>` sequence
+3. **Heading `<a>` class** — Go omits class attribute on `<a>` inside headings (Python preserves it)
+4. **CSS class naming/deduplication** — Style catalog assigns different indices; image container classes especially affected
+5. **JXR images** — JPEG XR decoder exists but isn't wired into EPUB resource pipeline
+
+---
+
 ## Common Gotchas
 
 - **File paths on device are Linux ARM** — always cross-compile, never use dynamic linking
