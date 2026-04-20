@@ -1649,6 +1649,15 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	// Python does self.set_style(elem, sty) which stores the full remaining style.
 	// Keep all properties including -kfx-style-name and -kfx-layout-hints for class naming.
 	// Python's convert_styles_to_classes later pops these to derive the class name.
+
+	// When a div was converted to a figure during simplify_styles, rename the class
+	// prefix from "class_" to "figure_" to match Python's convert_styles_to_classes.
+	if tagChangedToFigure || elem.Tag == "figure" {
+		if sname := sty["-kfx-style-name"]; sname != "" && !strings.HasPrefix(sname, "figure_") {
+			sty["-kfx-style-name"] = "figure_" + sname
+		}
+	}
+
 	setElementStyleString(elem, styleStringFromMap(sty))
 
 	// Strip background-* properties when background-color is transparent and background-image is none.
