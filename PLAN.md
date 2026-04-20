@@ -6,10 +6,10 @@
 |------|-------|--------|---------|
 | **Martyr** | 102 | 0 | ✅ Perfect match |
 | **Three Below** | 23 | 0 | ✅ Perfect match |
+| **Hunger Games** | 105 | 7 | Image names, table p wrappers, composite styles |
+| **Throne of Glass** | 64 | 7 | Figure classes, JXR images, heading font-weight |
 | **Elvis** | 30 | 2 | Missing `<p class="tableright">` wrappers; extra `class_cpytxt2-3` |
-| **Familiars** | 49 | 5 | Missing `text-indent: 0` on 10 style classes; heading color; font-weight splitting |
-| **Hunger Games** | 25 | 87 | Missing `text-indent: 0` on image divs; class index swaps; missing `margin-*: 0`; heading `<a>` class |
-| **Throne of Glass** | 60 | 11 | Missing JXR→JPEG conversion; figure classes; heading font-weight; image dedup |
+| **Familiars** | 49 | 5 | Heading color, font-weight class splitting, composite styles |
 
 All books also share:
 - `toc.ncx` has extra `xmlns:mbp` namespace (trivial fix)
@@ -277,10 +277,11 @@ Ordered by impact (files fixed per effort unit):
 1. **D11**: Remove `xmlns:mbp` from NCX
 2. **D12**: Add trailing newline to content.opf
 
-### Phase 2: text-indent: 0 (4-6 hours)
-3. **D1a**: Fix body style inference to capture `$36` and set `activeTextIndentNeedsReset`
-4. **D1b**: Verify stripping consistency for text-indent across all element types
-5. Verify with: Familiars (10 CSS rules should now include `text-indent: 0`), Hunger Games (image divs should match)
+### Phase 2: text-indent: 0 (D1) ✅ DONE
+3. ✅ Removed `$36` (text-indent) from body style during rendering
+4. ✅ Flattened body children for reverse inheritance
+5. ✅ Removed filterBodyDefaultDeclarations from rendering pipeline
+6. Verified with: All books improved. Hunger Games 25→105 match.
 
 ### Phase 3: Non-heritable defaults for all block elements (2-3 hours)
 6. **D7**: Fix missing `margin-bottom: 0; margin-top: 0` on paragraphs
