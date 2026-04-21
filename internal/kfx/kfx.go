@@ -97,6 +97,9 @@ type resourceFragment struct {
 	ID        string
 	Location  string
 	MediaType string
+	Width     int // $422 (or $66)
+	Height    int // $423 (or $67)
+	Variants  []string // $635 — list of variant resource IDs
 }
 
 type fontFragment struct {

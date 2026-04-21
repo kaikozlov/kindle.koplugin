@@ -483,10 +483,33 @@ func parseResourceFragment(fragmentID string, value map[string]interface{}) reso
 	location, _ := asString(value["$165"])
 	mediaType, _ := asString(value["$162"])
 
+	// Width/height from $422/$423 (or $66/$67 fallback)
+	width, _ := asInt(value["$422"])
+	if width == 0 {
+		width, _ = asInt(value["$66"])
+	}
+	height, _ := asInt(value["$423"])
+	if height == 0 {
+		height, _ = asInt(value["$67"])
+	}
+
+	// $635 variant references
+	var variants []string
+	if v, ok := asSlice(value["$635"]); ok {
+		for _, item := range v {
+			if name, ok := asString(item); ok && name != "" {
+				variants = append(variants, name)
+			}
+		}
+	}
+
 	return resourceFragment{
 		ID:        resourceID,
 		Location:  location,
 		MediaType: mediaType,
+		Width:     width,
+		Height:    height,
+		Variants:  variants,
 	}
 }
 
@@ -522,6 +545,30 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 		resource := resources[resourceID]
 		data := raw[resource.Location]
 		isImage := strings.HasPrefix(strings.ToLower(resource.MediaType), "image/")
+
+		// $635 variant selection (Python yj_to_epub_resources.py:162-172)
+		// If USE_HIGHEST_RESOLUTION_IMAGE_VARIANT and a variant has higher resolution,
+		// use the variant's data and filename instead. The base resourceID maps to
+		// the variant's filename so that references to the base symbol resolve correctly.
+		if USE_HIGHEST_RESOLUTION_IMAGE_VARIANT && isImage && len(resource.Variants) > 0 {
+			for _, variantID := range resource.Variants {
+				vr, ok := resources[variantID]
+				if !ok {
+					continue
+				}
+				if vr.Width > resource.Width && vr.Height > resource.Height {
+					variantData := raw[vr.Location]
+					if len(variantData) == 0 {
+						variantData, _ = nextMatchingBlob(imagePool, 0, vr.MediaType)
+					}
+					if len(variantData) > 0 {
+						data = variantData
+						resource = vr // use variant's ID/location for filename
+						break
+					}
+				}
+			}
+		}
 		if resourceID == "eAV" {
 		}
 		if isImage && !blobMatchesImageMediaType(data, resource.MediaType) {
