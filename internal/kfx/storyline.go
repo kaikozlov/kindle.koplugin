@@ -75,12 +75,13 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 		bodyStyleID, _ = asString(storyline["$157"])
 	}
 	bodyStyle := effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
-	// Remove $36 (text-indent) from body style. In Python, text-indent is NOT set on
-	// the body element during rendering. Instead, it's promoted to the body by reverse
-	// inheritance during simplify_styles. If we include text-indent in the body's style,
-	// it gets inherited by children who then strip it (because it matches the inherited
-	// value), preventing reverse inheritance from detecting it.
-	delete(bodyStyle, "$36")
+	// In Python, text-indent is NOT set on the body element during rendering. Instead,
+	// it's promoted to the body by reverse inheritance during simplify_styles.
+	// Go previously stripped $36 here, but that prevented text-indent from appearing
+	// in child classes (the inherited default "0" matched children's "0", so simplify
+	// stripped it). Now we keep text-indent in the body style and let simplify_styles'
+	// reverse inheritance handle it — matching Python's approach.
+	// delete(bodyStyle, "$36")
 	bodyDeclarations := cssDeclarationsFromMap(processContentProperties(bodyStyle, r.resolveResource))
 	if bodyStyleID == "" && len(bodyDeclarations) == 0 {
 		bodyStyleValues = map[string]interface{}{
