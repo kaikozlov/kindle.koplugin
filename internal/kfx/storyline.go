@@ -388,16 +388,10 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 			container.Children = append(container.Children, rendered)
 		}
 	}
-	// Python's order (yj_to_epub_content.py:1096-1249):
-	// 1. Position anchors first (line 1096-1111)
-	// 2. Then style events (line 1112-1249)
-	// This ordering is critical: anchors create empty <span id="X"/> elements,
-	// then style events split text around them. If reversed, the anchor merges
-	// into the styled span, producing <span id="X" class="...">text</span>
-	// instead of <span id="X"/><span class="...">text</span>.
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
-		r.applyPositionAnchors(container, positionID, false)
-	}
+	// Python yj_to_epub_content.py:1112+: $142 style events are applied to the
+	// content element after all children are added. For containers with both element
+	// and text children (like the Elvis logo: <img/> + "FIRST EDITION"), the style events
+	// wrap text ranges in styled spans. applyContainerStyleEvents implements this.
 	r.applyContainerStyleEvents(node, container)
 	if len(container.Children) == 0 {
 		return nil
