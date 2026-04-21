@@ -744,6 +744,12 @@ func convertYJProperties(yjProperties map[string]interface{}, resolveResource Re
 			continue // skip for now (EPUB3 path)
 		}
 
+		// Python fix_language (yj_to_epub_properties.py:2089): normalize language tag.
+		// "en-us" → "en-US", "pt-br" → "pt-BR".
+		if cssName == "-kfx-attrib-xml-lang" {
+			value = normalizeLanguageTag(value)
+		}
+
 		if existing, ok := declarations[cssName]; ok && existing != value {
 			// text-decoration merges
 			if cssName == "text-decoration" {
@@ -879,7 +885,12 @@ func cssDeclarationsFromMap(m map[string]string) []string {
 	// Remaining properties in sorted order
 	remaining := make([]string, 0, len(m))
 	for prop, val := range m {
-		if seen[prop] || val == "" || strings.HasPrefix(prop, "-kfx-") {
+		if seen[prop] || val == "" {
+			continue
+		}
+		// Skip internal -kfx- properties EXCEPT -kfx-attrib-* which need to survive
+		// into inline styles for later extraction as XML attributes (Python yj_to_epub_properties.py:1427).
+		if strings.HasPrefix(prop, "-kfx-") && !strings.HasPrefix(prop, "-kfx-attrib-") {
 			continue
 		}
 		remaining = append(remaining, prop)
@@ -1381,4 +1392,24 @@ func convertStyleUnits(sty map[string]string, inherited map[string]string) {
 			}
 		}
 	}
+}
+
+// normalizeLanguageTag normalizes a BCP 47 language tag to match Python's fix_language
+// (yj_to_epub_properties.py:2089). Converts underscores to hyphens, lowercases the primary
+// subtag, and uppercases the secondary subtag (if less than 4 chars) or title-cases it.
+func normalizeLanguageTag(lang string) string {
+	if len(lang) > 2 && lang[2] == '_' {
+		lang = strings.ReplaceAll(lang, "_", "-")
+	}
+	prefix, suffix, found := strings.Cut(lang, "-")
+	if !found {
+		return strings.ToLower(lang)
+	}
+	prefix = strings.ToLower(prefix)
+	if len(suffix) < 4 {
+		suffix = strings.ToUpper(suffix)
+	} else {
+		suffix = strings.ToUpper(suffix[:1]) + suffix[1:]
+	}
+	return prefix + "-" + suffix
 }

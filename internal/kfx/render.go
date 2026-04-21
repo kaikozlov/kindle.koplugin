@@ -463,14 +463,15 @@ func materializeRenderedSections(rendered []renderedSection) []epub.Section {
 	sections := make([]epub.Section, 0, len(rendered))
 	for _, section := range rendered {
 		sections = append(sections, epub.Section{
-			Filename:   section.Filename,
-			Title:      section.Title,
-			PageTitle:  section.PageTitle,
-			Language:   section.Language,
-			BodyClass:  section.BodyClass,
-			Paragraphs: append([]string(nil), section.Paragraphs...),
-			BodyHTML:   renderedSectionBodyHTML(section),
-			Properties: section.Properties,
+			Filename:    section.Filename,
+			Title:       section.Title,
+			PageTitle:   section.PageTitle,
+			Language:    section.Language,
+			BodyLanguage: section.BodyLanguage,
+			BodyClass:   section.BodyClass,
+			Paragraphs:  append([]string(nil), section.Paragraphs...),
+			BodyHTML:    renderedSectionBodyHTML(section),
+			Properties:  section.Properties,
 		})
 	}
 	return sections

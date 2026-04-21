@@ -51,14 +51,15 @@ type Book struct {
 }
 
 type Section struct {
-	Filename   string
-	Title      string
-	PageTitle  string
-	Language   string
-	BodyClass  string
-	Paragraphs []string
-	BodyHTML   string
-	Properties string
+	Filename    string
+	Title       string
+	PageTitle   string
+	Language    string
+	BodyLanguage string // xml:lang for <body> element
+	BodyClass   string
+	Paragraphs  []string
+	BodyHTML    string
+	Properties  string
 }
 
 type Resource struct {
@@ -530,6 +531,9 @@ func sectionXHTML(book Book, section Section) string {
 	out.WriteString(`<title>` + html.EscapeString(pageTitle) + `</title>` + "\n")
 	out.WriteString(`</head>` + "\n")
 	out.WriteString(`<body`)
+	if section.BodyLanguage != "" {
+		out.WriteString(` xml:lang="` + xmlEscape(section.BodyLanguage) + `"`)
+	}
 	if section.BodyClass != "" {
 		out.WriteString(` class="` + xmlEscape(section.BodyClass) + `"`)
 	}

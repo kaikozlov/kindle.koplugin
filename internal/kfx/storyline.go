@@ -1973,6 +1973,12 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 		delete(cssMap, "-kfx-box-align")
 	}
 
+	// Strip -kfx-attrib-colspan/rowspan from style — already handled as direct HTML attributes.
+	// cssDeclarationsFromMap now preserves -kfx-attrib-* properties, but for table cells
+	// these are redundant (extracted from $148/$149 into colspan/rowspan attrs directly).
+	delete(cssMap, "-kfx-attrib-colspan")
+	delete(cssMap, "-kfx-attrib-rowspan")
+
 	declarations := cssDeclarationsFromMap(cssMap)
 	if len(declarations) == 0 {
 		return ""

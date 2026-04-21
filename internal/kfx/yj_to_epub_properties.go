@@ -540,6 +540,54 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 
 	simplifyStylesFull(book, catalog, fontFamilyAddedByDefaults, resolvedDefaultFont)
 
+	// Ported from Python fixup_styles_and_classes (yj_to_epub_properties.py:1427-1446):
+	// Extract -kfx-attrib-* properties from inline styles and convert to element attributes.
+	// Python: style.partition(name_prefix="-kfx-attrib-", remove_prefix=True)
+	for i := range book.RenderedSections {
+		walkHTMLElement(book.RenderedSections[i].Root, func(elem *htmlElement) {
+			if elem == nil || elem.Attrs == nil || elem.Attrs["style"] == "" {
+				return
+			}
+			style := parseDeclarationString(elem.Attrs["style"])
+			modified := false
+			for name, value := range style {
+				if !strings.HasPrefix(name, "-kfx-attrib-") {
+					continue
+				}
+				// Strip prefix: -kfx-attrib-xml-lang → xml-lang
+				attrName := name[len("-kfx-attrib-"):]
+				var xmlAttr string
+				if strings.HasPrefix(attrName, "epub-") {
+					// -kfx-attrib-epub-type → {http://www.idpf.org/2007/ops}type
+					// Stored as "epub:type" in the attribute map.
+					xmlAttr = "epub:type"
+				} else if strings.HasPrefix(attrName, "xml-") {
+					// -kfx-attrib-xml-lang → xml:lang
+					xmlAttr = "xml:lang"
+				} else {
+					// colspan, rowspan, valign, etc. — use as-is
+					xmlAttr = attrName
+				}
+				if elem.Attrs == nil {
+					elem.Attrs = map[string]string{}
+				}
+				elem.Attrs[xmlAttr] = value
+				delete(style, name)
+				modified = true
+			}
+			if modified {
+				if len(style) == 0 {
+					delete(elem.Attrs, "style")
+				} else {
+					elem.Attrs["style"] = styleStringFromMap(style)
+				}
+				if len(elem.Attrs) == 0 {
+					elem.Attrs = nil
+				}
+			}
+		})
+	}
+
 	// Ported from Python REMOVE_EMPTY_NAMED_CLASSES (yj_to_epub_properties.py:1499-1505):
 	// If an element's style has ONLY -kfx-style-name and/or -kfx-layout-hints
 	// (no real CSS properties), remove the style attr entirely so no class is assigned.
@@ -889,6 +937,15 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 		// Children inherit the body's actual font-family via parent_sty (built from sty).
 		bodyInherited := cloneStyleMap(heritableDefaultProperties)
 
+		// Ported from Python (yj_to_epub_properties.py:1399-1401):
+		// lang = book_part.html.get(XML_LANG)
+		// if lang: heritable_default_properties.update({"-kfx-attrib-xml-lang": lang})
+		// This ensures xml:lang propagates through simplify_styles inheritance.
+		sectionLang := book.RenderedSections[i].Language
+		if sectionLang != "" {
+			bodyInherited["-kfx-attrib-xml-lang"] = sectionLang
+		}
+
 		// Convert lh/rem units in body style before putting it on the virtual body element.
 		// Python's simplify_styles is called on the body element and converts units as part
 		// of its processing. Since the body's style string comes from the rendering pipeline
@@ -971,6 +1028,24 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 		}
 
 		simplifyStylesElementFull(bodyElem, catalog, bodyInherited, &simplifyState{})
+
+		// Extract -kfx-attrib-xml-lang from body style to set xml:lang on <body>.
+		// Python does this in fixup_styles_and_classes via style.partition("-kfx-attrib-", ...)
+		// which extracts -kfx-attrib-* properties and sets them as element attributes.
+		if bodyElem.Attrs != nil {
+			if bodyStyle := bodyElem.Attrs["style"]; bodyStyle != "" {
+				parsed := parseDeclarationString(bodyStyle)
+				if lang, ok := parsed["-kfx-attrib-xml-lang"]; ok && lang != "" {
+					book.RenderedSections[i].BodyLanguage = lang
+					delete(parsed, "-kfx-attrib-xml-lang")
+					if len(parsed) == 0 {
+						delete(bodyElem.Attrs, "style")
+					} else {
+						bodyElem.Attrs["style"] = styleStringFromMap(parsed)
+					}
+				}
+			}
+		}
 
 		// Extract the updated children back into the Root wrapper.
 		// Reverse inheritance on the body may have modified children's styles

@@ -630,7 +630,7 @@ func TestConvertFilePhase6TracksCalibrePackageAndNavigationSemantics(t *testing.
 	c1J := readZipFile(t, files["OEBPS/c1J.xhtml"])
 	for _, snippet := range []string{
 		`<title>c1J</title>`,
-		`<body class="class-1">`,
+		`class="class-1"`,
 	} {
 		if !strings.Contains(c1J, snippet) {
 			t.Fatalf("c1J.xhtml is missing %q", snippet)
