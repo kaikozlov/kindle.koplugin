@@ -970,9 +970,13 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 							wrapChildInLink(p, target, href)
 						}
 					} else {
+						linkAttrs := map[string]string{"href": href}
+						if epubType := epubTypeFromAnnotation(annMap); epubType != "" {
+							linkAttrs["epub:type"] = epubType
+						}
 						container.Children[tr.childIdx] = &htmlElement{
 							Tag:      "a",
-							Attrs:    map[string]string{"href": href},
+							Attrs:    linkAttrs,
 							Children: []htmlPart{elem},
 						}
 					}
@@ -1041,6 +1045,22 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 				Tag:      "span",
 				Attrs:    map[string]string{"style": styledSpanClass},
 				Children: []htmlPart{htmlText{Text: styled}},
+			}
+
+			// Handle $179 (link) wrapping for text spans.
+			// Python: if "$179" in style_event: event_elem.tag = "a"; event_elem.set("href", ...)
+			if anchorID, ok := asString(annMap["$179"]); ok && anchorID != "" {
+				if href := r.anchorHref(anchorID); href != "" {
+					linkAttrs := map[string]string{"href": href}
+					if epubType := epubTypeFromAnnotation(annMap); epubType != "" {
+						linkAttrs["epub:type"] = epubType
+					}
+					styledSpan = &htmlElement{
+						Tag:      "a",
+						Attrs:    linkAttrs,
+						Children: []htmlPart{styledSpan},
+					}
+				}
 			}
 			newChildren = append(newChildren, styledSpan)
 			if after != "" {
@@ -1368,11 +1388,54 @@ func (r *storylineRenderer) wrapNodeLink(node map[string]interface{}, part htmlP
 		}
 		return element
 	}
+	// Build link attributes including epub:type from $616 (Python: -kfx-attrib-epub-type)
+	linkAttrs := map[string]string{"href": href}
+	if epubType := r.epubTypeFromNode(node); epubType != "" {
+		linkAttrs["epub:type"] = epubType
+	}
 	return &htmlElement{
 		Tag:      "a",
-		Attrs:    map[string]string{"href": href},
+		Attrs:    linkAttrs,
 		Children: []htmlPart{part},
 	}
+}
+
+// epubTypeFromAnnotation extracts epub:type value from a $142 style event annotation.
+// Python: $616=$617 → -kfx-attrib-epub-type: noteref → epub:type="noteref"
+func epubTypeFromAnnotation(annMap map[string]interface{}) string {
+	raw, ok := annMap["$616"]
+	if !ok {
+		return ""
+	}
+	v, ok := asString(raw)
+	if !ok {
+		return ""
+	}
+	switch v {
+	case "$617":
+		return "noteref"
+	default:
+		return v
+	}
+}
+
+// epubTypeFromNode extracts epub:type from $616 property on a node.
+// Python: $616=$617 → -kfx-attrib-epub-type: noteref → epub:type="noteref"
+func (r *storylineRenderer) epubTypeFromNode(node map[string]interface{}) string {
+	raw, ok := node["$616"]
+	if !ok {
+		return ""
+	}
+	// $617 → "noteref" (Python yj_to_epub_properties.py line 564)
+	if v, ok := asString(raw); ok {
+		switch v {
+		case "$617":
+			return "noteref"
+		default:
+			return v
+		}
+	}
+	return ""
 }
 
 func (r *storylineRenderer) anchorHref(anchorID string) string {
