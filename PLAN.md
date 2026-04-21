@@ -50,7 +50,9 @@ This means:
 ## Step-by-Step Plan
 
 ### Step 1: Move heading/figure/paragraph decisions from rendering to simplify_styles
-**Status**: Pending  
+**Status**: ✅ Committed `81e7b34`
+**Result**: Original 6 books: 394/394 ✓. Heading/paragraph conversion moved to simplify_styles.
+**Lessons learned**: Figure conversion must stay in rendering (uses KFX node $761 property not available in CSS). Heading conversion in simplify_styles correctly keeps image-only headings as `<div>` (containsBlock=true from image wrapper `<div>`).  
 **Files changed**: `storyline.go`, `yj_to_epub_properties.go`  
 **Python reference**: `yj_to_epub_properties.py` lines 1858-1966  
 **Estimated impact**: Fixes 31+ files in Sunrise Reaping, fixes cascading class index issues
