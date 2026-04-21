@@ -349,8 +349,12 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 	if inline := r.renderInlineRenderContainer(node, children, depth); inline != nil {
 		return r.wrapNodeLink(node, inline)
 	}
-	if headingTag := r.layoutHintHeadingTag(node, children); headingTag != "" {
-		element := &htmlElement{Tag: headingTag, Attrs: map[string]string{}}
+	// Python defers heading conversion to simplify_styles (yj_to_epub_properties.py:1922).
+	// We create a <div> here and store the heading level as a data attribute.
+	// simplify_styles will convert it to <h1>-<h6> after seeing all children.
+	hl := r.layoutHintHeadingLevel(node, children)
+	if hl > 0 {
+		element := &htmlElement{Tag: "div", Attrs: map[string]string{}}
 		for _, child := range children {
 			if inline := r.renderInlineContent(child, depth+1); inline != nil {
 				element.Children = append(element.Children, inline)
@@ -360,6 +364,9 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 			if styleAttr := r.containerClass(node); styleAttr != "" {
 				element.Attrs["style"] = styleAttr
 			}
+			// Store heading level for simplify_styles to read. Python reads this from
+			// sty.pop("-kfx-heading-level", self.last_kfx_heading_level) (line 1858).
+			element.Attrs["data-kfx-heading-level"] = fmt.Sprintf("%d", hl)
 			r.applyStructuralNodeAttrs(element, node, "")
 			if positionID, _ := asInt(node["$155"]); positionID != 0 {
 				r.applyPositionAnchors(element, positionID, false)
@@ -1522,30 +1529,37 @@ func (r *storylineRenderer) nodeLayoutHints(node map[string]interface{}) []strin
 	}
 }
 
-func (r *storylineRenderer) layoutHintHeadingTag(node map[string]interface{}, children []interface{}) string {
+// layoutHintHeadingLevel returns the heading level (1-6) if the node should become a heading,
+// or 0 if it should not. Previously this returned an HTML tag like "h1" and the caller
+// created that tag directly. Now we defer the tag decision to simplify_styles (matching
+// Python yj_to_epub_properties.py:1922) and only communicate the heading level.
+func (r *storylineRenderer) layoutHintHeadingLevel(node map[string]interface{}, children []interface{}) int {
 	if !r.shouldPromoteStructuralContainer(node) {
-		return ""
+		return 0
 	}
 	if !layoutHintsInclude(r.nodeLayoutHints(node), "heading") {
-		return ""
+		return 0
 	}
 	level := headingLevel(node)
 	if level <= 0 || level > 6 {
-		return ""
+		return 0
 	}
 	for _, child := range children {
 		if r.renderInlinePart(child, 0) == nil {
-			return ""
+			return 0
 		}
 	}
-	return fmt.Sprintf("h%d", level)
+	return level
 }
 
+// renderInlineParagraphContainer creates a <div> for inline-only containers with text.
+// Python creates a <div> via process_content and simplify_styles later converts to <p>.
+// Previously Go created <p> here directly — now deferred to simplify_styles (Python parity).
 func (r *storylineRenderer) renderInlineParagraphContainer(node map[string]interface{}, children []interface{}, depth int) htmlPart {
 	if !r.shouldPromoteStructuralContainer(node) || len(children) != 1 || !nodeContainsTextContent(children) {
 		return nil
 	}
-	element := &htmlElement{Tag: "p", Attrs: map[string]string{}}
+	element := &htmlElement{Tag: "div", Attrs: map[string]string{}}
 	for _, child := range children {
 		if inline := r.renderInlinePart(child, depth+1); inline != nil {
 			element.Children = append(element.Children, inline)
@@ -1556,7 +1570,8 @@ func (r *storylineRenderer) renderInlineParagraphContainer(node map[string]inter
 	if len(element.Children) == 0 {
 		return nil
 	}
-	if styleAttr := r.containerClass(node); styleAttr != "" {
+	styleID, _ := asString(node["$157"])
+	if styleAttr := r.paragraphClass(styleID, ""); styleAttr != "" {
 		element.Attrs["style"] = styleAttr
 	}
 	r.applyFirstLineStyle(element, node)

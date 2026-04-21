@@ -499,6 +499,8 @@ func TestRenderTextNodeSupportsDropCaps(t *testing.T) {
 }
 
 func TestRenderNodePromotesFigureLayoutHints(t *testing.T) {
+	// Figure conversion now deferred to simplify_styles (Python parity).
+	// Rendering creates a <div> with figure class; simplify_styles converts to <figure>.
 	renderer := storylineRenderer{
 		contentFragments: map[string][]string{},
 		resourceHrefByID: map[string]string{"img1": "images/pic.png"},
@@ -526,12 +528,14 @@ func TestRenderNodePromotesFigureLayoutHints(t *testing.T) {
 	}, 0)
 	got := renderHTMLPart(node)
 
-	if !strings.Contains(got, "<figure>") || !strings.Contains(got, "<img src=\"images/pic.png\" alt=\"\"/>") && !strings.Contains(got, "<img src=\"images/pic.png\" alt=\"\" />") {
+	if !strings.Contains(got, "<figure>") || !strings.Contains(got, "<img src=\"images/pic.png\"") {
 		t.Fatalf("figure html = %q", got)
 	}
 }
 
 func TestRenderNodePromotesHeadingLayoutHints(t *testing.T) {
+	// Heading conversion now deferred to simplify_styles (Python parity).
+	// Rendering creates a <div> with data-kfx-heading-level attribute.
 	renderer := storylineRenderer{
 		contentFragments:  map[string][]string{"content": {"Heading"}},
 		resourceHrefByID:  map[string]string{},
@@ -557,12 +561,15 @@ func TestRenderNodePromotesHeadingLayoutHints(t *testing.T) {
 	}, 0)
 	got := renderHTMLPart(node)
 
-	if got != "<h3>Heading</h3>" {
+	// Rendering produces <div> with heading level attribute; simplify_styles converts to <h3>
+	if !strings.Contains(got, "<div") || !strings.Contains(got, "data-kfx-heading-level=\"3\"") || !strings.Contains(got, "Heading") {
 		t.Fatalf("heading layout hint html = %q", got)
 	}
 }
 
 func TestRenderNodePromotesInlineOnlyContainersToParagraphs(t *testing.T) {
+	// Paragraph conversion now deferred to simplify_styles (Python parity).
+	// Rendering creates a <div>; simplify_styles converts to <p>.
 	renderer := storylineRenderer{
 		contentFragments:  map[string][]string{"content": {"Hello"}},
 		resourceHrefByID:  map[string]string{},
@@ -584,7 +591,8 @@ func TestRenderNodePromotesInlineOnlyContainersToParagraphs(t *testing.T) {
 	}, 0)
 	got := renderHTMLPart(node)
 
-	if got != "<p>Hello</p>" {
+	// Rendering produces <div>; simplify_styles converts to <p> later
+	if !strings.Contains(got, "<div") || !strings.Contains(got, "Hello") {
 		t.Fatalf("inline-only container html = %q", got)
 	}
 }

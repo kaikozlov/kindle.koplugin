@@ -970,7 +970,7 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 			}
 		}
 
-		simplifyStylesElementFull(bodyElem, catalog, bodyInherited)
+		simplifyStylesElementFull(bodyElem, catalog, bodyInherited, &simplifyState{})
 
 		// Extract the updated children back into the Root wrapper.
 		// Reverse inheritance on the body may have modified children's styles
@@ -1499,7 +1499,13 @@ func applyStyleToElementClasses(elem *htmlElement, catalog *styleCatalog, baseNa
 	}
 }
 
-func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherited map[string]string) (containsBlock, containsText, containsImage bool) {
+// simplifyState holds mutable state passed through the simplify_styles recursion.
+// Python uses self.last_kfx_heading_level (instance variable) but Go needs explicit state.
+type simplifyState struct {
+	lastKfxHeadingLevel string // tracks last seen heading level (Python: self.last_kfx_heading_level)
+}
+
+func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherited map[string]string, state *simplifyState) (containsBlock, containsText, containsImage bool) {
 	if elem == nil {
 		return false, false, false
 	}
@@ -1660,7 +1666,7 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	for _, child := range elem.Children {
 		switch ch := child.(type) {
 		case *htmlElement:
-			childBlock, childText, childImage := simplifyStylesElementFull(ch, catalog, parentStyle)
+			childBlock, childText, childImage := simplifyStylesElementFull(ch, catalog, parentStyle, state)
 			containsBlock = containsBlock || childBlock
 			containsText = containsText || childText
 			containsImage = containsImage || childImage
@@ -1737,19 +1743,55 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 
 	tagChangedToParagraph := false
 	tagChangedToFigure := false
+	tagChangedToHeading := false
+
+	// Python simplify_styles (yj_to_epub_properties.py:1919-1945):
+	//   if elem.tag == "div" and not (fixed_layout or illustrated_layout or has_conditional_content):
 	if elem.Tag == "div" {
-		// Python simplify_styles (yj_to_epub_properties.py:1920-1922):
-		//   if "figure" in kfx_layout_hints and contains_image → figure
-		//   elif contains_text and not contains_block_elem → p
-		// Note: Python does NOT check contains_image for the <p> promotion.
-		// A <div> with text + image (no block children) still becomes <p>.
-		if strings.Contains(sty["-kfx-layout-hints"], "figure") && containsImage {
+		// Extract heading level. Python (line 1858):
+		//   kfx_heading_level = sty.pop("-kfx-heading-level", self.last_kfx_heading_level)
+		// Go stores it as a data attribute on the <div> from rendering.
+		kfxHeadingLevel := ""
+		if dataLevel, ok := elem.Attrs["data-kfx-heading-level"]; ok {
+			kfxHeadingLevel = dataLevel
+			delete(elem.Attrs, "data-kfx-heading-level")
+		}
+		if kfxHeadingLevel == "" {
+			kfxHeadingLevel = state.lastKfxHeadingLevel
+		}
+
+		kfxLayoutHints := sty["-kfx-layout-hints"]
+
+		// Branch A: heading (Python line 1922)
+		//   if "heading" in kfx_layout_hints and not contains_block_elem:
+		if strings.Contains(kfxLayoutHints, "heading") && !containsBlock && kfxHeadingLevel != "" {
+			elem.Tag = "h" + kfxHeadingLevel
+			tagChangedToHeading = true
+			// Python pops font-size, font-weight from inherited (line 1926-1927)
+			delete(inherited, "font-size")
+			delete(inherited, "font-weight")
+			// Python pops margins based on writing-mode (line 1929-1932)
+			if sty["writing-mode"] == "horizontal-tb" || sty["writing-mode"] == "" {
+				delete(inherited, "margin-top")
+				delete(inherited, "margin-bottom")
+			} else {
+				delete(inherited, "margin-left")
+				delete(inherited, "margin-right")
+			}
+		} else if strings.Contains(kfxLayoutHints, "figure") && containsImage {
+			// Branch B: figure (Python line 1934)
+			//   elif "figure" in kfx_layout_hints and contains_image and not self.epub2_desired:
 			elem.Tag = "figure"
 			tagChangedToFigure = true
 		} else if containsText && !containsBlock {
+			// Branch C: paragraph (Python line 1941)
+			//   elif contains_text and not contains_block_elem:
 			elem.Tag = "p"
 			tagChangedToParagraph = true
 		}
+
+		// Update last heading level state (Python: self.last_kfx_heading_level = ...)
+		state.lastKfxHeadingLevel = kfxHeadingLevel
 	}
 
 	comparisonInherited := inherited
@@ -1763,7 +1805,7 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 			comparisonInherited["margin-right"] = "1em"
 		}
 	}
-	if elem.Tag == "h1" || elem.Tag == "h2" || elem.Tag == "h3" || elem.Tag == "h4" || elem.Tag == "h5" || elem.Tag == "h6" {
+	if tagChangedToHeading || elem.Tag == "h1" || elem.Tag == "h2" || elem.Tag == "h3" || elem.Tag == "h4" || elem.Tag == "h5" || elem.Tag == "h6" {
 		comparisonInherited = cloneStyleMap(inherited)
 		// Python pops font-size from inherited (line 1928) but then re-adds it as "1em" (line 1956).
 		// The net effect: font-size in sty matches inherited → stripped. Don't delete font-size.
