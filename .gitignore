@@ -2,3 +2,4 @@
 build/
 *.zip
 __pycache__/
+REFERENCE/kfx_new/parity_traces/
