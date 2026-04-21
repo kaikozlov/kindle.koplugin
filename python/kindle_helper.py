@@ -29,9 +29,16 @@ VERSION = 1
 # ---------------------------------------------------------------------------
 # kfxlib setup — ensure bundled plugin modules (pypdf, typing_extensions) are
 # importable even when calibre is not installed.
+#
+# In Nuitka standalone mode, __file__ points to the binary's location (dist/).
+# We ship calibre-plugin-modules/ inside dist/ so pypdf can be found via
+# sys.path.  When running from source, it lives next to this script.
 # ---------------------------------------------------------------------------
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PLUGIN_MODULES = os.path.join(_THIS_DIR, "kfxlib", "calibre-plugin-modules")
+if not os.path.isdir(_PLUGIN_MODULES):
+    # Nuitka standalone: data files are in the same directory as the binary
+    _PLUGIN_MODULES = os.path.join(_THIS_DIR, "calibre-plugin-modules")
 if os.path.isdir(_PLUGIN_MODULES) and _PLUGIN_MODULES not in sys.path:
     sys.path.insert(0, _PLUGIN_MODULES)
 

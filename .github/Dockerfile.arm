@@ -1,16 +1,15 @@
 # Dockerfile for building Kindle Helper Python binary (glibc)
-# Uses Nuitka standalone + bundled ld-linux to bypass Kindle's ancient glibc 2.20.
-# Based on the kindle-hid-passthrough build pipeline by zampierilucas.
+# Uses Debian Bookworm (glibc 2.36) with Nuitka standalone + bundled ld-linux
+# Target: ARMv7 hard-float (armhf)
 #
-# Target: ARMv7 hard-float (armhf) for Kindle Paperwhite et al.
-# Strategy: Same as kindle-hid-passthrough:
+# Strategy: Same as kindle-hid-passthrough by zampierilucas:
 #   - Nuitka standalone creates a directory with the binary + all .so deps
 #   - We bundle the build container's ld-linux-armhf.so.3
 #   - A C wrapper invokes the bundled ld-linux directly, bypassing Kindle's dynamic linker
 
 FROM arm32v7/python:3.11-slim-bookworm
 
-# Install build dependencies for Nuitka, lxml, Pillow
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     patchelf \
@@ -19,8 +18,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     linux-libc-dev \
     libssl-dev \
-    libxml2-dev \
-    libxslt1-dev \
     libjpeg-dev \
     libpng-dev \
     libtiff-dev \
@@ -28,6 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libwebp-dev \
     libopenjp2-7-dev \
     libfreetype6-dev \
+    libxml2-dev \
+    libxslt1-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -36,9 +35,10 @@ RUN pip install --no-cache-dir \
     ordered-set \
     lxml \
     Pillow \
-    cryptography
+    cryptography \
+    beautifulsoup4
 
-# Enable ccache
+# Enable ccache and Nuitka's own caching
 ENV CCACHE_DIR=/ccache
 ENV NUITKA_CACHE_DIR=/nuitka-cache
 ENV PATH="/usr/lib/ccache:${PATH}"
@@ -49,7 +49,7 @@ WORKDIR /build
 COPY python/kindle_helper.py /build/kindle_helper.py
 COPY python/kfxlib/ /build/kfxlib/
 
-# ARM-specific compiler flags (from kindle-hid-passthrough)
+# ARM-specific compiler flags to fix branch range errors
 ENV CFLAGS="-O3 -mword-relocations -mlong-calls -ffunction-sections -fdata-sections"
 ENV LDFLAGS="-Wl,--gc-sections"
 
@@ -71,7 +71,7 @@ RUN printf '%s\n' \
     gcc -shared -fPIC -o /build/libsyscall_wrapper.so /build/syscall_wrapper.c && \
     strip /build/libsyscall_wrapper.so
 
-# Build with Nuitka in standalone mode
+# Build with Nuitka in standalone mode (creates directory with all deps)
 RUN --mount=type=cache,target=/nuitka-cache \
     --mount=type=cache,target=/ccache \
     python3 -m nuitka \
@@ -81,19 +81,22 @@ RUN --mount=type=cache,target=/nuitka-cache \
     --show-progress \
     --output-dir=/build/nuitka-out \
     --include-package=kfxlib \
+    --include-data-dir=kfxlib/calibre-plugin-modules=calibre-plugin-modules \
     --nofollow-import-to=pytest \
     --nofollow-import-to=unittest \
     --nofollow-import-to=setuptools \
     --nofollow-import-to=pip \
     kindle_helper.py
 
-# Bundle the build container's dynamic linker and core glibc libs.
+# Copy the build container's dynamic linker and core glibc libs into the dist.
 # Nuitka standalone doesn't include glibc core libs (assumes they exist on target).
 # But Kindle has glibc 2.20 which is incompatible, so we must bundle everything.
 RUN cp /lib/ld-linux-armhf.so.3 /build/nuitka-out/kindle_helper.dist/ld-linux-armhf.so.3 && \
     for lib in libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1 \
                libutil.so.1 libresolv.so.2 libnss_dns.so.2 libnss_files.so.2 \
-               libz.so.1 libstdc++.so.6 libgcc_s.so.1; do \
+               libz.so.1 libstdc++.so.6 libgcc_s.so.1 \
+               libjpeg.so.62 libpng16.so.16 libtiff.so.6 libwebp.so.7 \
+               liblcms2.so.2 libopenjp2.so.7 libfreetype.so.6; do \
         src=$(find /lib /usr/lib -name "$lib" 2>/dev/null | head -1); \
         if [ -n "$src" ]; then \
             cp -L "$src" /build/nuitka-out/kindle_helper.dist/"$lib"; \
@@ -101,11 +104,12 @@ RUN cp /lib/ld-linux-armhf.so.3 /build/nuitka-out/kindle_helper.dist/ld-linux-ar
     done && \
     echo "Bundled libs:" && ls -la /build/nuitka-out/kindle_helper.dist/lib*.so*
 
-# Rename the Nuitka binary to main.bin (matching the wrapper expectations)
-RUN mv /build/nuitka-out/kindle_helper.dist/kindle_helper.bin /build/nuitka-out/kindle_helper.dist/main.bin || true
+# Rename Nuitka binary to main.bin
+RUN mv /build/nuitka-out/kindle_helper.dist/kindle_helper.bin /build/nuitka-out/kindle_helper.dist/main.bin 2>/dev/null || \
+    mv /build/nuitka-out/kindle_helper.dist/kindle_helper.exe /build/nuitka-out/kindle_helper.dist/main.bin 2>/dev/null || true
 
-# Build C wrapper that invokes the bundled ld-linux directly.
-# This bypasses the system dynamic linker entirely — same approach as kindle-hid-passthrough.
+# Build C wrapper that invokes the bundled ld-linux directly
+# This bypasses the system dynamic linker entirely
 RUN printf '%s\n' \
     '#define _GNU_SOURCE' \
     '#include <stdio.h>' \
@@ -125,8 +129,11 @@ RUN printf '%s\n' \
     '    ssize_t len;' \
     '' \
     '    len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);' \
-    '    if (len == -1) { perror("readlink"); return 1; }' \
-    '    exe_path[len] = '"'"'\\0'"'"';' \
+    '    if (len == -1) {' \
+    '        perror("readlink");' \
+    '        return 1;' \
+    '    }' \
+    '    exe_path[len] = 0;' \
     '' \
     '    strncpy(dir_path, exe_path, sizeof(dir_path));' \
     '    char *dir = dirname(dir_path);' \
@@ -136,12 +143,17 @@ RUN printf '%s\n' \
     '    snprintf(bin_path, sizeof(bin_path), "%s/dist/main.bin", dir);' \
     '    snprintf(lib_path, sizeof(lib_path), "%s/libsyscall_wrapper.so", dir);' \
     '' \
+    '    /* Set LD_PRELOAD for syscall compatibility shim */' \
     '    setenv("LD_PRELOAD", lib_path, 1);' \
     '    setenv("KINDLE_HELPER_BASE", dir, 1);' \
     '' \
+    '    /* Build new argv: ld-linux --library-path dist dist/main.bin [original args] */' \
     '    int new_argc = argc + 3;' \
     '    char **new_argv = malloc(sizeof(char *) * (new_argc + 1));' \
-    '    if (!new_argv) { perror("malloc"); return 1; }' \
+    '    if (!new_argv) {' \
+    '        perror("malloc");' \
+    '        return 1;' \
+    '    }' \
     '' \
     '    new_argv[0] = ld_path;' \
     '    new_argv[1] = "--library-path";' \
@@ -153,6 +165,7 @@ RUN printf '%s\n' \
     '    new_argv[argc + 3] = NULL;' \
     '' \
     '    execv(ld_path, new_argv);' \
+    '' \
     '    perror("execv ld-linux");' \
     '    return 1;' \
     '}' \
@@ -167,17 +180,22 @@ RUN printf '%s\n' \
 #     main.bin             - Python binary
 #     ld-linux-armhf.so.3  - Bundled dynamic linker
 #     *.so                 - All shared library dependencies
+#     calibre-plugin-modules/ - pypdf, typing_extensions (pure Python, on disk for sys.path)
+#     bs4/                 - beautifulsoup4 (pure Python, needed by pypdf)
 RUN mkdir -p /build/output && \
     cp /build/kindle-helper /build/output/kindle-helper && \
     cp /build/libsyscall_wrapper.so /build/output/libsyscall_wrapper.so && \
     cp -r /build/nuitka-out/kindle_helper.dist /build/output/dist && \
-    chmod +x /build/output/kindle-helper /build/output/dist/main.bin /build/output/dist/ld-linux-armhf.so.3
+    chmod +x /build/output/kindle-helper /build/output/dist/main.bin /build/output/dist/ld-linux-armhf.so.3 && \
+    mkdir -p /build/output/dist/calibre-plugin-modules && \
+    cp -r /build/kfxlib/calibre-plugin-modules/pypdf /build/output/dist/calibre-plugin-modules/ && \
+    cp /build/kfxlib/calibre-plugin-modules/typing_extensions.py /build/output/dist/calibre-plugin-modules/ && \
+    find /build/output/dist/calibre-plugin-modules -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+    cp -r /usr/local/lib/python3.11/site-packages/bs4 /build/output/dist/ && \
+    find /build/output/dist/bs4 -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # Show what we built
 RUN echo "=== Output structure ===" && \
     find /build/output -maxdepth 2 -type f | sort && \
     echo "=== dist/ size ===" && \
     du -sh /build/output/dist/
-
-# Default: copy output to /output for extraction
-CMD ["cp", "-r", "/build/output/.", "/output/"]
