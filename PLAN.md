@@ -120,7 +120,13 @@ def update_default_font_and_language(self):
 ---
 
 ### Step 3: Add `xmlns:epub` namespace when `epub:type` is used
-**Status**: Pending  
+**Status**: ✅ Committed `07e289c`
+**Result**: 1984 c1T9 fixed (attribute order). xmlns:epub added when epub:type present.
+
+### Step 4: Add `epub:type="noteref"` annotation on footnote links
+**Status**: ⚠️ Partial — committed `cb70114`
+**Result**: Infrastructure added. Image link epub:type works. Text-level noteref not yet wired.
+**Remaining**: `renderTextNode` doesn't process `$142` style events. Need to wire `$179`/`$616` through text rendering path.  
 **Python reference**: `epub_output.py` line ~500 (HTML head generation), `yj_to_epub_properties.py` line 665  
 **Estimated impact**: Fixes 3 files in 1984
 
