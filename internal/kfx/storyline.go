@@ -370,11 +370,16 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 
 	container := &htmlElement{Tag: "div", Attrs: map[string]string{}}
 	for _, child := range children {
-		rendered := r.renderContentChild(child, depth+1)
+		rendered := r.renderContentChild(child, depth+1, node)
 		if rendered != nil {
 			container.Children = append(container.Children, rendered)
 		}
 	}
+	// Python yj_to_epub_content.py:1112+: $142 style events are applied to the
+	// content element after all children are added. For containers with both element
+	// and text children (like the Elvis logo: <img/> + "FIRST EDITION"), the style events
+	// wrap text ranges in styled spans. applyContainerStyleEvents implements this.
+	r.applyContainerStyleEvents(node, container)
 	if len(container.Children) == 0 {
 		return nil
 	}
@@ -818,6 +823,137 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 // handles IonString vs IonStruct (yj_to_epub_content.py:395-405).
 // - IonString (Go string): creates <span>text</span>  (Python line 397-399)
 // - IonStruct (Go map): delegates to renderInlinePart
+// applyContainerStyleEvents applies $142 style events to a container element's children,
+// matching Python's post-add_content style event processing (yj_to_epub_content.py:1112+).
+// Python's find_or_create_style_event_element locates text at character offsets within
+// the content element and wraps ranges in styled spans. This implementation handles the
+// common case where text children (from IonString $146 items) need annotation wrapping.
+func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{}, container *htmlElement) {
+	annotations, ok := asSlice(node["$142"])
+	if !ok || len(annotations) == 0 {
+		return
+	}
+	// Build text offset map
+	type textRange struct {
+		childIdx    int
+		startOffset int
+		length      int
+	}
+	var ranges []textRange
+	offset := 0
+	for i, child := range container.Children {
+		elem, ok := child.(*htmlElement)
+		if !ok {
+			continue
+		}
+		switch elem.Tag {
+		case "img", "svg":
+			ranges = append(ranges, textRange{childIdx: i, startOffset: offset, length: 1})
+			offset++
+		case "span":
+			text := htmlElementText(elem)
+			ranges = append(ranges, textRange{childIdx: i, startOffset: offset, length: len([]rune(text))})
+			offset += len([]rune(text))
+		}
+	}
+	// Apply each annotation to the matching text range
+	for _, ann := range annotations {
+		annMap, ok := asMap(ann)
+		if !ok {
+			continue
+		}
+		eventStart, _ := asInt(annMap["$143"])
+		eventLen, _ := asInt(annMap["$144"])
+		if eventLen <= 0 {
+			continue
+		}
+		styleID, _ := asString(annMap["$157"])
+		if styleID == "" {
+			continue
+		}
+		// Find which text range(s) this annotation covers
+		for _, tr := range ranges {
+			elem := container.Children[tr.childIdx].(*htmlElement)
+			if elem.Tag != "span" {
+				continue
+			}
+			text := htmlElementText(elem)
+			runes := []rune(text)
+			trEnd := tr.startOffset + tr.length
+			annEnd := eventStart + eventLen
+
+			// Check overlap
+			if eventStart >= trEnd || annEnd <= tr.startOffset {
+				continue
+			}
+
+			// Compute local offset within this span's text
+			localStart := eventStart - tr.startOffset
+			if localStart < 0 {
+				localStart = 0
+			}
+			localEnd := annEnd - tr.startOffset
+			if localEnd > len(runes) {
+				localEnd = len(runes)
+			}
+
+			if localStart >= localEnd {
+				continue
+			}
+
+			// Get the annotation style
+			style := effectiveStyle(r.styleFragments[styleID], annMap)
+			cssMap := processContentProperties(style, r.resolveResource)
+			declarations := cssDeclarationsFromMap(cssMap)
+			if len(declarations) == 0 {
+				continue
+			}
+			baseName := "class"
+			if styleID != "" {
+				baseName = r.styleBaseName(styleID)
+			}
+			styledSpanClass := styleStringFromDeclarations(baseName, nil, declarations)
+
+			// Split the span: before + styled + after
+			before := string(runes[:localStart])
+			styled := string(runes[localStart:localEnd])
+			after := string(runes[localEnd:])
+
+			var newChildren []htmlPart
+			if before != "" {
+				newChildren = append(newChildren, &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: before}}})
+			}
+			styledSpan := &htmlElement{
+				Tag:      "span",
+				Attrs:    map[string]string{"style": styledSpanClass},
+				Children: []htmlPart{htmlText{Text: styled}},
+			}
+			newChildren = append(newChildren, styledSpan)
+			if after != "" {
+				newChildren = append(newChildren, &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: after}}})
+			}
+
+			// Replace the single span child with the split children
+			container.Children = append(container.Children[:tr.childIdx], append(newChildren, container.Children[tr.childIdx+1:]...)...)
+			break // annotation applied, move to next
+		}
+	}
+}
+
+// htmlElementText extracts the combined text content of an htmlElement.
+func htmlElementText(elem *htmlElement) string {
+	var buf strings.Builder
+	for _, child := range elem.Children {
+		switch typed := child.(type) {
+		case htmlText:
+			buf.WriteString(typed.Text)
+		case *htmlText:
+			buf.WriteString(typed.Text)
+		}
+	}
+	return buf.String()
+}
+
 func (r *storylineRenderer) renderInlineContent(child interface{}, depth int) htmlPart {
 	if text, ok := asString(child); ok {
 		return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
@@ -827,9 +963,9 @@ func (r *storylineRenderer) renderInlineContent(child interface{}, depth int) ht
 
 // renderContentChild dispatches a $146 list child the same way Python's process_content
 // handles IonString vs IonStruct for block-level container paths.
-// - IonString (Go string): creates <span>text</span>
+// - IonString (Go string): creates <span>text</span> with parent annotations applied
 // - IonStruct (Go map): delegates to renderNode, falls back to renderInlinePart
-func (r *storylineRenderer) renderContentChild(child interface{}, depth int) htmlPart {
+func (r *storylineRenderer) renderContentChild(child interface{}, depth int, parentNode ...map[string]interface{}) htmlPart {
 	if text, ok := asString(child); ok {
 		return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
 	}
@@ -918,7 +1054,14 @@ func (r *storylineRenderer) renderImageNode(node map[string]interface{}) htmlPar
 	if imageClass != "" {
 		image.Attrs["style"] = imageClass
 	}
-	if wrapperClass == "" {
+	// Python process_content $283 (inline render) for <img> (yj_to_epub_content.py:1295-1298):
+	// render=="$283" adds -kfx-render:inline to style but does NOT create a container wrapper.
+	// The wrapper div is only created in the else branch (non-inline render, line 1324-1330).
+	// Without this check, inline images get a wrapper <div> which causes containsBlock=true
+	// in simplify_styles, preventing <div>→<p> promotion for containers with mixed image+text.
+	renderMode, _ := asString(node["$601"])
+	isInlineRender := renderMode == "$283"
+	if wrapperClass == "" || isInlineRender {
 		firstVisible := r.consumeVisibleElement()
 		r.applyStructuralNodeAttrs(image, node, "")
 		if positionID, _ := asInt(node["$155"]); positionID != 0 {

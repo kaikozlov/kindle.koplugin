@@ -1613,10 +1613,15 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	tagChangedToParagraph := false
 	tagChangedToFigure := false
 	if elem.Tag == "div" {
+		// Python simplify_styles (yj_to_epub_properties.py:1920-1922):
+		//   if "figure" in kfx_layout_hints and contains_image → figure
+		//   elif contains_text and not contains_block_elem → p
+		// Note: Python does NOT check contains_image for the <p> promotion.
+		// A <div> with text + image (no block children) still becomes <p>.
 		if strings.Contains(sty["-kfx-layout-hints"], "figure") && containsImage {
 			elem.Tag = "figure"
 			tagChangedToFigure = true
-		} else if containsText && !containsBlock && !containsImage {
+		} else if containsText && !containsBlock {
 			elem.Tag = "p"
 			tagChangedToParagraph = true
 		}
