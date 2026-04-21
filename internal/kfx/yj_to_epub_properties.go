@@ -724,8 +724,10 @@ func beautifyHTML(root *htmlElement) {
 	if root == nil {
 		return
 	}
-	var walk func(elem *htmlElement)
-	walk = func(elem *htmlElement) {
+
+	// Phase 1: Strip empty <span> tags (Python beautify_html, epub_output.py)
+	var walkSpans func(elem *htmlElement)
+	walkSpans = func(elem *htmlElement) {
 		if elem == nil {
 			return
 		}
@@ -745,11 +747,105 @@ func beautifyHTML(root *htmlElement) {
 		elem.Children = newChildren
 		for _, child := range elem.Children {
 			if el, ok := child.(*htmlElement); ok {
-				walk(el)
+				walkSpans(el)
 			}
 		}
 	}
-	walk(root)
+	walkSpans(root)
+
+	// Phase 2: Strip empty <div> wrappers (Python beautify_html, epub_output.py:796-812)
+	// A <div> with no attributes is stripped when:
+	// - Parent is in {aside, caption, div, figure, h1-h6, li, p, td} AND parent has 1 child AND parent has no text
+	// - Parent is <body> AND body has no text AND all children are block-level elements without tails
+	// This is a loop because stripping one div may enable stripping another.
+	divStripParents := map[string]bool{
+		"aside": true, "caption": true, "div": true, "figure": true,
+		"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+		"li": true, "p": true, "td": true,
+	}
+	blockTags := map[string]bool{
+		"aside": true, "div": true, "figure": true,
+		"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+		"hr": true, "iframe": true, "ol": true, "p": true, "table": true, "ul": true,
+	}
+
+	for {
+		changed := false
+		var stripDivs func(elem *htmlElement)
+		stripDivs = func(elem *htmlElement) {
+			if elem == nil {
+				return
+			}
+			for _, child := range elem.Children {
+				ch, ok := child.(*htmlElement)
+				if !ok {
+					continue
+				}
+				stripDivs(ch)
+			}
+
+			// Look for empty <div> children to strip
+			newChildren := make([]htmlPart, 0, len(elem.Children))
+			for _, child := range elem.Children {
+				ch, ok := child.(*htmlElement)
+				if !ok {
+					newChildren = append(newChildren, child)
+					continue
+				}
+				if ch.Tag == "div" && len(ch.Attrs) == 0 && shouldStripDiv(elem, ch, divStripParents, blockTags) {
+					// Strip: promote div's children into parent
+					newChildren = append(newChildren, ch.Children...)
+					changed = true
+				} else {
+					newChildren = append(newChildren, child)
+				}
+			}
+			elem.Children = newChildren
+		}
+		stripDivs(root)
+		if !changed {
+			break
+		}
+	}
+}
+
+// shouldStripDiv checks if an empty-attribute <div> should be stripped from its parent,
+// matching Python's beautify_html logic (epub_output.py:796-812).
+func shouldStripDiv(parent, div *htmlElement, divStripParents, blockTags map[string]bool) bool {
+	if divStripParents[parent.Tag] {
+		// Parent must have exactly 1 child (the div itself) and no text content
+		if len(parent.Children) != 1 {
+			return false
+		}
+		return true
+	}
+	if parent.Tag == "body" {
+		// Special body case: strip div if all div children are block-level elements
+		// and none of them have tail text.
+		for _, child := range div.Children {
+			ch, ok := child.(*htmlElement)
+			if !ok {
+				return false
+			}
+			if !blockTags[ch.Tag] {
+				return false
+			}
+		}
+		// Check no tail text after div in parent's children
+		for i, sib := range parent.Children {
+			if sib == div {
+				// Check for tail text after the div
+				if i+1 < len(parent.Children) {
+					if t, ok := parent.Children[i+1].(*htmlText); ok && strings.TrimSpace(t.Text) != "" {
+						return false
+					}
+				}
+				break
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // Port of KFX_EPUB_Properties.create_css_files (yj_to_epub_properties.py L2239+).
