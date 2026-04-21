@@ -6,6 +6,8 @@ import (
 	"io"
 	"path/filepath"
 	"testing"
+
+	"github.com/kaikozlov/kindle-koplugin/internal/testutil"
 )
 
 func TestParseContainerFixture(t *testing.T) {
@@ -54,7 +56,8 @@ func TestParseHeaderFixtureNarrowSubset(t *testing.T) {
 }
 
 func TestAllMartyrJXRImagesMatchNarrowSubset(t *testing.T) {
-	archivePath := filepath.Join("..", "..", "..", "REFERENCE", "martyr_unpack.zip")
+	archivePath := filepath.Join("..", "..", "REFERENCE", "martyr_unpack.zip")
+	testutil.SkipIfMissing(t, archivePath)
 	archive, err := zip.OpenReader(archivePath)
 	if err != nil {
 		t.Fatalf("OpenReader() error = %v", err)
@@ -104,7 +107,9 @@ func TestAllMartyrJXRImagesMatchNarrowSubset(t *testing.T) {
 }
 
 func TestDecodeGray8MatchesPythonJXRBaseline(t *testing.T) {
-	rawArchive, err := zip.OpenReader(filepath.Join("..", "..", "..", "REFERENCE", "martyr_unpack.zip"))
+	archivePath := filepath.Join("..", "..", "REFERENCE", "martyr_unpack.zip")
+	testutil.SkipIfMissing(t, archivePath)
+	rawArchive, err := zip.OpenReader(archivePath)
 	if err != nil {
 		t.Fatalf("OpenReader(raw) error = %v", err)
 	}
@@ -151,7 +156,8 @@ func TestDecodeGray8MatchesPythonJXRBaseline(t *testing.T) {
 func readFixtureJXR(t *testing.T, name string) []byte {
 	t.Helper()
 
-	archivePath := filepath.Join("..", "..", "..", "REFERENCE", "martyr_unpack.zip")
+	archivePath := filepath.Join("..", "..", "REFERENCE", "martyr_unpack.zip")
+	testutil.SkipIfMissing(t, archivePath)
 	archive, err := zip.OpenReader(archivePath)
 	if err != nil {
 		t.Fatalf("OpenReader() error = %v", err)

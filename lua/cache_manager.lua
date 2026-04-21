@@ -193,4 +193,31 @@ function CacheManager:clearAllCache()
     return true
 end
 
+--- Gets cache statistics (number of cached EPUBs and total size).
+--- @return table: { count = number, total_size = number (bytes) }
+function CacheManager:getCacheStats()
+    local cache_dir = self:getCacheDir()
+    local stats = { count = 0, total_size = 0 }
+
+    local handle = io.popen(
+        "find "
+            .. util.shell_escape({ cache_dir })
+            .. " -maxdepth 1 -type f -name '*.epub' -exec ls -l {} \\; 2>/dev/null"
+    )
+    if not handle then
+        return stats
+    end
+
+    for line in handle:lines() do
+        local size = line:match("%s(%d+)%s")
+        if size then
+            stats.count = stats.count + 1
+            stats.total_size = stats.total_size + tonumber(size)
+        end
+    end
+    handle:close()
+
+    return stats
+end
+
 return CacheManager

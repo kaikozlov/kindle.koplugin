@@ -108,13 +108,20 @@ mkdir -p "$BUILD_DIR/$PLUGIN_NAME"
 # Copy Lua plugin files
 cp *.lua "$BUILD_DIR/$PLUGIN_NAME/"
 
-# Copy Lua modules
+# Copy Lua modules (including subdirectories like lua/lib/)
 mkdir -p "$BUILD_DIR/$PLUGIN_NAME/lua"
 cp "$PLUGIN_SRC"/*.lua "$BUILD_DIR/$PLUGIN_NAME/lua/"
+if [ -d "$PLUGIN_SRC/lib" ]; then
+    mkdir -p "$BUILD_DIR/$PLUGIN_NAME/lua/lib"
+    cp "$PLUGIN_SRC/lib"/*.lua "$BUILD_DIR/$PLUGIN_NAME/lua/lib/"
+fi
 
 # Copy lib helpers (DRM JAR + hook)
 mkdir -p "$BUILD_DIR/$PLUGIN_NAME/lib"
 cp lib/* "$BUILD_DIR/$PLUGIN_NAME/lib/" 2>/dev/null || true
+
+# Copy KOReader startup patches
+cp -r patches "$BUILD_DIR/$PLUGIN_NAME/" 2>/dev/null || true
 
 if ! $PACKAGE_ONLY; then
     # Build for armv5 (legacy Kindle devices)
@@ -169,7 +176,7 @@ if $DEPLOY; then
     # Remove stale plugin directory on device
     echo "Cleaning up old plugin..."
     $SSH "rm -rf $DEVICE_PLUGIN_DIR"
-    $SSH "mkdir -p $DEVICE_PLUGIN_DIR/lua $DEVICE_PLUGIN_DIR/lib"
+    $SSH "mkdir -p $DEVICE_PLUGIN_DIR/lua/lib $DEVICE_PLUGIN_DIR/lib"
 
     # Copy plugin files
     STAGING="$BUILD_DIR/staging"
@@ -179,8 +186,13 @@ if $DEPLOY; then
     cp *.lua "$STAGING/"
     mkdir -p "$STAGING/lua"
     cp "$PLUGIN_SRC"/*.lua "$STAGING/lua/"
+    if [ -d "$PLUGIN_SRC/lib" ]; then
+        mkdir -p "$STAGING/lua/lib"
+        cp "$PLUGIN_SRC/lib"/*.lua "$STAGING/lua/lib/"
+    fi
     mkdir -p "$STAGING/lib"
     cp lib/* "$STAGING/lib/" 2>/dev/null || true
+    cp -r patches "$STAGING/" 2>/dev/null || true
     cp "$BIN_DIR/$BINARY_NAME-$DEPLOY_ARCH" "$STAGING/$BINARY_NAME"
 
     echo "Uploading plugin files..."

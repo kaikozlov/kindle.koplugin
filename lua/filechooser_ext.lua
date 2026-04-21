@@ -1,6 +1,7 @@
 local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local InfoMessage = require("ui/widget/infomessage")
+local PatternUtils = require("lua/lib/pattern_utils")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
@@ -35,6 +36,17 @@ end
 
 local function createBackEntry()
     local home_dir = G_reader_settings:readSetting("home_dir") or Device.home_dir or "/"
+    local virtual_prefix = "KINDLE_VIRTUAL://"
+    local escaped_prefix = PatternUtils.escape(virtual_prefix)
+
+    -- Avoid using a home_dir that points into the virtual library or cache,
+    -- otherwise the back button would loop back into the virtual library.
+    if home_dir == virtual_prefix or home_dir == virtual_prefix .. "/"
+        or home_dir:match("^" .. escaped_prefix) then
+        logger.dbg("KindlePlugin: home_dir points to virtual library, using Device.home_dir for back entry")
+        home_dir = Device.home_dir or "/"
+    end
+
     return {
         text = "⬆ ../",
         path = home_dir,
@@ -52,9 +64,10 @@ local function openItem(fc_self, item)
     filemanagerutil.openFile(fc_self.ui, item.path)
 end
 
-function FileChooserExt:init(virtual_library, cache_manager)
+function FileChooserExt:init(virtual_library, cache_manager, reading_state_sync)
     self.virtual_library = virtual_library
     self.cache_manager = cache_manager
+    self.reading_state_sync = reading_state_sync
     self.original_methods = {}
 end
 
@@ -165,6 +178,11 @@ function FileChooserExt:apply(FileChooser)
     FileChooser.init = function(fc_self)
         self.original_methods.init(fc_self)
 
+        -- Respect bypass flag set by PathChooserExt
+        if self.virtual_library._file_chooser_bypass_active then
+            return
+        end
+
         if cache_dir ~= "" and fc_self.path and fc_self.path:sub(1, #cache_dir) == cache_dir then
             logger.info("KindlePlugin: FileChooser initialized with cache path, showing virtual library")
             fc_self:showKindleVirtualLibrary()
@@ -172,6 +190,11 @@ function FileChooserExt:apply(FileChooser)
     end
 
     FileChooser.changeToPath = function(fc_self, new_path, ...)
+        -- Respect bypass flag set by PathChooserExt
+        if self.virtual_library._file_chooser_bypass_active then
+            return self.original_methods.changeToPath(fc_self, new_path, ...)
+        end
+
         if new_path and new_path:match("^KINDLE_VIRTUAL://") then
             fc_self:showKindleVirtualLibrary()
             return
@@ -199,6 +222,12 @@ function FileChooserExt:apply(FileChooser)
 
     FileChooser.genItemTable = function(fc_self, dirs, files, path)
         local item_table = self.original_methods.genItemTable(fc_self, dirs, files, path)
+
+        -- Respect bypass flag set by PathChooserExt
+        if self.virtual_library._file_chooser_bypass_active then
+            return item_table
+        end
+
         if not shouldAddVirtualFolder(path) then
             return item_table
         end
@@ -244,6 +273,23 @@ function FileChooserExt:apply(FileChooser)
     FileChooser.showKindleVirtualLibrary = function(fc_self)
         logger.info("KindlePlugin: showing virtual library")
         fc_self.path = "KINDLE_VIRTUAL://"
+
+        -- Lazy-patch BookInfoManager on first virtual library open to avoid
+        -- issues with early loading. Follows kobo.koplugin's approach.
+        if not self.bookinfomanager_patched then
+            local BookInfoManager = package.loaded["bookinfomanager"]
+            if BookInfoManager then
+                local BookInfoManagerExt = require("lua/bookinfomanager_ext")
+                local bim_ext = BookInfoManagerExt
+                bim_ext:init(self.virtual_library, self.cache_manager)
+                bim_ext:apply(BookInfoManager)
+                logger.info("KindlePlugin: BookInfoManager patches applied (lazy)")
+                self.bookinfomanager_patched = true
+            end
+        end
+
+        self.virtual_library:buildPathMappings()
+
         local book_entries, err = self.virtual_library:getBookEntries(true)
         if not book_entries then
             showInfo(_("Failed to build Kindle library:\n") .. err)
@@ -262,7 +308,21 @@ function FileChooserExt:apply(FileChooser)
             end
         end
 
-        table.insert(book_entries, 1, createBackEntry())
+        -- Check if home_dir is locked to the virtual library — if so,
+        -- skip the back entry to avoid a navigation loop.
+        local virtual_prefix = "KINDLE_VIRTUAL://"
+        local escaped_prefix = PatternUtils.escape(virtual_prefix)
+        local current_home_dir = G_reader_settings:readSetting("home_dir")
+        local home_is_virtual = current_home_dir
+            and (current_home_dir == virtual_prefix
+                or current_home_dir == virtual_prefix .. "/"
+                or current_home_dir:match("^" .. escaped_prefix))
+        local locked_at_home = G_reader_settings:isTrue("lock_home_folder") and home_is_virtual
+
+        if not locked_at_home then
+            table.insert(book_entries, 1, createBackEntry())
+        end
+
         fc_self:switchItemTable(nil, book_entries, 1, nil, self.virtual_library.VIRTUAL_LIBRARY_NAME)
     end
 end

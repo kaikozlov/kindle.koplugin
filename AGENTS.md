@@ -155,16 +155,29 @@ User opens book in KOReader
 │   ├── jsonout/               ← JSON output types for CLI responses
 │   └── scan/                  ← Document scanning & classification
 │
-├── src/                       ← Lua plugin modules
+├── lua/                       ← Lua plugin modules
 │   ├── helper_client.lua      ← Go binary client (scan, convert, drm-init)
 │   ├── cache_manager.lua      ← EPUB cache lifecycle (freshness, cleanup)
-│   ├── virtual_library.lua    ← Virtual library UI widget
+│   ├── virtual_library.lua    ← Virtual library path management & book entries
 │   ├── library_index.lua      ← Book scanning & metadata indexing
 │   ├── document_ext.lua       ← DocumentRegistry monkey-patches
 │   ├── filechooser_ext.lua    ← File browser integration patches
-│   └── docsettings_ext.lua    ← Sidecar settings support
+│   ├── docsettings_ext.lua    ← Sidecar settings support
+│   ├── showreader_ext.lua     ← ReaderUI:showReader intercept
+│   ├── filesystem_ext.lua     ← lfs.attributes virtual path patching
+│   ├── readerui_ext.lua       ← ReaderUI close → virtual library navigation
+│   ├── pathchooser_ext.lua    ← PathChooser bypass virtual library
+│   ├── bookinfomanager_ext.lua← CoverBrowser metadata integration
+│   └── lib/                   ← Shared utility modules (from kobo.koplugin)
+│       ├── pattern_utils.lua  ← Lua pattern magic char escaping
+│       └── session_flags.lua  ← Session-persistent flag files in /tmp
 │
-├── scripts/                   ← Dev/CI scripts (parity diffs, Python reference)
+├── spec/                      ← Busted test suite (126 specs)
+├── patches/                   ← KOReader startup patches
+│   └── 2-kindle-virtual-library-startup.lua ← ffi/util.realpath virtual path support
+│
+├── scripts/                   ← Dev/CI scripts
+│   └── test                   ← Busted runner under luajit
 │
 ├── REFERENCE/                 ← NOT tracked in git — local reference only
 │   ├── kobo.koplugin/         ← Sister plugin (Kobo) — architectural reference
@@ -208,8 +221,10 @@ Files like `action.py`, `config.py`, `jobs.py` in the Calibre reference are Cali
 ### 4. Every Change Must Be Tested
 
 - Go: `go test ./...`
-- Lua: follow patterns from `REFERENCE/kobo.koplugin/spec/` (busted framework)
+- Lua: `./scripts/test` (busted under luajit)
 - Some tests require KFX fixture files not in the repo — these auto-skip
+- New Lua modules **must** include a corresponding `spec/*_spec.lua`
+- Spec structure and mocking patterns follow `REFERENCE/kobo.koplugin/spec/`
 
 ### 5. Commits Should Be Atomic
 
@@ -219,7 +234,7 @@ Each logical step gets its own commit. If something breaks, revert and fix befor
 
 ## DRM Integration (In Progress)
 
-The DRM approach uses **on-device key extraction** — no offline key derivation needed.
+The DRM approach uses **on-device key extraction via LD_PRELOAD** with **just-in-time key refresh**.
 
 ### How It Works
 
@@ -230,7 +245,9 @@ The DRM approach uses **on-device key extraction** — no offline key derivation
 5. The hook logs keys to `/mnt/us/crypto_keys.log`
 6. A tiny Java class (`KFXVoucherExtractor.jar`) exercises the DRM SDK, triggering key usage
 7. Go code parses the log, matches keys to vouchers, extracts 16-byte page keys
-8. Page keys are cached in `drm_keys.json` — deterministic, only needs refresh on new book downloads
+8. Page keys are cached in `drm_keys.json`
+9. **JIT retry loop**: when conversion fails due to stale keys, the Lua layer auto-triggers
+   key extraction for that specific book and retries — transparent to the user
 
 ### DRM File Signatures
 
@@ -240,29 +257,39 @@ The DRM approach uses **on-device key extraction** — no offline key derivation
 | CONT | `\xeaCONT\xee` | Container KFX (unencrypted) |
 | Voucher | `\xe0\x01\x00\xea` + contains `ProtectedData` | DRM voucher |
 
-### Key Stability
+### Key Stability — CORRECTED
 
-Keys are **deterministic**: same ACSR + serial + voucher → same key every time. Key cache only needs refreshing when:
-- A new DRM book is downloaded (new voucher)
-- The ACSR changes (account re-registration — rare)
-- The device is factory reset
+**Keys are NOT deterministic across re-downloads.** Amazon's delivery service generates a
+fresh voucher with new ciphertext on every delivery, even for the same content version.
+A cached page key becomes invalid whenever the device re-downloads a book's assets.
+
+Re-download triggers include:
+- Opening a book in the Kindle reader (triggers asset check)
+- Background sync / storage scans (periodic, automated)
+- Amazon pushing content updates (formatting, metadata changes)
+
+Full evidence: see `REFERENCE/KFX_DRM_RESEARCH.md` — "Key Stability Investigation".
+
+The JIT approach handles this transparently — stale keys are detected and refreshed
+automatically when the user opens a book. No manual intervention needed.
 
 ### Planned Go Code for DRM
 
 | File | Purpose |
 |------|---------|
-| `internal/kfx/drm.go` | `DecryptDRMION()`, `ExtractPageKey()`, `ParseVoucherIon()` |
+| `internal/kfx/drm.go` | `DecryptDRMION()`, `ExtractPageKey()`, `ParseVoucherIon()`, `LoadDRMKeys()`, `FindPageKey()` |
 | `internal/kfx/drmion.go` | DRMION page decryption (ION binary → encrypted sections → decrypt → concatenate to CONT KFX) |
-| `cmd/kindle-helper/main.go` | Add `drm-init` subcommand |
+| `cmd/kindle-helper/main.go` | Add `drm-init` subcommand (targeted and batch modes) |
+| `internal/kfx/kfx.go` | Modify `ConvertFile` to handle DRMION with stale-key detection |
 
 ### Planned Lua Code for DRM
 
 | File | Changes |
 |------|---------|
-| `src/helper_client.lua` | Add `drmInit()` method |
-| `src/cache_manager.lua` | Handle `open_mode == "drm"` — check key cache before converting |
-| `src/virtual_library.lua` | Show DRM-specific status text |
-| `main.lua` | Add "Setup DRM decryption" menu item |
+| `lua/helper_client.lua` | Add `drmInit(voucher_paths)` and `drmInitAll()` methods |
+| `lua/cache_manager.lua` | JIT DRM retry loop — auto-extract key on `drm_key_stale` error |
+| `lua/virtual_library.lua` | Show DRM-specific status text |
+| `main.lua` | Add "Decrypt all DRM books" and "Refresh DRM keys" menu items |
 
 Full plan: see `REFERENCE/KFX_DRM_INTEGRATION.md`.
 
@@ -301,14 +328,81 @@ The plugin extends KOReader by monkey-patching core classes at runtime. Each `*_
 
 ---
 
+## Testing
+
+### Running Tests
+
+```sh
+# Lua tests (busted under luajit — matches KOReader's runtime)
+./scripts/test
+
+# Go tests
+go test ./...
+
+# Run a single spec file
+./scripts/test spec/virtual_library_spec.lua
+
+# Run with the system busted (lua5.5, for convenience)
+busted --lua=lua
+```
+
+**Always use `./scripts/test` for CI/validation** — KOReader runs LuaJIT on-device, so we test against it. The `scripts/test` wrapper sets `LUA_PATH`/`LUA_CPATH` so busted's modules are findable under luajit.
+
+### Test Structure
+
+Follows `REFERENCE/kobo.koplugin/spec/` patterns:
+
+```
+spec/
+├── helper.lua                    # Mock setup (loaded before every spec)
+│                                 # Provides: logger, util, json, lfs, device,
+│                                 # ui/uimanager, docsettings, datastorage, etc.
+├── virtual_library_spec.lua      # 48 tests
+├── cache_manager_spec.lua        # 16 tests
+├── library_index_spec.lua        #  9 tests
+├── helper_client_spec.lua        # 12 tests
+├── pattern_utils_spec.lua        # 15 tests
+├── session_flags_spec.lua        #  5 tests
+├── filesystem_ext_spec.lua       # 10 tests
+├── docsettings_ext_spec.lua      #  4 tests
+└── filechooser_ext_spec.lua      #  7 tests
+```
+
+### Writing New Specs
+
+1. Create `spec/<module_name>_spec.lua`
+2. `require("spec/helper")` in `setup()` — this loads all mocks
+3. Clear `package.loaded` for your module in `before_each()` to get fresh instances
+4. Use `resetAllMocks()` in `before_each()` to reset G_reader_settings and UIManager state
+5. Use `createIOOpenMocker()` for tests that need to control file I/O
+6. Follow the `describe`/`it`/`assert` patterns from existing specs
+
+### Key Mocking Conventions
+
+- **`spec/helper.lua`** pre-registers mocks via `package.preload` for all KOReader APIs
+- **`_G.G_reader_settings`** — global mock with `readSetting`/`saveSetting`/`isTrue`
+- **`createIOOpenMocker()`** — scoped `io.open` mocking for cache/file tests
+- **`libs/libkoreader-lfs`** — mock with `_setFileState`/`_setDirectoryContents` test helpers
+- **Never mock the module under test** — only mock its dependencies
+
+### When Adding New Lua Modules
+
+Every new `lua/*.lua` or `lua/lib/*.lua` module should have a corresponding spec. At minimum:
+- Initialization / constructor tests
+- Each public method with success and failure cases
+- Edge cases (nil inputs, empty strings, missing data)
+
+---
+
 ## Build & Deploy
 
 ```sh
 # Native build (for development/testing)
 go build ./cmd/kindle-helper
 
-# Run tests
-go test ./...
+# Run all tests
+./scripts/test          # Lua
+go test ./...           # Go
 
 # Cross-compile for Kindle ARM targets
 ./arm_build.sh
@@ -335,6 +429,9 @@ The `arm_build.sh` script:
 | `REFERENCE/kobo.koplugin/main.lua` | Plugin structure and menu registration pattern |
 | `REFERENCE/kobo.koplugin/src/` | Lua module patterns (virtual library, metadata, extensions) |
 | `REFERENCE/kobo.koplugin/src/virtual_library.lua` | Virtual library UI implementation reference |
+| `REFERENCE/kobo.koplugin/spec/` | Test patterns, mocking approach, spec structure reference |
+| `REFERENCE/GAPS.md` | Feature gap analysis vs kobo.koplugin |
+| `REFERENCE/COPYABILITY.md` | Which kobo modules can be copied and the upstream sync strategy |
 | `REFERENCE/koreader/` | When you need to understand KOReader internals |
 | `REFERENCE/DeDRM_tools/` | Python DRM removal reference (original algorithms) |
 | `REFERENCE/kindle_drm_classes/` | Decompiled Kindle Java DRM classes |
@@ -418,3 +515,5 @@ The project has 6 real books from a Kindle device. When comparing Go output agai
 - **KFX fixtures** — some tests need real KFX files not in the repo; they auto-skip if absent
 - **DRM books have two files** — the `.kfx` (DRMION content) and `*.sdr/assets/voucher` (decryption voucher)
 - **Cache invalidation** — cache is keyed on `source_mtime + source_size + converter_version`. Bumping `CONVERTER_VERSION` in `cache_manager.lua` forces re-conversion of all books
+- **Lua module paths** — KOReader adds the plugin directory to `package.path`, so `require("lua/cache_manager")` resolves to `plugins/kindle.koplugin/lua/cache_manager.lua`
+- **Shared modules from kobo.koplugin** — `lua/lib/pattern_utils.lua`, `lua/lib/session_flags.lua`, `lua/filesystem_ext.lua`, `lua/readerui_ext.lua`, `lua/pathchooser_ext.lua` are adapted from kobo. See `REFERENCE/COPYABILITY.md` for the sync strategy

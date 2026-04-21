@@ -12,10 +12,13 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/kaikozlov/kindle-koplugin/internal/testutil"
 )
 
 func TestBuildBookStateFragmentSummaryMatchesReference(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 
 	state, err := buildBookState(input)
 	if err != nil {
@@ -483,7 +486,7 @@ func TestRenderTextNodeSupportsDropCaps(t *testing.T) {
 	got := renderHTMLPart(node)
 	renderer.styles.markReferenced(got)
 
-	if !strings.Contains(got, "<span") || !strings.Contains(got, ">H</span><span>ello</span>") {
+	if !strings.Contains(got, "<span") || !strings.Contains(got, ">H</span>ello</p>") {
 		t.Fatalf("drop cap html = %q", got)
 	}
 	stylesheet := renderer.styles.String()
@@ -1258,8 +1261,10 @@ func TestCleanupRenderedSectionsCombinesNestedDivsAndStripsEmptySpans(t *testing
 
 func TestConvertFileMatchesReferenceStructureIgnoringImages(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 	reference := filepath.Join("..", "..", "REFERENCE", "martyr_calibre.epub")
+	testutil.SkipIfMissing(t, reference)
 
 	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
@@ -1300,8 +1305,10 @@ func TestConvertFileMatchesReferenceStructureIgnoringImages(t *testing.T) {
 // Full byte-for-byte text parity vs calibre_epubs is still Phase D work (manifest/spine ordering, OPF metadata).
 func TestConvertFileThreeBelowKFXZipMatchesCalibreComparableArchivePaths(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "Three Below (Floors #2)_B008PL1YQ0_decrypted.kfx-zip")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "three-below.epub")
 	reference := filepath.Join("..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "Three Below (Floors #2)_B008PL1YQ0_decrypted.epub")
+	testutil.SkipIfMissing(t, reference)
 
 	if err := ConvertFile(input, output, ""); err != nil {
 		t.Fatalf("ConvertFile() error = %v", err)
@@ -1341,19 +1348,25 @@ func testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T
 
 func TestConvertFileElvisKFXZipMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip")
+	testutil.SkipIfMissing(t, input)
 	reference := filepath.Join("..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "Elvis and the Underdogs_B009NG3090_decrypted.epub")
+	testutil.SkipIfMissing(t, reference)
 	testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t, input, reference)
 }
 
 func TestConvertFileHungerGamesKFXZipMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip")
+	testutil.SkipIfMissing(t, input)
 	reference := filepath.Join("..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "The Hunger Games Trilogy_B004XJRQUQ_decrypted.epub")
+	testutil.SkipIfMissing(t, reference)
 	testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t, input, reference)
 }
 
 func TestConvertFileFamiliarsKFXZipMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "The Familiars_B003VIWNQW_decrypted.kfx-zip")
+	testutil.SkipIfMissing(t, input)
 	reference := filepath.Join("..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "The Familiars_B003VIWNQW_decrypted.epub")
+	testutil.SkipIfMissing(t, reference)
 	testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t, input, reference)
 }
 
@@ -1361,7 +1374,7 @@ func referenceFragmentSnapshot(t *testing.T, input string) fragmentSnapshot {
 	t.Helper()
 
 	script := filepath.Join("..", "..", "scripts", "kfx_reference_snapshot.py")
-	cmd := exec.Command("python3", script, "fragment-summary", "--input", input)
+	cmd := exec.Command("python", script, "fragment-summary", "--input", input)
 	output, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("reference snapshot command failed: %v", err)

@@ -17,6 +17,8 @@ function VirtualLibrary:new(library_index)
         real_to_virtual = {},
         open_alias_to_virtual = {},
         virtual_to_open_alias = {},
+        -- Flag used by pathchooser_ext to bypass virtual library interception
+        _file_chooser_bypass_active = false,
     }
     setmetatable(instance, self)
     return instance
@@ -64,6 +66,19 @@ function VirtualLibrary:buildMappings(force)
 
     logger.info("KindlePlugin: built mappings for", #books, "books")
     return books
+end
+
+--- Checks if the virtual library should be active.
+--- Active when the enable_virtual_library setting is not explicitly disabled.
+--- @return boolean: True if virtual library is active.
+function VirtualLibrary:isActive()
+    return self.settings.enable_virtual_library ~= false
+end
+
+--- Alias for buildMappings, matching the interface expected by
+--- extensions copied from kobo.koplugin.
+function VirtualLibrary:buildPathMappings()
+    return self:buildMappings()
 end
 
 function VirtualLibrary:refresh(force)
@@ -208,12 +223,21 @@ function VirtualLibrary:getBookEntries(force)
 end
 
 function VirtualLibrary:createVirtualFolderEntry(parent_path)
-    return {
+    local entry = {
         text = self.VIRTUAL_LIBRARY_NAME .. "/",
         path = (parent_path or "") .. "/" .. self.VIRTUAL_LIBRARY_NAME,
         is_kindle_virtual_folder = true,
         bidi_wrap_func = BD.directory,
     }
+
+    -- Optional custom cover image (set via menu)
+    if self.settings
+        and self.settings.virtual_library_cover_path
+        and self.settings.virtual_library_cover_path ~= "" then
+        entry.pt_cover_path = self.settings.virtual_library_cover_path
+    end
+
+    return entry
 end
 
 function VirtualLibrary:resolveBookPath(book)

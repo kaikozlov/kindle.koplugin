@@ -1,0 +1,7 @@
+#!/bin/sh
+# Run busted under luajit with correct luarocks 5.1 paths
+# KOReader runs LuaJIT on-device, so we test against it.
+exec env \
+  LUA_PATH="$HOME/.luarocks/share/lua/5.1/?.lua;$HOME/.luarocks/share/lua/5.1/?/init.lua;;" \
+  LUA_CPATH="$HOME/.luarocks/lib/lua/5.1/?.so;;" \
+  luajit "$HOME/.luarocks/lib/luarocks/rocks-5.1/busted/2.3.0-1/bin/busted" "$@"

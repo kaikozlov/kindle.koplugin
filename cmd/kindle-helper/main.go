@@ -23,7 +23,7 @@ const version = 1
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "usage: kindle-helper <scan|convert|drm-init|decrypt> [flags]\n")
+		fmt.Fprintf(os.Stderr, "usage: kindle-helper <scan|convert|cover|drm-init|decrypt|position> [flags]\n")
 		os.Exit(2)
 	}
 
@@ -32,10 +32,14 @@ func main() {
 		cmdScan(os.Args[2:])
 	case "convert":
 		cmdConvert(os.Args[2:])
+	case "cover":
+		cmdCover(os.Args[2:])
 	case "drm-init":
 		cmdDrmInit(os.Args[2:])
 	case "decrypt":
 		cmdDecrypt(os.Args[2:])
+	case "position":
+		cmdPosition(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(2)
@@ -280,4 +284,40 @@ func getPluginDir() string {
 		return "."
 	}
 	return filepath.Dir(exe)
+}
+
+func cmdCover(args []string) {
+	fs := flag.NewFlagSet("cover", flag.ExitOnError)
+	sdrDir := fs.String("sdr-dir", "", "path to the .sdr sidecar directory")
+	output := fs.String("output", "", "output JPEG file path (writes to stdout if empty)")
+	fs.Parse(args)
+
+	if *sdrDir == "" {
+		fmt.Fprintf(os.Stderr, "cover: --sdr-dir is required\n")
+		os.Exit(2)
+	}
+
+	jpeg := kfx.ExtractCoverJPEG(*sdrDir)
+	if jpeg == nil {
+		writeJSON(jsonout.CoverResult{
+			Version: version,
+			OK:      false,
+			Message: "no cover image found in metadata.kfx",
+		})
+		return
+	}
+
+	if *output != "" {
+		if err := os.WriteFile(*output, jpeg, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "cover: failed to write output: %v\n", err)
+			os.Exit(1)
+		}
+		writeJSON(jsonout.CoverResult{
+			Version: version,
+			OK:      true,
+			Size:    len(jpeg),
+		})
+	} else {
+		os.Stdout.Write(jpeg)
+	}
 }

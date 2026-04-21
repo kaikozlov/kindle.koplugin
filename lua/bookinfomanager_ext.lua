@@ -217,6 +217,11 @@ function BookInfoManagerExt:buildBookInfoFromScanAndEpub(virtual_filepath, book,
                 end
             end
 
+            -- If EPUB didn't have a cover, try sidecar metadata.kfx
+            if get_cover and not bookinfo.has_cover and book.source_path then
+                self:tryExtractCoverFromSidecar(bookinfo, book)
+            end
+
             pcall(function() document:close() end)
             return bookinfo
         else
@@ -225,8 +230,48 @@ function BookInfoManagerExt:buildBookInfoFromScanAndEpub(virtual_filepath, book,
     end
 
     -- No cached EPUB or failed to open — fall back to scan metadata only.
-    -- No cover available without the EPUB.
+    -- Try extracting cover from the sidecar metadata.kfx (unencrypted cover JPEG)
+    if get_cover and not bookinfo.has_cover and book.source_path then
+        self:tryExtractCoverFromSidecar(bookinfo, book)
+    end
+
     return bookinfo
+end
+
+--- Try to extract cover from sidecar metadata.kfx via Go helper.
+--- This works even for DRM-protected books (when metadata.kfx is unencrypted CONT).
+--- @param bookinfo table: BookInfo table to update in-place.
+--- @param book table: Book entry with source_path and sidecar_path.
+function BookInfoManagerExt:tryExtractCoverFromSidecar(bookinfo, book)
+    local RenderImage = require("ui/renderimage")
+
+    local sidecar_dir = book.sidecar_path
+    if not sidecar_dir or sidecar_dir == "" then
+        -- Derive sidecar path from source path
+        sidecar_dir = book.source_path:gsub("%.%w+$", "") .. ".sdr"
+    end
+
+    local cover_path = self.cache_manager.helper_client:extractCover(sidecar_dir, book.id)
+    if not cover_path then
+        return
+    end
+
+    local attr = lfs.attributes(cover_path, "mode")
+    if attr ~= "file" then
+        return
+    end
+
+    local cover_bb = RenderImage:renderImageFile(cover_path, false)
+    if cover_bb then
+        bookinfo.has_cover = "Y"
+        bookinfo.cover_bb = cover_bb
+        bookinfo.cover_w = cover_bb:getWidth()
+        bookinfo.cover_h = cover_bb:getHeight()
+        bookinfo.cover_sizetag = string.format("%dx%d", bookinfo.cover_w, bookinfo.cover_h)
+        bookinfo.cover_fetched = "Y"
+        logger.info("KindlePlugin: extracted cover from sidecar:", cover_path,
+            bookinfo.cover_w, "x", bookinfo.cover_h)
+    end
 end
 
 --- Open the cached EPUB with crengine and extract metadata + cover.

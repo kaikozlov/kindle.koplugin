@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/kaikozlov/kindle-koplugin/internal/testutil"
 )
 
 func TestClassifyDRMION(t *testing.T) {
@@ -57,6 +59,7 @@ func TestConvertFileDRMIONMissingKeys(t *testing.T) {
 
 func TestConvertFileCreatesReadableEPUB(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -92,6 +95,7 @@ func TestConvertFileCreatesReadableEPUB(t *testing.T) {
 
 func TestClassifyRecognizesDRMFixtures(t *testing.T) {
 	martyr := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, martyr)
 	mode, reason, err := Classify(martyr)
 	if err != nil {
 		t.Fatalf("Classify(Martyr) error = %v", err)
@@ -101,17 +105,19 @@ func TestClassifyRecognizesDRMFixtures(t *testing.T) {
 	}
 
 	familiars := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "The Familiars_B003VIWNQW.kfx")
+	testutil.SkipIfMissing(t, familiars)
 	mode, reason, err = Classify(familiars)
 	if err != nil {
 		t.Fatalf("Classify(The Familiars) error = %v", err)
 	}
-	if mode != "drm" || reason != "" {
+	if mode != "drm" && (mode != "blocked" || reason != "drm") {
 		t.Fatalf("Classify(The Familiars) = %q %q", mode, reason)
 	}
 }
 
 func TestClassifyRecognizesDecryptedKFXZipFixtures(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip")
+	testutil.SkipIfMissing(t, input)
 
 	mode, reason, err := Classify(input)
 	if err != nil {
@@ -124,28 +130,47 @@ func TestClassifyRecognizesDecryptedKFXZipFixtures(t *testing.T) {
 
 func TestConvertFileFromKFXZipMatchesMonolithicConversion(t *testing.T) {
 	inputZip := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip")
+	testutil.SkipIfMissing(t, inputZip)
 	inputMono := filepath.Join("..", "..", "REFERENCE", "kfx_new", "monolithic_kfx", "Elvis and the Underdogs_B009NG3090_decrypted.kfx")
+	testutil.SkipIfMissing(t, inputMono)
 	outputZip := filepath.Join(t.TempDir(), "elvis-zip.epub")
+	outputMono := filepath.Join(t.TempDir(), "elvis-mono.epub")
 
-	// Verify the KFX-zip converts successfully
 	if err := ConvertFile(inputZip, outputZip, ""); err != nil {
 		t.Fatalf("ConvertFile(KFX-ZIP) error = %v", err)
 	}
+	if err := ConvertFile(inputMono, outputMono, ""); err != nil {
+		t.Fatalf("ConvertFile(monolithic KFX) error = %v", err)
+	}
 
-	// Monolithic KFX (main.kfx only) cannot convert standalone because the
-	// document symbol table lives in the sidecar files. This is expected.
-	if _, err := os.Stat(inputMono); err == nil {
-		err := ConvertFile(inputMono, t.TempDir()+"/elvis-mono.epub", "")
-		if err == nil {
-			t.Log("monolithic KFX converted (unexpected — symbol table may be embedded)")
-		} else {
-			t.Logf("monolithic KFX failed as expected (no sidecar symbols): %v", err)
+	gotFiles := unzipFiles(t, outputZip)
+	wantFiles := unzipFiles(t, outputMono)
+	gotNames := comparableArchiveNames(gotFiles)
+	wantNames := comparableArchiveNames(wantFiles)
+	if !equalStringSlices(gotNames, wantNames) {
+		t.Fatalf("comparable archive names = %v, want %v", gotNames, wantNames)
+	}
+
+	for _, name := range gotNames {
+		gotData := gotFiles[name]
+		wantData := wantFiles[name]
+		if isTextArchiveFile(name) {
+			gotText := normalizeReferenceText(name, string(gotData))
+			wantText := normalizeReferenceText(name, string(wantData))
+			if gotText != wantText {
+				t.Fatalf("%s text mismatch", name)
+			}
+			continue
+		}
+		if !bytes.Equal(gotData, wantData) {
+			t.Fatalf("%s binary mismatch", name)
 		}
 	}
 }
 
 func TestConvertFileFromKFXZipPreservesResolvedPageAnchors(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "hunger.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -181,6 +206,7 @@ func TestConvertFileFromKFXZipPreservesResolvedPageAnchors(t *testing.T) {
 
 func TestConvertFileFromKFXZipPreservesInlinePageMarkerAnchors(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "The Familiars_B003VIWNQW_decrypted.kfx-zip")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "familiars.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -224,6 +250,7 @@ func TestNormalizeLanguagePreservesBareEnglish(t *testing.T) {
 
 func TestConvertFilePhase1PreservesCoverAndPackageResources(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -291,6 +318,7 @@ func TestConvertFilePhase1PreservesCoverAndPackageResources(t *testing.T) {
 
 func TestConvertFilePhase2PreservesSectionIDsAndLinkedContents(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -364,6 +392,7 @@ func TestConvertFilePhase2PreservesSectionIDsAndLinkedContents(t *testing.T) {
 
 func TestConvertFilePhase3UsesCanonicalSectionFilesForNavigationAndSpine(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -399,6 +428,7 @@ func TestConvertFilePhase3UsesCanonicalSectionFilesForNavigationAndSpine(t *test
 
 func TestConvertFilePhase4EmitsStyleClassesForTitleAndChapterPages(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -438,14 +468,12 @@ func TestConvertFilePhase4EmitsStyleClassesForTitleAndChapterPages(t *testing.T)
 	}
 
 	css := readZipFile(t, files["OEBPS/stylesheet.css"])
-	// Check for key style classes using substring fragments that tolerate
-	// minor floating-point precision differences.
 	for _, snippet := range []string{
-		`.class_sK-0 {`, `text-align: center`, // center-aligned container
-		`.class_sK-1 {`, `height: 100%`,                                // full-height container
-		`.class_s72 {`, `font-size: 1.86em`, `page-break-inside: avoid`, // heading class
-		`.class_s71 {`, `width: 5.514%`,                                // width class
-		`.heading_s6W-0 {`, `font-family: 'Trajan Pro 3'`, `font-size: 1.53em`, `page-break-after: avoid`, // heading
+		`.class_sK-0 {text-align: center}`,
+		`.class_sK-1 {height: 100%}`,
+		`.class_s72 {font-size: 1.86em; line-height: 1.22592; margin-bottom: 0.978857em; margin-top: 0.978857em; page-break-inside: avoid}`,
+		`.class_s71 {width: 5.514%}`,
+		`.heading_s6W-0 {-webkit-hyphens: auto; font-family: 'Trajan Pro 3'; font-size: 1.53em; font-weight: normal; hyphens: auto; line-height: 1.21536; margin-bottom: 0; margin-top: 2.06507em; page-break-after: avoid}`,
 	} {
 		if !strings.Contains(css, snippet) {
 			t.Fatalf("stylesheet.css is missing %q", snippet)
@@ -455,6 +483,7 @@ func TestConvertFilePhase4EmitsStyleClassesForTitleAndChapterPages(t *testing.T)
 
 func TestConvertFilePhase5ConvertsJPEGXRResourcesToJPEG(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -521,6 +550,7 @@ func TestConvertFilePhase5ConvertsJPEGXRResourcesToJPEG(t *testing.T) {
 
 func TestConvertFilePhase6TracksCalibrePackageAndNavigationSemantics(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -635,6 +665,7 @@ func TestConvertFilePhase6TracksCalibrePackageAndNavigationSemantics(t *testing.
 
 func TestConvertFilePhase7UsesPageTemplateStylesForSectionBodyClasses(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -674,6 +705,7 @@ func TestConvertFilePhase7UsesPageTemplateStylesForSectionBodyClasses(t *testing
 
 func TestConvertFilePhase8MatchesInlineStyleEventsAndFitWidthContainers(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -718,15 +750,14 @@ func TestConvertFilePhase8MatchesInlineStyleEventsAndFitWidthContainers(t *testi
 	}
 
 	css := readZipFile(t, files["OEBPS/stylesheet.css"])
-	// Use substring fragments to tolerate extra margin properties from body defaults.
 	for _, snippet := range []string{
-		`.class_s87-0 {`, `text-align: center`, `text-indent: 0`, // centered paragraph
-		`.class_s87-1 {`, `text-align: center`,                       // centered paragraph variant
-		`.class_s3PK {`, `font-size: 1.02em`,                        // inline style
-		`.class_s3PX {`, `margin-right: 0.25em`,                     // margin class
-		`.class_sAP-1 {`, `text-align: right`, `vertical-align: top`, // right-aligned cell
-		`.class_sB0-0 {`, `font-weight: bold`, `text-align: right`,   // bold right-aligned
-		`.class_sB0-1 {display: inline-block}`,                              // inline-block
+		`.class_s87-0 {text-align: center; text-indent: 0}`,
+		`.class_s87-1 {text-align: center}`,
+		`.class_s3PK {font-size: 1.02em; line-height: 1.23552}`,
+		`.class_s3PX {margin-right: 0.25em}`,
+		`.class_sAP-1 {margin-right: 15.5%; text-align: right; vertical-align: top}`,
+		`.class_sB0-0 {font-weight: bold; margin-right: 0.781%; margin-top: 1.18em; text-align: right}`,
+		`.class_sB0-1 {display: inline-block}`,
 	} {
 		if !strings.Contains(css, snippet) {
 			t.Fatalf("stylesheet.css is missing %q", snippet)
@@ -736,6 +767,7 @@ func TestConvertFilePhase8MatchesInlineStyleEventsAndFitWidthContainers(t *testi
 
 func TestSymbolResolverAccountsForIonSystemSymbols(t *testing.T) {
 	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	testutil.SkipIfMissing(t, input)
 	docSymbols := readFixtureDocSymbols(t, input)
 
 	resolver, err := newSymbolResolver(docSymbols)

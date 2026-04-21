@@ -125,6 +125,24 @@ function HelperClient:convert(input_path, output_path)
     return result, err
 end
 
+function HelperClient:position(yjr_path, old_percent, new_percent)
+    local result, err = self:_run({
+        self:getBinaryPath(),
+        "position",
+        "--yjr", yjr_path,
+        "--old-percent", string.format("%.4f", old_percent),
+        "--new-percent", string.format("%.4f", new_percent),
+    })
+    if result then
+        if result.ok then
+            logger.info("KindlePlugin: position update succeeded, erl:", result.erl)
+        else
+            logger.warn("KindlePlugin: position update failed:", result.message)
+        end
+    end
+    return result, err
+end
+
 function HelperClient:drmInit()
     local root = self.settings.documents_root or "/mnt/us/documents"
     local cache_dir = self.settings.cache_dir or ""
@@ -147,6 +165,51 @@ function HelperClient:drmInit()
         logger.warn("KindlePlugin: drm-init failed:", err)
     end
     return result, err
+end
+
+--- Extracts cover JPEG from a book's .sdr/assets/metadata.kfx sidecar.
+--- Caches the result in the cache directory as <safe_id>_cover.jpg.
+--- @param sidecar_dir string: Path to the .sdr directory.
+--- @param book_id string: Book ID for cache key.
+--- @return string|nil: Path to cached cover JPEG, or nil on failure.
+function HelperClient:extractCover(sidecar_dir, book_id)
+    if not sidecar_dir or sidecar_dir == "" then
+        return nil
+    end
+
+    local cache_dir = self.settings.cache_dir or "/tmp/kindle.koplugin.cache"
+    local safe_id = (book_id or "unknown"):gsub("[^%w%.%-_]", "_")
+    local cover_path = cache_dir .. "/" .. safe_id .. "_cover.jpg"
+
+    -- Check cache first
+    local f = io.open(cover_path, "rb")
+    if f then
+        f:close()
+        return cover_path
+    end
+
+    -- Ensure cache dir exists
+    util.shell_escape({ "mkdir", "-p", cache_dir })
+    os.execute(util.shell_escape({ "mkdir", "-p", cache_dir }))
+
+    -- Run the cover extraction
+    local result, err = self:_run({
+        self:getBinaryPath(),
+        "cover",
+        "--sdr-dir",
+        sidecar_dir,
+        "--output",
+        cover_path,
+    })
+
+    if result and result.ok then
+        logger.info("KindlePlugin: cover extracted:", cover_path, "size:", result.size)
+        return cover_path
+    end
+
+    logger.dbg("KindlePlugin: no cover in sidecar:", sidecar_dir,
+        result and result.message or err or "unknown")
+    return nil
 end
 
 return HelperClient

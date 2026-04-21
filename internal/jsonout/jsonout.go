@@ -36,3 +36,10 @@ type DrmInitResult struct {
 	KeysFound  int    `json:"keys_found"`
 	Message    string `json:"message,omitempty"`
 }
+
+type CoverResult struct {
+	Version int    `json:"version"`
+	OK      bool   `json:"ok"`
+	Size    int    `json:"size,omitempty"`
+	Message string `json:"message,omitempty"`
+}
