@@ -262,6 +262,11 @@ func (r *storylineRenderer) setDynamicStyle(element *htmlElement, baseName strin
 func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 	node, ok := asMap(raw)
 	if !ok {
+		// IonString entries in $146 lists create text nodes.
+		// Python process_content (yj_to_epub_content.py:397-399) wraps them in <span>.
+		if text, ok := asString(raw); ok && text != "" {
+			return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
+		}
 		return nil
 	}
 	node, ok = r.prepareRenderableNode(node)
