@@ -520,6 +520,10 @@ func sectionXHTML(book Book, section Section) string {
 	var out strings.Builder
 	out.WriteString(xmlDecl)
 	out.WriteString(`<html xmlns="http://www.w3.org/1999/xhtml"`)
+	// Add xmlns:epub when any element uses epub:type (Python epub_output.py line ~500)
+	if strings.Contains(section.BodyHTML, `epub:type="`) || section.Properties == "epub" {
+		out.WriteString(` xmlns:epub="http://www.idpf.org/2007/ops"`)
+	}
 	if pageLanguage != "" {
 		out.WriteString(` xml:lang="` + xmlEscape(pageLanguage) + `"`)
 	}

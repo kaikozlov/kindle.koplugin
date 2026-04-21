@@ -93,7 +93,9 @@ Go currently has the `<div>` → `<p>` conversion at line 1749 but is missing th
 ---
 
 ### Step 2: Add `xml:lang` attribute to body and html elements
-**Status**: Pending  
+**Status**: ✅ Committed `a5103d9`
+**Result**: HR c540 fixed (50/1), SR +1 (16/32). Also added epub:type infrastructure.
+**What was done**: Port Python `fixup_styles_and_classes` partition of `-kfx-attrib-*` CSS properties → element attributes. Normalize language tags via `fix_language`.  
 **Python reference**: `yj_to_epub_properties.py` lines 1604-1650 (`update_default_font_and_language`)  
 **Estimated impact**: Fixes 3+ files across HR, 1984, SunriseReaping
 
