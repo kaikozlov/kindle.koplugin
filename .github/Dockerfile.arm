@@ -96,7 +96,8 @@ RUN cp /lib/ld-linux-armhf.so.3 /build/nuitka-out/kindle_helper.dist/ld-linux-ar
                libutil.so.1 libresolv.so.2 libnss_dns.so.2 libnss_files.so.2 \
                libz.so.1 libstdc++.so.6 libgcc_s.so.1 \
                libjpeg.so.62 libpng16.so.16 libtiff.so.6 libwebp.so.7 \
-               liblcms2.so.2 libopenjp2.so.7 libfreetype.so.6; do \
+               liblcms2.so.2 libopenjp2.so.7 libfreetype.so.6 \
+               libcrypto.so.3 libssl.so.3; do \
         src=$(find /lib /usr/lib -name "$lib" 2>/dev/null | head -1); \
         if [ -n "$src" ]; then \
             cp -L "$src" /build/nuitka-out/kindle_helper.dist/"$lib"; \
@@ -192,7 +193,13 @@ RUN mkdir -p /build/output && \
     cp /build/kfxlib/calibre-plugin-modules/typing_extensions.py /build/output/dist/calibre-plugin-modules/ && \
     find /build/output/dist/calibre-plugin-modules -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
     cp -r /usr/local/lib/python3.11/site-packages/bs4 /build/output/dist/ && \
-    find /build/output/dist/bs4 -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    find /build/output/dist/bs4 -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+    echo "=== Stripping unused modules ===" && \
+    rm -rf /build/output/dist/cryptography && \
+    rm -f /build/output/dist/libcrypto.so.3 /build/output/dist/libssl.so.3 && \
+    rm -f /build/output/dist/_cffi_backend.so && \
+    rm -f /build/output/dist/lxml/objectify.so /build/output/dist/lxml/sax.so && \
+    rm -f /build/output/dist/_tkinter.so /build/output/dist/PIL/_imagingtk.so
 
 # Show what we built
 RUN echo "=== Output structure ===" && \
