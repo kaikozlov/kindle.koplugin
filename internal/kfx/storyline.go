@@ -867,7 +867,69 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 		if eventLen <= 0 {
 			continue
 		}
+		anchorID, _ := asString(annMap["$179"])
 		styleID, _ := asString(annMap["$157"])
+
+		// Phase 1: Handle non-span children (img, svg, div wrappers with img children) for $179 link wrapping.
+		// Python: if "$179" in style_event: event_elem = replace_element_with_container(event_elem, "a")
+		// Python's locate_offset traverses the element tree and can find <img> nested inside
+		// wrapper <div>s. Each img/svg counts as 1 character in the offset map.
+		if anchorID != "" {
+			href := r.anchorHref(anchorID)
+			if href != "" {
+				for _, tr := range ranges {
+					elem := container.Children[tr.childIdx].(*htmlElement)
+					if elem.Tag == "span" {
+						continue
+					}
+					annEnd := eventStart + eventLen
+					trEnd := tr.startOffset + tr.length
+					if eventStart >= trEnd || annEnd <= tr.startOffset {
+						continue
+					}
+					// Find the actual target element.
+					// If the direct child is a <div> wrapping an <img>, Python's locate_offset
+					// would traverse into the div and find the <img> at the same offset.
+					target := elem
+					if elem.Tag == "div" {
+						if img := findFirstDescendantByTag(elem, "img"); img != nil {
+							target = img
+						} else if svg := findFirstDescendantByTag(elem, "svg"); svg != nil {
+							target = svg
+						}
+					}
+					if target != elem {
+						// Target is nested: find target's parent and replace target with <a><target/></a>.
+						var findParent func(*htmlElement) *htmlElement
+						findParent = func(e *htmlElement) *htmlElement {
+							for _, c := range e.Children {
+								if ch, ok := c.(*htmlElement); ok {
+									if ch == target {
+										return e
+									}
+									if p := findParent(ch); p != nil {
+										return p
+									}
+								}
+							}
+							return nil
+						}
+						if p := findParent(elem); p != nil {
+							wrapChildInLink(p, target, href)
+						}
+					} else {
+						container.Children[tr.childIdx] = &htmlElement{
+							Tag:      "a",
+							Attrs:    map[string]string{"href": href},
+							Children: []htmlPart{elem},
+						}
+					}
+					break
+				}
+			}
+		}
+
+		// Phase 2: Handle span children for style application.
 		if styleID == "" {
 			continue
 		}
@@ -936,6 +998,36 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 			// Replace the single span child with the split children
 			container.Children = append(container.Children[:tr.childIdx], append(newChildren, container.Children[tr.childIdx+1:]...)...)
 			break // annotation applied, move to next
+		}
+	}
+}
+
+// findFirstDescendantByTag finds the first descendant element with the given tag.
+func findFirstDescendantByTag(elem *htmlElement, tag string) *htmlElement {
+	for _, child := range elem.Children {
+		if ch, ok := child.(*htmlElement); ok {
+			if ch.Tag == tag {
+				return ch
+			}
+			if found := findFirstDescendantByTag(ch, tag); found != nil {
+				return found
+			}
+		}
+	}
+	return nil
+}
+
+// wrapChildInLink replaces a child element inside its parent's children list
+// with <a href="..."><child/></a>.
+func wrapChildInLink(parent *htmlElement, target *htmlElement, href string) {
+	for i, child := range parent.Children {
+		if ch, ok := child.(*htmlElement); ok && ch == target {
+			parent.Children[i] = &htmlElement{
+				Tag:      "a",
+				Attrs:    map[string]string{"href": href},
+				Children: []htmlPart{target},
+			}
+			return
 		}
 	}
 }
