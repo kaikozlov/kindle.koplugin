@@ -40,6 +40,8 @@ func main() {
 		cmdDecrypt(os.Args[2:])
 	case "position":
 		cmdPosition(os.Args[2:])
+	case "trace":
+		cmdTrace(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(2)
@@ -320,4 +322,40 @@ func cmdCover(args []string) {
 	} else {
 		os.Stdout.Write(jpeg)
 	}
+}
+
+func cmdTrace(args []string) {
+	fs := flag.NewFlagSet("trace", flag.ExitOnError)
+	input := fs.String("input", "", "input KFX file path")
+	output := fs.String("output", "", "output EPUB file path (optional)")
+	tracePath := fs.String("trace", "", "output trace JSON file path")
+	fs.Parse(args)
+
+	if *input == "" {
+		fmt.Fprintf(os.Stderr, "trace: --input is required\n")
+		os.Exit(2)
+	}
+	if *tracePath == "" {
+		fmt.Fprintf(os.Stderr, "trace: --trace is required\n")
+		os.Exit(2)
+	}
+
+	if *output == "" {
+		tmp, err := os.CreateTemp("", "kfx-trace-*.epub")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "trace: %v\n", err)
+			os.Exit(1)
+		}
+		*output = tmp.Name()
+		tmp.Close()
+		defer os.Remove(*output)
+	}
+
+	err := kfx.ConvertFileWithTrace(*input, *output, *tracePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "trace: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "Trace written to %s\n", *tracePath)
 }

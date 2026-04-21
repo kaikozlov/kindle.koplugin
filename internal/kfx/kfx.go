@@ -252,6 +252,49 @@ func ConvertFile(inputPath, outputPath string, cacheDir string) error {
 	})
 }
 
+func ConvertFileWithTrace(inputPath string, outputPath string, tracePath string) error {
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		return err
+	}
+
+	// Handle DRMION same as ConvertFile
+	if bytes.HasPrefix(data, drmionSignature) {
+		return fmt.Errorf("trace mode does not support DRMION files; use decrypted KFX-zip instead")
+	}
+
+	state, err := buildBookState(inputPath)
+	if err != nil {
+		return err
+	}
+	trace := newTraceWriter(inputPath)
+	book, err := renderBookState(state, trace)
+	if err != nil {
+		return err
+	}
+	if err := trace.writeToFile(tracePath); err != nil {
+		return fmt.Errorf("write trace: %w", err)
+	}
+	return epub.Write(outputPath, epub.Book{
+		Identifier:              book.Identifier,
+		Title:                   book.Title,
+		Language:                book.Language,
+		Authors:                 book.Authors,
+		Published:               book.Published,
+		Description:             book.Description,
+		Publisher:               book.Publisher,
+		OverrideKindleFonts:     book.OverrideKindleFonts,
+		CoverImageHref:          book.CoverImageHref,
+		Stylesheet:              book.Stylesheet,
+		Sections:                book.Sections,
+		Resources:               book.Resources,
+		Navigation:              book.Navigation,
+		Guide:                   book.Guide,
+		PageList:                book.PageList,
+		GenerateEpub2Compatible: true,
+	})
+}
+
 func decodeKFX(path string) (*decodedBook, error) {
 	state, err := buildBookState(path)
 	if err != nil {
@@ -260,11 +303,16 @@ func decodeKFX(path string) (*decodedBook, error) {
 	if os.Getenv("KFX_DEBUG") != "" {
 		fmt.Fprintf(os.Stderr, "docSymbols length=%d first=% x\n", len(state.Source.DocSymbols), state.Source.DocSymbols[:minInt(16, len(state.Source.DocSymbols))])
 	}
-	return renderBookState(state)
+	return renderBookState(state, nil)
 }
 
-// convertFromCONTData takes raw CONT KFX data and converts it to EPUB.
+// convertFromDRMIONData takes raw CONT KFX data and converts it to EPUB.
 // This is used after DRMION decryption produces a valid CONT container.
+// DecodeKFX decodes a KFX file and returns the decoded book.
+func DecodeKFX(path string) (*decodedBook, error) {
+	return decodeKFX(path)
+}
+
 func convertFromDRMIONData(contData []byte, outputPath string, originalPath string, pageKey []byte) error {
 	if !bytes.HasPrefix(contData, contSignature) {
 		return &UnsupportedError{Message: "decrypted data is not a valid CONT KFX container"}
@@ -353,7 +401,7 @@ func convertFromDRMIONData(contData []byte, outputPath string, originalPath stri
 		return err
 	}
 
-	book, err := renderBookState(state)
+	book, err := renderBookState(state, nil)
 	if err != nil {
 		return err
 	}
@@ -392,7 +440,7 @@ func convertFromCONTData(contData []byte, outputPath string) error {
 		return err
 	}
 
-	book, err := renderBookState(state)
+	book, err := renderBookState(state, nil)
 	if err != nil {
 		return err
 	}

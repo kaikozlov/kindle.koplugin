@@ -8,7 +8,7 @@ import (
 	"github.com/kaikozlov/kindle-koplugin/internal/epub"
 )
 
-func renderBookState(state *bookState) (*decodedBook, error) {
+func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error) {
 	book := state.Book
 	contentFragments := state.Fragments.ContentFragments
 	rubyGroups := state.Fragments.RubyGroups
@@ -28,17 +28,29 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	symFmt := state.BookSymbolFormat
 
 	fontFixer := newFontNameFixer()
-	// Register @font-face font names first (Python: process_fonts runs before process_document_data).
-	// This ensures font names like "FreeFontSerif" are registered with proper case before
-	// setDefaultFontFamily resolves "default" → the document's default font family.
 	fontFixer.registerFontFamilies(fontFragments)
 	fontFixer.setDefaultFontFamily(book.DefaultFontFamily)
 	currentFontFixer = fontFixer
 	defer func() {
 		currentFontFixer = nil
 	}()
+
+	// Stage: organize_fragments + book_symbol_format
+	if trace != nil {
+		trace.addStage("organize_fragments", captureOrganizeFragments(state))
+		trace.addStage("book_symbol_format", captureBookSymbolFormat(state))
+	}
+
 	book.Resources, book.CoverImageHref, book.Stylesheet, book.ResourceHrefByID = buildResources(book, resourceFragments, fontFragments, rawFragments, rawBlobOrder, symFmt)
 	book.Language = inferBookLanguage(book.Language, contentFragments, storylines, styleFragments)
+
+	// Stage: metadata / document_data / content_features / fonts
+	if trace != nil {
+		trace.addStage("content_features", captureContentFeatures(book))
+		trace.addStage("fonts", captureFonts(book))
+		trace.addStage("document_data", captureDocumentData(book))
+		trace.addStage("metadata", captureMetadata(book))
+	}
 
 	positionToSectionID := map[int]string{}
 	for positionID, sectionID := range positionAliases {
@@ -77,6 +89,10 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 
 	navState := processNavigation(navRoots, navContainers)
 	selectedNav := navState.toc
+
+	// Stage: navigation (capture after processNavigation, before process_reading_order)
+	// Note: we capture nav structure here; the hrefs are set later after anchor resolution.
+	// For a complete trace of final navigation hrefs, see the trace point after fixupAnchors.
 	navTitles := map[string]string{}
 	flattenNavigationTitles(selectedNav, positionToSectionID, navTitles)
 	directAnchorURI := map[string]string{}
@@ -159,6 +175,11 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 
 	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, &renderer, navTitles, symFmt)
 	cleanupRenderedSections(book.RenderedSections)
+
+	// Stage: reading_order (capture rendered section HTML after processReadingOrder)
+	if trace != nil {
+		trace.addStage("reading_order", captureReadingOrder(book.RenderedSections))
+	}
 	attachSectionAliasAnchors(book.RenderedSections, &renderer)
 	resolvedAnchorURI := resolveRenderedAnchorURIs(book.RenderedSections, &renderer)
 	fixupAnchorsAndHrefs(book.RenderedSections, resolvedAnchorURI)
@@ -169,6 +190,11 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	fixupStylesAndClasses(book, renderer.styles, fontFamilyAddedByDefaults, resolvedDefaultFont)
 	createCSSFiles(book, renderer.styles)
 	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
+
+	// Stage: stylesheet (capture CSS after createCSSFiles)
+	if trace != nil {
+		trace.addStage("stylesheet", captureStylesheet(book.Stylesheet))
+	}
 
 	targetHref := func(target navTarget) string {
 		if target.PositionID == 0 {
@@ -209,6 +235,12 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	book.PageList = pagesToEPUB(navState.pages, targetHref)
 	prepareBookParts(book)
 	reportMissingPositions(navState.positionAnchors)
+
+	// Stage: navigation (final — with resolved hrefs)
+	// Stage: final_sections (after prepareBookParts, before materialize)
+	if trace != nil {
+		trace.addStage("navigation", captureNavigation(book.Navigation, book.Guide, book.PageList))
+	}
 	usedAnchors := make(map[string]bool, len(resolvedAnchorURI))
 	for name, href := range resolvedAnchorURI {
 		if href != "" {
@@ -217,6 +249,11 @@ func renderBookState(state *bookState) (*decodedBook, error) {
 	}
 	reportDuplicateAnchors(navState.anchorSites, usedAnchors)
 	book.Sections = materializeRenderedSections(book.RenderedSections)
+
+	// Stage: final_sections
+	if trace != nil {
+		trace.addStage("final_sections", captureFinalSections(book.Sections))
+	}
 	applyCoverSVGPromotion(book, resolvedDefaultFont)
 	pruneUnusedResources(book)
 	book.Stylesheet = pruneUnusedStylesheetRules(book.Stylesheet, collectReferencedClasses(book))
