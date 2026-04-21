@@ -377,7 +377,7 @@ def cmd_convert(args):
         from kfxlib import YJ_Book
 
         book = YJ_Book(convert_path)
-        epub_data = book.convert_to_epub(epub2_desired=True)
+        epub_data = book.convert_to_epub(epub2_desired=False)
 
         # Write output
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
