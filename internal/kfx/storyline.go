@@ -833,6 +833,14 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 				if text != "" {
 					cell.Children = append(cell.Children, r.applyAnnotations(text, childNode)...)
 				}
+				// When the merged child has its own position ID with anchors,
+				// promote those anchors to the <td>. In Python, these anchors
+				// end up on the <td> after simplify_styles and beautify_html.
+				if childPosID, _ := asInt(childNode["$155"]); childPosID != 0 {
+					if len(r.positionAnchors[childPosID]) > 0 {
+						r.applyPositionAnchors(cell, childPosID, false)
+					}
+				}
 				continue
 			}
 			// No merge: render child as full node. For a $269 with $145,
