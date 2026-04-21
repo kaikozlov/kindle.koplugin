@@ -98,14 +98,21 @@ func locateOffsetIn(elem *htmlElement, offset int) (*htmlElement, bool) {
 			offset -= length
 		case *htmlElement:
 			if offset == 0 {
-				// Port of Python locate_offset_in (yj_to_epub_content.py:1600-1601):
-				// When offset is 0, return the element directly. However, Python processes
-				// position anchors BEFORE annotations, so the element is always a raw text
-				// span. Go processes annotations first, so we may find wrapper spans here.
-				// If this is a wrapper span (no attrs) containing only text, split it to
-				// create an empty span for the page marker, matching Python's zero_len split.
+				// Port of Python locate_offset_in (yj_to_epub_content.py:1588-1589):
+				// When offset is 0, return the element directly.
+				// However, Python processes position anchors BEFORE annotations/style events,
+				// so the element is always a raw text span. Go processes style events first,
+				// so we may find styled spans here. If the element has attributes (styled),
+				// we need to insert an empty <span/> BEFORE it as a sibling, matching
+				// Python's behavior where the anchor is a separate element.
+				if child.Tag == "span" && len(child.Attrs) > 0 {
+					// Styled span at offset 0: insert empty span before it as sibling
+					span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+					elem.Children = insertHTMLParts(elem.Children, index, []htmlPart{span})
+					return span, true
+				}
 				if child.Tag == "span" && len(child.Attrs) == 0 && len(child.Children) >= 1 {
-					// Check if first child is text — if so, insert empty span before it
+					// Unstyled wrapper span: insert empty span as first child
 					firstIsText := false
 					switch child.Children[0].(type) {
 					case htmlText, *htmlText:
