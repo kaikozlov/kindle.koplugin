@@ -760,11 +760,42 @@ func (r *storylineRenderer) renderTableRow(node map[string]interface{}, depth in
 
 func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth int) htmlPart {
 	cell := &htmlElement{Tag: "td", Attrs: map[string]string{}}
+	// Extract colspan/rowspan.
+	// In KFX data, these can be either:
+	// 1. Directly on the node as $148/$149 (some fixtures)
+	// 2. In the style fragment as property $148/$149, converted to -kfx-attrib-colspan/rowspan
+	// Python extracts them via -kfx-attrib-* partition in fixup_styles_and_classes.
+	// Go's cssDeclarationsFromMap strips -kfx- prefixed properties, so we also extract
+	// from the style fragment here.
+	colspanSet := false
+	rowspanSet := false
 	if colspan, ok := asInt(node["$148"]); ok && colspan > 1 {
 		cell.Attrs["colspan"] = strconv.Itoa(colspan)
+		colspanSet = true
 	}
 	if rowspan, ok := asInt(node["$149"]); ok && rowspan > 1 {
 		cell.Attrs["rowspan"] = strconv.Itoa(rowspan)
+		rowspanSet = true
+	}
+	if !colspanSet || !rowspanSet {
+		if styleID, _ := asString(node["$157"]); styleID != "" {
+			effective := effectiveStyle(r.styleFragments[styleID], node)
+			cssMap := processContentProperties(effective, r.resolveResource)
+			if !colspanSet {
+				if v := cssMap["-kfx-attrib-colspan"]; v != "" {
+					if n, err := strconv.Atoi(v); err == nil && n > 1 {
+						cell.Attrs["colspan"] = v
+					}
+				}
+			}
+			if !rowspanSet {
+				if v := cssMap["-kfx-attrib-rowspan"]; v != "" {
+					if n, err := strconv.Atoi(v); err == nil && n > 1 {
+						cell.Attrs["rowspan"] = v
+					}
+			}
+			}
+		}
 	}
 
 	// Python COMBINE_NESTED_DIVS check: when the cell $269 has a single $269 child with $145
