@@ -1660,8 +1660,16 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	// re-normalize inherited font-size to "1em" so the stripping loop will correctly
 	// strip font-size when it matches (e.g. inherited "1.125rem" → converted to "1em"
 	// in sty, but inherited still has "1.125rem" → mismatch → not stripped → wrong).
+	//
+	// Python modifies inherited_properties in-place and uses it directly in the stripping
+	// loop (line 1966). Go uses a separate comparisonInherited clone (captured earlier for
+	// paragraph/figure margin overrides). We must normalize BOTH so the stripping loop sees
+	// the correct font-size regardless of which variable it reads.
 	if fsQty, fsUnit := splitCSSValue(sty["font-size"]); fsQty != nil && fsUnit == "em" {
 		inherited["font-size"] = "1em"
+		// comparisonInherited may be a separate clone — sync font-size into it too.
+		// If it aliases inherited (no clone was needed), this is a no-op.
+		comparisonInherited["font-size"] = "1em"
 	}
 
 	// Python stripping loop (yj_to_epub_properties.py lines 1966-1968):
