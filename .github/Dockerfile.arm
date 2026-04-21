@@ -1,0 +1,183 @@
+# Dockerfile for building Kindle Helper Python binary (glibc)
+# Uses Nuitka standalone + bundled ld-linux to bypass Kindle's ancient glibc 2.20.
+# Based on the kindle-hid-passthrough build pipeline by zampierilucas.
+#
+# Target: ARMv7 hard-float (armhf) for Kindle Paperwhite et al.
+# Strategy: Same as kindle-hid-passthrough:
+#   - Nuitka standalone creates a directory with the binary + all .so deps
+#   - We bundle the build container's ld-linux-armhf.so.3
+#   - A C wrapper invokes the bundled ld-linux directly, bypassing Kindle's dynamic linker
+
+FROM arm32v7/python:3.11-slim-bookworm
+
+# Install build dependencies for Nuitka, lxml, Pillow
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    patchelf \
+    ccache \
+    libffi-dev \
+    zlib1g-dev \
+    linux-libc-dev \
+    libssl-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    liblcms2-dev \
+    libwebp-dev \
+    libopenjp2-7-dev \
+    libfreetype6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    nuitka \
+    ordered-set \
+    lxml \
+    Pillow \
+    cryptography
+
+# Enable ccache
+ENV CCACHE_DIR=/ccache
+ENV NUITKA_CACHE_DIR=/nuitka-cache
+ENV PATH="/usr/lib/ccache:${PATH}"
+
+WORKDIR /build
+
+# Copy source
+COPY python/kindle_helper.py /build/kindle_helper.py
+COPY python/kfxlib/ /build/kfxlib/
+
+# ARM-specific compiler flags (from kindle-hid-passthrough)
+ENV CFLAGS="-O3 -mword-relocations -mlong-calls -ffunction-sections -fdata-sections"
+ENV LDFLAGS="-Wl,--gc-sections"
+
+# Build syscall wrapper for Kindle kernel compatibility
+# Kindle kernel 4.9.77 lacks preadv2/pwritev2 (added in 4.16)
+RUN printf '%s\n' \
+    '#define _GNU_SOURCE' \
+    '#include <sys/uio.h>' \
+    '#include <unistd.h>' \
+    '' \
+    'ssize_t preadv2(int fd, const struct iovec *iov, int iovcnt, off_t offset, int flags) {' \
+    '    return preadv(fd, iov, iovcnt, offset);' \
+    '}' \
+    '' \
+    'ssize_t pwritev2(int fd, const struct iovec *iov, int iovcnt, off_t offset, int flags) {' \
+    '    return pwritev(fd, iov, iovcnt, offset);' \
+    '}' \
+    > /build/syscall_wrapper.c && \
+    gcc -shared -fPIC -o /build/libsyscall_wrapper.so /build/syscall_wrapper.c && \
+    strip /build/libsyscall_wrapper.so
+
+# Build with Nuitka in standalone mode
+RUN --mount=type=cache,target=/nuitka-cache \
+    --mount=type=cache,target=/ccache \
+    python3 -m nuitka \
+    --mode=standalone \
+    --jobs=$(nproc) \
+    --lto=yes \
+    --show-progress \
+    --output-dir=/build/nuitka-out \
+    --include-package=kfxlib \
+    --nofollow-import-to=pytest \
+    --nofollow-import-to=unittest \
+    --nofollow-import-to=setuptools \
+    --nofollow-import-to=pip \
+    kindle_helper.py
+
+# Bundle the build container's dynamic linker and core glibc libs.
+# Nuitka standalone doesn't include glibc core libs (assumes they exist on target).
+# But Kindle has glibc 2.20 which is incompatible, so we must bundle everything.
+RUN cp /lib/ld-linux-armhf.so.3 /build/nuitka-out/kindle_helper.dist/ld-linux-armhf.so.3 && \
+    for lib in libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1 \
+               libutil.so.1 libresolv.so.2 libnss_dns.so.2 libnss_files.so.2 \
+               libz.so.1 libstdc++.so.6 libgcc_s.so.1; do \
+        src=$(find /lib /usr/lib -name "$lib" 2>/dev/null | head -1); \
+        if [ -n "$src" ]; then \
+            cp -L "$src" /build/nuitka-out/kindle_helper.dist/"$lib"; \
+        fi; \
+    done && \
+    echo "Bundled libs:" && ls -la /build/nuitka-out/kindle_helper.dist/lib*.so*
+
+# Rename the Nuitka binary to main.bin (matching the wrapper expectations)
+RUN mv /build/nuitka-out/kindle_helper.dist/kindle_helper.bin /build/nuitka-out/kindle_helper.dist/main.bin || true
+
+# Build C wrapper that invokes the bundled ld-linux directly.
+# This bypasses the system dynamic linker entirely — same approach as kindle-hid-passthrough.
+RUN printf '%s\n' \
+    '#define _GNU_SOURCE' \
+    '#include <stdio.h>' \
+    '#include <stdlib.h>' \
+    '#include <string.h>' \
+    '#include <unistd.h>' \
+    '#include <libgen.h>' \
+    '#include <linux/limits.h>' \
+    '' \
+    'int main(int argc, char *argv[]) {' \
+    '    char exe_path[PATH_MAX];' \
+    '    char dir_path[PATH_MAX];' \
+    '    char dist_path[PATH_MAX];' \
+    '    char ld_path[PATH_MAX];' \
+    '    char bin_path[PATH_MAX];' \
+    '    char lib_path[PATH_MAX];' \
+    '    ssize_t len;' \
+    '' \
+    '    len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);' \
+    '    if (len == -1) { perror("readlink"); return 1; }' \
+    '    exe_path[len] = '"'"'\\0'"'"';' \
+    '' \
+    '    strncpy(dir_path, exe_path, sizeof(dir_path));' \
+    '    char *dir = dirname(dir_path);' \
+    '' \
+    '    snprintf(dist_path, sizeof(dist_path), "%s/dist", dir);' \
+    '    snprintf(ld_path, sizeof(ld_path), "%s/dist/ld-linux-armhf.so.3", dir);' \
+    '    snprintf(bin_path, sizeof(bin_path), "%s/dist/main.bin", dir);' \
+    '    snprintf(lib_path, sizeof(lib_path), "%s/libsyscall_wrapper.so", dir);' \
+    '' \
+    '    setenv("LD_PRELOAD", lib_path, 1);' \
+    '    setenv("KINDLE_HELPER_BASE", dir, 1);' \
+    '' \
+    '    int new_argc = argc + 3;' \
+    '    char **new_argv = malloc(sizeof(char *) * (new_argc + 1));' \
+    '    if (!new_argv) { perror("malloc"); return 1; }' \
+    '' \
+    '    new_argv[0] = ld_path;' \
+    '    new_argv[1] = "--library-path";' \
+    '    new_argv[2] = dist_path;' \
+    '    new_argv[3] = bin_path;' \
+    '    for (int i = 1; i < argc; i++) {' \
+    '        new_argv[i + 3] = argv[i];' \
+    '    }' \
+    '    new_argv[argc + 3] = NULL;' \
+    '' \
+    '    execv(ld_path, new_argv);' \
+    '    perror("execv ld-linux");' \
+    '    return 1;' \
+    '}' \
+    > /build/wrapper.c && \
+    gcc -static -o /build/kindle-helper /build/wrapper.c && \
+    strip /build/kindle-helper
+
+# Prepare the output directory structure:
+#   kindle-helper          - C wrapper (static, entry point)
+#   libsyscall_wrapper.so  - Syscall compatibility shim
+#   dist/                  - Nuitka standalone output
+#     main.bin             - Python binary
+#     ld-linux-armhf.so.3  - Bundled dynamic linker
+#     *.so                 - All shared library dependencies
+RUN mkdir -p /build/output && \
+    cp /build/kindle-helper /build/output/kindle-helper && \
+    cp /build/libsyscall_wrapper.so /build/output/libsyscall_wrapper.so && \
+    cp -r /build/nuitka-out/kindle_helper.dist /build/output/dist && \
+    chmod +x /build/output/kindle-helper /build/output/dist/main.bin /build/output/dist/ld-linux-armhf.so.3
+
+# Show what we built
+RUN echo "=== Output structure ===" && \
+    find /build/output -maxdepth 2 -type f | sort && \
+    echo "=== dist/ size ===" && \
+    du -sh /build/output/dist/
+
+# Default: copy output to /output for extraction
+CMD ["cp", "-r", "/build/output/.", "/output/"]
