@@ -9,6 +9,51 @@
 
 ---
 
+## Python Porting Rules — READ BEFORE EVERY PORTING TASK
+
+This project has a recurring failure mode: **partial Python ports that silently drop unhandled branches**. Every recent diff was caused by the same pattern — porting only the "happy path" from Python while skipping branches that seem irrelevant at the time.
+
+### The Pattern (DO NOT REPEAT)
+
+| Fix | What We Skipped |
+|-----|----------------|
+| Elvis `font-size: 1em` | Python uses one `inherited_properties` dict; Go split into `inherited` + `comparisonInherited` but didn't sync updates between them |
+| HG `$179` link wrapping | Python's `find_or_create_style_event_element` handles `img`, `svg`, `div`, `a`, `aside`, `figure`, headings, `li`, `ruby`, `rb`; Go reduced all of this to `if elem.Tag != "span" { continue }` |
+| Elvis table cell `<p>` wrappers | Python's COMBINE_NESTED_DIVS operates on any child type; Go only checked `$145` text children |
+| Elvis logo FIRST EDITION | Python's `process_content` handles IonString, IonSymbol, and IonStruct children in `$146`; Go only handled IonStruct (map) children |
+| Elvis inline image wrapping | Python checks `$601` render mode to skip container `<div>` for inline images; Go wrapped all images unconditionally |
+
+### Mandatory Process: Branch Audit
+
+When porting a Python function to Go, you MUST:
+
+1. **List every branch** in the Python function — every `if`, `elif`, `for`, `try`, ternary, and type dispatch.
+2. **Map each branch** to specific Go code (file + line).
+3. **Flag gaps** — any Python branch with no Go counterpart is a bug, not a "nice to have later."
+4. **Implement ALL branches**, not just the one triggered by the current diff. If a branch seems unreachable, add a `log.Errorf` for it instead of silently dropping it.
+5. **Do NOT simplify** Python's type dispatches. When Python handles `img`, `svg`, `div`, `a`, `aside`, `figure`, `h1`-`h6`, `li`, `ruby`, `rb` separately, port ALL of those cases. Do NOT replace them with `if tag == "span" { ... } else { continue }`.
+
+### When Modifying Existing Go Code
+
+Before adding or modifying a function that processes HTML elements or KFX content:
+
+1. Find the Python function it was ported from.
+2. Re-read it. Python may handle cases you previously skipped.
+3. Check: does the Python function iterate over element types, content types, or property types that Go doesn't?
+4. Check: does Python have error/log branches for unexpected cases that Go silently ignores?
+5. Check: does Python modify data structures in-place (single dict) where Go uses separate copies that can drift apart?
+
+### Red Flags
+
+If you catch yourself writing any of these, STOP and re-read the Python:
+
+- `if elem.Tag != X { continue }` — Python almost certainly handles other tags
+- `if _, ok := asMap(child); !ok { continue }` — Python handles non-map children (strings, symbols)
+- `if _, ok := asSlice(node["$146"]); !ok { return nil }` — Python's `add_content` also checks `$145` and `$176`
+- `// Skip for now` or `// Not needed` — it IS needed, you just haven't hit the book that triggers it yet
+
+---
+
 ## Project Overview
 
 **kindle.koplugin** is a [KOReader](https://koreader.rocks/) plugin that lets Kindle device owners browse and read their Kindle-native library books inside KOReader. It does this by:
