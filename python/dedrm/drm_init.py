@@ -13,6 +13,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import struct
 import time
 
@@ -56,13 +57,13 @@ def run(documents_root, plugin_dir, cache_dir):
     for voucher_path in vouchers:
         voucher_key = _find_voucher_key(voucher_path, keys)
         if voucher_key is None:
-            print(f"drm-init: skipping {voucher_path}: no matching key", flush=True)
+            print(f"drm-init: skipping {voucher_path}: no matching key", file=sys.stderr, flush=True)
             continue
 
         try:
             page_key = _extract_page_key(voucher_path, voucher_key)
         except Exception as e:
-            print(f"drm-init: page key extraction failed for {voucher_path}: {e}", flush=True)
+            print(f"drm-init: page key extraction failed for {voucher_path}: {e}", file=sys.stderr, flush=True)
             continue
 
         book_id = _derive_book_id(voucher_path)
@@ -72,7 +73,7 @@ def run(documents_root, plugin_dir, cache_dir):
             new_is_tmp = "tmp_" in voucher_path
             existing_is_tmp = "tmp_" in cache["books"][book_id].get("voucher_path", "")
             if not existing_is_tmp and new_is_tmp:
-                print(f"drm-init: skipping tmp voucher {voucher_path}", flush=True)
+                print(f"drm-init: skipping tmp voucher {voucher_path}", file=sys.stderr, flush=True)
                 continue
 
         cache["books"][book_id] = {
