@@ -2700,12 +2700,35 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 				})
 				continue
 			}
-			if styleAttr := mergeStyleStrings(r.annotationSpanClass(styleID, annotationMap), dropcapClass); styleAttr != "" {
+			// Port of Python yj_to_epub_content.py:1117-1131 — dropcap events are
+			// separate from annotation style events. The dropcap wraps the first N
+			// characters in an inner span with float/font-size/line-height/margin,
+			// and the annotation wraps it in an outer span with annotation styles.
+			// Python inserts the dropcap_style_event at position 0 in style_events,
+			// then processes annotations separately. Here we create two nested events.
+			annotationStyle := r.annotationSpanClass(styleID, annotationMap)
+			if dropcapClass != "" {
+				// Dropcap event: innermost span wrapping the first N characters
+				// Port of Python is_dropcap branch (yj_to_epub_content.py:1213-1216):
+				//   add_style(event_elem, {"float": "left", "font-size": value_str(..., "em"),
+				//     "line-height": "100%", "margin-top": "0", "margin-right": "0.1em", "margin-bottom": "0"})
 				events = append(events, event{
 					start: start,
 					end:   end,
 					open: func(parent *htmlElement) *htmlElement {
-						element := &htmlElement{Tag: "span", Attrs: map[string]string{"style": styleAttr}}
+						element := &htmlElement{Tag: "span", Attrs: map[string]string{"style": dropcapClass}}
+						parent.Children = append(parent.Children, element)
+						return element
+					},
+				})
+			}
+			if annotationStyle != "" {
+				// Annotation event: outer wrapper with annotation CSS
+				events = append(events, event{
+					start: start,
+					end:   end,
+					open: func(parent *htmlElement) *htmlElement {
+						element := &htmlElement{Tag: "span", Attrs: map[string]string{"style": annotationStyle}}
 						parent.Children = append(parent.Children, element)
 						return element
 					},
