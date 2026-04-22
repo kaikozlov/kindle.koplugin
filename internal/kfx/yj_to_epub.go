@@ -1,0 +1,615 @@
+package kfx
+
+import (
+	"bytes"
+	"fmt"
+	"image/jpeg"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/kaikozlov/kindle-koplugin/internal/epub"
+)
+
+func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error) {
+	book := state.Book
+	contentFragments := state.Fragments.ContentFragments
+	rubyGroups := state.Fragments.RubyGroups
+	rubyContents := state.Fragments.RubyContents
+	storylines := state.Fragments.Storylines
+	styleFragments := state.Fragments.StyleFragments
+	sectionFragments := state.Fragments.SectionFragments
+	anchors := state.Fragments.AnchorFragments
+	navContainers := state.Fragments.NavContainers
+	navRoots := state.Fragments.NavRoots
+	resourceFragments := state.Fragments.ResourceFragments
+	fontFragments := state.Fragments.FontFragments
+	rawFragments := state.Fragments.RawFragments
+	positionAliases := state.Fragments.PositionAliases
+	rawBlobOrder := state.Fragments.RawBlobOrder
+	sectionOrder := append([]string(nil), state.Fragments.SectionOrder...)
+	symFmt := state.BookSymbolFormat
+
+	fontFixer := newFontNameFixer()
+	fontFixer.registerFontFamilies(fontFragments)
+	fontFixer.setDefaultFontFamily(book.DefaultFontFamily)
+	currentFontFixer = fontFixer
+	defer func() {
+		currentFontFixer = nil
+	}()
+
+	// Stage: organize_fragments + book_symbol_format
+	if trace != nil {
+		trace.addStage("organize_fragments", captureOrganizeFragments(state))
+		trace.addStage("book_symbol_format", captureBookSymbolFormat(state))
+	}
+
+	book.Resources, book.CoverImageHref, book.Stylesheet, book.ResourceHrefByID = buildResources(book, resourceFragments, fontFragments, rawFragments, rawBlobOrder, symFmt)
+	book.Language = inferBookLanguage(book.Language, contentFragments, storylines, styleFragments)
+
+	// Stage: metadata / document_data / content_features / fonts
+	if trace != nil {
+		trace.addStage("content_features", captureContentFeatures(book))
+		trace.addStage("fonts", captureFonts(book))
+		trace.addStage("document_data", captureDocumentData(book))
+		trace.addStage("metadata", captureMetadata(book))
+	}
+
+	positionToSectionID := map[int]string{}
+	for positionID, sectionID := range positionAliases {
+		positionToSectionID[positionID] = sectionID
+	}
+	for _, section := range sectionFragments {
+		if section.PositionID != 0 {
+			positionToSectionID[section.PositionID] = section.ID
+		}
+		for _, template := range section.PageTemplates {
+			if template.PositionID != 0 {
+				positionToSectionID[template.PositionID] = section.ID
+			}
+		}
+	}
+	for _, sectionID := range sectionOrder {
+		section := sectionFragments[sectionID]
+		templates := section.PageTemplates
+		if len(templates) == 0 {
+			templates = []pageTemplateFragment{{
+				PositionID:         section.PositionID,
+				Storyline:          section.Storyline,
+				PageTemplateStyle:  section.PageTemplateStyle,
+				PageTemplateValues: section.PageTemplateValues,
+			}}
+		}
+		for _, template := range templates {
+			storyline := storylines[template.Storyline]
+			if storyline == nil {
+				continue
+			}
+			nodes, _ := asSlice(storyline["$146"])
+			collectStorylinePositions(nodes, sectionID, positionToSectionID)
+		}
+	}
+
+	navState := processNavigation(navRoots, navContainers, book.OrientationLock)
+	selectedNav := navState.toc
+
+	// Stage: navigation (capture after processNavigation, before process_reading_order)
+	// Note: we capture nav structure here; the hrefs are set later after anchor resolution.
+	// For a complete trace of final navigation hrefs, see the trace point after fixupAnchors.
+	navTitles := map[string]string{}
+	flattenNavigationTitles(selectedNav, positionToSectionID, navTitles)
+	directAnchorURI := map[string]string{}
+	fallbackAnchorURI := map[string]string{}
+	for anchorID, anchor := range anchors {
+		if anchor.URI != "" {
+			directAnchorURI[anchorID] = anchor.URI
+		} else if anchor.PositionID != 0 {
+			if sectionID := positionToSectionID[anchor.PositionID]; sectionID != "" {
+				fallbackAnchorURI[anchorID] = sectionFilename(sectionID)
+			}
+			registerNamedPositionAnchor(navState.positionAnchors, anchorID, navTarget{PositionID: anchor.PositionID, Offset: anchor.Offset})
+		}
+		if debugAnchors := os.Getenv("KFX_DEBUG_ANCHORS"); debugAnchors != "" {
+			for _, wanted := range strings.Split(debugAnchors, ",") {
+				if strings.TrimSpace(wanted) == anchorID {
+					fmt.Fprintf(os.Stderr, "anchor map[%s]=%q uri=%q pos=%d\n", anchorID, directAnchorURI[anchorID], anchor.URI, anchor.PositionID)
+				}
+			}
+		}
+	}
+
+	renderer := storylineRenderer{
+		contentFragments:   contentFragments,
+		rubyGroups:         rubyGroups,
+		rubyContents:       rubyContents,
+		resourceHrefByID:   book.ResourceHrefByID,
+		resourceFragments:  resourceFragments,
+		directAnchorURI:    directAnchorURI,
+		fallbackAnchorURI:  fallbackAnchorURI,
+		positionToSection:  positionToSectionID,
+		positionAnchors:    navState.positionAnchors,
+		positionAnchorID:   buildPositionAnchorIDs(navState.positionAnchors),
+		anchorNamesByID:    map[string][]string{},
+		anchorHeadingLevel: navState.anchorHeadingLevel,
+		emittedAnchorIDs:   map[string]bool{},
+		styleFragments:     styleFragments,
+		styles:             newStyleCatalog(),
+		symFmt:             symFmt,
+		conditionEvaluator: conditionEvaluator{
+			orientationLock:   book.OrientationLock,
+			fixedLayout:       book.FixedLayout,
+			illustratedLayout: book.IllustratedLayout,
+		},
+	}
+	// Create resource resolver matching Python's self.process_external_resource
+	// (yj_to_epub_properties.py:1272-1273). Resolves $479/$528 symbol values
+	// (background-image) to CSS url() paths via the pre-built resource href map.
+	renderer.resolveResource = func(symbol string) string {
+		if href, ok := book.ResourceHrefByID[symbol]; ok {
+			return href
+		}
+		return ""
+	}
+	if os.Getenv("KFX_DEBUG_STYLES") != "" {
+		for _, styleID := range strings.Split(os.Getenv("KFX_DEBUG_STYLES"), ",") {
+			styleID = strings.TrimSpace(styleID)
+			if styleID == "" {
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "style %s = %#v\n", styleID, styleFragments[styleID])
+		}
+	}
+	if os.Getenv("KFX_DEBUG") != "" {
+		for _, pos := range []int{1007, 1053, 1110, 1111, 1177, 1178} {
+			fmt.Fprintf(os.Stderr, "anchor ids pos=%d offsets=%v raw=%v\n", pos, renderer.positionAnchorID[pos], renderer.positionAnchors[pos])
+		}
+	}
+	// Merge: include any navigation-referenced sections not already in the reading order.
+	// The KFX reading order ($170) is the authoritative order — Python processes
+	// sections strictly in reading order (yj_to_epub_content.py:105-112).
+	// Navigation only adds missing sections; it does not reorder existing ones.
+	if navOrder := orderedSectionIDsFromNavigation(selectedNav, positionToSectionID); len(navOrder) > 0 {
+		sectionOrder = mergeSectionOrder(sectionOrder, navOrder)
+	}
+	// Port of epub_output.py identify_cover: if a cover guide entry points to a section,
+	// ensure that section is first in the spine (Python expects cover to be first in reading order).
+	sectionOrder = promoteCoverSectionFromGuide(sectionOrder, navState.guide, positionToSectionID)
+	debugSectionMappings(sectionFragments, navTitles, sectionOrder)
+
+	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, &renderer, navTitles, symFmt)
+	cleanupRenderedSections(book.RenderedSections)
+
+	// Stage: reading_order (capture rendered section HTML after processReadingOrder)
+	if trace != nil {
+		trace.addStage("reading_order", captureReadingOrder(book.RenderedSections))
+	}
+	attachSectionAliasAnchors(book.RenderedSections, &renderer)
+	resolvedAnchorURI := resolveRenderedAnchorURIs(book.RenderedSections, &renderer)
+	fixupAnchorsAndHrefs(book.RenderedSections, resolvedAnchorURI)
+	fixupIllustratedLayoutAnchors(book, book.RenderedSections)
+	updateDefaultFontAndLanguage(book)
+	resolvedDefaultFont := fontFixer.resolvedDefaultFontFamily()
+	fontFamilyAddedByDefaults := setHTMLDefaults(book, resolvedDefaultFont)
+	fixupStylesAndClasses(book, renderer.styles, fontFamilyAddedByDefaults, resolvedDefaultFont)
+	createCSSFiles(book, renderer.styles)
+	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
+
+	// Stage: stylesheet (capture CSS after createCSSFiles)
+	if trace != nil {
+		trace.addStage("stylesheet", captureStylesheet(book.Stylesheet))
+	}
+
+	targetHref := func(target navTarget) string {
+		if target.PositionID == 0 {
+			return ""
+		}
+		if href := resolvedAnchorURI[firstAnchorNameForPosition(navState.positionAnchors, target.PositionID, target.Offset)]; href != "" {
+			return href
+		}
+		sectionID := positionToSectionID[target.PositionID]
+		if sectionID == "" {
+			return ""
+		}
+		return sectionFilename(sectionID)
+	}
+	navHref := func(target navTarget) string {
+		if target.PositionID == 0 {
+			return ""
+		}
+		if href := resolvedAnchorURI[firstAnchorNameForPosition(navState.positionAnchors, target.PositionID, target.Offset)]; href != "" {
+			return href
+		}
+		sectionID := positionToSectionID[target.PositionID]
+		if sectionID == "" {
+			return ""
+		}
+		return sectionFilename(sectionID)
+	}
+
+	// Port of Python: process_external_resource(icon).filename maps icon resource to href.
+	iconHref := func(resourceID string) string {
+		if href, ok := book.ResourceHrefByID[resourceID]; ok {
+			return href
+		}
+		return ""
+	}
+	book.Navigation = navigationToEPUB(selectedNav, navHref, iconHref)
+	book.Guide = guideToEPUB(navState.guide, navHref)
+	if os.Getenv("KFX_DEBUG") != "" {
+		for _, page := range navState.pages {
+			if page.Label == "13" || page.Label == "14" || page.Label == "23" || page.Label == "26" || page.Label == "33" || page.Label == "35" || page.Label == "36" || page.Label == "38" || page.Label == "41" || page.Label == "50" || page.Label == "52" || page.Label == "59" || page.Label == "60" || page.Label == "61" || page.Label == "101" || page.Label == "102" {
+				fmt.Fprintf(os.Stderr, "page label=%s pos=%d off=%d href=%s\n", page.Label, page.Target.PositionID, page.Target.Offset, targetHref(page.Target))
+			}
+		}
+	}
+	book.PageList = pagesToEPUB(navState.pages, targetHref)
+	prepareBookParts(book)
+	reportMissingPositions(navState.positionAnchors)
+
+	// Stage: navigation (final — with resolved hrefs)
+	// Stage: final_sections (after prepareBookParts, before materialize)
+	if trace != nil {
+		trace.addStage("navigation", captureNavigation(book.Navigation, book.Guide, book.PageList))
+	}
+	usedAnchors := make(map[string]bool, len(resolvedAnchorURI))
+	for name, href := range resolvedAnchorURI {
+		if href != "" {
+			usedAnchors[name] = true
+		}
+	}
+	reportDuplicateAnchors(navState.anchorSites, usedAnchors)
+	book.Sections = materializeRenderedSections(book.RenderedSections)
+
+	// Stage: final_sections
+	if trace != nil {
+		trace.addStage("final_sections", captureFinalSections(book.Sections))
+	}
+	applyCoverSVGPromotion(book, resolvedDefaultFont)
+	pruneUnusedResources(book)
+	book.Stylesheet = pruneUnusedStylesheetRules(book.Stylesheet, collectReferencedClasses(book))
+	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
+	book.Identifier = normalizeBookIdentifier(book.Identifier)
+	book.Language = normalizeLanguage(book.Language)
+
+	return book, nil
+}
+
+func decodeKFX(path string) (*decodedBook, error) {
+	state, err := buildBookState(path)
+	if err != nil {
+		return nil, err
+	}
+	if os.Getenv("KFX_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "docSymbols length=%d first=% x\n", len(state.Source.DocSymbols), state.Source.DocSymbols[:minInt(16, len(state.Source.DocSymbols))])
+	}
+	return renderBookState(state, nil)
+}
+
+// DecodeKFX decodes a KFX file and returns the decoded book.
+func DecodeKFX(path string) (*decodedBook, error) {
+	return decodeKFX(path)
+}
+
+func convertFromDRMIONData(contData []byte, outputPath string, originalPath string, pageKey []byte) error {
+	if !bytes.HasPrefix(contData, contSignature) {
+		return &UnsupportedError{Message: "decrypted data is not a valid CONT KFX container"}
+	}
+
+	// Build the primary source from decrypted CONT data
+	primarySource, err := loadContainerSourceData(originalPath, contData)
+	if err != nil {
+		return fmt.Errorf("parsing decrypted CONT: %w", err)
+	}
+
+	// Collect additional blobs from the .sdr sidecar directory.
+	// DRM books store metadata, cover images, and other fragments in
+	// the sidecar (e.g. assets/metadata.kfx, assets/attachables/*.kfx).
+	// Some books (e.g. The Familiars) have DRMION-encrypted metadata.kfx
+	// that must also be decrypted.
+	sources := []*containerSource{primarySource}
+	sidecarRoot := strings.TrimSuffix(originalPath, filepath.Ext(originalPath)) + ".sdr"
+	contBlobs, drmionBlobs, err := collectSidecarContainerBlobs(sidecarRoot)
+	if err != nil {
+		log.Printf("DRM sidecar collection failed for %s: %v", sidecarRoot, err)
+	}
+	for _, blob := range contBlobs {
+		src, err := loadContainerSourceData(blob.Path, blob.Data)
+		if err != nil {
+			log.Printf("skipping sidecar blob %s: %v", blob.Path, err)
+			continue
+		}
+		sources = append(sources, src)
+	}
+
+	// Decrypt DRMION sidecar blobs using the same page key.
+	// These may contain the document symbol table needed for the main content.
+	for _, blob := range drmionBlobs {
+		decrypted, decErr := decryptDRMION(blob.Data, pageKey)
+		if decErr != nil {
+			log.Printf("skipping DRMION sidecar %s: %v", blob.Path, decErr)
+			continue
+		}
+
+		// Try LZMA decompression if the decrypted data doesn't start with CONT
+		if !bytes.HasPrefix(decrypted, contSignature) && len(decrypted) > 1 && decrypted[0] == 0x00 {
+			decompressed, lzmaErr := lzmaDecompress(decrypted[1:])
+			if lzmaErr == nil && bytes.HasPrefix(decompressed, contSignature) {
+				decrypted = decompressed
+			}
+		}
+
+		if !bytes.HasPrefix(decrypted, contSignature) {
+			log.Printf("DRMION sidecar %s: not CONT after decryption, skipping", blob.Path)
+			continue
+		}
+
+		src, err := loadContainerSourceData(blob.Path, decrypted)
+		if err != nil {
+			log.Printf("skipping decrypted sidecar %s: %v", blob.Path, err)
+			continue
+		}
+
+		// Validate entity offsets — decrypted metadata.kfx may have mismatched
+		// offsets. If any entity is out of range, only use its docSymbols,
+		// not its fragments.
+		if !validateEntityOffsets(src) {
+			log.Printf("DRM: decrypted sidecar %s has invalid entity offsets, using docSymbols only (%d bytes)", blob.Path, len(src.DocSymbols))
+			// Create a minimal source with docSymbols but empty index
+			// so the two-pass symbol accumulation picks up the symbols.
+			sources = append(sources, &containerSource{
+				Path:       src.Path,
+				DocSymbols: src.DocSymbols,
+			})
+			continue
+		}
+
+		sources = append(sources, src)
+		log.Printf("DRM: decrypted sidecar %s (%d bytes)", blob.Path, len(decrypted))
+	}
+
+	if len(sources) > 1 {
+		log.Printf("DRM conversion using %d sources (1 decrypted + %d sidecar)", len(sources), len(sources)-1)
+	}
+
+	// Use the original path as book identifier (for title fallback)
+	bookPath := originalPath
+	state, err := organizeFragments(bookPath, sources)
+	if err != nil {
+		return err
+	}
+
+	book, err := renderBookState(state, nil)
+	if err != nil {
+		return err
+	}
+	if len(book.Sections) == 0 {
+		return &UnsupportedError{Message: "no readable sections were extracted from the decrypted KFX file"}
+	}
+
+	return epub.Write(outputPath, epub.Book{
+		Identifier:          book.Identifier,
+		Title:               book.Title,
+		Language:            book.Language,
+		Authors:             book.Authors,
+		Published:           book.Published,
+		Description:         book.Description,
+		Publisher:           book.Publisher,
+		OverrideKindleFonts: book.OverrideKindleFonts,
+		CoverImageHref:      book.CoverImageHref,
+		Stylesheet:          book.Stylesheet,
+		Sections:            book.Sections,
+		Resources:           book.Resources,
+		Navigation:          book.Navigation,
+		Guide:               book.Guide,
+		PageList:                book.PageList,
+		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
+	})
+}
+
+func convertFromCONTData(contData []byte, outputPath string) error {
+	if !bytes.HasPrefix(contData, contSignature) {
+		return &UnsupportedError{Message: "decrypted data is not a valid CONT KFX container"}
+	}
+
+	// Feed the CONT data through the normal decode pipeline
+	state, err := buildBookStateFromData(contData)
+	if err != nil {
+		return err
+	}
+
+	book, err := renderBookState(state, nil)
+	if err != nil {
+		return err
+	}
+	if len(book.Sections) == 0 {
+		return &UnsupportedError{Message: "no readable sections were extracted from the decrypted KFX file"}
+	}
+
+	return epub.Write(outputPath, epub.Book{
+		Identifier:          book.Identifier,
+		Title:               book.Title,
+		Language:            book.Language,
+		Authors:             book.Authors,
+		Published:           book.Published,
+		Description:         book.Description,
+		Publisher:           book.Publisher,
+		OverrideKindleFonts: book.OverrideKindleFonts,
+		CoverImageHref:      book.CoverImageHref,
+		Stylesheet:          book.Stylesheet,
+		Sections:            book.Sections,
+		Resources:           book.Resources,
+		Navigation:          book.Navigation,
+		Guide:               book.Guide,
+		PageList:                book.PageList,
+		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
+	})
+}
+
+// styleBaseName returns a simplified class base name from a style ID, applying
+// uniquePartOfLocalSymbol to strip the symbol-format prefix (ORIGINAL: V_N_N-PARA-…, etc.)
+// matching Calibre's simplify_styles class naming behavior.
+
+// singleImageWrapperChild returns the <div> wrapper if the container has exactly one child
+// that is a <div> containing a single <img>. Returns nil otherwise.
+
+// blockAlignedContainerProperties matches Python's BLOCK_ALIGNED_CONTAINER_PROPERTIES
+// (yj_to_epub_content.py:49-55).
+
+// reverseHeritablePropertiesExcludes are removed from heritableProperties to produce
+// REVERSE_HERITABLE_PROPERTIES (yj_to_epub_properties.py:994).
+
+// isBlockContainerProperty returns true if the CSS property belongs on the wrapper container
+// rather than the image element. Matches Python's BLOCK_CONTAINER_PROPERTIES partition
+// (yj_to_epub_content.py:57): REVERSE_HERITABLE_PROPERTIES | BLOCK_ALIGNED_CONTAINER_PROPERTIES | {"display"}.
+
+func applyCoverSVGPromotion(book *decodedBook, resolvedDefaultFont string) {
+	if book == nil || book.CoverImageHref == "" {
+		return
+	}
+	width, height := coverImageDimensions(book.Resources, book.CoverImageHref)
+	if width == 0 || height == 0 {
+		return
+	}
+	coverFound := false
+	for index := range book.Sections {
+		section := &book.Sections[index]
+		// Match cover section by either title or containing the cover image.
+		// Calibre identifies cover in process_section via layout + image, not title alone.
+		if !strings.Contains(section.BodyHTML, `src="`+book.CoverImageHref+`"`) {
+			continue
+		}
+		// Only promote sections that are primarily a cover image (not mixed content).
+		if section.Title != "Cover" && !isCoverImageSection(section.BodyHTML) {
+			continue
+		}
+		coverFound = true
+		section.Properties = "svg"
+		section.BodyHTML = fmt.Sprintf(
+			`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" preserveAspectRatio="xMidYMid meet" viewBox="0 0 %d %d" height="100%%" width="100%%"><image xlink:href="%s" height="%d" width="%d"/></svg>`,
+			width, height, escapeHTML(book.CoverImageHref), height, width,
+		)
+		// Python adds class_s8 with font-family only when the resolved default font is
+		// not "serif" (the CSS heritable default). When the default is just "serif",
+		// Python's set_html_defaults skips cover pages and no font-family is emitted.
+		// Match Python behavior: only add class_s8 when a non-generic font is used.
+		if resolvedDefaultFont != "serif" {
+			section.BodyClass = "class_s8"
+		} else {
+			section.BodyClass = ""
+		}
+		break
+	}
+	if !coverFound {
+		return
+	}
+	// Add the class_s8 CSS rule only when using a non-generic default font.
+	// Python's cover sections only get font-family when the resolved default is not "serif".
+	if resolvedDefaultFont == "serif" {
+		return
+	}
+	classS8Rule := ".class_s8 {font-family: " + resolvedDefaultFont + "}"
+	if !strings.Contains(book.Stylesheet, ".class_s8 {") {
+		if book.Stylesheet != "" {
+			book.Stylesheet += "\n"
+		}
+		book.Stylesheet += classS8Rule
+	} else {
+		lines := strings.Split(book.Stylesheet, "\n")
+		for index, line := range lines {
+			if strings.HasPrefix(strings.TrimSpace(line), ".class_s8 {") {
+				lines[index] = classS8Rule
+			}
+		}
+		book.Stylesheet = strings.Join(lines, "\n")
+	}
+}
+
+func coverImageDimensions(resources []epub.Resource, href string) (int, int) {
+	for _, resource := range resources {
+		if resource.Filename != href {
+			continue
+		}
+		cfg, err := jpeg.DecodeConfig(bytes.NewReader(resource.Data))
+		if err != nil {
+			return 0, 0
+		}
+		return cfg.Width, cfg.Height
+	}
+	return 0, 0
+}
+
+// isCoverImageSection returns true if the body HTML is primarily just an image
+// (possibly wrapped in a div), suitable for SVG cover promotion.
+func isCoverImageSection(bodyHTML string) bool {
+	stripped := strings.TrimSpace(bodyHTML)
+	// Remove opening/closing div wrapper
+	stripped = strings.TrimPrefix(stripped, "<div>")
+	stripped = strings.TrimSuffix(stripped, "</div>")
+	stripped = strings.TrimSpace(stripped)
+	return strings.HasPrefix(stripped, "<img") && !strings.Contains(stripped, "<p>") && !strings.Contains(stripped, "<h")
+}
+
+func normalizeBookIdentifier(identifier string) string {
+	trimmed := strings.TrimSpace(identifier)
+	if trimmed == "" {
+		return trimmed
+	}
+	if strings.HasPrefix(strings.ToLower(trimmed), "urn:asin:") {
+		return trimmed
+	}
+	return "urn:asin:" + trimmed
+}
+
+func normalizeLanguage(language string) string {
+	trimmed := strings.TrimSpace(language)
+	if trimmed == "" {
+		return "en"
+	}
+	if len(trimmed) > 2 && trimmed[2] == '_' {
+		trimmed = strings.ReplaceAll(trimmed, "_", "-")
+	}
+	prefix, suffix, found := strings.Cut(trimmed, "-")
+	if !found {
+		return strings.ToLower(trimmed)
+	}
+	prefix = strings.ToLower(prefix)
+	if len(suffix) < 4 {
+		suffix = strings.ToUpper(suffix)
+	} else {
+		suffix = strings.ToUpper(suffix[:1]) + suffix[1:]
+	}
+	return prefix + "-" + suffix
+}
+
+// promoteCoverSectionFromGuide moves the cover section to the front of the section order.
+// Port of epub_output.py identify_cover which expects the cover page to be first in the book.
+func promoteCoverSectionFromGuide(sections []string, guideEntries []guideEntry, positionToSection map[int]string) []string {
+	if len(sections) == 0 || len(guideEntries) == 0 {
+		return sections
+	}
+	// Find cover section from guide entry.
+	var coverSectionID string
+	for _, entry := range guideEntries {
+		if entry.Type == "cover" && entry.Target.PositionID != 0 {
+			coverSectionID = positionToSection[entry.Target.PositionID]
+			break
+		}
+	}
+	if coverSectionID == "" {
+		return sections
+	}
+	// Check if already first.
+	if len(sections) > 0 && sections[0] == coverSectionID {
+		return sections
+	}
+	// Move cover section to front.
+	result := make([]string, 0, len(sections))
+	result = append(result, coverSectionID)
+	for _, id := range sections {
+		if id != coverSectionID {
+			result = append(result, id)
+		}
+	}
+	return result
+}
