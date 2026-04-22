@@ -681,10 +681,18 @@ func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool
 func propertyValueList(propName string, v []interface{}, info propInfo, infoOK bool, resolveResource ResourceResolver) string {
 	switch propName {
 	case "$761": // layout hints
+		// Ported from Python property_value (yj_to_epub_properties.py L1354-1363):
+		//   for layout_hint in yj_value:
+		//       element_name = LAYOUT_HINT_ELEMENT_NAMES.get(layout_hint)
+		//       if element_name: values.append(element_name)
+		//       else: log.warning(...)
+		// LAYOUT_HINT_ELEMENT_NAMES maps $453→caption, $282→figure, $760→heading.
 		hints := []string{}
 		for _, item := range v {
 			if s, ok := item.(string); ok {
-				hints = append(hints, s)
+				if mapped, ok := layoutHintElementNames[s]; ok {
+					hints = append(hints, mapped)
+				}
 			}
 		}
 		return strings.Join(hints, " ")
