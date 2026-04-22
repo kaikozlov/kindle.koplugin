@@ -1,0 +1,55 @@
+{
+  "featureId": "audit-yj-to-epub-properties",
+  "reviewedAt": "2026-04-22T05:15:00Z",
+  "commitId": "751fc8a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The worker audited yj_to_epub_properties.py (2486 lines) against 3 Go files (~4314 lines total), identifying and fixing 5 gaps across 3 commits (f0b4843, bde42ac, 0e365a3). The audit document is thorough, covering 12 functions with clear status tracking and 10 documented deferred gaps with justification. All fixes are correct, the original 6 books remain 394/394, and tests pass.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_property_info.go",
+        "line": 833,
+        "severity": "non_blocking",
+        "description": "Comment references incorrect Python line numbers: 'L276-278' and 'L286-289' should be 'L1126-1129' and 'L1154-1157'. The actual Python convert_yj_properties starts at L1089, not L276. The implementation is correct; only the documentation comment is wrong."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_properties.go",
+        "line": 1977,
+        "severity": "non_blocking",
+        "description": "Fix 5 (heading style name prefix) is correct but relies on subtle regex behavior: prefixUniquePartOfSymbol won't double-prefix because 'heading_s1NG' contains an underscore, failing the reAlnumDash regex `^[A-Za-z0-9]+(-.+)?$`. If the style name were purely alphanumeric (e.g., 's1NG'), the prefix would be applied. This works but a comment explaining WHY it's correct (the underscore prevents double-prefixing) would improve maintainability."
+      },
+      {
+        "file": "internal/kfx/yj_property_info.go",
+        "line": 786,
+        "severity": "non_blocking",
+        "description": "Minor gap: Go only checks for '-kfx-background-positionx' existence, but Python triggers on '-kfx-background-positionx' OR '-kfx-background-positiony'. Same for background-size (L791). In practice these properties come in pairs from KFX data, so this is unlikely to cause issues, but it's a deviation from Python."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Python line number references in Go comments are inaccurate. The audit commits reference Python lines like 'L276-278' and 'L286-289' but the actual lines are L1126+ and L1154+. AGENTS.md says 'Map it 1:1 python to go' with specific locations, but doesn't mandate accurate line numbers in comments. Workers should verify Python line numbers when adding cross-references.",
+      "evidence": "internal/kfx/yj_property_info.go:833 says 'Python L276-278' but the actual text-combine-upright branch is at yj_to_epub_properties.py L1126-1129. Similarly line 842 says 'L286-289' but text-decoration-color is at L1154-1157."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The prefixUniquePartOfSymbol function in symbol_format.go uses regex `^[A-Za-z0-9]+(-.+)?$` which does NOT match strings containing underscores. This is the same pattern as Python but it's a subtle behavior: when a style name contains underscores (like 'heading_s1NG' or 'figure_s1NG'), the prefix is NOT prepended. This fact is critical for understanding why the heading_/figure_ style name prefix additions in simplify_styles don't cause double-prefixing.",
+      "evidence": "symbol_format.go:149-152 + yj_to_epub_properties.go:1977-1981. The fix at line 1977 prepends 'heading_' to style name, which contains underscore, which fails reAlnumDash, so prefixUniquePartOfSymbol returns just the unique part without prepending the prefix."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The `text_combine_in_use` flag set in convert_yj_properties (Python L1127) is consumed by yj_to_epub_content.py for tate-chu-yoko handling, not by the properties module. Go doesn't track this flag. If books with vertical writing mode + text-combine-upright are encountered, this gap could cause content rendering differences.",
+      "evidence": "REFERENCE/Calibre_KFX_Input/kfxlib/yj_to_epub_properties.py:1127 sets self.text_combine_in_use; yj_to_epub_content.py:1539 and 1587 consume it. No Go equivalent exists."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker followed the parity-auditor skill procedure faithfully. The skillFeedback confirms followedProcedure: true with no deviations. The audit document structure matches the skill's example handoff format well.",
+      "evidence": "Handoff shows systematic Phase 2 branch audit → Phase 3 fix implementation → Phase 4 regression testing → Phase 5 documentation flow."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Thorough audit of yj_to_epub_properties.py with 5 correct fixes applied across 3 commits. The fixes address: (1) text-decoration-color → none !important conversion, (2) text-combine-upright + writing-mode interaction, (3) fill-color alpha mask, (4) collision value sorting, (5) heading style name prefix. All original 6 books remain 394/394 with zero regressions. The audit document comprehensively covers 12 functions and documents 10 deferred gaps with clear justifications. Minor issues: incorrect Python line number references in Go comments (cosmetic), and the heading style name prefix fix relies on subtle regex behavior that deserves an explanatory comment."
+}
