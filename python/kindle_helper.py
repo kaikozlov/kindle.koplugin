@@ -299,26 +299,24 @@ def cmd_convert(args):
                 with zipfile.ZipFile(tmp, "w") as zf:
                     zf.writestr("main.kfx", cont_data)
 
-                    # Collect sidecar blobs
+                    # Collect sidecar blobs (CONT + DRMION containers from .sdr)
                     sidecar_root = os.path.splitext(input_path)[0] + ".sdr"
                     if os.path.isdir(sidecar_root):
-                        for name in sorted(os.listdir(sidecar_root)):
-                            # Walk recursively
-                            for dirpath, _, filenames in os.walk(sidecar_root):
-                                for fn in filenames:
-                                    fpath = os.path.join(dirpath, fn)
+                        for dirpath, _, filenames in os.walk(sidecar_root):
+                            for fn in filenames:
+                                fpath = os.path.join(dirpath, fn)
+                                try:
+                                    blob = open(fpath, "rb").read()
+                                except OSError:
+                                    continue
+                                rel = os.path.relpath(fpath, sidecar_root)
+                                if blob.startswith(DRMION_SIGNATURE):
                                     try:
-                                        blob = open(fpath, "rb").read()
-                                    except OSError:
+                                        blob = _decrypt_drmion(blob, page_key)
+                                    except Exception:
                                         continue
-                                    rel = os.path.relpath(fpath, sidecar_root)
-                                    if blob.startswith(CONT_SIGNATURE) or blob.startswith(DRMION_SIGNATURE):
-                                        if blob.startswith(DRMION_SIGNATURE):
-                                            try:
-                                                blob = _decrypt_drmion(blob, page_key)
-                                            except Exception:
-                                                continue
-                                        zf.writestr(rel, blob)
+                                if blob.startswith(CONT_SIGNATURE):
+                                    zf.writestr(rel, blob)
                 convert_path = tmp.name
             finally:
                 tmp.close()
