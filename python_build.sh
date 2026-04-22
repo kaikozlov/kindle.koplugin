@@ -219,7 +219,7 @@ cp lib/crypto_hook.so "$STAGING/dist/lib/"
 cp lib/KFXVoucherExtractor.jar "$STAGING/dist/lib/"
 
 # Copy the Python dist
-cp -r "$DIST_DIR" "$STAGING/dist"
+cp -r "$DIST_DIR/" "$STAGING/dist/"
 
 # Create ZIP
 ZIP_NAME="kindle-koplugin-${TARGET}.zip"
