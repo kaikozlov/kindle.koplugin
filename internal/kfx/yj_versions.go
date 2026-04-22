@@ -870,6 +870,10 @@ func IsKnownFeature(cat, key string, val interface{}) bool {
 // KindleFeatureVersion returns the Kindle firmware version that first supported
 // the given feature, or UNSUPPORTED if not found.
 // Port of Python kindle_feature_version (lines 1100-1105).
+//
+// Python: feature = vals[val] if val in vals else vals.get(ANY)
+// Since ANY=True and True==1 in Python, vals.get(ANY) returns vals.get(1).
+// We replicate this by falling back to AnyVersionKey() first, then IntVersionKey(1).
 func KindleFeatureVersion(cat, key string, val interface{}) string {
 	vals := KnownFeatures[cat][key]
 	if vals == nil {
@@ -881,6 +885,9 @@ func KindleFeatureVersion(cat, key string, val interface{}) string {
 	if f, ok := vals[vk]; ok {
 		feature = f
 	} else if f, ok := vals[AnyVersionKey()]; ok {
+		feature = f
+	} else if f, ok := vals[IntVersionKey(1)]; ok {
+		// Python: ANY=True==1, so vals.get(ANY) matches key 1
 		feature = f
 	} else {
 		return Unsupported
