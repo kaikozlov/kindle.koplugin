@@ -1,0 +1,7 @@
+=== VAL-RES-010: Source Filename Resolution ===
+
+Elvis manifest: MATCH (31 image entries identical)
+HG manifest: MATCH (53 image entries identical)
+TOG manifest: MATCH (8 image entries identical)
+
+Go uses same resource naming convention as Python (e.g., image_NNN.jpg, image_rsrcXXX.jpg, image_name.jpg)

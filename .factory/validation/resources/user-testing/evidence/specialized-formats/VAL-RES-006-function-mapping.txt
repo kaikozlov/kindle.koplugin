@@ -1,0 +1,31 @@
+=== Python yj_to_epub_illustrated_layout.py functions ===
+26:    def __init__(self):
+29:    def fixup_illustrated_layout_anchors(self):
+130:    def create_conditional_page_templates(self):
+378:def find_by_id(root, search_id, required=True):
+389:def positions_in_tree(root):
+401:def is_in_tree(root, elem):
+
+=== Go yj_to_epub_illustrated_layout.go functions ===
+39:func parseStyleString(style string) map[string]string {
+56:func serializeStyleMap(m map[string]string) string {
+82:func popStyle(m map[string]string, key string) (string, bool) {
+96:func findElementByID(root *htmlElement, searchID string) *htmlElement {
+116:func removeChild(parent *htmlElement, child *htmlElement) {
+126:func insertChild(parent *htmlElement, index int, child htmlPart) {
+132:func removeChildFromParent(parent *htmlElement, child *htmlElement) {
+144:func stripOperatorSuffix(oper string) string {
+153:func isBlockParent(tag string) bool {
+163:func isInlineParent(tag string) bool {
+178:func fixupIllustratedLayoutAnchors(book *decodedBook, sections []renderedSection) {
+190:func fixupIllustratedLayoutParts(parts []htmlPart, sectionFilename string) {
+207:func rewriteAmznConditionStyle(style string, sectionFilename string) string {
+283:func createConditionalPageTemplates(book *decodedBook, sections []renderedSection, hasConditionalContent bool) []cssFileInfo {
+
+=== Mapping ===
+Python __init__ → (handled in book construction)
+Python fixup_illustrated_layout_anchors → Go fixupIllustratedLayoutAnchors (line 178)
+Python create_conditional_page_templates → Go createConditionalPageTemplates (line 283)
+Python find_by_id → Go findElementByID (line 96)
+Python positions_in_tree → (utility, not separately ported)
+Python is_in_tree → (utility, not separately ported)

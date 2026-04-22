@@ -1,0 +1,67 @@
+{
+  "milestone": "resources",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-RES-001",
+    "VAL-RES-002",
+    "VAL-RES-003",
+    "VAL-RES-004",
+    "VAL-RES-006",
+    "VAL-RES-007",
+    "VAL-RES-008",
+    "VAL-RES-009",
+    "VAL-RES-010"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "validationDetails": {
+    "environmentSetup": {
+      "goBuild": "passed",
+      "goTest": "passed (8.495s)",
+      "original6Books": "394/394 (0 differ across all 6 books)",
+      "newBooks": {
+        "HeatedRivalry": "51/0",
+        "1984": "32/15 (non-resource diffs: xhtml, css, ncx)",
+        "SecretsCrown": "1/4 (non-resource diffs: content.opf, nav.xhtml, stylesheet.css, toc.ncx)",
+        "SunriseReaping": "16/32 (non-resource diffs: xhtml sections, stylesheet.css)"
+      }
+    },
+    "flowValidators": [
+      {
+        "groupId": "image-resources",
+        "assertions": ["VAL-RES-001", "VAL-RES-002", "VAL-RES-003", "VAL-RES-004", "VAL-RES-009", "VAL-RES-010"],
+        "result": "all passed",
+        "keyFindings": [
+          "Image filenames match Python convention exactly across Elvis (31), HungerGames (53), TOG (8)",
+          "All image dimensions match perfectly between Go and Python EPUBs",
+          "JXR images in TOG properly decoded to JPEG (8/8 images match)",
+          "Cover images all have JFIF markers in both Go and Python EPUBs",
+          "Resource manifest entries identical (href, id, media-type, properties)",
+          "Go JPEG files 3-9% larger than Python for standard images, 7-38% for JXR-sourced (dimensions identical)"
+        ]
+      },
+      {
+        "groupId": "specialized-formats",
+        "assertions": ["VAL-RES-006", "VAL-RES-007", "VAL-RES-008"],
+        "result": "all passed",
+        "keyFindings": [
+          "All 6 Python illustrated layout functions have Go counterparts (fixupIllustratedLayoutAnchors, createConditionalPageTemplates, findElementByID)",
+          "All 10 Python image book functions have Go equivalents across 20 Go functions",
+          "All 10 Python notebook functions have Go equivalents across 25 Go functions",
+          "Notebook brush type 7 correctly uses variableThickness for MARKER/PEN selection",
+          "All 14 notebook unit tests pass",
+          "processScribeNotebookPageSection and processScribeNotebookTemplateSection are documented stubs awaiting fixtures"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+=== VAL-RES-009: Cover Image JFIF Check ===
+
+Elvis cover (Go): JFIF standard 1.01, 525x783
+Elvis cover (Python): JFIF standard 1.01, 525x783
+HG cover (Go): JFIF standard 1.01, 1309x1920
+HG cover (Python): JFIF standard 1.01, 1309x1920
+TOG cover (Go): JFIF standard 1.01, 1005x1507
+TOG cover (Python): JFIF standard 1.01, 1005x1507
+
+All cover images have JFIF markers. Both Go and Python produce identical cover format.

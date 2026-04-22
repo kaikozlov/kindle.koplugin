@@ -1,0 +1,27 @@
+=== VAL-RES-004: JXR Decoding Check for Throne of Glass ===
+
+TOG Go images:
+./OEBPS/image_rsrc43E.jpg
+./OEBPS/image_rsrc43F.jpg
+./OEBPS/image_rsrc43G.jpg
+./OEBPS/image_rsrc43H.jpg
+./OEBPS/image_rsrc43J.jpg
+./OEBPS/image_rsrc43K.jpg
+./OEBPS/image_rsrc43M.jpg
+./OEBPS/image_rsrc43N.jpg
+
+TOG Python images:
+./OEBPS/image_rsrc43E.jpg
+./OEBPS/image_rsrc43F.jpg
+./OEBPS/image_rsrc43G.jpg
+./OEBPS/image_rsrc43H.jpg
+./OEBPS/image_rsrc43J.jpg
+./OEBPS/image_rsrc43K.jpg
+./OEBPS/image_rsrc43M.jpg
+./OEBPS/image_rsrc43N.jpg
+
+JXR files in Go: None found
+JXR files in Python: None found
+
+All 8 images present as JPEG in both Go and Python output.
+Dimensions match for all images (see VAL-RES-002 evidence).

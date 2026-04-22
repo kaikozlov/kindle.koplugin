@@ -1,0 +1,102 @@
+=== VAL-RES-002: Image Dimension Comparison ===
+
+--- Elvis ---
+./OEBPS/images/image_001.jpg: go=343x185 ref=343x185
+./OEBPS/images/image_023.jpg: go=162x133 ref=162x133
+./OEBPS/images/image_035.jpg: go=292x330 ref=292x330
+./OEBPS/images/image_050.jpg: go=343x164 ref=343x164
+./OEBPS/images/image_065.jpg: go=491x383 ref=491x383
+./OEBPS/images/image_090.jpg: go=477x398 ref=477x398
+./OEBPS/images/image_110.jpg: go=327x164 ref=327x164
+./OEBPS/images/image_111.jpg: go=195x92 ref=195x92
+./OEBPS/images/image_111a.jpg: go=145x188 ref=145x188
+./OEBPS/images/image_112.jpg: go=196x215 ref=196x215
+./OEBPS/images/image_113-1.jpg: go=127x121 ref=127x121
+./OEBPS/images/image_113.jpg: go=211x150 ref=211x150
+./OEBPS/images/image_135.jpg: go=385x423 ref=385x423
+./OEBPS/images/image_160.jpg: go=312x94 ref=312x94
+./OEBPS/images/image_171.jpg: go=215x375 ref=215x375
+./OEBPS/images/image_197.jpg: go=350x305 ref=350x305
+./OEBPS/images/image_197_0.jpg: go=200x185 ref=200x185
+./OEBPS/images/image_213.jpg: go=420x208 ref=420x208
+./OEBPS/images/image_231.jpg: go=487x209 ref=487x209
+./OEBPS/images/image_247.jpg: go=427x386 ref=427x386
+./OEBPS/images/image_264.jpg: go=284x426 ref=284x426
+./OEBPS/images/image_277.jpg: go=106x89 ref=106x89
+./OEBPS/images/image_290.jpg: go=256x145 ref=256x145
+./OEBPS/images/image_298.jpg: go=488x604 ref=488x604
+./OEBPS/images/image_299.jpg: go=225x210 ref=225x210
+./OEBPS/images/image_300.jpg: go=225x210 ref=225x210
+./OEBPS/images/image_author.jpg: go=150x231 ref=150x231
+./OEBPS/images/image_cover.jpg: go=525x783 ref=525x783
+./OEBPS/images/image_iv.jpg: go=383x297 ref=383x297
+./OEBPS/images/image_logo.jpg: go=12x11 ref=12x11
+./OEBPS/images/image_titlepage.jpg: go=324x600 ref=324x600
+0 mismatches
+
+--- Hunger Games ---
+./OEBPS/image_rsrc7E9.jpg: go=1309x1920 ref=1309x1920
+./OEBPS/image_rsrc7EB.jpg: go=825x1231 ref=825x1231
+./OEBPS/image_rsrc7ED.jpg: go=825x1239 ref=825x1239
+./OEBPS/image_rsrc7EF.jpg: go=825x1239 ref=825x1239
+./OEBPS/image_rsrc7EH.jpg: go=815x1223 ref=815x1223
+./OEBPS/image_rsrc7EK.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7EM.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7EN.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7EP.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7ER.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7ES.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7ET.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7EU.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7EV.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7EW.jpg: go=815x1223 ref=815x1223
+./OEBPS/image_rsrc7EY.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7EZ.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7F0.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7F1.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7F2.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7F3.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7F4.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7F5.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7F6.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7F7.jpg: go=813x1223 ref=813x1223
+./OEBPS/image_rsrc7F9.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7FA.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7FB.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7FC.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7FD.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7FE.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7FF.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7FG.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7FH.jpg: go=600x185 ref=600x185
+./OEBPS/image_rsrc7FJ.jpg: go=825x1238 ref=825x1238
+./OEBPS/image_rsrc7FM.jpg: go=825x1238 ref=825x1238
+./OEBPS/image_rsrc7FP.jpg: go=825x1223 ref=825x1223
+./OEBPS/image_rsrc7FS.jpg: go=825x1207 ref=825x1207
+./OEBPS/image_rsrc7FU.jpg: go=825x1148 ref=825x1148
+./OEBPS/image_rsrc7FW.jpg: go=825x1238 ref=825x1238
+./OEBPS/image_rsrc7FY.jpg: go=825x1238 ref=825x1238
+./OEBPS/image_rsrc7G0.jpg: go=825x1138 ref=825x1138
+./OEBPS/image_rsrc7G2.jpg: go=826x1154 ref=826x1154
+./OEBPS/image_rsrc7G4.jpg: go=825x1151 ref=825x1151
+./OEBPS/image_rsrc7G6.jpg: go=600x143 ref=600x143
+./OEBPS/image_rsrc7G8.jpg: go=1920x798 ref=1920x798
+./OEBPS/image_rsrc7GB.jpg: go=1194x1920 ref=1194x1920
+./OEBPS/image_rsrc7GE.jpg: go=1271x1920 ref=1271x1920
+./OEBPS/image_rsrc7GH.jpg: go=1100x1920 ref=1100x1920
+./OEBPS/image_rsrc7GM.jpg: go=1920x432 ref=1920x432
+./OEBPS/image_rsrc7GR.jpg: go=1920x230 ref=1920x230
+./OEBPS/image_rsrc7GT.jpg: go=720x1047 ref=720x1047
+./OEBPS/image_rsrc7GV.jpg: go=884x1240 ref=884x1240
+0 mismatches
+
+--- Throne of Glass ---
+./OEBPS/image_rsrc43E.jpg: go=1005x1507 ref=1005x1507
+./OEBPS/image_rsrc43F.jpg: go=143x45 ref=143x45
+./OEBPS/image_rsrc43G.jpg: go=568x80 ref=568x80
+./OEBPS/image_rsrc43H.jpg: go=858x639 ref=858x639
+./OEBPS/image_rsrc43J.jpg: go=817x609 ref=817x609
+./OEBPS/image_rsrc43K.jpg: go=717x735 ref=717x735
+./OEBPS/image_rsrc43M.jpg: go=1428x3 ref=1428x3
+./OEBPS/image_rsrc43N.jpg: go=50x11 ref=50x11
+0 mismatches

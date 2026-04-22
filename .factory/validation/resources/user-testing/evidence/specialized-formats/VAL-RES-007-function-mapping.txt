@@ -1,0 +1,44 @@
+=== Python yj_to_image_book.py functions ===
+22:    def __init__(self, book):
+25:    def convert_book_to_cbz(self, split_landscape_comic_images, progress):
+57:    def convert_book_to_pdf(self, split_landscape_comic_images, progress):
+79:        def add_pages_nums_to_toc(toc):
+101:    def get_ordered_images(self, split_landscape_comic_images=False, is_comic=False, is_rtl=False, progress=None):
+157:    def get_resource_image(self, resource_name, ignore_variants=False):
+215:def combine_images_into_pdf(ordered_images, metadata=None, is_rtl=False, outline=None):
+296:def add_pdf_outline(pdf_writer, outline_entries, parent=None):
+304:def combine_images_into_cbz(ordered_images, metadata=None):
+349:def suffix_location(location, suffix):
+
+=== Go yj_to_image_book.go functions ===
+77:func NewKFXImageBook(frags fragmentCatalog, orderedImageResources []string) *KFXImageBook {
+89:func (b *KFXImageBook) getOrderedImages(splitLandscape, isComic, isRTL bool) []ImageResource {
+155:func (b *KFXImageBook) getOrderedImagesV2(splitLandscape, isComic, isRTL bool, progress interface{}) ([]ImageResource, []int, interface{}) {
+230:func (b *KFXImageBook) getResourceImage(resourceID string, ignoreVariants bool) *ImageResource {
+366:func intFromVal(vals ...interface{}) int {
+381:func cropImage(data []byte, resourceName string, resourceWidth, resourceHeight, marginLeft, marginRight, marginTop, marginBottom int) ([]byte, error) {
+430:func tocPageForPID(tocPID int, orderedPids []int) int {
+451:func suffixLocation(location, suffix string) string {
+466:func combineImagesIntoCBZ(orderedImages []ImageResource, metadata interface{}) []byte {
+559:func extensionForFormat(formatSymbol string) string {
+572:func combineImagesIntoPDF(orderedImages []ImageResource, metadata map[string]string, isRTL bool, outline []OutlineEntry) []byte {
+649:func buildPDF(pages []pdfPage, metadata map[string]string, isRTL bool, outline []OutlineEntry) []byte {
+833:func buildOutlineObjects(entries []OutlineEntry, parentID int, pageIDs []int, nextObjID *int, objects *[]pdfObject) []int {
+905:func setOutlineField(objects []pdfObject, objID int, field, value string) {
+919:func escapePDFString(s string) string {
+927:func countTotalOutlineEntries(entries []OutlineEntry) int {
+937:func serializePDF(objects []pdfObject, catalogID, infoID int) []byte {
+982:func decodeImageConfig(data []byte) (width, height int, err error) {
+991:func writePNG(img image.Image) ([]byte, error) {
+998:func writeJPEG(img image.Image, quality int) ([]byte, error) {
+
+=== Mapping ===
+Python __init__ → Go NewKFXImageBook (line 77)
+Python convert_book_to_cbz → Go combineImagesIntoCBZ (line 466)
+Python convert_book_to_pdf → Go combineImagesIntoPDF (line 572)
+Python get_ordered_images → Go getOrderedImages (line 89) + getOrderedImagesV2 (line 155)
+Python get_resource_image → Go getResourceImage (line 230)
+Python combine_images_into_pdf → Go combineImagesIntoPDF (line 572)
+Python add_pdf_outline → Go buildOutlineObjects (line 833)
+Python combine_images_into_cbz → Go combineImagesIntoCBZ (line 466)
+Python suffix_location → Go suffixLocation (line 451)

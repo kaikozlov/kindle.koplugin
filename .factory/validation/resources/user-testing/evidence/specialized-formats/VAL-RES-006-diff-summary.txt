@@ -1,0 +1,62 @@
+1.xhtml:        4 lines of diff
+10.xhtml:        6 lines of diff
+85.xhtml:        4 lines of diff
+94.xhtml:       10 lines of diff
+213.xhtml:       10 lines of diff
+337.xhtml:       10 lines of diff
+36.xhtml:        4 lines of diff
+447.xhtml:       10 lines of diff
+50.xhtml:       54 lines of diff
+551.xhtml:       10 lines of diff
+644.xhtml:       14 lines of diff
+745.xhtml:       10 lines of diff
+875.xhtml:       10 lines of diff
+990.xhtml:       14 lines of diff
+1138.xhtml:       10 lines of diff
+1270.xhtml:       10 lines of diff
+1397.xhtml:       10 lines of diff
+1508.xhtml:       14 lines of diff
+1642.xhtml:       10 lines of diff
+1790.xhtml:       10 lines of diff
+1876.xhtml:       10 lines of diff
+2004.xhtml:       10 lines of diff
+2084.xhtml:       10 lines of diff
+2205.xhtml:       10 lines of diff
+2306.xhtml:        4 lines of diff
+2320.xhtml:        4 lines of diff
+2331.xhtml:        4 lines of diff
+2365.xhtml:        4 lines of diff
+21.xhtml:        4 lines of diff
+
+=== Stylesheet diff ===
+6c6
+< .class_20 {font-size: 1.08696em; margin-bottom: 1.5em; margin-top: 4.8em; text-align: center}
+---
+> .class_20 {font-size: 1.08696em; margin-bottom: 1.5em; margin-top: 4.8em}
+23,24c23,25
+< .class_102-0 {margin-bottom: 0; margin-top: 4.8em; text-indent: 0}
+< .class_102-1 {margin-bottom: 0; margin-top: 4.8em; text-align: left}
+---
+> .class_102-0 {float: left; font-size: 4em; line-height: 100%; margin-right: 0.1em}
+> .class_102-1 {margin-bottom: 0; margin-top: 4.8em; text-indent: 0}
+> .class_102-2 {margin-bottom: 0; margin-top: 4.8em; text-align: left}
+29c30,31
+< .class_220 {margin-bottom: 0; margin-top: 4.8em; text-indent: 0}
+---
+> .class_220-0 {float: left; font-size: 4em; line-height: 100%; margin-right: 0.1em}
+> .class_220-1 {margin-bottom: 0; margin-top: 4.8em; text-indent: 0}
+39c41,42
+< .class_1649 {margin-bottom: 0; margin-top: 7.5em; text-indent: 0}
+---
+> .class_1649-0 {margin-bottom: 0; margin-top: 7.5em; text-indent: 0}
+> .class_1649-1 {float: left; font-size: 4em; line-height: 100%; margin-right: 0.1em}
+47c50
+< .class_2326 {font-size: 1.59999em}
+---
+> .class_2326 {font-size: 1.59999em; margin-bottom: 0; margin-top: 0}
+
+=== Known diff patterns ===
+1. Image naming: Go uses resource_*.bin, Python uses image_*.jpg
+2. Drop cap handling: Go omits drop cap span splitting
+3. CSS class numbering: Go has fewer class variants
+4. text-align:center: Go includes extra text-align on .class_20

@@ -1,0 +1,62 @@
+=== Python yj_to_epub_notebook.py functions ===
+75:    def __init__(self):
+78:    def process_scribe_notebook_page_section(self, section, page_template, section_name, seq):
+158:    def process_scribe_notebook_template_section(self, section, page_template, section_name):
+197:    def process_notebook_content(self, content, parent):
+247:    def scribe_notebook_stroke(self, content, parent, location_id):
+429:                def add_points_if_needed(pts, x1, y1, r1, d1, x2, y2, r2, d2):
+536:    def scribe_notebook_annotation(self, annotation, elem):
+554:    def scribe_annotation_content(self, content, elem):
+615:def adjust_color_for_density(color, density):
+624:def decode_stroke_values(data, num_points, name):
+
+=== Go yj_to_epub_notebook.go functions ===
+149:func adjustColorForDensity(color int, density float64) int {
+184:func decodeStrokeValues(data []byte, numPoints int, name string) ([]int, error) {
+350:func newSVGElement(parent *svgElement, tag string, attrib map[string]string) *svgElement {
+359:func (e *svgElement) setAttrib(key, value string) {
+392:func (nc *notebookContext) pushContext(ctx string) {
+397:func (nc *notebookContext) popContext() {
+416:func (cs *contextStack) current() string {
+423:func (cs *contextStack) push(ctx string) {
+427:func (cs *contextStack) pop() {
+444:func processNotebookContent(nc *notebookContext, content interface{}, parent *svgElement) {
+552:func getLocationIDString(content map[string]interface{}) string {
+578:func scribeNotebookStroke(nc *notebookContext, content map[string]interface{}, parent *svgElement, locationID string) {
+593:func scribeNotebookStrokeGroup(nc *notebookContext, content map[string]interface{}, parent *svgElement, locationID string) {
+638:func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]interface{}, parent *svgElement, locationID string) {
+925:func classifyBrushType(brushType int) string {
+953:func classifyBrushTypeWithThickness(brushType int, variableThickness bool) string {
+968:func generateSVGPaths(groupElem *svgElement, points []strokePoint, nmdlThickness int) {
+1028:func generateDensityPNG(groupElem *svgElement, points []strokePoint, bounds [4]int, boundWidth, boundHeight int, nmdlRandomSeed interface{}, strokeColor int) {
+1163:func writePNGImage(groupElem *svgElement, img image.Image, bounds [4]int, boundWidth, boundHeight int) {
+1187:func scribeNotebookAnnotation(nc *notebookContext, annotation map[string]interface{}, elem *svgElement) {
+1230:func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svgElement) {
+1371:func toFloat64(v interface{}) float64 {
+1387:func toInt(v interface{}) int {
+1408:func processScribeNotebookPageSection(section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string, seq int) bool {
+1419:func processScribeNotebookTemplateSection(section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string) bool {
+
+=== Mapping ===
+Python __init__ → (handled in notebookContext construction)
+Python process_scribe_notebook_page_section → Go processScribeNotebookPageSection (line 1408)
+Python process_scribe_notebook_template_section → Go processScribeNotebookTemplateSection (line 1419)
+Python process_notebook_content → Go processNotebookContent (line 444)
+Python scribe_notebook_stroke → Go scribeNotebookStroke (line 578) + scribeNotebookStrokeGroup (line 593) + scribeNotebookStrokeIndividual (line 638)
+Python scribe_notebook_annotation → Go scribeNotebookAnnotation (line 1187)
+Python scribe_annotation_content → Go scribeAnnotationContent (line 1230)
+Python adjust_color_for_density → Go adjustColorForDensity (line 149)
+Python decode_stroke_values → Go decodeStrokeValues (line 184)
+Python add_points_if_needed → Go inline in scribeNotebookStrokeIndividual
+
+=== Brush type handling ===
+// Brush Type Constants (yj_to_epub_notebook.py lines 27-36)
+// THICKNESS_CHOICES maps brush type names to their 5 thickness values.
+// Ported from Python dict (8 entries: 7 brush types + UNKNOWN with empty slice).
+	nmdlBrushType := content["nmdl.brush_type"]
+	delete(content, "nmdl.brush_type")
+	// Must be computed before brush type classification since
+	// brush type 7 depends on variableThickness (Python: nmdl.brush_type == 7 → MARKER if variable_thickness else PEN).
+	// Determine brush type — must come after variableThickness computation.
+	// Python (yj_to_epub_notebook.py:330-350): brush_type 7 → MARKER if variable_thickness else PEN.
+	var brushName string

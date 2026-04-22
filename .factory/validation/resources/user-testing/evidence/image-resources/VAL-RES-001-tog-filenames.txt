@@ -1,0 +1,19 @@
+=== VAL-RES-001: TOG Image Filenames ===
+./OEBPS/image_rsrc43E.jpg
+./OEBPS/image_rsrc43F.jpg
+./OEBPS/image_rsrc43G.jpg
+./OEBPS/image_rsrc43H.jpg
+./OEBPS/image_rsrc43J.jpg
+./OEBPS/image_rsrc43K.jpg
+./OEBPS/image_rsrc43M.jpg
+./OEBPS/image_rsrc43N.jpg
+--- Python ---
+./OEBPS/image_rsrc43E.jpg
+./OEBPS/image_rsrc43F.jpg
+./OEBPS/image_rsrc43G.jpg
+./OEBPS/image_rsrc43H.jpg
+./OEBPS/image_rsrc43J.jpg
+./OEBPS/image_rsrc43K.jpg
+./OEBPS/image_rsrc43M.jpg
+./OEBPS/image_rsrc43N.jpg
+--- Diff: MATCH ---

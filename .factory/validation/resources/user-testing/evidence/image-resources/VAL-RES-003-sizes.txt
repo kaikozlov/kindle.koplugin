@@ -1,0 +1,44 @@
+=== VAL-RES-003: Image File Size Comparison ===
+
+--- Elvis (30/31 differ by 3-9%, 1 tiny logo at 70%) ---
+./OEBPS/images/image_001.jpg: go=15825B ref=14320B diff=10%
+./OEBPS/images/image_023.jpg: go=8150B ref=7433B diff=9%
+./OEBPS/images/image_035.jpg: go=37043B ref=35075B diff=5%
+./OEBPS/images/image_050.jpg: go=25798B ref=23776B diff=8%
+./OEBPS/images/image_065.jpg: go=52067B ref=48998B diff=6%
+./OEBPS/images/image_090.jpg: go=77158B ref=72971B diff=5%
+./OEBPS/images/image_110.jpg: go=15640B ref=15078B diff=3%
+./OEBPS/images/image_111.jpg: go=5921B ref=5560B diff=6%
+./OEBPS/images/image_111a.jpg: go=8833B ref=8450B diff=4%
+./OEBPS/images/image_112.jpg: go=9916B ref=9353B diff=6%
+./OEBPS/images/image_113-1.jpg: go=5102B ref=4752B diff=7%
+./OEBPS/images/image_113.jpg: go=10234B ref=9704B diff=5%
+./OEBPS/images/image_135.jpg: go=36437B ref=34772B diff=4%
+./OEBPS/images/image_160.jpg: go=9055B ref=8405B diff=7%
+./OEBPS/images/image_171.jpg: go=17399B ref=16244B diff=7%
+./OEBPS/images/image_197.jpg: go=29978B ref=28753B diff=4%
+./OEBPS/images/image_197_0.jpg: go=7899B ref=7182B diff=9%
+./OEBPS/images/image_213.jpg: go=46874B ref=44062B diff=6%
+./OEBPS/images/image_231.jpg: go=24687B ref=23178B diff=6%
+./OEBPS/images/image_247.jpg: go=43191B ref=41779B diff=3%
+./OEBPS/images/image_264.jpg: go=30412B ref=28674B diff=6%
+./OEBPS/images/image_277.jpg: go=4884B ref=4530B diff=7%
+./OEBPS/images/image_290.jpg: go=24098B ref=22266B diff=8%
+./OEBPS/images/image_298.jpg: go=91251B ref=86699B diff=5%
+./OEBPS/images/image_299.jpg: go=8709B ref=8390B diff=3%
+./OEBPS/images/image_300.jpg: go=9690B ref=9343B diff=3%
+./OEBPS/images/image_author.jpg: go=15808B ref=15106B diff=4%
+./OEBPS/images/image_cover.jpg: go=61218B ref=61218B diff=0%
+./OEBPS/images/image_iv.jpg: go=45425B ref=43370B diff=4%
+./OEBPS/images/image_logo.jpg: go=531B ref=312B diff=70%
+./OEBPS/images/image_titlepage.jpg: go=37451B ref=34075B diff=9%
+
+--- TOG (7/8 differ by 7-38%) ---
+./OEBPS/image_rsrc43E.jpg: go=120510B ref=120510B diff=0%
+./OEBPS/image_rsrc43F.jpg: go=3753B ref=3278B diff=14%
+./OEBPS/image_rsrc43G.jpg: go=13556B ref=12002B diff=12%
+./OEBPS/image_rsrc43H.jpg: go=205735B ref=189795B diff=8%
+./OEBPS/image_rsrc43J.jpg: go=226362B ref=210698B diff=7%
+./OEBPS/image_rsrc43K.jpg: go=219105B ref=204284B diff=7%
+./OEBPS/image_rsrc43M.jpg: go=2946B ref=2127B diff=38%
+./OEBPS/image_rsrc43N.jpg: go=821B ref=596B diff=37%
