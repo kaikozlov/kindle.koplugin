@@ -155,6 +155,16 @@ find "$DIST_DIR/lib/python3.11" -name "test" -type d -exec rm -rf {} + 2>/dev/nu
 # Strip debug symbols from the Python binary (27MB -> ~7MB)
 docker run --rm --platform linux/arm/v7 -v "$(cd "$DIST_DIR" && pwd)/bin:/mnt" arm32v7/gcc:12 strip /mnt/python3
 
+# Extract shared libs needed by Pillow (not present on Kindle)
+# Pillow links: libtiff, libjpeg, libopenjp2, libxcb, libz
+echo "  Bundling shared libs for Pillow..."
+mkdir -p "$DIST_DIR/lib/external"
+docker run --rm --platform linux/arm/v7 -v "$(cd "$DIST_DIR" && pwd)/lib/external:/out" arm32v7/gcc:12 bash -c '
+for lib in libtiff.so.6 libjpeg.so.62 libopenjp2.so.7 libxcb.so.1 libz.so.1; do
+    cp -L /lib/arm-linux-gnueabihf/$lib /out/
+done
+'
+
 # Strip unnecessary Crypto modules
 rm -rf "$SITE_PACKAGES/Crypto/SelfTest"
 rm -rf "$SITE_PACKAGES/Crypto/IO"

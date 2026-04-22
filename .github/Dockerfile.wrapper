@@ -63,6 +63,11 @@ RUN printf '%s\n' \
     '    setenv("KINDLE_HELPER_BASE", dir, 1);' \
     '    setenv("PYTHONDONTWRITEBYTECODE", "1", 1);' \
     '' \
+    '    /* Set LD_LIBRARY_PATH so Pillow finds bundled shared libs */' \
+    '    char ld_path[PATH_MAX];' \
+    '    snprintf(ld_path, sizeof(ld_path), "%s/dist/lib/external", dir);' \
+    '    setenv("LD_LIBRARY_PATH", ld_path, 1);' \
+    '' \
     '    /* Build argv: python3 -s script [user args] */' \
     '    int new_argc = argc + 2;' \
     '    char **new_argv = malloc(sizeof(char *) * (new_argc + 1));' \
