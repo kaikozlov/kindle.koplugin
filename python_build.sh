@@ -212,10 +212,11 @@ cp -r patches/ "$STAGING/patches/" 2>/dev/null || true
 cp "$OUTPUT_DIR/kindle-helper" "$STAGING/"
 cp "$OUTPUT_DIR/libsyscall_wrapper.so" "$STAGING/"
 
-# Copy the DRM helpers (crypto hook, Java jar)
-mkdir -p "$STAGING/lib"
-cp lib/crypto_hook.so "$STAGING/lib/"
-cp lib/KFXVoucherExtractor.jar "$STAGING/lib/"
+# Copy the DRM helpers (crypto hook, Java jar) into dist/lib/
+# Python resolves plugin_dir as dist/ (where kindle_helper.py lives)
+mkdir -p "$STAGING/dist/lib"
+cp lib/crypto_hook.so "$STAGING/dist/lib/"
+cp lib/KFXVoucherExtractor.jar "$STAGING/dist/lib/"
 
 # Copy the Python dist
 cp -r "$DIST_DIR" "$STAGING/dist"

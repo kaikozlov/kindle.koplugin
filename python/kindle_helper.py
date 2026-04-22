@@ -503,13 +503,8 @@ def cmd_drm_init(args):
     plugin_dir = args.plugin_dir or ""
 
     if not plugin_dir:
-        # Try to detect plugin dir from this binary's location
+        # Script is in dist/, which is the plugin_dir for DRM helpers
         plugin_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-        if not os.path.isfile(os.path.join(plugin_dir, "lib", "crypto_hook.so")):
-            # Script is in dist/, plugin dir is parent
-            parent = os.path.dirname(plugin_dir)
-            if os.path.isfile(os.path.join(parent, "lib", "crypto_hook.so")):
-                plugin_dir = parent
 
     try:
         from dedrm.drm_init import run as drm_init_run
