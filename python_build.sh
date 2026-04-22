@@ -129,10 +129,16 @@ rm -rf "$DIST_DIR/bin/python"             # duplicate binary
 mv "$DIST_DIR/bin/python3.11" "$DIST_DIR/bin/python3"
 rm -f "$DIST_DIR/bin/python3-config"
 rm -f "$DIST_DIR/bin/python3.11-config"
-rm -rf "$DIST_DIR/lib/libtcl"*            # Tcl/Tk not needed
-rm -rf "$DIST_DIR/lib/itcl"*              # Tcl extension
-rm -rf "$DIST_DIR/lib/thread"*            # Tcl extension
-rm -rf "$DIST_DIR/lib/tcl9"               # Tcl runtime
+rm -rf "$DIST_DIR/lib/libpython3.11.so"*          # shared lib (28MB, not needed)
+rm -rf "$DIST_DIR/lib/libpython3.so"             # linker stub
+rm -rf "$DIST_DIR/lib/pkgconfig"                 # build metadata
+rm -rf "$DIST_DIR/lib/tcl9"                      # Tcl runtime
+rm -rf "$DIST_DIR/lib/tcl9.0"                    # Tcl runtime
+rm -rf "$DIST_DIR/lib/tk9.0"                     # Tk runtime
+rm -rf "$DIST_DIR/lib/itcl"*                     # Tcl extension
+rm -rf "$DIST_DIR/lib/thread"*                   # Tcl extension
+rm -f "$DIST_DIR/lib/libtcl"*                    # Tcl/Tk .so
+rm -f "$DIST_DIR/lib/libtcl9"*                   # Tcl .so
 rm -rf "$DIST_DIR/lib/python3.11/idlelib" # IDE
 rm -rf "$DIST_DIR/lib/python3.11/tkinter" # Tk
 rm -rf "$DIST_DIR/lib/python3.11/test"    # test suite
