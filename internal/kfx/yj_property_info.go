@@ -703,8 +703,14 @@ func propertyValueList(propName string, v []interface{}, info propInfo, infoOK b
 		sort.Strings(vals)
 		return strings.Join(vals, " ")
 
-	case "$98": // transform — simplified
-		return fmt.Sprintf("%v", v)
+	case "$98": // transform
+		// Python yj_to_epub_properties.py L1345: value = self.process_transform(yj_value, svg)
+		// In propertyValue (non-SVG) context, svg=False so process_transform uses "px" and "," separator.
+		return processTransform(v, false)
+
+	case "$650": // shape-outside (-amzn-shape-outside)
+		// Python yj_to_epub_properties.py L1331-1332: value = self.process_polygon(yj_value)
+		return processPolygon(v)
 
 	case "$497": // text-shadow list
 		vals := make([]string, 0, len(v))
