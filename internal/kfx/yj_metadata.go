@@ -12,7 +12,7 @@ import (
 // These are methods of BookMetadata in Python; here they operate on fragmentCatalog.
 //
 // Python reference: REFERENCE/Calibre_KFX_Input/kfxlib/yj_metadata.py
-// Go file: internal/kfx/yj_metadata_getters.go
+// Go file: internal/kfx/yj_metadata.go
 // ---------------------------------------------------------------------------
 
 // metadataSymbols mirrors Python METADATA_SYMBOLS (yj_structure.py):
