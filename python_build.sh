@@ -125,6 +125,10 @@ rm -rf "$DIST_DIR/bin/2to3"*              # unused tools
 rm -rf "$DIST_DIR/bin/idle3"*             # IDE
 rm -rf "$DIST_DIR/bin/pydoc3"*            # docs
 rm -rf "$DIST_DIR/bin/pip"*               # pip not needed at runtime
+rm -rf "$DIST_DIR/bin/python"             # duplicate binary
+mv "$DIST_DIR/bin/python3.11" "$DIST_DIR/bin/python3"
+rm -f "$DIST_DIR/bin/python3-config"
+rm -f "$DIST_DIR/bin/python3.11-config"
 rm -rf "$DIST_DIR/lib/libtcl"*            # Tcl/Tk not needed
 rm -rf "$DIST_DIR/lib/itcl"*              # Tcl extension
 rm -rf "$DIST_DIR/lib/thread"*            # Tcl extension
