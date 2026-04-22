@@ -520,7 +520,12 @@ func sectionXHTML(book Book, section Section) string {
 	var out strings.Builder
 	out.WriteString(xmlDecl)
 	out.WriteString(`<html xmlns="http://www.w3.org/1999/xhtml"`)
-	// Add xmlns:epub when any element uses epub:type (Python epub_output.py line ~500)
+	// Add xmlns:epub when any element uses epub:type, matching Python's behavior where
+	// lxml cleanup_namespaces removes the xmlns:epub declaration from sections that don't
+	// use it (epub_output.py L698: etree.cleanup_namespaces). Python creates every XHTML
+	// document with xmlns:epub in XHTML_NAMESPACES (L88-92), but cleanup_namespaces
+	// strips unused namespaces, so the final output only includes xmlns:epub when
+	// epub:type attributes are actually present in the section body.
 	if strings.Contains(section.BodyHTML, `epub:type="`) || section.Properties == "epub" {
 		out.WriteString(` xmlns:epub="http://www.idpf.org/2007/ops"`)
 	}
