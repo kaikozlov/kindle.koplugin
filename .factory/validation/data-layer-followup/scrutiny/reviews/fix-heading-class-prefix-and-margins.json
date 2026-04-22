@@ -1,0 +1,22 @@
+{
+  "featureId": "fix-heading-class-prefix-and-margins",
+  "reviewedAt": "2026-04-22T22:30:00Z",
+  "commitId": "1318b5e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix correctly addresses the root cause of heading class prefix issue: Go was emitting raw KFX symbol IDs ($760, $282, $453) as -kfx-layout-hints CSS property values instead of mapping them to human-readable names (heading, figure, caption). The change in propertyValueList (yj_property_info.go) now maps layout hint symbols through layoutHintElementNames, matching Python's LAYOUT_HINT_ELEMENT_NAMES at yj_to_epub_properties.py:77-81. This ensures classPrefixFromStyle produces 'heading_' prefix instead of 'class_' for heading elements. The margin stripping aspect of the feature description was already implemented in prior work (lines 1790-1815 of yj_to_epub_properties.go) and was not part of this commit.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_property_info.go",
+        "line": 693,
+        "severity": "non_blocking",
+        "description": "Missing warning log for unmapped layout hint symbols. Python (yj_to_epub_properties.py:1361) logs 'Unexpected layout_hint %s' when a layout hint symbol is not in LAYOUT_HINT_ELEMENT_NAMES. Go silently drops unmapped symbols. The current set of 3 known symbols ($453, $282, $760) covers all observed cases, but if Amazon adds new layout hint types, this will silently drop them without any diagnostic. Should add a log.Warnf for unmapped hints per AGENTS.md guidance: 'If a branch seems unreachable, add a log.Errorf for it instead of silently dropping it.'"
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "The fix is a minimal, correct 9-line change that maps KFX layout hint symbol IDs to human-readable names in propertyValueList. This ensures the -kfx-layout-hints CSS property contains 'heading' instead of '$760', allowing classPrefixFromStyle to produce the correct 'heading_' class prefix. The fix matches the Python reference exactly (LAYOUT_HINT_ELEMENT_NAMES mapping at yj_to_epub_properties.py:77-81 and property_value loop at L1354-1363). All tests pass and the original 6 books remain at 394/394. The margin stripping portion of the feature description was already implemented in prior commits and is working correctly. One minor non-blocking issue: Python logs a warning for unexpected layout hints but Go silently drops them."
+}

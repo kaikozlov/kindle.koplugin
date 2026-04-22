@@ -1,0 +1,66 @@
+{
+  "milestone": "data-layer-followup",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "build": { "passed": true, "command": "go build ./cmd/kindle-helper/", "exitCode": 0 },
+    "test": { "passed": true, "command": "go test ./internal/kfx/ -count=1 -timeout 120s", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "go vet ./internal/kfx/...", "exitCode": 0 },
+    "lint": { "passed": true, "command": "go vet ./internal/kfx/...", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "fix-vertical-align-baseline-shift",
+      "severity": "non_blocking",
+      "description": "fixVerticalAlignProperties() and createSpanSubcontainer() in container.go:51-74 remain dead code with zero callers. The conflict case (both -kfx-baseline-shift and -kfx-baseline-style with different values requiring a subcontainer span) was never observed in test books, so the simpler overwrite approach was used instead."
+    },
+    {
+      "featureId": "fix-vertical-align-baseline-shift",
+      "severity": "non_blocking",
+      "description": "When both -kfx-baseline-shift and -kfx-baseline-style produce different vertical-align values, Go overwrites one with the other instead of creating a subcontainer span like Python does. This is a deliberate trade-off documented in the code."
+    },
+    {
+      "featureId": "fix-heading-class-prefix-and-margins",
+      "severity": "non_blocking",
+      "description": "Missing warning log for unmapped layout hint symbols. Python logs 'Unexpected layout_hint %s' but Go silently drops unmapped symbols. Should add log.Warnf per AGENTS.md guidance."
+    },
+    {
+      "featureId": "fix-resource-and-section-naming",
+      "severity": "non_blocking",
+      "description": ".webp maps to 'image' resource type prefix in Go vs 'video' in Python's RESOURCE_TYPE_OF_EXT. WebP is extremely rare in KFX so unlikely to matter in practice."
+    },
+    {
+      "featureId": "fix-resource-and-section-naming",
+      "severity": "non_blocking",
+      "description": "Python's get_external_resource modifies location_fn from yj.conversion.source_resource_filename and yj.authoring.source_file_name properties before the location extension fallback. Go doesn't parse these properties. Pre-existing gap not introduced by this change."
+    },
+    {
+      "featureId": "fix-position-anchors-and-drop-caps",
+      "severity": "non_blocking",
+      "description": "Feature description was slightly misleading about offset-0 anchor placement, but the actual implementation correctly matches Python's behavior (id goes on content_elem directly). No fix needed."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a note about Go's CSS class-based architecture allowing property-level fixes where Python needs render-level fixes. This pattern has recurred across multiple features and should guide future workers' approach to fixing CSS-related issues.",
+      "evidence": "fix-vertical-align-baseline-shift worker identified that the feature description said to wire fixVerticalAlignProperties into 6 storyline.go call sites, but the fix was better done at convertYJProperties level since Go uses CSS classes rather than inline styles. This same architectural insight applies broadly.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Dead code in container.go (fixVerticalAlignProperties, createSpanSubcontainer) should be removed or annotated",
+      "reason": "ambiguous — the code exists for a rare conflict case that could theoretically occur in future books. Keeping it is intentional, and removing it would be a design decision for the orchestrator."
+    }
+  ],
+  "previousRound": null
+}

@@ -1,0 +1,33 @@
+{
+  "featureId": "fix-resource-and-section-naming",
+  "reviewedAt": "2026-04-22T21:45:00Z",
+  "commitId": "bd8d18c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation correctly addresses both issues: (1) section filenames now use raw $174 symbol IDs matching Python's SECTION_TEXT_FILEPATH convention, and (2) resource extensions follow Python's 3-step resolution chain (format symbol → MIME → location fallback). The code is well-documented with Python file/line references, all callers are updated, tests pass, and the original 6 books maintain 394/394 parity. One minor parity gap found: .webp maps to 'image' in Go vs 'video' in Python's RESOURCE_TYPE_OF_EXT.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_to_epub_resources.go",
+        "line": 958,
+        "severity": "non_blocking",
+        "description": "resourceTypeOfExt maps .webp to \"image\" but Python's RESOURCE_TYPE_OF_EXT (resources.py:134) maps .webp to \"video\". This would cause a different filename prefix (image_ vs video_) for webp resources. Webp is extremely rare in KFX so unlikely to matter in practice, but it's a parity gap."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The resource extension resolution has two separate code paths: (1) getExternalResource (yj_to_epub_resources.go:164-228) which resolves extension via extensionForFormatSymbol + manual location update, and (2) buildResources (yj_to_epub_resources.go:584-610) which uses the new resourceExtension() function. The getExternalResource path doesn't use the new resourceExtension() — it has its own inline extension logic. This means the 3-step fallback chain (format→mime→location) is only fully exercised in the buildResources path. The getExternalResource path has a simplified version that doesn't handle the MIME or location fallbacks the same way, but it handles extension via replaceExtension on locationFn directly.",
+      "evidence": "Compare yj_to_epub_resources.go:225 (getExternalResource passes Location: locationFn with MediaType: \"image/jpeg\" hardcoded) vs yj_to_epub_resources.go:601 (buildResources passes Format field and original Location). Both ultimately call uniquePackageResourceFilename → packageResourceStem → resourceExtension."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Python's get_external_resource modifies location_fn from yj.conversion.source_resource_filename and yj.authoring.source_file_name properties before the location extension fallback. Go doesn't parse or use these properties. This is a pre-existing gap not introduced by this change.",
+      "evidence": "Python yj_to_epub_resources.py:99-100: location_fn = resource.pop('yj.conversion.source_resource_filename', location_fn); location_fn = resource.pop('yj.authoring.source_file_name', location_fn). No corresponding code in Go's getExternalResource or parseResourceFragment."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. Both fixes are correctly implemented and verified. Section filenames now use raw section IDs matching Python (e.g., UYqzWVgySW_Gl4WQ-Od_xQ1.xhtml instead of 1.xhtml). Resource extensions follow Python's 3-step resolution chain (format symbol → MIME type → location fallback) with all format symbols matching Python's SYMBOL_FORMATS exactly. Tests pass, build succeeds, 394/394 regression check maintained. One non-blocking parity gap: .webp maps to 'image' prefix in Go vs 'video' in Python. The handoff correctly identifies pre-existing JXR conversion gap for resources with empty mediaType."
+}

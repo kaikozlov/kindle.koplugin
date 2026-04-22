@@ -1,0 +1,28 @@
+{
+  "featureId": "fix-position-anchors-and-drop-caps",
+  "reviewedAt": "2026-04-22T22:10:00Z",
+  "commitId": "864779a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "This commit fixes two rendering issues: (1) dropcap CSS class naming by looking up $125/$126 from style fragments when not directly on the content node, matching Python's add_kfx_style merge behavior, and (2) position anchor separation by inserting empty <span id='X'/> before annotation-created elements (<a> with href, elements with epub:type). Both fixes are faithful ports of the Python reference code. The implementation is well-commented with Python line references, handles edge cases correctly, and passes all tests with 394/394 original books matching.",
+    "issues": [
+      {
+        "file": "internal/kfx/storyline.go",
+        "line": 2745,
+        "severity": "non_blocking",
+        "description": "The feature description states 'for offset 0, the id should go on the innermost first child with text content, not the outer container' but the implementation at line 2990 still puts offset-0 anchors directly on the outer container element. This actually MATCHES Python's behavior (yj_to_epub_content.py:1094 calls process_position(location_id, 0, content_elem) which sets id on content_elem directly), so the code is correct — the feature description was slightly misleading about what needed to change for offset 0. No fix needed."
+      },
+      {
+        "file": "internal/kfx/storyline.go",
+        "line": 2770,
+        "severity": "non_blocking",
+        "description": "When a dropcap event also has a separate annotation style event at the same offset, the merge via mergeStyleStrings(dropcapDeclStyle, annotationStyle) applies both to the innermost span. In Python, the dropcap add_style runs first, then process_content_properties with replace=True runs on the same element. The Go merge (map union, last-wins) is semantically equivalent to Python's Style.update — content properties override dropcap properties with the same key. This is correct but worth noting the equivalence depends on mergeStyleStrings being last-wins, which it is (yj_to_epub_properties.go:431-438)."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "The implementation correctly fixes both dropcap CSS class naming and position anchor separation for annotation elements. The dropcap fix faithfully ports Python's add_kfx_style merge behavior by looking up $125/$126 from style fragments when not directly on the content node, and correctly propagates $173 for CSS class naming. The position anchor fix correctly detects annotation-created elements and inserts separate empty <span id='X'/> before them, matching Python's ordering where anchors are processed before annotations. All Python branches are covered, no regressions in original 6 books (394/394)."
+}

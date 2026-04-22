@@ -1,0 +1,39 @@
+{
+  "featureId": "fix-vertical-align-baseline-shift",
+  "reviewedAt": "2026-04-22T22:15:00Z",
+  "commitId": "49e1db7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix adds the missing -kfx-baseline-style property to the vertical-align post-processing loop in convertYJProperties, consolidating the previously separate two-block handling (-kfx-table-vertical-align and -kfx-baseline-shift) into a single loop matching Python's iteration order over all three properties. The change is minimal (13 additions, 15 deletions in yj_property_info.go), correctly addresses the root cause (missing -kfx-baseline-style → vertical-align conversion for superscript/subscript), and passes all tests with 394/394 original books matching and SunriseReaping improving by 1 file match.",
+    "issues": [
+      {
+        "file": "internal/kfx/container.go",
+        "line": 51,
+        "severity": "non_blocking",
+        "description": "fixVerticalAlignProperties() and createSpanSubcontainer() remain dead code with zero callers. These handle the Python conflict case where both -kfx-baseline-shift and vertical-align exist with different values, requiring a subcontainer <span>. The worker verified this case never occurs in the 10 test books, so the simpler approach (overwrite at convertYJProperties level) is sufficient. However, if a future book triggers this conflict, the render-level fix will be needed and these functions should be wired in at the storyline.go rendering points."
+      },
+      {
+        "file": "internal/kfx/yj_property_info.go",
+        "line": 882,
+        "severity": "non_blocking",
+        "description": "The condition `!exists || declarations[\"vertical-align\"] != val` overwrites existing vertical-align on conflict instead of creating a subcontainer span like Python does. This is a deliberate simplification since the conflict case was never observed in test data. The comment documents this trade-off adequately. If a book ever has both -kfx-baseline-shift and -kfx-baseline-style with different values, the overwrite behavior would silently drop one of them instead of splitting into two elements."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The feature description specified wiring fixVerticalAlignProperties into storyline.go at 6 call sites matching Python. The worker correctly identified that Go's CSS class-based architecture makes it more appropriate to fix this at the convertYJProperties level (property conversion) rather than at the rendering level (element creation). This architectural insight — that Python's inline-style system requires render-time fixes that Go's class-based system can handle at property conversion time — is a recurring pattern in this codebase but is not documented anywhere.",
+      "evidence": "Handoff skillFeedback.suggestedChanges: 'The feature description mentioned wiring fixVerticalAlignProperties into 6 call sites in storyline.go, but the actual fix was better done at the convertYJProperties level (yj_property_info.go) since Go uses a CSS class-based system rather than inline styles.'"
+    },
+    {
+      "area": "conventions",
+      "observation": "Dead code (fixVerticalAlignProperties, createSpanSubcontainer in container.go) is being kept deliberately for a rare conflict case that no test book triggers. There's no convention documented about when to keep dead code vs. remove it. A log.Errorf or panic with a message like 'unexpected vertical-align conflict' in the dead code path would make future debugging easier if the conflict ever occurs.",
+      "evidence": "container.go:51-74 contains fixVerticalAlignProperties with zero callers. Handoff.discoveredIssues mentions it as non_blocking."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The fix correctly adds the missing -kfx-baseline-style property to the vertical-align post-processing in convertYJProperties. The worker deviated from the feature description (which said to wire fixVerticalAlignProperties into 6 storyline.go call sites) but the deviation is justified: Go's CSS class-based system handles this at property conversion time, not render time, making the fix simpler and more architecturally appropriate. The conflict case (two different vertical-align values requiring a subcontainer span) is correctly documented as rare and handled by overwrite semantics. All tests pass, 394/394 original books match, and SunriseReaping improved by 1 file. Two non-blocking issues noted: dead code in container.go and the overwrite-vs-subcontainer trade-off."
+}
