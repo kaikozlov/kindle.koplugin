@@ -155,19 +155,9 @@ find "$DIST_DIR/lib/python3.11" -name "test" -type d -exec rm -rf {} + 2>/dev/nu
 # Strip debug symbols from the Python binary (27MB -> ~7MB)
 docker run --rm --platform linux/arm/v7 -v "$(cd "$DIST_DIR" && pwd)/bin:/mnt" arm32v7/gcc:12 strip /mnt/python3
 
-# Strip unnecessary Crypto modules (only keep AES and friends)
+# Strip unnecessary Crypto modules
 rm -rf "$SITE_PACKAGES/Crypto/SelfTest"
 rm -rf "$SITE_PACKAGES/Crypto/IO"
-for cipher_dir in "$SITE_PACKAGES/Crypto/Cipher"/*.so; do
-    base=$(basename "$cipher_dir" .so)
-    case "$base" in
-        _ARC4|_AES|_Salsa20|_pkcs1_decode|_raw_aes|_raw_aesni|_raw_arc2|_raw_blowfish|_raw_cast|_raw_cbc|_raw_cfb|_raw_ctr|_raw_des|_raw_des3|_raw_ecb|_raw_gcm|_raw_ocb|_raw_ofb|_raw_salsa20|_chacha20|_pkcs1_decode)
-        ;;
-        *)
-            rm -f "$cipher_dir"
-            ;;
-    esac
-done
 
 # Strip pip and setuptools from site-packages (build tools only)
 rm -rf "$SITE_PACKAGES/pip"
