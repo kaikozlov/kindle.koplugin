@@ -1,4 +1,0 @@
-Command: /tmp/val-cross-004-helper (no args)
-Stderr: usage: kindle-helper <scan|convert> [flags]
-Exit code: 2
-Result: PASS - usage error printed to stderr, exit code 2

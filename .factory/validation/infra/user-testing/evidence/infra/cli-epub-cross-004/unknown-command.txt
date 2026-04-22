@@ -1,4 +1,0 @@
-Command: /tmp/val-cross-004-helper bogus
-Stderr: unknown command: bogus
-Exit code: 2
-Result: PASS - unknown command error, exit code 2
