@@ -1,0 +1,155 @@
+{
+  "groupId": "spine-structure",
+  "testedAt": "2026-04-22T03:50:00Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "comparisonOutput": "/tmp/cmp/",
+    "newBooksOutput": "/tmp/new_books/",
+    "goBinary": "./kindle-helper"
+  },
+  "toolsUsed": ["bash", "rg"],
+  "assertions": [
+    {
+      "id": "VAL-EPUB-004",
+      "title": "Spine ordering matches Python exactly",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run compare_all.sh to verify original 6 books produce 0 diffs",
+          "expected": "All 394 text files match",
+          "observed": "Martyr:102/0, ThreeBelow:23/0, Elvis:32/0, Familiars:54/0, HungerGames:112/0, TOG:71/0 — 394 match, 0 differ"
+        },
+        {
+          "action": "Extract content.opf from Go and Python EPUBs for all 6 original books",
+          "expected": "Content.opf files exist and can be extracted",
+          "observed": "All 12 OPF files extracted; file sizes are byte-identical between Go and Python for each book"
+        },
+        {
+          "action": "Compare spine itemref ordering between Go and Python for original 6 books",
+          "expected": "Spine itemref sequences are identical",
+          "observed": "All 6 books: spine ordering matches exactly. Martyr(97 items), ThreeBelow(18), Elvis(27), Familiars(49), HungerGames(107), TOG(66)"
+        },
+        {
+          "action": "Run compare_new.sh to check new books (1984, HeatedRivalry, SecretsCrown, SunriseReaping)",
+          "expected": "1984 has 15 diffs but none in content.opf; SecretsCrown has content.opf diff",
+          "observed": "1984: 15 differ (all .xhtml+css+nav+ncx, NO content.opf). HeatedRivalry: 0 differ. SecretsCrown: 4 differ (content.opf+nav+css+ncx). SunriseReaping: 32 differ (all .xhtml+css, NO content.opf)"
+        },
+        {
+          "action": "Extract and compare spine ordering for new books",
+          "expected": "Spine ordering matches even where other files differ",
+          "observed": "1984(42/42 items): PASS. HeatedRivalry(46/46): PASS. SunriseReaping(43/43): PASS. SecretsCrown(29/29 items, same section order by number): PASS — diff is filename convention only (id_N.xhtml vs hash-based names)"
+        },
+        {
+          "action": "Verify SecretsCrown spine ordering by extracting section numbers from both Go and Python",
+          "expected": "Same numeric section sequence",
+          "observed": "Both Go and Python: 1,10,21,36,50,85,94,213,337,447,551,644,745,875,990,1138,1270,1397,1508,1642,1790,1876,2004,2084,2205,2306,2320,2331,2365 — identical order"
+        },
+        {
+          "action": "Verify Go code: readSectionOrder() in fragments.go reads $169/$170 reading order",
+          "expected": "Section order comes from KFX reading order, matching Python yj_structure.py L346-361",
+          "observed": "readSectionOrder() in fragments.go:11-35 reads $169 entries, extracts $170 section lists, preserves order, deduplicates — matches Python logic"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "files": [
+          "structure-navigation/spine-structure/spine-comparison-original.txt",
+          "structure-navigation/spine-structure/spine-comparison-new.txt",
+          "structure-navigation/spine-structure/comparison-results.txt"
+        ],
+        "codeReferences": [
+          "internal/kfx/fragments.go:11-35 (readSectionOrder)",
+          "internal/kfx/render.go:27 (sectionOrder initialization)",
+          "internal/kfx/render.go:164-173 (mergeSectionOrder + promoteCoverSectionFromGuide)",
+          "internal/kfx/state.go:525-534 (SectionOrder from $258 metadata)",
+          "internal/kfx/state.go:662-664 (SectionOrder fallback from $538 document data)"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-EPUB-013",
+      "title": "Navigation-merged sections",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Compare section counts between Go and Python for all 10 books",
+          "expected": "Section counts match for all books",
+          "observed": "All 10 books have identical section counts: Martyr(98/98), ThreeBelow(19/19), Elvis(28/28), Familiars(50/50), HungerGames(108/108), TOG(67/67), 1984(43/43), HeatedRivalry(47/47), SecretsCrown(30/30), SunriseReaping(44/44)"
+        },
+        {
+          "action": "Verify original 6 books produce 394/394 matching text files",
+          "expected": "All text files match, meaning section structure is identical",
+          "observed": "394 match, 0 differ — this includes content.opf (manifest, spine, guide) and all section XHTML files"
+        },
+        {
+          "action": "Verify Go code: mergeSectionOrder() adds navigation-referenced sections not in reading order",
+          "expected": "Navigation merge logic exists and matches Python's approach",
+          "observed": "mergeSectionOrder() in yj_to_epub_navigation.go:573-590: appends fallback sections not already in primary order. Called in render.go:169 with navOrder as fallback"
+        },
+        {
+          "action": "Investigate Python yj_structure.py for section merging logic",
+          "expected": "Find the 'single-heading section merge' described in assertion",
+          "observed": "No 'merge single-heading sections into parent' logic found in yj_structure.py. The assertion description may be inaccurate — Python does NOT merge sections by heading count. Section structure is determined by KFX reading order ($169/$170) and navigation references"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "files": [
+          "structure-navigation/spine-structure/comparison-results.txt"
+        ],
+        "codeReferences": [
+          "internal/kfx/yj_to_epub_navigation.go:573-590 (mergeSectionOrder)",
+          "internal/kfx/render.go:164-169 (navigation merge call)",
+          "REFERENCE/Calibre_KFX_Input/kfxlib/yj_structure.py:346-361 (Python reading order)"
+        ]
+      },
+      "issues": "The assertion description mentions 'Python yj_structure.py merges single-heading sections into parent when appropriate' but no such logic exists in the Python code. The assertion passes because Go's section structure matches Python's for all books, but the described behavior does not match the actual implementation."
+    },
+    {
+      "id": "VAL-EPUB-014",
+      "title": "Cover promotion to first section",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check first spine itemref in Go and Python content.opf for all original 6 books",
+          "expected": "First spine itemref matches between Go and Python (cover section first)",
+          "observed": "All 6 original books: first spine itemref matches exactly. Martyr(c0.xhtml), ThreeBelow(section-0_1_f697573e4077a1db_1e97.xhtml), Elvis(section-0_1_34c71ddc23e5c83d_1a96.xhtml), Familiars(c0.xhtml), HungerGames(c0.xhtml), TOG(c0.xhtml)"
+        },
+        {
+          "action": "Check first spine itemref for all new books",
+          "expected": "First spine itemref matches between Go and Python",
+          "observed": "1984(c0.xhtml matches), HeatedRivalry(c0.xhtml matches), SecretsCrown(id_1.xhtml vs UYqzWVgySW_Gl4WQ-Od_xQ1.xhtml — same section, different filename convention), SunriseReaping(c0.xhtml matches)"
+        },
+        {
+          "action": "Verify SecretsCrown first section content is the cover",
+          "expected": "Both Go and Python first sections contain cover SVG image",
+          "observed": "Both first sections contain identical SVG cover: viewBox='0 0 1073 1621' with image 1073x1621. Only difference is resource filename (resource_7 vs image_7)"
+        },
+        {
+          "action": "Verify Go code: promoteCoverSectionFromGuide() exists and works",
+          "expected": "Function finds cover from guide entry and moves it to front of spine",
+          "observed": "promoteCoverSectionFromGuide() in render.go:556-582: finds guide entry with type='cover', looks up section from positionToSection map, moves to front. Called in render.go:173 after mergeSectionOrder"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "files": [
+          "structure-navigation/spine-structure/spine-comparison-original.txt",
+          "structure-navigation/spine-structure/spine-comparison-new.txt"
+        ],
+        "codeReferences": [
+          "internal/kfx/render.go:556-582 (promoteCoverSectionFromGuide)",
+          "internal/kfx/render.go:172-173 (cover promotion call)"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions: all 3 passed. VAL-EPUB-004 (spine ordering): verified across all 10 books — spine ordering matches exactly for original 6 (394/394 text diffs) and all 4 new books (section order identical by numeric comparison). VAL-EPUB-013 (navigation-merged sections): section counts match for all 10 books; note that the assertion description is inaccurate — Python does NOT merge 'single-heading sections into parent', sections are determined purely by reading order. VAL-EPUB-014 (cover promotion): first spine itemref matches for all 10 books; Go's promoteCoverSectionFromGuide() correctly identifies cover section from guide entries and promotes to first position."
+}

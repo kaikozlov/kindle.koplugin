@@ -1,0 +1,39 @@
+{
+  "milestone": "structure-navigation",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 16,
+    "passed": 16,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-EPUB-004",
+    "VAL-EPUB-005",
+    "VAL-EPUB-006",
+    "VAL-EPUB-007",
+    "VAL-EPUB-008",
+    "VAL-EPUB-009",
+    "VAL-EPUB-010",
+    "VAL-EPUB-011",
+    "VAL-EPUB-012",
+    "VAL-EPUB-013",
+    "VAL-EPUB-014",
+    "VAL-EPUB-017",
+    "VAL-EPUB-018",
+    "VAL-EPUB-019",
+    "VAL-EPUB-020",
+    "VAL-RES-005"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "notes": {
+    "spineStructure": "Spine ordering matches exactly across all 10 books (394/394 original, all new books spine verified). Cover promotion works via promoteCoverSectionFromGuide(). Section counts match for all books.",
+    "navigation": "NCX hierarchy, page lists, NAV landmarks, and xmlns:mbp namespace all match between Go and Python for all 10 books. 1984 has 1 minor page anchor fragment diff (#page_134) caused by upstream position resolution, not navigation code. SecretsCrown navigation diffs are filename convention only (VAL-EPUB-002).",
+    "metadata": "All OPF metadata fields (manifest, cover-image property, metadata entries, spine toc, guide entries, ASIN identifier, creator refinements with marc:relators, MARC namespace) match perfectly across all 10 books. SecretsCrown content.opf diffs are filename convention only.",
+    "miscHelpers": "15 Python functions in yj_to_epub_misc.py fully accounted for. 7 have full parity, 3 have partial parity (KVG/FXL edge cases), 5 missing (FXL/plugin-only). All missing/partial functions are for features not exercised by current test books. 394/394 comparison parity confirmed."
+  }
+}
