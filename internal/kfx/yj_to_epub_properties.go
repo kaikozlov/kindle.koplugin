@@ -1954,9 +1954,29 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 
 	// When a div was converted to a figure during simplify_styles, rename the class
 	// prefix from "class_" to "figure_" to match Python's convert_styles_to_classes.
+	// Python: fixup_styles_and_classes derives class_name_prefix from -kfx-layout-hints.
+	// If hints contain "figure", the prefix becomes "figure". In Go, the layout hints
+	// are stored as metadata in the style string, but after tag conversion the element's
+	// tag determines the prefix via styleMetadataForBaseName. For elements that start as
+	// div but become figure during simplify_styles, we must also update the style name
+	// prefix so the class name matches Python's.
 	if tagChangedToFigure || elem.Tag == "figure" {
 		if sname := sty["-kfx-style-name"]; sname != "" && !strings.HasPrefix(sname, "figure_") {
 			sty["-kfx-style-name"] = "figure_" + sname
+		}
+	}
+
+	// Ported from Python fixup_styles_and_classes class naming (yj_to_epub_properties.py L1521-1540):
+	// When a div was converted to a heading during simplify_styles, update the style name
+	// prefix to "heading_" so that classPrefixFromStyle produces the correct "heading" prefix.
+	// Python: class_name_prefix = "-".join(sorted(list(style.pop("-kfx-layout-hints").split())))
+	// When hints contain "heading", prefix becomes "heading". The style name itself may
+	// already have "heading_" from the rendering pipeline, but for divs that were converted
+	// to headings during simplify_styles (which Python does here but Go does in rendering),
+	// we need to ensure the prefix is correct.
+	if tagChangedToHeading {
+		if sname := sty["-kfx-style-name"]; sname != "" && !strings.HasPrefix(sname, "heading_") {
+			sty["-kfx-style-name"] = "heading_" + sname
 		}
 	}
 
