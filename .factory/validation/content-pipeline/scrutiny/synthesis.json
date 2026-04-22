@@ -1,0 +1,98 @@
+{
+  "milestone": "content-pipeline",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "go test ./internal/kfx/ -count=1 -timeout 120s", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "go vet ./internal/kfx/...", "exitCode": 0 },
+    "lint": { "passed": true, "command": "go vet ./internal/kfx/...", "exitCode": 0 },
+    "build": { "passed": true, "command": "go build ./cmd/kindle-helper/", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "audit-yj-to-epub-properties",
+      "severity": "non_blocking",
+      "description": "Python line number references in Go comments are inaccurate (e.g., yj_property_info.go:833 says 'L276-278' but actual is L1126+). Only documentation comments affected, not code behavior."
+    },
+    {
+      "featureId": "audit-yj-to-epub-properties",
+      "severity": "non_blocking",
+      "description": "Background-position/size condition checks only x variant instead of x OR y (yj_property_info.go:786,791). Works in practice since properties come in pairs from KFX data."
+    },
+    {
+      "featureId": "audit-yj-to-epub-content",
+      "severity": "non_blocking",
+      "description": "Link color resolution logic duplicated between linkClass() (storyline.go:2262) and applyAnnotations() (storyline.go:2662). Could drift over time."
+    },
+    {
+      "featureId": "audit-yj-to-epub-content",
+      "severity": "non_blocking",
+      "description": "Ruby annotation path ($757) skips style processing entirely. Python applies styles after ruby element creation. Low severity since ruby text typically doesn't carry CSS properties."
+    },
+    {
+      "featureId": "audit-yj-to-epub-content",
+      "severity": "non_blocking",
+      "description": "effectiveStyle uses shallow clone while Python uses deepcopy. Safe for current usage since annotation map is read-only, but could alias nested maps/slices if results are mutated."
+    },
+    {
+      "featureId": "audit-epub-output",
+      "severity": "non_blocking",
+      "description": "create_opf has ~20+ Python branches with no Go counterpart (subject, rights, fixed_layout, orientation_lock, dictionary, magazine metadata, etc.). epub.Book struct lacks corresponding fields. Not triggered by current test books."
+    },
+    {
+      "featureId": "audit-epub-output",
+      "severity": "non_blocking",
+      "description": "consolidate_html div-collapsing logic significantly simplified in Go vs Python. Go's shouldCollapseNestedDiv only handles simple nested-div case; Python checks parent tag types and body-level rules."
+    },
+    {
+      "featureId": "audit-epub-output",
+      "severity": "non_blocking",
+      "description": "xmlns:epub detection via strings.Contains(section.BodyHTML, 'epub:type=\"') is heuristic; could miss single-quoted or namespace-prefixed variants. Works for all current test books."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: audit findings documents should use ✅ Parity (tested books only) or ⚠️ Parity (partial) instead of plain ✅ Parity when significant branches are unimplemented but not triggered by current test fixtures. This prevents future workers from assuming complete coverage.",
+      "evidence": "audit-epub-output-findings.md marks create_opf as '✅ Parity' with 'All 58 branches traced' despite ~20+ branches having no Go counterpart. audit-yj-to-epub-content audit documented 24 gaps as 'remaining' rather than as parity failures. Three reviews across content-pipeline milestone.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: workers should verify Python line numbers when adding cross-reference comments in Go code. Inaccurate line references (e.g., 'L276-278' when actual is L1126+) create confusion during future audits.",
+      "evidence": "audit-yj-to-epub-properties review found incorrect Python line numbers in yj_property_info.go:833 comments.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "prefixUniquePartOfSymbol regex behavior knowledge (underscores prevent double-prefixing)",
+      "reason": "already-documented — this is implementation detail correctly matching Python; no action needed"
+    },
+    {
+      "observation": "text_combine_in_use cross-module flag gap between properties and content modules",
+      "reason": "valid gap but not actionable for scrutiny — this is a known deferred gap in the audit findings document, not a shared state issue"
+    },
+    {
+      "observation": "Parity-auditor skill procedure ambiguity about documenting vs fixing all gaps",
+      "reason": "ambiguous — the skill procedure says to fix all gaps but a 1944-line audit producing 24 gaps is reasonable to document; this is a skill design question not a guidance issue"
+    },
+    {
+      "observation": "Audit document cross-referencing from architecture.md",
+      "reason": "nice-to-have but not a guidance update; audit documents are discoverable via .factory/library/"
+    },
+    {
+      "observation": "Worker followed skill procedure faithfully",
+      "reason": "not an actionable observation"
+    }
+  ],
+  "previousRound": null
+}
