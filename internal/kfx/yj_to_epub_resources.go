@@ -808,28 +808,79 @@ func extensionForMediaType(mediaType string) string {
 	}
 }
 
+// detectFontExtension implements Python font_file_ext (resources.py:719-750).
+// Detects font file type from binary magic bytes.
 func detectFontExtension(data []byte) string {
 	if len(data) >= 4 {
-		switch string(data[:4]) {
+		magic4 := string(data[:4])
+		switch magic4 {
+		case "\x00\x01\x00\x00", "true", "typ1":
+			return ".ttf"
 		case "OTTO":
 			return ".otf"
-		case "\x00\x01\x00\x00":
-			return ".ttf"
+		case "wOFF":
+			return ".woff"
+		case "wOF2":
+			return ".woff2"
 		}
+	}
+	// EOT: offset 34-36 = "LP" and offset 8-12 is one of three known patterns
+	if len(data) >= 36 && string(data[34:36]) == "LP" {
+		if len(data) >= 12 {
+			switch string(data[8:12]) {
+			case "\x00\x00\x01\x00", "\x01\x00\x02\x00", "\x02\x00\x02\x00":
+				return ".eot"
+			}
+		}
+	}
+	// dfont: starts with \x00\x00\x01\x00 at offset 0
+	if len(data) >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x01 && data[3] == 0x00 {
+		return ".dfont"
+	}
+	// pfb: \x80\x01 at offset 0, %!PS-AdobeFont-1.0 at offset 6-24
+	if len(data) >= 24 && data[0] == 0x80 && data[1] == 0x01 && string(data[6:24]) == "%!PS-AdobeFont-1.0" {
+		return ".pfb"
 	}
 	return ".bin"
 }
 
+// detectImageExtension implements Python image_file_ext (resources.py:756-775).
+// Detects image format from magic bytes.
 func detectImageExtension(data []byte) string {
+	if len(data) >= 6 {
+		// GIF87a or GIF89a
+		if bytes.HasPrefix(data, []byte("GIF87a")) || bytes.HasPrefix(data, []byte("GIF89a")) {
+			return ".gif"
+		}
+	}
 	if len(data) >= 4 {
+		// JPEG: FF D8 FF
 		if bytes.HasPrefix(data, []byte{0xff, 0xd8, 0xff}) {
 			return ".jpg"
 		}
+		// JXR: 49 49 BC 01
 		if bytes.HasPrefix(data, []byte{0x49, 0x49, 0xbc, 0x01}) {
 			return ".jxr"
 		}
-		if bytes.HasPrefix(data, []byte{0x89, 0x50, 0x4e, 0x47}) {
+	}
+	if len(data) >= 8 {
+		// PNG: 89 50 4E 47 0D 0A 1A 0A
+		if bytes.HasPrefix(data, []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}) {
 			return ".png"
+		}
+	}
+	if len(data) >= 4 {
+		// PDF: %PDF
+		if bytes.HasPrefix(data, []byte("%PDF")) {
+			return ".pdf"
+		}
+		// TIFF little-endian: 49 49 2A 00
+		if bytes.HasPrefix(data, []byte{0x49, 0x49, 0x2a, 0x00}) {
+			return ".tif"
+		}
+		// TIFF big-endian: 4D 4D 00 2A
+		if bytes.HasPrefix(data, []byte{0x4d, 0x4d, 0x00, 0x2a}) {
+			return ".tif"
 		}
 	}
 	return ".bin"

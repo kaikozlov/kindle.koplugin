@@ -405,14 +405,18 @@ func cropImage(data []byte, resourceName string, resourceWidth, resourceHeight, 
 	}).SubImage(image.Rect(cropLeft, cropTop, cropRight, cropBottom))
 
 	// Re-encode in the same format
-	var buf bytes.Buffer
+	// Python resources.py:714-717 — JPEG uses optimize_jpeg_image_quality with
+	// target size = len(raw_media) * 0.6; other formats save directly.
 	switch format {
 	case "png":
+		var buf bytes.Buffer
 		png.Encode(&buf, subImg)
+		return buf.Bytes(), nil
 	default:
-		jpeg.Encode(&buf, subImg, &jpeg.Options{Quality: 95})
+		// JPEG: use optimizeJPEGImageQuality for binary-search quality matching Python
+		desiredSize := int(float64(len(data)) * 0.6)
+		return optimizeJPEGImageQuality(subImg, desiredSize), nil
 	}
-	return buf.Bytes(), nil
 }
 
 // ---------------------------------------------------------------------------
