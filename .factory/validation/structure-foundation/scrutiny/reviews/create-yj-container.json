@@ -1,0 +1,26 @@
+{
+  "featureId": "create-yj-container",
+  "reviewedAt": "2026-04-22T23:30:00Z",
+  "commitId": "fe118cb",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean extraction of 9 symbols from yj_structure.go into new yj_container.go. All specified symbols (FragmentKey, Fragment, FragmentList, Get(), GetAll(), RootFragmentTypes, ContainerFragmentTypes, KnownFragmentTypes, FragmentKey.String()) were moved correctly. yj_structure.go retains all BookStructure validation code. The diff shows exactly 3 blocks removed from yj_structure.go and 1 new file created — no logic changes. Build, vet, and tests all pass.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Python yj_container.py contains additional constants not yet ported to Go: SINGLETON_FRAGMENT_TYPES, PREFERED_FRAGMENT_TYPE_ORDER, RAW_FRAGMENT_TYPES, DRMION_SIGNATURE, CONTAINER_FORMAT_KPF/CONTAINER_FORMAT_KFX_MAIN/CONTAINER_FORMAT_KFX_METADATA/CONTAINER_FORMAT_KFX_ATTACHABLE, and the YJContainer class. These are pre-existing gaps (not introduced by this refactoring) but should be tracked for future parity work. The feature scope was explicitly about extracting existing Go symbols, not adding missing Python symbols.",
+      "evidence": "Python yj_container.py lines 11-55 define DRMION_SIGNATURE, CONTAINER_FORMAT_* constants, RAW_FRAGMENT_TYPES, PREFERED_FRAGMENT_TYPE_ORDER, SINGLETON_FRAGMENT_TYPES. None of these exist in Go code. The feature description explicitly listed only 'FragmentKey struct, Fragment struct, FragmentList type, FragmentList.Get(), FragmentList.GetAll(), RootFragmentTypes, ContainerFragmentTypes, KnownFragmentTypes, FragmentKey.String(), and any fragment data model helpers that are pure operations on these types' — all of which were properly extracted."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The Python YJFragmentList class has an internal index (yj_ftype_index, yj_fragment_index) with lazy rebuilding for O(1) lookups. The Go FragmentList uses linear scan in Get()/GetAll(). This is a pre-existing design difference (not introduced by this refactoring) — the Go version was already using linear scan before the extraction. The extraction preserved the existing Go behavior exactly.",
+      "evidence": "Python yj_container.py:274-327 shows YJFragmentList with yj_rebuild_index() and yj_ftype_index/yj_fragment_index dicts. Go yj_container.go:33-61 shows FragmentList.Get() using a simple range loop. This is the same Go code that existed before the extraction — it was just moved, not changed."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The extraction was performed correctly and completely. All 9 specified symbols were moved from yj_structure.go to yj_container.go with no logic changes. The diff is clean (3 deletions from source, 1 new file). yj_structure.go retains all BookStructure validation code (WalkFragment, CheckFragmentUsage, FragmentIDKeys, reference maps, IonDataEq, Numstr, etc.). Build, vet, and tests pass. The worker followed the go-refactor-worker skill procedure faithfully. No blocking or non-blocking issues found."
+}

@@ -1,0 +1,15 @@
+{
+  "featureId": "create-yj-symbol-catalog",
+  "reviewedAt": "2026-04-22T23:30:00Z",
+  "commitId": "1ece298",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean extraction of 9 symbol-catalog symbols from decode.go (6 functions/vars/constants) and kfx.go (symbolResolver struct + 4 methods) into new yj_symbol_catalog.go. All symbols listed in the feature description were moved. decode.go now contains only ION binary decode functions (entityPayload, decodeIonMap, decodeIonValue, stripIVM, normalizeIon, ionDecimalToFloat64, plus the ionVersionMarker var). kfx.go no longer contains the symbolResolver struct. No orphaned imports remain in any file. All 744 tests pass, go vet clean, build succeeds.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "PASS — The extraction is complete and correct. All specified symbols (sharedTable, sharedCatalog, ionSystemSymbolCount, yjPreludeOnce/yjPreludeData/yjPreludeErr, yjPrelude(), symbolResolver struct, newSymbolResolver(), Resolve(), isLocalSID(), isSharedSymbolText()) were moved to yj_symbol_catalog.go. decode.go retains only ION binary decode functions and has no residual definitions of moved symbols (only legitimate references/usage). kfx.go's symbolResolver struct definition was removed. Imports are clean — no orphaned imports in any of the three affected files. The worker followed the go-refactor-worker skill procedure faithfully: read source files, created target, moved code, verified after move (build/test/vet), committed. All 744 tests pass with no regressions."
+}

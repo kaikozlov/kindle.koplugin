@@ -1,0 +1,41 @@
+{
+  "milestone": "structure-foundation",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "build": { "passed": true, "command": "go build ./cmd/kindle-helper/", "exitCode": 0 },
+    "test": { "passed": true, "command": "go test ./internal/kfx/ -count=1 -timeout 120s", "exitCode": 0 },
+    "vet": { "passed": true, "command": "go vet ./internal/kfx/...", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add note: When renaming Go files, workers should also grep for and update any internal comments or documentation that reference the old filename. The rename-yj-metadata feature left a stale comment on line 15 of yj_metadata.go referencing 'yj_metadata_getters.go'.",
+      "evidence": "Feature rename-yj-metadata renamed the file but left the internal comment '// Go file: internal/kfx/yj_metadata_getters.go' on line 15 of the new file.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Python yj_container.py contains additional constants not yet ported to Go (SINGLETON_FRAGMENT_TYPES, PREFERED_FRAGMENT_TYPE_ORDER, RAW_FRAGMENT_TYPES, DRMION_SIGNATURE, CONTAINER_FORMAT_*).",
+      "reason": "Pre-existing parity gap, not introduced by this milestone's refactoring. The feature scope was explicitly about extracting existing Go symbols, not adding missing Python symbols. Already documented in AGENTS.md parity rules."
+    },
+    {
+      "observation": "Go FragmentList uses linear scan while Python uses indexed lookups.",
+      "reason": "Pre-existing design difference, not introduced by this milestone's refactoring. Performance optimization is outside scope of structural reorganization."
+    },
+    {
+      "observation": "Documentation files (docs/audit_yj_metadata.md, PARITY_AUDIT.md, .factory/library/) still reference old filename 'yj_metadata_getters.go'.",
+      "reason": "Stale references in documentation files are outside the scope of this structural refactoring milestone. Can be cleaned up opportunistically in future work."
+    }
+  ],
+  "previousRound": null
+}

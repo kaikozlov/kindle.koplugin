@@ -1,0 +1,28 @@
+{
+  "featureId": "rename-yj-metadata",
+  "reviewedAt": "2026-04-22T23:15:00.000Z",
+  "commitId": "43608a8",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pure file rename of yj_metadata_getters.go → yj_metadata.go and yj_metadata_getters_test.go → yj_metadata_test.go. Git confirms 100% similarity (0 insertions, 0 deletions). Both new files exist, both old files are gone. Package declaration is correct (package kfx). Tests pass. One minor stale comment remains referencing the old filename.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_metadata.go",
+        "line": 15,
+        "severity": "non_blocking",
+        "description": "Stale comment still references old filename: '// Go file: internal/kfx/yj_metadata_getters.go'. Should be updated to '// Go file: internal/kfx/yj_metadata.go' to match the rename. This is purely cosmetic and does not affect functionality."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Several documentation files outside the worker's scope still reference the old filename 'yj_metadata_getters.go': docs/audit_yj_metadata.md, PARITY_AUDIT.md, .factory/library/resources-audit.md, .factory/library/audit-yj-structure-findings.md. These should be updated to reflect the rename for consistency, though they are outside this feature's scope.",
+      "evidence": "grep for 'yj_metadata_getters' found references in docs/audit_yj_metadata.md:4, docs/audit_yj_metadata.md:69, PARITY_AUDIT.md:70, .factory/library/resources-audit.md:23, .factory/library/audit-yj-structure-findings.md:21"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Clean, correct pure file rename. The git diff shows 100% content preservation with git mv detection. Both files were renamed correctly, old files are removed, package declaration is correct, and all tests pass. One minor non-blocking issue: the internal comment on line 15 of yj_metadata.go still references the old filename 'yj_metadata_getters.go'. Documentation files in docs/ and .factory/library/ also reference the old name but are outside this feature's scope."
+}
