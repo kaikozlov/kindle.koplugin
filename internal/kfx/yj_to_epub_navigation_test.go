@@ -333,7 +333,7 @@ func TestRegisterAnchorSkipsZeroPosition(t *testing.T) {
 
 func TestProcessNavigationInitializesStructures(t *testing.T) {
 	// Calling processNavigation with no nav roots should produce empty structures.
-	state := processNavigation(nil, nil)
+	state := processNavigation(nil, nil, "")
 	if state.positionAnchors == nil {
 		t.Error("positionAnchors should be non-nil")
 	}
@@ -372,7 +372,7 @@ func TestNavContainerTypeTOC(t *testing.T) {
 		},
 	}
 	navContainers := map[string]map[string]interface{}{}
-	state := processNavigation([]map[string]interface{}{}, navContainers)
+	state := processNavigation([]map[string]interface{}{}, navContainers, "")
 	state.processContainer(container, false)
 	if len(state.toc) != 1 {
 		t.Fatalf("expected 1 TOC entry, got %d", len(state.toc))
@@ -394,7 +394,7 @@ func TestNavContainerTypeLandmarks(t *testing.T) {
 		},
 	}
 	navContainers := map[string]map[string]interface{}{}
-	state := processNavigation([]map[string]interface{}{}, navContainers)
+	state := processNavigation([]map[string]interface{}{}, navContainers, "")
 	state.processContainer(container, false)
 	if len(state.guide) != 1 {
 		t.Fatalf("expected 1 guide entry, got %d", len(state.guide))
@@ -418,7 +418,7 @@ func TestNavContainerTypePageList(t *testing.T) {
 		},
 	}
 	navContainers := map[string]map[string]interface{}{}
-	state := processNavigation([]map[string]interface{}{}, navContainers)
+	state := processNavigation([]map[string]interface{}{}, navContainers, "")
 	state.processContainer(container, false)
 	if len(state.pages) != 1 {
 		t.Fatalf("expected 1 page entry, got %d", len(state.pages))

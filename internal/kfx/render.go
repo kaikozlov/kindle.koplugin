@@ -87,7 +87,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 		}
 	}
 
-	navState := processNavigation(navRoots, navContainers)
+	navState := processNavigation(navRoots, navContainers, book.OrientationLock)
 	selectedNav := navState.toc
 
 	// Stage: navigation (capture after processNavigation, before process_reading_order)
@@ -223,7 +223,14 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 		return sectionFilename(sectionID, symFmt)
 	}
 
-	book.Navigation = navigationToEPUB(selectedNav, navHref)
+	// Port of Python: process_external_resource(icon).filename maps icon resource to href.
+	iconHref := func(resourceID string) string {
+		if href, ok := book.ResourceHrefByID[resourceID]; ok {
+			return href
+		}
+		return ""
+	}
+	book.Navigation = navigationToEPUB(selectedNav, navHref, iconHref)
 	book.Guide = guideToEPUB(navState.guide, navHref)
 	if os.Getenv("KFX_DEBUG") != "" {
 		for _, page := range navState.pages {

@@ -151,9 +151,11 @@ type navTarget struct {
 }
 
 type navPoint struct {
-	Title    string
-	Target   navTarget
-	Children []navPoint
+	Title       string
+	Target      navTarget
+	Children    []navPoint
+	Description string // NCX mbp:meta name="description" (Python: toc_entry.description)
+	Icon        string // NCX mbp:meta-img name="mastheadImage" (Python: toc_entry.icon)
 }
 
 type guideEntry struct {

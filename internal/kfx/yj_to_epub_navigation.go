@@ -46,13 +46,61 @@ func navigationType(value map[string]interface{}) string {
 	return navType
 }
 
-func parseNavTitle(value map[string]interface{}) string {
-	label, ok := asMap(value["$241"])
+// parseNavRepresentation extracts (label, icon, description) from a nav unit.
+// Port of Python get_representation (yj_to_epub_navigation.py L247-271).
+// Python extracts: $245→icon+label, $146→description (content list → text), $244→label.
+func parseNavRepresentation(entry map[string]interface{}) (label string, icon string, description string) {
+	representation, ok := asMap(entry["$241"])
 	if !ok {
-		return ""
+		return "", "", ""
 	}
-	title, _ := asString(label["$244"])
-	return strings.TrimSpace(title)
+
+	// Python: if "$245" in representation: icon = representation.pop("$245"); label = str(icon)
+	if iconRaw, ok := asMap(representation["$245"]); ok {
+		// Icon is a resource reference; the label is str(icon).
+		// For now, we extract the resource ID for later resolution.
+		if resourceID, ok := asString(iconRaw["$175"]); ok {
+			icon = resourceID
+		}
+		if icon != "" {
+			label = icon // Python: label = str(icon)
+		}
+	}
+
+	// Python: if "$146" in representation: process content list → text → description
+	if descRaw, ok := asSlice(representation["$146"]); ok && len(descRaw) > 0 {
+		// Python builds a div element, processes content list, then extracts text.
+		// Simplified: just extract text content from the representation.
+		// In practice, navigation descriptions are simple text strings.
+		var textParts []string
+		for _, item := range descRaw {
+			if s, ok := asString(item); ok {
+				textParts = append(textParts, s)
+			}
+		}
+		if len(textParts) > 0 {
+			description = strings.TrimSpace(strings.Join(textParts, ""))
+		}
+	}
+
+	// Python: if "$244" in representation: label = representation.pop("$244")
+	if textLabel, ok := asString(representation["$244"]); ok {
+		label = textLabel
+	}
+
+	if label != "" {
+		label = strings.TrimSpace(label)
+	}
+
+	return label, icon, description
+}
+
+// parseNavTitle extracts just the title/label from a nav unit entry.
+// This is a convenience wrapper around parseNavRepresentation for cases
+// where only the label is needed.
+func parseNavTitle(value map[string]interface{}) string {
+	label, _, _ := parseNavRepresentation(value)
+	return label
 }
 
 func parseNavTarget(value map[string]interface{}) navTarget {
@@ -101,17 +149,23 @@ func orderedSectionIDsFromNavigation(points []navPoint, positionToSection map[in
 	return ordered
 }
 
-func navigationToEPUB(points []navPoint, targetHref func(navTarget) string) []epub.NavPoint {
+func navigationToEPUB(points []navPoint, targetHref func(navTarget) string, iconHref func(string) string) []epub.NavPoint {
 	output := make([]epub.NavPoint, 0, len(points))
 	for _, point := range points {
 		href := targetHref(point.Target)
 		if href == "" || point.Title == "" {
 			continue
 		}
+		epubIcon := ""
+		if point.Icon != "" && iconHref != nil {
+			epubIcon = iconHref(point.Icon)
+		}
 		output = append(output, epub.NavPoint{
-			Title:    point.Title,
-			Href:     href,
-			Children: navigationToEPUB(point.Children, targetHref),
+			Title:       point.Title,
+			Href:        href,
+			Children:    navigationToEPUB(point.Children, targetHref, iconHref),
+			Description: point.Description,
+			Icon:        epubIcon,
 		})
 	}
 	return output
@@ -129,9 +183,10 @@ type navProcessor struct {
 	guide              []guideEntry
 	pages              []pageEntry
 	pageLabelAnchorID  map[string]string // label → anchor_id (Python page_label_anchor_id)
+	orientationLock    string            // Python: self.orientation_lock — used for $248 entry_set filtering
 }
 
-func processNavigation(navRoots []map[string]interface{}, navContainers map[string]map[string]interface{}) navProcessor {
+func processNavigation(navRoots []map[string]interface{}, navContainers map[string]map[string]interface{}, orientationLock string) navProcessor {
 	state := navProcessor{
 		usedAnchorNames:    map[string]bool{},
 		positionAnchors:    map[int]map[int][]string{},
@@ -139,6 +194,7 @@ func processNavigation(navRoots []map[string]interface{}, navContainers map[stri
 		anchorHeadingLevel: map[string]int{},
 		navContainers:      navContainers,
 		pageLabelAnchorID:  map[string]string{},
+		orientationLock:    orientationLock,
 	}
 	containers := collectNavigationContainers(navRoots, navContainers)
 	hasNavHeadings := false
@@ -230,7 +286,18 @@ func (p *navProcessor) processPageUnit(entry map[string]interface{}) {
 }
 
 func (p *navProcessor) processNavUnit(navType string, entry map[string]interface{}, out *[]navPoint, defaultHeading bool, headingLevel *int) {
-	label := parseNavTitle(entry)
+	// Port of Python process_nav_unit (yj_to_epub_navigation.py L176-227).
+	// Extract label, icon, and description from representation.
+	label, icon, description := parseNavRepresentation(entry)
+	if label != "" {
+		label = strings.TrimSpace(label)
+	}
+
+	// Python: desc = nav_unit.pop("$154", None); if desc: description = desc.strip()
+	if desc, ok := asString(entry["$154"]); ok && desc != "" {
+		description = strings.TrimSpace(desc)
+	}
+
 	navUnitName, _ := asString(entry["$240"])
 	if navUnitName == "" {
 		navUnitName = label
@@ -256,6 +323,7 @@ func (p *navProcessor) processNavUnit(navType string, entry map[string]interface
 		nextHeading = intPtr(*headingLevel + 1)
 	}
 
+	// Process child nav units from $247
 	childrenRaw, _ := asSlice(entry["$247"])
 	children := make([]navPoint, 0, len(childrenRaw))
 	for _, raw := range childrenRaw {
@@ -264,6 +332,48 @@ func (p *navProcessor) processNavUnit(navType string, entry map[string]interface
 			continue
 		}
 		p.processNavUnit(navType, child, &children, false, nextHeading)
+	}
+
+	// Port of Python $248 entry_set handling (yj_to_epub_navigation.py L209-225).
+	// Each entry_set contains $247 children and an $215 orientation filter.
+	// Orientation $386 = portrait-only (clear if not landscape lock)
+	// Orientation $385 = landscape-only (clear if landscape lock)
+	entrySets, _ := asSlice(entry["$248"])
+	for _, esRaw := range entrySets {
+		entrySet, ok := asMap(esRaw)
+		if !ok {
+			continue
+		}
+		// Process children within entry set
+		esChildren, _ := asSlice(entrySet["$247"])
+		for _, raw := range esChildren {
+			child := resolveNavigationUnit(raw)
+			if child == nil {
+				continue
+			}
+			p.processNavUnit(navType, child, &children, false, nextHeading)
+		}
+
+		// Orientation filtering (Python L218-224)
+		orientation, _ := asString(entrySet["$215"])
+		switch orientation {
+		case "$386":
+			// Portrait: clear children unless locked to landscape
+			// Python: if self.orientation_lock != "landscape": nested_toc = []
+			if p.orientationLock != "landscape" {
+				children = nil
+			}
+		case "$385":
+			// Landscape: clear children when locked to landscape
+			// Python: if self.orientation_lock == "landscape": nested_toc = []
+			if p.orientationLock == "landscape" {
+				children = nil
+			}
+		default:
+			if orientation != "" {
+				log.Printf("kfx: error: Unknown entry set orientation: %s", orientation)
+			}
+		}
 	}
 
 	target := parseNavTarget(entry)
@@ -280,7 +390,13 @@ func (p *navProcessor) processNavUnit(navType string, entry map[string]interface
 		*out = append(*out, children...)
 		return
 	}
-	*out = append(*out, navPoint{Title: label, Target: target, Children: children})
+	*out = append(*out, navPoint{
+		Title:       label,
+		Target:      target,
+		Children:    children,
+		Description: description,
+		Icon:        icon,
+	})
 }
 
 func (p *navProcessor) uniqueAnchorName(name string) string {
