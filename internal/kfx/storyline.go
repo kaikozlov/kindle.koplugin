@@ -2301,6 +2301,28 @@ func (r *storylineRenderer) spanClass(styleID string) string {
 	return styleStringFromDeclarations(baseName, nil, declarations)
 }
 
+// annotationSpanClass generates the CSS class for an annotation's styled span.
+// Port of Python yj_to_epub_content.py:1142 + 1307:
+//   self.add_kfx_style(style_event, style_event.pop("$157", None))  → merges style fragment into event
+//   self.add_style(event_elem, self.process_content_properties(style_event), replace=True)
+// Python merges the style fragment properties INTO the annotation map, then processes all properties.
+// Go must do the same: merge the style fragment with the annotation's own properties.
+func (r *storylineRenderer) annotationSpanClass(styleID string, annotationMap map[string]interface{}) string {
+	style := effectiveStyle(r.styleFragments[styleID], annotationMap)
+	if len(style) == 0 {
+		return ""
+	}
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, nil, declarations)
+}
+
 func (r *storylineRenderer) resolveText(ref map[string]interface{}) string {
 	return resolveContentText(r.contentFragments, ref)
 }
@@ -2635,8 +2657,26 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 				continue
 			}
 			if href != "" {
+				// Port of Python yj_to_epub_content.py:1142 — add_kfx_style merges style fragment
+				// into annotation map, then process_content_properties uses the merged result.
+				style := effectiveStyle(r.styleFragments[styleID], annotationMap)
+				linkCSS := processContentProperties(style, r.resolveResource)
+				if _, hasColor := linkCSS["color"]; !hasColor {
+					linkColor, hasLink := linkCSS["-kfx-link-color"]
+					visitedColor, hasVisited := linkCSS["-kfx-visited-color"]
+					if hasLink && hasVisited && linkColor == visitedColor {
+						linkCSS["color"] = linkColor
+					}
+				}
+				delete(linkCSS, "-kfx-link-color")
+				delete(linkCSS, "-kfx-visited-color")
+				linkDecls := cssDeclarationsFromMap(linkCSS)
+				linkBaseName := "class"
+				if styleID != "" {
+					linkBaseName = r.styleBaseName(styleID)
+				}
 				styleAttr := mergeStyleStrings(
-					r.linkClass(styleID, annotationCoversWholeText(annotationMap, len(runes))),
+					styleStringFromDeclarations(linkBaseName, nil, linkDecls),
 					dropcapClass,
 				)
 				// Port of Python yj_to_epub_content.py $616→epub:type on annotation links.
@@ -2660,7 +2700,7 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 				})
 				continue
 			}
-			if styleAttr := mergeStyleStrings(r.spanClass(styleID), dropcapClass); styleAttr != "" {
+			if styleAttr := mergeStyleStrings(r.annotationSpanClass(styleID, annotationMap), dropcapClass); styleAttr != "" {
 				events = append(events, event{
 					start: start,
 					end:   end,
