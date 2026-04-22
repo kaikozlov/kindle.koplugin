@@ -142,14 +142,19 @@ func parseAnchorFragment(fragmentID string, value map[string]interface{}) anchor
 		}
 		return anchorFragment{ID: id, URI: uri}
 	}
+	// Port of Python yj_to_epub_navigation.py:55-63 — anchor fragments with $183
+	// reference a position. Python: register_anchor(name, get_position(anchor.pop("$183")))
+	// where get_position extracts (eid, offset) from $183.$155/$598 and $183.$143.
 	target, ok := asMap(value["$183"])
 	if !ok {
 		return anchorFragment{ID: id}
 	}
 	positionID, _ := asInt(target["$155"])
+	offset, _ := asInt(target["$143"])
 	return anchorFragment{
 		ID:         id,
 		PositionID: positionID,
+		Offset:     offset,
 	}
 }
 

@@ -143,6 +143,7 @@ type pageTemplateFragment struct {
 type anchorFragment struct {
 	ID         string
 	PositionID int
+	Offset     int
 	URI        string
 }
 

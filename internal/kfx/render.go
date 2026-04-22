@@ -104,7 +104,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 			if sectionID := positionToSectionID[anchor.PositionID]; sectionID != "" {
 				fallbackAnchorURI[anchorID] = sectionFilename(sectionID)
 			}
-			registerNamedPositionAnchor(navState.positionAnchors, anchorID, navTarget{PositionID: anchor.PositionID})
+			registerNamedPositionAnchor(navState.positionAnchors, anchorID, navTarget{PositionID: anchor.PositionID, Offset: anchor.Offset})
 		}
 		if debugAnchors := os.Getenv("KFX_DEBUG_ANCHORS"); debugAnchors != "" {
 			for _, wanted := range strings.Split(debugAnchors, ",") {

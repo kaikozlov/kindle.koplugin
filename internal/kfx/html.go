@@ -102,8 +102,8 @@ func locateOffsetIn(elem *htmlElement, offset int) (*htmlElement, bool) {
 				// When offset is 0, return the element directly.
 				// However, Python processes position anchors BEFORE annotations/style events,
 				// so the element is always a raw text span. Go processes style events first,
-				// so we may find styled spans here. If the element has attributes (styled),
-				// we need to insert an empty <span/> BEFORE it as a sibling, matching
+				// so we may find styled spans, <a> links, or other annotation-created elements.
+				// We need to insert an empty <span/> BEFORE it as a sibling, matching
 				// Python's behavior where the anchor is a separate element.
 				if child.Tag == "span" && len(child.Attrs) > 0 {
 					// Styled span at offset 0: insert empty span before it as sibling
@@ -123,6 +123,16 @@ func locateOffsetIn(elem *htmlElement, offset int) (*htmlElement, bool) {
 						child.Children = insertHTMLParts(child.Children, 0, []htmlPart{span})
 						return span, true
 					}
+				}
+				// Annotation-created elements (<a>, styled <div>, etc.) at offset 0:
+				// insert empty <span/> BEFORE them as a sibling, matching Python's
+				// behavior where position anchors are placed before annotation elements.
+				// Python processes position anchors first, then annotations, so the
+				// anchor span exists as a separate element before the <a> is created.
+				if child.Tag != "span" || len(child.Attrs) > 0 {
+					span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+					elem.Children = insertHTMLParts(elem.Children, index, []htmlPart{span})
+					return span, true
 				}
 				return child, true
 			}
