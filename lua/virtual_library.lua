@@ -1,5 +1,6 @@
 local BD = require("ui/bidi")
 local logger = require("logger")
+local _ = require("gettext")
 
 local VirtualLibrary = {}
 VirtualLibrary.__index = VirtualLibrary
@@ -173,13 +174,13 @@ end
 function VirtualLibrary:getBlockedReasonText(book)
     local reason = book and book.block_reason or "unsupported_kfx_layout"
     local text = {
-        drm = "This Kindle book is DRM-protected. Run DRM setup to decrypt.",
-        unsupported_kfx_layout = "This KFX layout is not supported by the proof-of-concept converter yet.",
-        missing_source = "The source file is missing.",
-        conversion_failed = "Conversion failed.",
-        drm_not_initialized = "DRM decryption has not been set up. Run DRM setup in the Kindle Library menu.",
+        drm = _("This book could not be opened. Try refreshing book access from the Kindle Library menu."),
+        unsupported_kfx_layout = _("This KFX layout is not supported yet."),
+        missing_source = _("The source file is missing."),
+        conversion_failed = _("Failed to prepare this book for reading."),
+        drm_not_initialized = _("Book access has not been set up. Run Prepare Book Access from the Kindle Library menu."),
     }
-    return text[reason] or "This book cannot be opened yet."
+    return text[reason] or _("This book cannot be opened yet.")
 end
 
 local function createBookEntry(book)

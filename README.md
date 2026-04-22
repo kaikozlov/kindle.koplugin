@@ -31,10 +31,6 @@ A KOReader plugin that lets you browse and read your Kindle book library directl
 2. Browse your books and tap to read
 3. The first open takes a moment while the book is prepared — after that, it opens instantly
 
-**Setting up DRM decryption:**
-1. Go to **Menu → Kindle Library → Setup DRM Decryption**
-2. Wait for the setup to complete — this only needs to be done once
-
 **Syncing reading progress:**
 1. Go to **Menu → Kindle Library → Sync reading state with Kindle** to enable
 2. Reading progress syncs automatically between KOReader and Kindle

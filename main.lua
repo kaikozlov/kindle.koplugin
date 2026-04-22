@@ -245,8 +245,8 @@ function KindlePlugin:createVirtualLibraryCoverMenuItem()
         text = _("Virtual Library Folder Cover"),
         help_text = _(
             "Select a custom cover image for the virtual library folder. "
-                .. "Used by CoverBrowser plugin. "
-                .. "If not set, no cover will be shown (falls back to generated covers)."
+            .. "Used by CoverBrowser plugin. "
+            .. "If not set, no cover will be shown (falls back to generated covers)."
         ),
         enabled_func = function()
             return self.settings.enable_virtual_library ~= false
@@ -256,7 +256,7 @@ function KindlePlugin:createVirtualLibraryCoverMenuItem()
                 select_file = true,
                 select_directory = false,
                 path = self.settings.virtual_library_cover_path ~= ""
-                        and util.splitFilePathName(self.settings.virtual_library_cover_path)
+                    and util.splitFilePathName(self.settings.virtual_library_cover_path)
                     or Device.home_dir or "/mnt/us",
                 onConfirm = function(file_path)
                     self.settings.virtual_library_cover_path = file_path
@@ -284,8 +284,8 @@ function KindlePlugin:createSyncToggleMenuItem()
             self:saveSettings()
             self:showInfo(
                 enabled
-                        and _("Reading state sync enabled\n\nKOReader and Kindle reading positions will be synced.")
-                    or _("Reading state sync disabled"),
+                and _("Reading state sync enabled\n\nKOReader and Kindle reading positions will be synced.")
+                or _("Reading state sync disabled"),
                 4
             )
         end,
@@ -441,29 +441,29 @@ function KindlePlugin:createSyncBehaviorMenuItem()
     }
 end
 
---- Creates DRM setup menu item.
+--- Creates book access setup menu item.
 --- @return table: Menu item configuration.
 function KindlePlugin:createDrmSetupMenuItem()
     return {
-        text = _("Setup DRM Decryption"),
+        text = _("Refresh Book Access"),
         help_text = _(
-            "Extract decryption keys from the device to open DRM-protected Kindle books. "
-                .. "This runs the device JVM with an interception hook to capture AES keys."
+            "Prepares your Kindle books for reading in KOReader. "
+            .. "This only needs to be run once, or when you add new books to your Kindle."
         ),
         callback = function()
-            self:showInfo(_("Setting up DRM decryption…\nThis may take a moment."), 0)
+            self:showInfo(_("Preparing book access…\nThis may take a moment."), 0)
             UIManager:scheduleIn(0.1, function()
                 local result, err = helper_client:drmInit()
                 if not result then
                     UIManager:show(InfoMessage:new({
-                        text = _("DRM setup failed:\n") .. (err or _("unknown error")),
+                        text = _("Book access setup failed:\n") .. (err or _("unknown error")),
                         timeout = 5,
                     }))
                     return
                 end
                 if not result.ok then
                     UIManager:show(InfoMessage:new({
-                        text = _("DRM setup failed:\n") .. (result.message or _("unknown error")),
+                        text = _("Book access setup failed:\n") .. (result.message or _("unknown error")),
                         timeout = 5,
                     }))
                     return
@@ -471,12 +471,42 @@ function KindlePlugin:createDrmSetupMenuItem()
                 self.settings.drm_initialized = true
                 self:saveSettings()
                 virtual_library:refresh(true)
-                local msg = _("DRM setup complete.\n")
-                    .. string.format(_("Books found: %d\nKeys extracted: %d"), result.books_found, result.keys_found)
+                local msg = _("Book access ready.\n")
+                    .. string.format(_("Books found: %d\nKeys prepared: %d"), result.books_found, result.keys_found)
                 UIManager:show(InfoMessage:new({ text = msg, timeout = 5 }))
             end)
         end,
         separator = true,
+    }
+end
+
+--- Creates clear book keys menu item.
+--- @return table: Menu item configuration.
+function KindlePlugin:createClearKeysMenuItem()
+    return {
+        text = _("Clear Book Keys"),
+        help_text = _(
+        "Removes cached book access keys. You will need to refresh book access before opening books again."),
+        callback = function()
+            local keys_path = cache_manager:getDrmKeysPath()
+            local f = io.open(keys_path, "rb")
+            if not f then
+                self:showInfo(_("No book keys found."), 2)
+                return
+            end
+            f:close()
+
+            UIManager:show(ConfirmBox:new({
+                text = _("Clear all cached book keys? You will need to refresh book access before opening books again."),
+                ok_text = _("Clear keys"),
+                ok_callback = function()
+                    os.remove(keys_path)
+                    self.settings.drm_initialized = false
+                    self:saveSettings()
+                    self:showInfo(_("Book keys cleared."), 2)
+                end,
+            }))
+        end,
     }
 end
 
@@ -594,7 +624,7 @@ Total books: %d
   Direct open: %d
   Blocked: %d
 
-DRM: %s
+Book access: %s
 Cached EPUBs: %d (%s)
 Root: %s
 Cache: %s]]),
@@ -662,6 +692,7 @@ function KindlePlugin:addToMainMenu(menu_items)
         self:createBrowseLibraryMenuItem(),
         self:createRefreshLibraryMenuItem(),
         self:createDrmSetupMenuItem(),
+        self:createClearKeysMenuItem(),
         self:createClearCacheMenuItem(),
         self:createVirtualLibraryToggleMenuItem(),
         self:createVirtualLibraryCoverMenuItem(),

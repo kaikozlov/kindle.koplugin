@@ -446,7 +446,7 @@ describe("VirtualLibrary", function()
         it("should return text for drm reason", function()
             local vlib = VirtualLibrary:new({})
             local text = vlib:getBlockedReasonText({ block_reason = "drm" })
-            assert.is_true(text:match("DRM") ~= nil)
+            assert.is_true(text:match("refreshing book access") ~= nil)
         end)
 
         it("should return text for unsupported_kfx_layout", function()
