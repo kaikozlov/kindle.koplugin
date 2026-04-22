@@ -1,6 +1,7 @@
 commands:
   build: go build ./cmd/kindle-helper/
   test: go test ./internal/kfx/ -count=1 -timeout 120s
+  test_all: go test ./... -count=1 -timeout 180s
   typecheck: go vet ./internal/kfx/...
   lint: go vet ./internal/kfx/...
 
