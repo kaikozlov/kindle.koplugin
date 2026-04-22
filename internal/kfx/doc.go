@@ -1,63 +1,78 @@
 // Package kfx converts Amazon KFX containers into EPUB, using Calibre KFX Input as the behavioral
 // reference (REFERENCE/Calibre_KFX_Input/kfxlib/) and EPUB / fragment snapshot tests as confirmatory evidence.
 //
-// # Python ↔ Go file map (living)
+// # Pipeline Stage Order
 //
-// Calibre module (kfxlib) → Go file(s)
+//	Python: YJ_Book.decode_book → KFX_EPUB.__init__ (yj_to_epub.py) → EPUB_Output.generate_epub
+//	Go:     loadBookSources → organizeFragments (state.go) → renderBookState (yj_to_epub.go) → epub.Write
 //
-//	yj_to_epub.py (KFX_EPUB orchestration, organize_fragments_by_type, determine_book_symbol_format) → state.go (organizeFragments), kfx.go (ConvertFile, decodeKFX, ION), symbol_format.go (classify_symbol, determine_book_symbol_format, unique/prefix helpers); post-organize ordering remains render.go (renderBookState)
-//	yj_to_epub_content.py → yj_to_epub_content.go (processReadingOrder, processSection→renderSectionFragments, prepareBookParts), render.go (renderBookState = __init__ glue)
-//	yj_to_epub_properties.py → yj_to_epub_properties.go (styleCatalog, yj_property_info.go simple CSS map, fixupStylesAndClasses/createCSSFiles/updateDefaultFontAndLanguage/setHTMLDefaults hooks, finalizeStylesheet, …), kfx.go (emitters — remainder)
-//	yj_to_epub_navigation.py → yj_to_epub_navigation.go (processNavigation, fixupAnchorsAndHrefs, reportMissingPositions, nav/guide/page EPUB helpers)
-//	yj_to_epub_metadata.py → yj_to_epub_metadata.go (applyMetadata, applyDocumentData, applyContentFeatures)
-//	yj_to_epub_resources.py → yj_to_epub_resources.go (buildResources, convertJXRResource, resource/font helpers)
-//	yj_to_epub_misc.py → yj_to_epub_misc.go (pythonConditionOperatorSymbols registry, conditionEvaluator.evaluate = set_condition_operators semantics)
-//	yj_to_epub_illustrated_layout.py → yj_to_epub_illustrated_layout.go (fixupIllustratedLayoutAnchors, -kfx-amzn-condition rewrite subset)
-//	yj_to_epub_notebook.py → yj_to_epub_notebook.go (processScribe* stubs until fixtures)
-//	epub_output.py → internal/epub/epub.go (zip/OPF/nav; package comment tracks epub_output.py gap)
+// # Python ↔ Go File Map
 //
-// # KFX_EPUB.__init__ checklist (plan YAML todos → status)
+// Every non-trivial Python module in kfxlib/ is listed below with its Go counterpart.
+// Files marked (many-to-one) or (split) contain logic from multiple Python modules.
 //
-//	phase-0-remainder-thin-kfx — Done: styleCatalog moved to yj_to_epub_properties.go; kfx.go still holds ION/storyline/CSS emitters.
-//	phase-a-replace-ion-organize — Partial: mergeIonReferencedStringSymbols + mergeContentFragmentStringSymbols ($145) + TitleMetadata, $164/$266, sections, nav roots, + post-organize maps; index walk still not Python book_data / replace_ion_data struct.
-//	phase-a-classify-shared-symtab — Partial: classifySymbolWithResolver + symbolResolver.isSharedSymbolText for "$<sid>" text.
-//	phase-a-symbol-format-wire-naming — Partial: sectionFilename + buildResources resource/font stems use uniquePartOfLocalSymbol + prefixUniquePartOfSymbol (yj_to_epub_resources.resource_location_filename); style catalog / fragment keys may still use chooseFragmentIdentity.
-//	phase-a-condition-operators — Done: pythonConditionOperatorSymbols + conditionOperatorArity + conditionOperatorDispatch table + arity mismatch logging + unknown operator error + evaluate_binary_condition non-binary result warning (yj_to_epub_misc.set_condition_operators / evaluate_condition / evaluate_binary_condition).
-//	phase-a-post-organize-init-metadata — Done: applyKFXEPUBInitMetadataAfterOrganize after determineBookSymbolFormat (yj_to_epub.py L77–80); expanded applyMetadata with publisher, description, ASIN, book_id, cde_content_type, facing_page, double_page_spread; applyDocumentData now extracts writing_mode, page_progression_direction, orientation_lock with error logging; applyContentFeatures parses $590 feature array.
-//	phase-b-process-reading-order — Done: processReadingOrder in yj_to_epub_content.go, called from renderBookState.
-//	phase-b-process-section — Partial: processSection entry + renderSectionFragments reflowable/fixed subset; heading tag selection now checks layout hints (simplify_styles L1928 parity) — $790 alone no longer promotes to <h1>-<h6> without "heading" in $761 layout hints; scribe/comic/magazine branches unported.
-//	phase-b-prepare-book-parts — Partial: prepareBookParts reapplies normalizeHTMLWhitespace per rendered section Root before materializeRenderedSections.
-//	phase-c-yj-property-info — Partial: yj_property_info.go simple Ion→CSS map + YJPropertySimpleCSSName; enum Prop entries moved from css_values.go and yj_to_epub_resources.go.
-//	phase-c-fixup-styles-classes — Partial: fixupStylesAndClasses strips empty class attrs; createCSSFiles merges styleCatalog; styleBaseName applies uniquePartOfLocalSymbol; simplifyStylesPostProcess converts div→p (text-only, no block children) and unwraps classless spans (Python simplify_styles div/p/figure conversion parity).
-//	phase-c-simplify-styles-html-defaults — Partial: setHTMLDefaults fills per-section Language; updateDefaultFontAndLanguage normalizes book language; simplifyStylesPostProcess in yj_to_epub_properties.go handles div→p/figure conversion + span unwrapping (partial port of Python simplify_styles ~L1928).
-//	phase-d-process-anchors-navigation-reporting — Partial: reportMissingPositions; reportDuplicateAnchors; processNavigation retained; guideToEPUB includes "text"→"bodymatter" landmark.
-//	phase-d-fixup-anchors-hrefs — Partial: fixupAnchorsAndHrefs → replaceRenderedAnchorPlaceholders.
-//	phase-d-illustrated-layout — Partial: -kfx-amzn-condition anchor: URI rewrite when IllustratedLayout.
-//	phase-d-metadata-opf-remainder — Partial: OPF emission in internal/epub; dc:publisher/dc:description emitted; expanded decodedBook fields (Description, Publisher, ASIN, BookID, WritingMode, PageProgressionDirection); applyMetadata handles 20+ categorized keys from $490; applyDocumentData extracts writing_mode, page_progression_direction, orientation_lock; $258 title guarded with "if not already set" to prevent overriding $490 full title.
-//	phase-d-epub-output-package — Partial: manifest items sorted together by filename string (Calibre epub_output.py ordering parity); spine ordering matches Calibre via promoteCoverSectionFromGuide (cover first in spine); cover SVG promotion uses content-based matching (not just title="Cover"); class_s8 body class only for titled Cover sections; nav.xhtml/toc.ncx structure matches; guide entries match Calibre types/titles/hrefs.
-//	phase-d-e2e-calibre-structure-tests — Partial: Martyr full gate (0 text diffs); Three Below spine ordering now matches Calibre; Elvis/Hunger/Familiars path-list when refs exist.
-//	phase-e-images-resources — Partial: convertJXRResource (gray→JPEG); byte parity vs Calibre deferred; PLACE_FILES_IN_SUBDIRS not implemented (Calibre default is False; Three Below reference used non-default True → images/ path differences are configuration, not parity gap).
-//	phase-f-notebook-scribe — Partial: yj_to_epub_notebook.go processScribe* stubs (no fixture-driven logic).
-//	error-handling-implement — Partial: missing image/font bytes → stderr warnings in buildResources; condition operator arity mismatch + unknown op → stderr errors in evaluate; non-binary condition results → stderr error in evaluateBinary; unexpected orientation_lock → stderr error in applyDocumentData; title override guard ($258 won't override $490 title).
-//	doc-go-checklist-update — This block is the living checklist (update after substantive ports).
+//	Python module (kfxlib/)                  | Go file(s) in internal/kfx/                   | Notes
+//	-----------------------------------------|-----------------------------------------------|-----------------------------------------------
+//	__init__.py                              | —                                             | Re-exports; no Go counterpart (plugin entry is cmd/kindle-helper)
+//	epub_output.py                           | internal/epub/epub.go                         | EPUB packaging (zip/OPF/nav); outside this package
+//	ion.py                                   | values.go                                     | Ion type constants (IonBool, IonString, etc.) and ion_type dispatch
+//	ion_binary.py                            | decode.go                                     | ION binary decoding (decodeIonMap, decodeIonValue, normalizeIon, stripIVM)
+//	ion_symbol_table.py                      | yj_symbol_catalog.go + decode.go              | Split: SymbolTableCatalog → yj_symbol_catalog.go; ION prelude decoding → decode.go
+//	ion_text.py                              | —                                             | ION text format; not ported (Go only handles binary ION)
+//	jxr_container.py                         | internal/jxr/                                 | JXR container parsing; outside this package
+//	jxr_image.py                             | internal/jxr/                                 | JXR image decoding; outside this package
+//	jxr_misc.py                              | internal/jxr/                                 | JXR utilities (Deserializer, etc.); outside this package
+//	kfx_container.py                         | kfx_container.go                              | CONT binary parsing (loadContainerSource*, collectContainer*Blobs, validateEntityOffsets)
+//	kpf_book.py                              | —                                             | KPF book handling; not ported (Kindle-only, not KOReader concern)
+//	kpf_container.py                         | —                                             | KPF container; not ported (Kindle-only, not KOReader concern)
+//	message_logging.py                       | log.Printf / fmt.Fprintf to stderr            | Logging; no dedicated Go file (uses standard library)
+//	original_source_epub.py                  | —                                             | Original source EPUB extraction; not ported
+//	resources.py                             | yj_to_epub_resources.go + symbol_format.go    | Split: image/font helpers → yj_to_epub_resources.go; filename helpers → symbol_format.go
+//	unpack_container.py                      | state.go + kfx_container.go                   | Split: container unpacking → kfx_container.go; fragment loading → state.go
+//	utilities.py                             | —                                             | General utilities; no Go counterpart (uses Go standard library)
+//	version.py                               | yj_versions.go                                | Version string constants
+//	yj_book.py                               | state.go + yj_to_epub.go + kfx_container.go   | Split: fragment loading → state.go; decode orchestration → yj_to_epub.go; container parsing → kfx_container.go
+//	yj_container.py                          | yj_container.go                               | Fragment data model (FragmentKey, Fragment, FragmentList, fragment type sets)
+//	yj_metadata.py                           | yj_metadata.go                                | Book metadata getters and queries
+//	yj_position_location.py                  | yj_position_location.go                       | Position/location handling
+//	yj_structure.py                          | yj_structure.go                               | BookStructure validation, walking, and checking
+//	yj_symbol_catalog.py                     | yj_symbol_catalog.go                          | Shared symbol table, catalog, symbol resolver, YJ prelude
+//	yj_to_epub.py                            | yj_to_epub.go + state.go + symbol_format.go + render.go | Split: pipeline orchestration → yj_to_epub.go; organizeFragments → state.go; classifySymbol → symbol_format.go; anchor/rendering helpers → render.go
+//	yj_to_epub_content.py                    | yj_to_epub_content.go + fragments.go          | Split: content processing → yj_to_epub_content.go; reading order iteration → fragments.go
+//	yj_to_epub_illustrated_layout.py         | yj_to_epub_illustrated_layout.go              | Illustrated layout anchor fixups
+//	yj_to_epub_metadata.py                   | yj_to_epub_metadata.go                        | EPUB metadata application (applyMetadata, applyDocumentData, applyContentFeatures)
+//	yj_to_epub_misc.py                       | yj_to_epub_misc.go                            | Condition operator symbols and evaluation
+//	yj_to_epub_navigation.py                 | yj_to_epub_navigation.go + render.go          | Split: navigation processing → yj_to_epub_navigation.go; anchor resolution → render.go
+//	yj_to_epub_notebook.py                   | yj_to_epub_notebook.go                        | Scribe/notebook processing stubs
+//	yj_to_epub_properties.py                 | yj_to_epub_properties.go + yj_property_info.go + css_values.go | Split: style catalog → yj_to_epub_properties.go; property→CSS map → yj_property_info.go; CSS value handling → css_values.go
+//	yj_to_epub_resources.py                  | yj_to_epub_resources.go                       | Resource and font building
+//	yj_to_image_book.py                      | yj_to_image_book.go                           | Image book conversion
+//	yj_versions.py                           | yj_versions.go                                | YJ version constants and validation
 //
-// # KFX_EPUB.__init__ stage order vs Go
+// # Go Files with No Python Counterpart (Unique Go Concerns)
 //
-// Python: YJ_Book.decode_book → KFX_EPUB.__init__ (yj_to_epub.py) → EPUB_Output.generate_epub.
-// Go: loadBookSources → organizeFragments (state.go) → renderBookState (render.go) → epub.Write.
+// These files exist only in Go, addressing Go-specific needs:
 //
-// # classify_symbol / SHARED
+//	Go file                      | Purpose
+//	-----------------------------|----------------------------------------------------------
+//	content_helpers.go           | HTML generation helper functions
+//	css_values.go                | CSS value handling (enum props, unit conversion)
+//	drm.go                       | DRM decryption (DRMION format; not in Calibre KFX Input)
+//	html.go                      | HTML DOM type definitions (htmlElement, htmlPart, etc.)
+//	sidecar.go                   | Kindle .sdr sidecar directory metadata extraction
+//	storyline.go                 | Storyline rendering engine
+//	style_events.go              | Style event processing and CSS class generation
+//	svg.go                       | KVG/SVG rendering
+//	trace.go                     | Conversion trace/debug output writer
+//	kfx.go                       | Package entry points (ConvertFile, Classify) and data types
+//	render.go                    | Anchor resolution, section materialization, DOM cleanup
+//	state.go                     | Fragment organization, book state construction, symbol merging
+//	symbol_format.go             | Symbol classification and format determination
+//	fragments.go                 | Reading order fragment iteration
+//	yj_property_info.go          | Data-driven YJ property → CSS mapping table
+//	values.go                    | Ion value type helpers and constants
 //
-// classifySymbolWithResolver (symbol_format.go) applies symShared for unresolved "$<sid>" names when
-// symbolResolver.isSharedSymbolText matches imported symbols (sid < localStart, not a local slot). Resolved
-// fragment IDs from the index still go through classifySymbol regex branches.
-//
-// # Error-handling parity
-//
-// Structural/decode failures → return error. Calibre log.warning / check_empty class → prefer stderr and continue;
-// buildResources logs when image bytes are missing for a declared image resource.
-//
-// # Confirmatory matrix
+// # Confirmatory Testing
 //
 // Use scripts/diff_kfx_parity.sh and scripts/kfx_reference_snapshot.py (fragment-summary) per fixture:
 // REFERENCE/kfx_examples/*.kfx, REFERENCE/kfx_new/decrypted/*.kfx-zip, monolithic_kfx, and
