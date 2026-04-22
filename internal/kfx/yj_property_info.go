@@ -815,6 +815,31 @@ func convertYJProperties(yjProperties map[string]interface{}, resolveResource Re
 		}
 	}
 
+	// Ported from Python convert_yj_properties (yj_to_epub_properties.py L276-278):
+	// When text-combine-upright is "all", remove writing-mode: horizontal-tb if present.
+	// Python: if declarations.get("text-combine-upright") == "all": ...
+	if declarations["text-combine-upright"] == "all" {
+		if declarations["writing-mode"] == "horizontal-tb" {
+			delete(declarations, "writing-mode")
+		}
+	}
+
+	// Ported from Python convert_yj_properties (yj_to_epub_properties.py L286-289):
+	// When text-decoration-color is "rgba(255,255,255,0)" and text-decoration is absent,
+	// remove the color and set text-decoration: none !important.
+	// Python: if ("text-decoration-color" in declarations and "text-decoration" not in declarations and
+	//             declarations["text-decoration-color"] == "rgba(255,255,255,0)"):
+	//             declarations.pop("text-decoration-color")
+	//             declarations["text-decoration"] = "none !important"
+	if _, hasTDC := declarations["text-decoration-color"]; hasTDC {
+		if _, hasTD := declarations["text-decoration"]; !hasTD {
+			if declarations["text-decoration-color"] == "rgba(255,255,255,0)" {
+				delete(declarations, "text-decoration-color")
+				declarations["text-decoration"] = "none !important"
+			}
+		}
+	}
+
 	// Post-processing: -kfx-table-vertical-align → vertical-align
 	// Ported from Python fix_vertical_align_properties (yj_to_epub_content.py ~L1497).
 	// In Python, -kfx-table-vertical-align is renamed to vertical-align at content rendering time.
