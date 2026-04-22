@@ -493,6 +493,42 @@ def cmd_decrypt(args):
 # position — update reading position in .yjr sidecar file
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# drm-init — extract DRM keys from device
+# ---------------------------------------------------------------------------
+
+def cmd_drm_init(args):
+    root = args.root
+    cache_dir = args.cache_dir or ""
+    plugin_dir = args.plugin_dir or ""
+
+    if not plugin_dir:
+        # Try to detect plugin dir from this binary's location
+        plugin_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        if not os.path.isdir(os.path.join(plugin_dir, "lib")):
+            # Nuitka standalone: binary is in dist/, plugin dir is parent
+            parent = os.path.dirname(plugin_dir)
+            if os.path.isdir(os.path.join(parent, "lib")):
+                plugin_dir = parent
+
+    try:
+        from dedrm.drm_init import run as drm_init_run
+        result = drm_init_run(root, plugin_dir, cache_dir)
+        exit_json({
+            "version": VERSION,
+            "ok": True,
+            "books_found": result["books_found"],
+            "keys_found": result["keys_found"],
+        })
+    except Exception as e:
+        exit_json({
+            "version": VERSION,
+            "ok": False,
+            "code": "drm_init",
+            "message": str(e),
+        })
+
+
 def cmd_position(args):
     if not args.yjr:
         print("position: --yjr is required", file=sys.stderr)
@@ -646,6 +682,14 @@ def main():
     p_decrypt.add_argument("--cache-dir", default="")
 
     # position
+    p_drm = sub.add_parser("drm-init")
+    p_drm.add_argument("--root", default="/mnt/us/documents",
+                      help="root directory to scan for DRM books")
+    p_drm.add_argument("--cache-dir", default="",
+                      help="cache directory for drm_keys.json")
+    p_drm.add_argument("--plugin-dir", default="",
+                      help="plugin directory containing lib/ helpers")
+
     p_pos = sub.add_parser("position")
     p_pos.add_argument("--yjr", required=True)
     p_pos.add_argument("--old-percent", type=float, required=True)
@@ -662,6 +706,7 @@ def main():
         "convert": cmd_convert,
         "cover": cmd_cover,
         "decrypt": cmd_decrypt,
+        "drm-init": cmd_drm_init,
         "position": cmd_position,
     }
 
