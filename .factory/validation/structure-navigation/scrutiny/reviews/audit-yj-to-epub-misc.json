@@ -1,0 +1,45 @@
+{
+  "featureId": "audit-yj-to-epub-misc",
+  "reviewedAt": "2026-04-22T09:15:00.000Z",
+  "commitId": "98ab963",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The audit of yj_to_epub_misc.py (611 lines, 15 functions) against Go counterparts (yj_to_epub_misc.go 271 lines + svg.go 279 lines) is thorough and accurate. Two real bugs were found and fixed in commit 6ae9856: $98 transform using raw fmt.Sprintf instead of processTransform, and $650 polygon missing from propertyValueList. The function-by-function mapping table is complete and correctly maps all 15 Python functions. The 7 fully-parity functions (condition operators, evaluate, evaluateBinary, processPolygon, processTransform) were verified line-by-line against Python and match. The 6 missing/partial functions are correctly identified as FXL/plugin-only features not needed for current test books. All verification commands passed: build, tests, and 394/394 comparison parity.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_to_epub_misc.go",
+        "line": 96,
+        "severity": "non_blocking",
+        "description": "$750 (layout_type) operator: Go silently returns false for unknown layout types, while Python logs an error (\"yj.layout_type unknown: %s\"). Minor logging gap — functionally equivalent since both return false, but the missing error log could make debugging harder if an unknown layout type is encountered."
+      },
+      {
+        "file": "internal/kfx/svg.go",
+        "line": 30,
+        "severity": "non_blocking",
+        "description": "processKVGShape $270 branch creates an empty <text> element instead of iterating content_list to find matching content by $155/$598 and calling process_content (Python L249-271). This only affects KVG/illustrated layout books — none of the 6 test books use this feature. The worker correctly identified and documented this gap."
+      },
+      {
+        "file": "internal/kfx/svg.go",
+        "line": 107,
+        "severity": "non_blocking",
+        "description": "processPath IonStruct path bundle lookup is stubbed (logs error, returns empty string) instead of looking up book_data[\"$692\"] and recursively processing (Python L291-301). Only affects KVG shapes with path bundles — not present in test books. Correctly documented."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The audit findings document (audit-yj-to-epub-misc-findings.md) is well-structured and provides a complete function-by-function mapping. This pattern of documenting audit findings in .factory/library/ is valuable for future audits and should be considered as a template for other parity audit features.",
+      "evidence": ".factory/library/audit-yj-to-epub-misc-findings.md — 61-line document with function mapping table, fixes applied, known gaps, and test results"
+    },
+    {
+      "area": "conventions",
+      "observation": "Python's check_empty() validation function (yj_to_epub.py:344, utilities.py:175) is consistently not ported across all Go files. This is a debugging/validation-only function that logs warnings for unexpected remaining dict keys. The decision to skip it is reasonable but should be documented as a systematic choice rather than a per-file omission.",
+      "evidence": "Python yj_to_epub_misc.py:285 calls self.check_empty(shape, \"shape\"). Go svg.go processKVGShape has no equivalent. Similar pattern in other audited files."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The audit is thorough and correctly executed. All 15 Python functions are accounted for in the mapping table. Two real bugs were found and fixed ($98 transform and $650 polygon in propertyValueList). The 7 core functions achieve full parity. The 6 missing/partial functions are correctly scoped as FXL/plugin-only features not needed for current test books. The processKVGShape $270 and processPath IonStruct gaps are the most significant omissions but are correctly documented and don't affect current output. Verification confirms 394/394 parity with all tests passing. One minor logging gap ($750 unknown layout types silently returns false instead of logging error) but this is functionally equivalent."
+}

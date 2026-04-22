@@ -1,143 +1,78 @@
 {
   "featureId": "audit-yj-to-epub-metadata",
-  "pythonFile": "REFERENCE/Calibre_KFX_Input/kfxlib/yj_to_epub_metadata.py",
-  "goFile": "internal/kfx/yj_to_epub_metadata.go",
-  "pythonLines": 290,
-  "goLines": 343,
-  "auditorSession": "af7097e7-034d-40fa-b6c9-f2c7c6ed30d3",
-  "commitId": "0ffe869",
-  "result": "pass",
-  "summary": "Full parity confirmed for all 6 test books. content.opf output is byte-identical. 2 minor fixes applied.",
-  "functions": [
+  "milestone": "structure-navigation",
+  "reviewedAt": "2026-04-22T09:00:00Z",
+  "commitHashes": ["0ffe869", "2e52284"],
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "verdict": "pass",
+  "status": "pass",
+  "summary": "The yj_to_epub_metadata audit is thorough and well-documented. Two legitimate parity fixes were applied (support_landscape/portrait orientation check and author &-split). All 6 test books produce byte-identical content.opf output (394/394). All 8 assertions (VAL-EPUB-008 through VAL-EPUB-019) are satisfied. Non-blocking gaps are all for book types not in the test set (dictionary, comic, magazine, notebook, print replica). Build and tests pass cleanly.",
+  "codeReview": {
+    "summary": "Comprehensive branch-by-branch audit of all 4 Python functions (process_document_data, process_content_features, process_metadata, process_metadata_item) against Go counterparts (applyDocumentData, applyContentFeatures, applyKFXEPUBInitMetadataAfterOrganize, applyMetadata, applyReadingOrderMetadata, applyMetadataItem). 33 cat_key branches in process_metadata_item mapped. 2 fixes applied. All gaps are for book types not in the test set.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_to_epub_metadata.go",
+        "line": 42,
+        "severity": "non_blocking",
+        "description": "kindle_title_metadata/author_pronunciation branch has a comment saying 'not needed for EPUB output' but Python's epub_output.py (L891-892) uses author_pronunciations to generate <meta refines> with alternate-script property in OPF. While no test book triggers this, the comment is misleading — it IS needed for EPUB output for books with pronunciation data."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_metadata.go",
+        "line": 80,
+        "severity": "non_blocking",
+        "description": "kindle_title_metadata/cde_content_type case is empty (just a comment). Python sets self.cde_content_type and triggers book_type changes (MAGZ→magazine, EBSP→sample). Go handles magazine detection via yj_metadata_getters.go:isMagazine() using getMetadataValue directly, which is functionally equivalent for current test books. The empty case could be confusing for future maintainers."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_metadata.go",
+        "line": 91,
+        "severity": "non_blocking",
+        "description": "kindle_capability_metadata/yj_illustrated_layout sets only IllustratedLayout=true, but Python also sets self.html_cover = True. The html_cover field (trace.go:112 HTMLCover) is defined but never set anywhere in the Go codebase. Python uses html_cover in epub_output.py to: (1) skip is_cover_image marking for cover resource (L95), (2) add 'amzn:cover-as-html' meta (L975-976), (3) control <meta name='cover'> output (L1026). No test book is an illustrated layout book, so this gap is latent."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_metadata.go",
+        "line": 88,
+        "severity": "non_blocking",
+        "description": "kindle_capability_metadata/yj_fixed_layout uses asInt with value > 0 to set FixedLayout=true, but Python distinguishes value 1 (non-pdf), 2 (pdf_backed + print_replica), and 3 (pdf_backed + pdf_backed_fixed_layout + virtual_panels). Go collapses these into a single FixedLayout=true. Not needed for current test books but would matter for PDF-backed fixed-layout books."
+      }
+    ]
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
     {
-      "name": "process_document_data",
-      "pythonLines": "30-134",
-      "goFunction": "applyDocumentData",
-      "branches": 26,
-      "gaps": [],
-      "notes": "Logging-only branches (selection, spacing, pan_zoom, comic, auto_contrast, max_id) intentionally omitted as they don't affect EPUB output. document_data.pop() calls for known keys not needed in Go (no 'unexpected key' framework). process_content_properties not called separately in Go — document style properties extracted directly from value map. font_name_replacements handled via fontFixer in render.go. default_font_size/default_line_height not stored as they're only used for validation logging in Python."
+      "file": "internal/kfx/yj_to_epub_metadata.go",
+      "line": 42,
+      "description": "author_pronunciation comment says 'not needed for EPUB output' but it IS used in epub_output.py for alternate-script metadata. Comment should be corrected."
     },
     {
-      "name": "process_content_features",
-      "pythonLines": "136-152",
-      "goFunction": "applyContentFeatures",
-      "branches": 2,
-      "gaps": [],
-      "notes": "Feature version_info processing (L143-147) omitted — only used for check_empty validation. content_features id/kfx_id validation (L149) omitted — only logs errors. Both gaps are logging-only and don't affect output."
+      "file": "internal/kfx/yj_to_epub_metadata.go",
+      "line": 80,
+      "description": "cde_content_type case is empty — book type logic (MAGZ→magazine, EBSP→sample) not wired. Handled via different path (yj_metadata_getters.go) but the empty case is confusing."
     },
     {
-      "name": "process_metadata",
-      "pythonLines": "154-182",
-      "goFunction": "applyKFXEPUBInitMetadataAfterOrganize + applyMetadata + applyReadingOrderMetadata",
-      "branches": 7,
-      "gaps": [
-        {
-          "branch": "L171-175: comic default for fixed_layout books",
-          "severity": "non_blocking",
-          "notes": "Python sets book_type='comic' when fixed_layout and no book_type. Not needed for current test books. Would be needed for fixed-layout comics."
-        },
-        {
-          "branch": "L178: scribe_notebook handling",
-          "severity": "non_blocking",
-          "notes": "Not applicable to Kindle e-ink devices. Only for Kindle Scribe notebooks."
-        }
-      ]
+      "file": "internal/kfx/yj_to_epub_metadata.go",
+      "line": 91,
+      "description": "yj_illustrated_layout doesn't set HTMLCover=true (Python does both). HTMLCover field exists in trace.go but is never set. This would affect OPF output for illustrated layout books."
     },
     {
-      "name": "process_metadata_item",
-      "pythonLines": "184-290",
-      "goFunction": "applyMetadata (categorized) + applyMetadataItem (top-level)",
-      "branches": 33,
-      "gaps": [
-        {
-          "catKey": "kindle_title_metadata/dictionary_lookup",
-          "severity": "non_blocking",
-          "notes": "Dictionary book type — not in test set"
-        },
-        {
-          "catKey": "kindle_title_metadata/periodicals_generation_V2",
-          "severity": "non_blocking",
-          "notes": "Magazine/periodical type — not in test set"
-        },
-        {
-          "catKey": "kindle_title_metadata/is_dictionary",
-          "severity": "non_blocking",
-          "notes": "Dictionary book type — not in test set"
-        },
-        {
-          "catKey": "kindle_title_metadata/is_sample",
-          "severity": "non_blocking",
-          "notes": "Sample flag — not in test set"
-        },
-        {
-          "catKey": "kindle_title_metadata/title_pronunciation",
-          "severity": "non_blocking",
-          "notes": "Pronunciation — not used by any test book. epub.Book struct has fields but decodedBook doesn't populate them."
-        },
-        {
-          "catKey": "kindle_capability_metadata/continuous_popup_progression",
-          "severity": "non_blocking",
-          "notes": "Children/comic book type — not in test set"
-        },
-        {
-          "catKey": "kindle_capability_metadata/yj_forced_continuous_scroll",
-          "severity": "non_blocking",
-          "notes": "Scroll mode flag — not in test set"
-        },
-        {
-          "catKey": "kindle_capability_metadata/yj_guided_view_native",
-          "severity": "non_blocking",
-          "notes": "Comic guided view — not in test set"
-        },
-        {
-          "catKey": "kindle_capability_metadata/yj_has_text_popups",
-          "severity": "non_blocking",
-          "notes": "Children book type — not in test set"
-        },
-        {
-          "catKey": "kindle_capability_metadata/yj_textbook",
-          "severity": "non_blocking",
-          "notes": "Textbook/PDF type — not in test set"
-        },
-        {
-          "catKey": "kindle_capability_metadata/yj_fixed_layout value 2/3",
-          "severity": "non_blocking",
-          "notes": "Go sets FixedLayout=true for all values > 0 but doesn't distinguish pdf_backed vs pdf_backed_fixed_layout. Not needed for current test books."
-        },
-        {
-          "catKey": "reading_orders",
-          "severity": "non_blocking",
-          "notes": "Reading orders handled separately in state.go organizeFragments"
-        }
-      ],
-      "fixes": [
-        {
-          "what": "support_landscape/support_portrait orientation check",
-          "pythonLine": 286,
-          "fix": "Added check for both '' and 'none' since Go defaults to '' when $433 absent but may set 'none' explicitly from $433=$349"
-        },
-        {
-          "what": "author &-split in applyMetadataItem",
-          "pythonLine": 196,
-          "fix": "Split author value by '&' and trim each part, matching Python's [a.strip() for a in value.split('&') if a]"
-        }
-      ]
+      "file": "internal/kfx/yj_to_epub_metadata.go",
+      "line": 88,
+      "description": "yj_fixed_layout doesn't distinguish pdf_backed vs non-pdf values (1/2/3). All set FixedLayout=true only."
     }
   ],
-  "verificationResults": {
-    "goBuild": "pass",
-    "goTest": "pass",
-    "compareAll": "394/394 match, 0 differ",
-    "opfDiff": "byte-identical for all 6 books (excluding dcterms:modified)"
-  },
-  "assertions": {
-    "VAL-EPUB-008": "pass — OPF manifest entries match for all 6 books",
-    "VAL-EPUB-009": "pass — Cover image has properties=\"cover-image\"",
-    "VAL-EPUB-010": "pass — OPF metadata entries match for all 6 books",
-    "VAL-EPUB-011": "pass — Spine toc=\"toc.ncx\" present",
-    "VAL-EPUB-012": "pass — Guide section entries present and correct",
-    "VAL-EPUB-017": "pass — ASIN unique-identifier present (urn:asin:XXX)",
-    "VAL-EPUB-018": "pass — Creator refinement entries with marc:relators scheme",
-    "VAL-EPUB-019": "pass — MARC namespace prefix on package element"
-  }
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The Go codebase uses a different architectural pattern for some metadata access (yj_metadata_getters.go with getMetadataValue) vs the Python approach (setting self.* fields in process_metadata_item). This is reasonable but means parity checks need to verify both the metadata handler AND the getters file.",
+      "evidence": "cde_content_type handled in yj_metadata_getters.go:isMagazine() rather than yj_to_epub_metadata.go; content_id handled in yj_structure.py L688 in Python but in Go's applyMetadata"
+    }
+  ],
+  "filesReviewed": [
+    "REFERENCE/Calibre_KFX_Input/kfxlib/yj_to_epub_metadata.py",
+    "internal/kfx/yj_to_epub_metadata.go",
+    "REFERENCE/Calibre_KFX_Input/kfxlib/epub_output.py",
+    "internal/kfx/yj_metadata_getters.go",
+    "internal/kfx/trace.go"
+  ],
+  "addressesFailureFrom": null
 }

@@ -1,0 +1,63 @@
+{
+  "featureId": "audit-yj-to-epub-navigation",
+  "reviewedAt": "2026-04-22T08:30:00Z",
+  "commitId": "e13a1ea",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The audit identified and fixed 3 genuine parity gaps in yj_to_epub_navigation.go: (1) $248 entry_set handling with orientation filtering, (2) description/icon extraction via new parseNavRepresentation function, (3) description/icon pass-through to epub.NavPoint for NCX output. All 25 Python functions were mapped to Go counterparts. The fixes are well-structured and faithful to the Python source. Found several non-blocking parity observations documented below.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_to_epub_navigation.go",
+        "line": 226,
+        "severity": "non_blocking",
+        "description": "processContainer processes BOTH imports AND $247 children independently, while Python's process_nav_container has if/else (imports OR children, mutually exclusive). If a container has both imports and direct entries, Go processes both while Python only processes imports. In practice this likely never occurs (394/394 parity confirms), but the logic differs from Python."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_navigation.go",
+        "line": 242,
+        "severity": "non_blocking",
+        "description": "processGuideUnit processes landmarks unconditionally (always calls guideTypeForLandmark and adds guide entry). Python only processes when landmark_type ($238) is truthy. If $238 is missing/empty, Go creates a guide entry with empty type that gets filtered later by guideToEPUB. Functionally equivalent due to the downstream filter, but adds unnecessary entries."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_navigation.go",
+        "line": 272,
+        "severity": "non_blocking",
+        "description": "processPageUnit lacks the reading_order_name prefix for multi-reading-order books. Python L179 prepends reading_order_name to anchor_name when len(reading_orders) > 1. Go always uses 'page_' + label. This could cause anchor name collisions in multi-reading-order books, but current 6 test books don't exercise this."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_navigation.go",
+        "line": 67,
+        "severity": "non_blocking",
+        "description": "$146 description extraction is simplified: Go extracts top-level strings from the slice, while Python builds a full div via process_content_list then extracts text via lxml itertext(). If $146 contains nested maps (styled text), Go would miss the text. Audit findings acknowledge this simplification and note navigation descriptions are typically simple strings."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_navigation.go",
+        "line": 309,
+        "severity": "non_blocking",
+        "description": "Go adds 'if navUnitName == \"heading-nav-unit\" { navUnitName = \"\" }' for $798 type, but Python only clears label to '' for heading-nav-unit, not nav_unit_name. This could produce different anchor names but doesn't affect output since 394/394 passes."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_navigation.go",
+        "line": 55,
+        "severity": "non_blocking",
+        "description": "parseNavRepresentation's $245 icon extraction assumes $245 is a map with $175 key (asMap + asString). Python treats $245 directly as a resource name string. If the resolved ION value is a plain string rather than a map, Go would silently skip the icon. 394/394 parity suggests $245 is always a map in practice, but the extraction logic is more fragile than Python's."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The Python process_nav_container uses if/else (imports OR children, mutually exclusive) while Go's processContainer processes both independently. This is a pattern difference that should be documented as an intentional deviation if confirmed correct, since future auditors might flag it.",
+      "evidence": "Python yj_to_epub_navigation.py L137-196: 'if \"imports\" in nav_container: ... else: ...'. Go yj_to_epub_navigation.go L226-239: imports processed first, then $247 processed unconditionally."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The $146 description extraction in parseNavRepresentation is intentionally simplified vs Python's full process_content_list → lxml approach. This is documented in the audit findings but not in .factory/library/. If a future book has navigation descriptions with styled/nested content, this simplification could cause diffs.",
+      "evidence": "yj_to_epub_navigation.go L67-82 extracts only top-level strings. Python L303-305: 'desc_elem = etree.Element(\"div\"); self.process_content_list(representation.pop(\"$146\", []), desc_elem, None, self.writing_mode); description = \"\".join(desc_elem.itertext()).strip()'"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The audit is thorough and well-executed. All 25 Python functions were mapped to Go counterparts, 3 genuine parity gaps were found and fixed ($248 entry_set handling, description/icon extraction, description/icon pass-through to NCX). The fixes are faithful to the Python source and all tests pass with 394/394 parity maintained. Found 6 non-blocking observations: (1) processContainer processes imports AND children vs Python's if/else, (2) processGuideUnit lacks $238 guard, (3) processPageUnit lacks multi-reading-order prefix, (4) simplified $146 description extraction, (5) extra heading-nav-unit navUnitName clearing, (6) fragile $245 icon extraction via asMap. None of these affect the current 6 test books."
+}

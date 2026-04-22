@@ -1,0 +1,50 @@
+{
+  "featureId": "audit-yj-structure",
+  "reviewedAt": "2026-04-22T08:15:00.000Z",
+  "commitId": "b6eef19",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The audit of yj_structure.py → yj_structure.go + symbol_format.go + fragments.go is thorough and well-documented. The commit only adds the audit findings document (.factory/library/audit-yj-structure-findings.md) with no code changes, confirming the worker found no parity gaps requiring fixes. The 394/394 comparison result strongly supports the parity claim. I verified the core functions (walk_fragment, processSymbolReference, check_fragment_usage, classify_symbol, determine_entity_dependencies, rebuild_container_entity_map, get_reading_orders, ordered_section_names, has_illustrated_layout_page_template_condition, check_symbol_table) and found the Go implementations faithfully port all conversion-critical Python branches. Two minor discrepancies were found in validation-only code paths that do not affect EPUB output.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_structure.go",
+        "line": 530,
+        "severity": "non_blocking",
+        "description": "processSymbolReference only tracks EID defs for container==\"$155\". Python's walk_fragment also tracks container==\"$174\" when is_kpf_prepub is true (line 895: `if container == \"$155\" or (self.is_kpf_prepub and container == \"$174\"): eid_defs.add(data)`). This missing branch could cause false 'Undefined EIDs' warnings for KPF prepub books. However, this only affects validation logging and has no impact on EPUB output. The Go pipeline does not currently process KPF prepub books."
+      },
+      {
+        "file": "internal/kfx/yj_structure.go",
+        "line": 484,
+        "severity": "non_blocking",
+        "description": "The walkInternal EID defs block checks `cont == \"$155\" || cont == \"$598\"` which is the post-dispatch block from Python (line 941-947). This is correct, but it creates a dual-tracking situation where '$155' is tracked in BOTH processSymbolReference (line 530) and walkInternal's post-dispatch block (line 484). This is redundant but harmless — both add to the same eidDefs map."
+      },
+      {
+        "file": "internal/kfx/symbol_format.go",
+        "line": 299,
+        "severity": "non_blocking",
+        "description": "getOrderedImageResources is correctly identified as a stub dependent on collect_content_position_info (A5 scope / position_location module). Returns error for fixed-layout image books. This is a known dependency tracked as a pre-existing issue, not a parity gap in this audit."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The Python→Go file mapping table in the mission AGENTS.md lists `yj_structure.py → yj_structure.go` but the actual Go port spans three files: yj_structure.go, symbol_format.go, and fragments.go. The mapping table should be updated to reflect this, so future auditors know where to look for each function.",
+      "evidence": "audit-yj-structure-findings.md explicitly states: 'Go: internal/kfx/yj_structure.go (1577 lines), internal/kfx/symbol_format.go (536 lines), internal/kfx/fragments.go'. The mission AGENTS.md Python→Go File Mapping table only lists 'yj_structure.py → yj_structure.go'."
+    },
+    {
+      "area": "conventions",
+      "observation": "The worker correctly identified that Python's yj_structure.py is primarily a validation/diagnostic module (check_consistency is 540 lines of pure validation logging). This pattern — where Python has extensive validation that is intentionally NOT ported — should be documented as a project convention to prevent future auditors from flagging these as gaps.",
+      "evidence": "audit-yj-structure-findings.md marks check_consistency (540 lines), log_known_error, reading_order_names, extract_section_story_names as '⚪ Validation-only' or '⚪ Not needed'. The AGENTS.md project file mentions this pattern but only in the context of the parity rules, not as an explicit exemption list."
+    },
+    {
+      "area": "skills",
+      "observation": "The parity-auditor skill procedure was followed correctly. Worker read Python file, performed function-by-function branch audit, documented all findings, and ran all three verification commands (build, test, compare). The audit findings document is well-structured with function-by-function tables and clear status markers.",
+      "evidence": "Handoff shows followedProcedure: true, deviations: []. The findings document covers all 20+ functions with status markers (✅ Ported, ⚪ Validation-only, ⚪ Write-path only, ⚠ Stub)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS — The yj_structure.py audit is thorough and well-documented. All conversion-critical Python functions have correct Go counterparts verified by 394/394 comparison across all 6 original books. Three non-blocking issues found: (1) missing is_kpf_prepub && $174 EID tracking in walkInternal (validation-only, no EPUB impact), (2) redundant $155 EID tracking in two code locations (harmless), (3) getOrderedImageResources stub awaiting position_location module (known dependency). The worker correctly identified validation-only functions that don't need porting and correctly followed the parity-auditor procedure."
+}

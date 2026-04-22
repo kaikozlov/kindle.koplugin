@@ -1,0 +1,126 @@
+{
+  "milestone": "structure-navigation",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "build": { "passed": true, "command": "go build ./cmd/kindle-helper/", "exitCode": 0 },
+    "test": { "passed": true, "command": "go test ./internal/kfx/ -count=1 -timeout 120s", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "go vet ./internal/kfx/...", "exitCode": 0 },
+    "lint": { "passed": true, "command": "go vet ./internal/kfx/...", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "audit-yj-structure",
+      "severity": "non_blocking",
+      "description": "Missing is_kpf_prepub && $174 EID tracking in processSymbolReference (validation-only, no EPUB impact)"
+    },
+    {
+      "featureId": "audit-yj-structure",
+      "severity": "non_blocking",
+      "description": "Redundant $155 EID tracking in two locations (harmless)"
+    },
+    {
+      "featureId": "audit-yj-structure",
+      "severity": "non_blocking",
+      "description": "getOrderedImageResources is a stub awaiting position_location module (known dependency)"
+    },
+    {
+      "featureId": "audit-yj-to-epub-navigation",
+      "severity": "non_blocking",
+      "description": "processContainer processes imports AND children vs Python's if/else (functionally equivalent per 394/394)"
+    },
+    {
+      "featureId": "audit-yj-to-epub-navigation",
+      "severity": "non_blocking",
+      "description": "processGuideUnit lacks $238 truthy guard (filtered downstream)"
+    },
+    {
+      "featureId": "audit-yj-to-epub-navigation",
+      "severity": "non_blocking",
+      "description": "processPageUnit lacks multi-reading-order prefix for page anchors (no test books exercise this)"
+    },
+    {
+      "featureId": "audit-yj-to-epub-navigation",
+      "severity": "non_blocking",
+      "description": "Simplified $146 description extraction — only extracts top-level strings, not nested styled content"
+    },
+    {
+      "featureId": "audit-yj-to-epub-navigation",
+      "severity": "non_blocking",
+      "description": "Extra heading-nav-unit navUnitName clearing not in Python"
+    },
+    {
+      "featureId": "audit-yj-to-epub-navigation",
+      "severity": "non_blocking",
+      "description": "Fragile $245 icon extraction assumes map structure"
+    },
+    {
+      "featureId": "audit-yj-to-epub-metadata",
+      "severity": "non_blocking",
+      "description": "author_pronunciation comment says 'not needed' but it IS used in epub_output.py for alternate-script metadata"
+    },
+    {
+      "featureId": "audit-yj-to-epub-metadata",
+      "severity": "non_blocking",
+      "description": "cde_content_type case is empty — book type logic handled via different path"
+    },
+    {
+      "featureId": "audit-yj-to-epub-metadata",
+      "severity": "non_blocking",
+      "description": "yj_illustrated_layout doesn't set HTMLCover=true (Python does both). No test book is illustrated layout."
+    },
+    {
+      "featureId": "audit-yj-to-epub-metadata",
+      "severity": "non_blocking",
+      "description": "yj_fixed_layout doesn't distinguish pdf_backed vs non-pdf values (1/2/3)"
+    },
+    {
+      "featureId": "audit-yj-to-epub-misc",
+      "severity": "non_blocking",
+      "description": "$750 unknown layout types silently return false instead of logging error like Python"
+    },
+    {
+      "featureId": "audit-yj-to-epub-misc",
+      "severity": "non_blocking",
+      "description": "processKVGShape $270 creates empty <text> instead of full content processing (KVG/illustrated layout only)"
+    },
+    {
+      "featureId": "audit-yj-to-epub-misc",
+      "severity": "non_blocking",
+      "description": "processPath IonStruct path bundle lookup is stubbed (KVG shapes only)"
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Update the Python→Go file mapping table to reflect that some Python files map to multiple Go files. For example: yj_structure.py → yj_structure.go + symbol_format.go + fragments.go; yj_to_epub_misc.py → yj_to_epub_misc.go + svg.go. Future auditors need accurate mappings to find all relevant code.",
+      "evidence": "audit-yj-structure and audit-yj-to-epub-misc both found the Python code split across multiple Go files not listed in the mapping table.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Document the systematic decision to skip Python's check_empty() validation function across all Go files. This function logs warnings for unexpected remaining dict keys and is debugging/validation-only. Currently each audit independently discovers this omission.",
+      "evidence": "audit-yj-to-epub-misc notes check_empty() is consistently not ported. Similar pattern in other audited files.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Navigation description extraction simplification ($146) should be documented in library",
+      "reason": "already-documented — the audit findings document (audit-yj-to-epub-navigation-findings.md) already covers this gap"
+    },
+    {
+      "observation": "Go uses different architectural pattern for metadata access (getMetadataValue vs self.* fields)",
+      "reason": "ambiguous — this is an existing architectural choice, not something that needs documentation change"
+    }
+  ],
+  "previousRound": null
+}
