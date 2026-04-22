@@ -1,0 +1,51 @@
+{
+  "featureId": "audit-yj-to-epub-illustrated-layout",
+  "reviewedAt": "2026-04-22T14:45:00Z",
+  "commitId": "ba0e8e7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The audit of yj_to_epub_illustrated_layout.py (408 lines, 2 main functions + 3 helpers) vs yj_to_epub_illustrated_layout.go (590 lines) is thorough and accurate. The worker correctly identified that all active branches (EMIT_PAGE_TEMPLATES=False, the Python default) are fully ported, and all dead branches (EMIT_PAGE_TEMPLATES=True) are correctly omitted. The commit only adds a documentation file (audit findings), no code changes were needed. The audit documented 74 branches across both main functions and correctly classified each as ported, N/A (dead branch), or N/A (error-only path). The 394/394 parity was maintained.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_to_epub_illustrated_layout.go",
+        "line": 386,
+        "severity": "non_blocking",
+        "description": "Container unwrap logic only unwraps when templateChild has exactly 1 child AND has a style attribute. Python's logic unconditionally unwraps (after logging an error for non-1-child cases). Go condition `len(templateChild.Children) == 1 && templateChild.Attrs[\"style\"] != \"\"` is more restrictive than Python which always does the unwrap at L193-196 regardless of child count or style presence. This is functionally equivalent for valid inputs (containers always have exactly 1 child and a style in practice), but the Python error-then-unwrap pattern is slightly different."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_illustrated_layout.go",
+        "line": 525,
+        "severity": "non_blocking",
+        "description": "Python's last-child page-align=none div branch uses `template_child_style` which is the merged base+orig style, while Go re-parses the style from `templateChild.Attrs[\"style\"]` into `childStyleMap`. This could differ if earlier style modifications aren't reflected back to the Attrs map. In practice, for the last-child branch, the templateChild hasn't been modified yet, so the re-parse produces the same result. Non-blocking because it's functionally correct for all real inputs."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_illustrated_layout.go",
+        "line": 466,
+        "severity": "non_blocking",
+        "description": "Python's `else` branch (L317) logs an error for unexpected template children that don't match any known pattern (not img/video/div-with-bgcolor, not last-child page-align=none div). Go silently skips these via the if/else if chain with no final else. This means if a book has a truly unexpected template child, Python would log an error while Go silently ignores it. Non-blocking because the Python branch is error-only and no real book triggers it."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_illustrated_layout.go",
+        "line": 567,
+        "severity": "non_blocking",
+        "description": "Python's template insertion walks up to find a block parent (`while target.tag not in [\"div\", \"li\", \"td\"]`), walking up the DOM tree. Go has a loop `for insertTarget != nil && !isBlockParent(insertTarget.Tag) { break }` that immediately breaks — it never actually walks up. This is correct because the simplified Go DOM doesn't have parent pointers, but it means the Go code doesn't match Python's behavior for targets inside inline elements like `<span>` or `<a>`. Non-blocking because in practice the target is always a block element for conditional templates."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The worker discovered that createConditionalPageTemplates is defined but never called from the rendering pipeline (render.go). Python calls it from fixup_styles_and_classes in yj_to_epub_properties.py. This is documented in the audit findings but not in .factory/library/ knowledge docs. Future auditors of yj_to_epub_properties.py might waste time looking for this call.",
+      "evidence": "render.go:186-190 shows fixupStylesAndClasses is called but createConditionalPageTemplates is not. Handoff documents this as 'correctly omitted because SecretsCrown has no -kfx-amzn-condition in rendered output'."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The worker identified that SecretsCrown's 4 differing files are NOT caused by illustrated layout code — they stem from section naming (structure), resource naming (resources), drop cap (content), and text-align (properties). This root-cause analysis for SecretsCrown diffs is valuable for future audits but is only in the audit findings file, not in a shared knowledge doc.",
+      "evidence": "audit-yj-to-epub-illustrated-layout-findings.md 'SecretsCrown Diffs Analysis' section. The mission's AGENTS.md Known Diff Patterns table has entries for SecretsCrown but doesn't mention that illustrated layout is ruled out as a cause."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The audit of yj_to_epub_illustrated_layout.py is thorough and accurate. All 74 branches across both main functions were traced and correctly classified. No code changes were needed — the Go port covers all active branches (EMIT_PAGE_TEMPLATES=False) faithfully. Four non-blocking issues were identified in the Go code: slightly more restrictive container unwrap logic, re-parsing style instead of using merged style in the last-child branch, missing error logging for unexpected template children, and a no-op parent walk for template insertion. None affect real-world output — 394/394 parity is maintained. The worker followed the parity-auditor skill procedure correctly."
+}

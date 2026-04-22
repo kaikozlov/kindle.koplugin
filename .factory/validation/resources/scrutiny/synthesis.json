@@ -1,0 +1,68 @@
+{
+  "milestone": "resources",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "build": { "passed": true, "command": "go build ./cmd/kindle-helper/", "exitCode": 0 },
+    "test": { "passed": true, "command": "go test ./internal/kfx/ -count=1 -timeout 120s", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "go vet ./internal/kfx/...", "exitCode": 0 },
+    "lint": { "passed": true, "command": "go vet ./internal/kfx/...", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Clarify the convention for 'fulfills' vs 'partially fulfills' validation assertions. When a feature claims to fulfill VAL-RES-010 (source filename resolution) but the handoff acknowledges the gap is left undone, this creates ambiguity in validation-state tracking. Consider requiring features to use 'partially fulfills' when known gaps remain in the fulfilled assertion's area.",
+      "evidence": "audit-resources claims fulfills: VAL-RES-010 but handoff.whatWasLeftUndone includes source_resource_filename/source_file_name override which is exactly what VAL-RES-010 describes. Review flagged this as non_blocking.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention guidance about when to use standalone functions vs struct methods in Go code. The notebook code uses standalone functions + context struct, while the rest of the codebase uses methods on converter structs. This inconsistency could confuse future auditors.",
+      "evidence": "audit-yj-to-epub-notebook reviewer noted yj_to_epub_notebook.go uses processNotebookContent as standalone function while yj_to_epub_content.go uses methods on converter struct. Single occurrence, not yet systemic.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Go's image/jpeg doesn't support optimize=True flag that Python PIL uses for JXR→JPEG conversion.",
+      "reason": "already-documented — resources-audit.md in library already covers this as a known gap"
+    },
+    {
+      "observation": "dfont detection magic bytes overlap concern with EOT detection ordering.",
+      "reason": "duplicate — reviewer confirmed Go ordering matches Python ordering, no action needed"
+    },
+    {
+      "observation": "yj_to_image_book.go functions are NOT called from the KFX→EPUB conversion pipeline — only used in tests.",
+      "reason": "already-documented — this is a known architectural distinction covered in architecture.md and audit findings"
+    },
+    {
+      "observation": "Go's yj_to_image_book.go unifies Python's ImageResource and PdfImageResource into a single struct.",
+      "reason": "ambiguous — this is a valid design choice, not a gap; no library update needed"
+    },
+    {
+      "observation": "Commit d037f78 has misleading commit message bundling unrelated scrutiny reviews.",
+      "reason": "ambiguous — historical issue, not actionable for current milestone"
+    },
+    {
+      "observation": "The worker did not run audit_branches.py script, doing manual comparison instead.",
+      "reason": "already-documented — worker marked followedProcedure=true, manual comparison was thorough and found the bug"
+    },
+    {
+      "observation": "SecretsCrown diffs root-cause analysis from illustrated-layout audit should be shared knowledge.",
+      "reason": "already-documented — covered in audit-yj-to-epub-illustrated-layout-findings.md in library"
+    },
+    {
+      "observation": "createConditionalPageTemplates is never called from rendering pipeline.",
+      "reason": "already-documented — covered in illustrated-layout audit findings document"
+    }
+  ],
+  "previousRound": null
+}

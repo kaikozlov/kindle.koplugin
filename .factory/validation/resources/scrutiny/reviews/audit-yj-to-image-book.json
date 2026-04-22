@@ -1,0 +1,56 @@
+{
+  "featureId": "audit-yj-to-image-book",
+  "reviewedAt": "2026-04-22T15:30:00Z",
+  "commitId": "d037f78",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The worker audited yj_to_image_book.py (353 lines) against yj_to_image_book.go (998 lines) and found full parity with no code changes needed. The Go file is larger because it includes a complete custom PDF writer (serializePDF, buildPDF, buildOutlineObjects, etc.) replacing Python's pypdf dependency. The audit traced all 9 Python functions: __init__, convert_book_to_cbz, convert_book_to_pdf, get_ordered_images, get_resource_image, combine_images_into_pdf, add_pdf_outline, combine_images_into_cbz, suffix_location. The high-level convert_book_to_cbz and convert_book_to_pdf methods are correctly identified as Calibre-specific (CBZ/PDF output) and not needed for the KFX→EPUB conversion pipeline. The core functions (get_ordered_images, get_resource_image, combine_images_into_cbz, combine_images_into_pdf, suffix_location) are all ported with matching branch logic. Two non-blocking gaps were identified: missing page count validation warning in getOrderedImagesV2, and simplified PDF resource handling in combineImagesIntoPDF. Both are outside the EPUB conversion pipeline. Verification passed: 394/394 book comparison unchanged.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_to_image_book.go",
+        "line": 168,
+        "severity": "non_blocking",
+        "description": "getOrderedImagesV2 (and getOrderedImages) do not validate page count against expected pages. Python L151-152 calls self.book.get_page_count() and warns if fewer images than expected. Go has getPageCount() available but doesn't call it here. Low impact — this is just a diagnostic warning, not a functional gap."
+      },
+      {
+        "file": "internal/kfx/yj_to_image_book.go",
+        "line": 645,
+        "severity": "non_blocking",
+        "description": "combineImagesIntoPDF skips $565 (PDF) resources with a warning log instead of merging them like Python does with pypdf. Python's combine_images_into_pdf (L224-228) handles PDF resources natively: it merges consecutive same-PDF resources, reads page counts, and uses pypdf.PdfWriter for page extraction. Go's custom PDF writer can't do PDF→PDF merging. Not used in EPUB conversion pipeline."
+      },
+      {
+        "file": "internal/kfx/yj_to_image_book.go",
+        "line": 516,
+        "severity": "non_blocking",
+        "description": "combineImagesIntoCBZ default case logs an error (log.Printf) instead of raising an exception like Python does. Python L325-326 raises Exception(\"Unexpected image format\"). Go logs and continues processing other images. Minor behavioral difference — Python would abort the entire CBZ, Go produces a partial CBZ."
+      },
+      {
+        "file": "internal/kfx/yj_to_image_book.go",
+        "line": 89,
+        "severity": "non_blocking",
+        "description": "getOrderedImages (V1) only returns []ImageResource, while getOrderedImagesV2 returns the full 3-tuple (images, pids, contentPosInfo). The V1 version exists but is effectively unused — all callers should use V2. The V1 version also doesn't track PIDs or contentPosInfo, so it can't be used for PDF outline generation. Consider removing V1 or having it call V2 internally."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The yj_to_image_book.go functions (combineImagesIntoCBZ, combineImagesIntoPDF, getOrderedImages) are NOT called from the KFX→EPUB conversion pipeline. They are utility functions for image book handling (CBZ/PDF output) used only in tests. The EPUB pipeline uses getResourceImage for image retrieval and the resource pipeline in yj_to_epub_resources.go for packaging. This architectural distinction is important for future auditors to understand — gaps in combineImagesIntoPDF do NOT affect EPUB output quality.",
+      "evidence": "grep for getOrderedImages|combineImagesIntoCBZ|combineImagesIntoPDF shows only test references and self-references within yj_to_image_book.go. No references from render.go, kfx.go, or yj_to_epub_resources.go."
+    },
+    {
+      "area": "conventions",
+      "observation": "The commit d037f78 has a misleading commit message ('Document yj_to_image_book.py audit findings; full parity confirmed') but the actual diff only adds scrutiny review JSONs for OTHER features (audit-epub-output, audit-yj-to-epub-content, audit-yj-to-epub-properties) from the content-pipeline milestone, not yj_to_image_book findings. The yj_to_image_book audit produced no file changes — its findings exist only in the handoff JSON. This suggests the commit was bundled with unrelated changes.",
+      "evidence": "git show d037f78 --stat shows only .factory/validation/content-pipeline/scrutiny/reviews/ files. No audit findings document for yj_to_image_book was created in .factory/library/."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Go's yj_to_image_book.go unifies Python's ImageResource and PdfImageResource into a single struct with PageNums and TotalPages fields. Python's PdfImageResource extends ImageResource with page_nums=[page_index+1] and total_pages. Go's approach works correctly — when format is $565, the ImageResource has PageNums populated; otherwise Height/Width are used. Future workers should know this when tracing resource handling.",
+      "evidence": "yj_to_image_book.go ImageResource struct (lines 43-52) vs Python resources.py ImageResource/PdfImageResource classes (L643-668)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. Thorough branch-by-branch audit of yj_to_image_book.py (353 lines) against yj_to_image_book.go (998 lines). The worker correctly identified all 9 Python functions and traced every branch to its Go counterpart. The Go file is larger due to a custom PDF writer replacing Python's pypdf dependency. The high-level convert_book_to_cbz and convert_book_to_pdf methods are correctly excluded as Calibre-specific features not needed for KFX→EPUB conversion. Two non-blocking gaps noted: missing page count validation warning (diagnostic only) and simplified $565 PDF resource handling (not used in EPUB pipeline). No code changes were needed — all 394/394 test books pass. The commit message is misleading (bundles scrutiny reviews from other features), but the audit work itself was thorough and accurate."
+}

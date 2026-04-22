@@ -1,0 +1,56 @@
+{
+  "featureId": "audit-yj-to-epub-notebook",
+  "reviewedAt": "2026-04-22T15:00:00.000Z",
+  "commitId": "86dd02f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The worker audited yj_to_epub_notebook.py (703 lines) → yj_to_epub_notebook.go (1423 lines) and found 1 real bug: brush type 7 classification called classifyBrushType (always MARKER) instead of classifyBrushTypeWithThickness (MARKER if variableThickness else PEN). The fix correctly reorders variableThickness computation before brush classification and switches to the proper function. All other function-level parity was verified. The audit was thorough, following the parity-auditor skill procedure correctly.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_to_epub_notebook.go",
+        "line": 600,
+        "severity": "non_blocking",
+        "description": "nmdl.chunk_threshold validation differs from Python: Go skips the error log when the field is nil/absent (`if nmdlChunkThreshold != nil && nmdlChunkThreshold != 50`), but Python logs an error for None too (`if nmdl_chunk_threshold != 50`). In practice, stroke groups always have this field, so this is cosmetic. The Go behavior (not warning about absent fields) is arguably more correct."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_notebook.go",
+        "line": 0,
+        "severity": "non_blocking",
+        "description": "No check_empty equivalent exists in Go. Python calls check_empty after processing content maps, stroke points, annotations, style events, and stories to verify all expected fields were consumed. The Go code simply leaves unconsumed fields in the map. This is a debugging/validation gap rather than a functional issue — unrecognized fields are silently ignored instead of being logged as errors."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_notebook.go",
+        "line": 1051,
+        "severity": "non_blocking",
+        "description": "generateDensityPNG uses image.NewRGBA instead of Python's Image.new('P'/'1') with palette/binary modes. The visual result is equivalent (correct colors, correct transparency) but the encoded PNG files will not be byte-identical to Python's output. The handoff correctly notes this as a non_blocking issue."
+      },
+      {
+        "file": "internal/kfx/yj_to_epub_notebook.go",
+        "line": 1411,
+        "severity": "non_blocking",
+        "description": "processScribeNotebookPageSection and processScribeNotebookTemplateSection remain as stubs (return false). These require full KFX_EPUB book context. The handoff correctly notes this. These are only needed when actual Scribe notebook fixtures are added."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The Go notebook code uses standalone functions (processNotebookContent, scribeNotebookStroke) and a notebookContext struct instead of methods on a KFX_EPUB receiver class like Python. This is a different pattern than the rest of the Go codebase which uses methods on converter structs. No convention about when to use standalone functions vs struct methods is documented in AGENTS.md.",
+      "evidence": "yj_to_epub_notebook.go:413 (processNotebookContent as standalone function) vs yj_to_epub_content.go (methods on converter struct)"
+    },
+    {
+      "area": "knowledge",
+      "observation": "The worker discovered that classifyBrushTypeWithThickness existed but was never called — the old code called classifyBrushType instead. This is exactly the type of bug the parity-auditor skill is designed to catch. The skill procedure (Phase 2: Branch Audit → Phase 3: Fix) was followed correctly.",
+      "evidence": "Transcript shows worker traced Python line 346-347 brush type 7 logic, found classifyBrushTypeWithThickness existed at line 950 but was never called at line 748."
+    },
+    {
+      "area": "skills",
+      "observation": "The parity-auditor skill mentions running `python3 scripts/audit_branches.py --file PYTHON_FILE.py --function FUNCTION_NAME --verbose` as a starting point. The worker transcript does not show this command being run. Instead, the worker did a manual line-by-line comparison. This deviation seems justified — the script is heuristic-based and the manual comparison was thorough enough to find the bug.",
+      "evidence": "Transcript skeleton shows worker reading Python and Go files directly and comparing specific function branches without running audit_branches.py. skillFeedback.followedProcedure is true."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The audit was thorough and found one real bug (brush type 7 classification). The fix is correct and minimal — reordering variableThickness computation before brush type classification and calling classifyBrushTypeWithThickness instead of classifyBrushType. All Python branches were verified: processNotebookContent (3 branches: IonSymbol, IonStruct with $146, IonStruct with $176), scribeNotebookStroke (2 branches: stroke_group, stroke), scribeNotebookStrokeIndividual (all brush types, variable density/thickness, opacity handling, transform, SVG paths vs density PNG), scribeNotebookAnnotation (hwr type), scribeAnnotationContent ($269 type with tspan generation), adjustColorForDensity (luminance conversion), decodeStrokeValues (full binary protocol). Test coverage is comprehensive (40+ test functions). 394/394 book comparisons show no regressions. Non-blocking issues noted: missing check_empty equivalent, RGBA vs palette PNG encoding, and two stub functions."
+}
