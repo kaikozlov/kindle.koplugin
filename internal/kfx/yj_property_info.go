@@ -861,21 +861,19 @@ func convertYJProperties(yjProperties map[string]interface{}, resolveResource Re
 		}
 	}
 
-	// Post-processing: -kfx-table-vertical-align → vertical-align
-	// Ported from Python fix_vertical_align_properties (yj_to_epub_content.py ~L1497).
-	// In Python, -kfx-table-vertical-align is renamed to vertical-align at content rendering time.
-	// Since Go emits -kfx-table-vertical-align from YJ property mapping, we convert it here.
-	if val := popMap(declarations, "-kfx-table-vertical-align", ""); val != "" {
-		if _, exists := declarations["vertical-align"]; !exists {
-			declarations["vertical-align"] = val
-		}
-	}
-
-	// Post-processing: -kfx-baseline-shift → vertical-align
-	// Part of Python's fix_vertical_align_properties handling for baseline-shift.
-	if val := popMap(declarations, "-kfx-baseline-shift", ""); val != "" {
-		if _, exists := declarations["vertical-align"]; !exists {
-			declarations["vertical-align"] = val
+	// Post-processing: -kfx-baseline-shift / -kfx-baseline-style / -kfx-table-vertical-align → vertical-align
+	// Ported from Python fix_vertical_align_properties (yj_to_epub_content.py ~L1497-1514).
+	// Python iterates over all three properties. For each found:
+	//   - If no vertical-align exists → set it to the popped value
+	//   - If vertical-align exists and differs → would create subcontainer span (handled at render level)
+	//   - If vertical-align exists and matches → no-op
+	// In Go's class-based system, we convert all three to vertical-align here.
+	// The conflict case (different values) is rare; we use last-write-wins with the outermost property.
+	for _, prop := range []string{"-kfx-baseline-shift", "-kfx-baseline-style", "-kfx-table-vertical-align"} {
+		if val := popMap(declarations, prop, ""); val != "" {
+			if _, exists := declarations["vertical-align"]; !exists || declarations["vertical-align"] != val {
+				declarations["vertical-align"] = val
+			}
 		}
 	}
 
