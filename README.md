@@ -1,6 +1,14 @@
 ## Kindle Virtual Library for KOReader
 
-A KOReader plugin that lets you browse and read your Kindle book library directly in KOReader. Your purchased books appear alongside your other files — just tap to read.
+A KOReader plugin that lets you browse and read your Kindle book library directly in KOReader. Your books appear in a **Kindle Library** folder in the file browser — just tap to read.
+
+**[Download latest release](https://github.com/kaikozlov/kindle.koplugin/releases/latest)**
+
+### Features
+
+- **Virtual Library** — Browse your Kindle books from a dedicated folder in KOReader's file browser
+- **Reading State Sync** — Sync reading progress between KOReader and Kindle, so you can switch between them and pick up where you left off
+- **Cached for Speed** — Books are prepared on first open and cached, so re-opening is instant
 
 ### Installation
 
@@ -18,12 +26,18 @@ A KOReader plugin that lets you browse and read your Kindle book library directl
 
 ### Usage
 
-Once installed, your Kindle books appear in KOReader's file browser automatically.
-
 **Opening a book:**
-1. Browse your library in the KOReader file browser
-2. Tap any book to open it
+1. Open the file browser and tap **Kindle Library**
+2. Browse your books and tap to read
 3. The first open takes a moment while the book is prepared — after that, it opens instantly
+
+**Setting up DRM decryption:**
+1. Go to **Menu → Kindle Library → Setup DRM Decryption**
+2. Wait for the setup to complete — this only needs to be done once
+
+**Syncing reading progress:**
+1. Go to **Menu → Kindle Library → Sync reading state with Kindle** to enable
+2. Reading progress syncs automatically between KOReader and Kindle
 
 ### Compatibility
 
