@@ -2589,12 +2589,46 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 		opened *htmlElement
 	}
 	runes := []rune(text)
-	if dropcapLines, hasDropcapLines := asInt(node["$125"]); hasDropcapLines && dropcapLines > 0 {
-		if dropcapChars, hasDropcapChars := asInt(node["$126"]); hasDropcapChars && dropcapChars > 0 {
+	// Port of Python yj_to_epub_content.py:1117-1131:
+	// Python's add_kfx_style merges the $157 style fragment properties INTO the content node,
+	// so $125/$126 (dropcap_lines/dropcap_chars) become part of the node. Go doesn't merge —
+	// it uses effectiveStyle() to compute the combined style lazily. So we must look up
+	// $125/$126 from the effective style when not directly in the node.
+	dropcapLinesVal, hasDropcapLines := asInt(node["$125"])
+	if !hasDropcapLines || dropcapLinesVal <= 0 {
+		if styleID, _ := asString(node["$157"]); styleID != "" {
+			if frag := r.styleFragments[styleID]; frag != nil {
+				dropcapLinesVal, hasDropcapLines = asInt(frag["$125"])
+			}
+		}
+	}
+	dropcapCharsVal, hasDropcapChars := asInt(node["$126"])
+	if !hasDropcapChars || dropcapCharsVal <= 0 {
+		if styleID, _ := asString(node["$157"]); styleID != "" {
+			if frag := r.styleFragments[styleID]; frag != nil {
+				dropcapCharsVal, hasDropcapChars = asInt(frag["$126"])
+			}
+		}
+	}
+	if hasDropcapLines && dropcapLinesVal > 0 {
+		if hasDropcapChars && dropcapCharsVal > 0 {
 			dropcap := map[string]interface{}{
 				"$143": 0,
-				"$144": dropcapChars,
-				"$125": dropcapLines,
+				"$144": dropcapCharsVal,
+				"$125": dropcapLinesVal,
+			}
+			// Port of Python yj_to_epub_content.py:1129:
+			//   if "$173" in content: dropcap_style_event[IS("$173")] = content["$173"]
+			// Copy $173 (kfx-style-name) from content node to dropcap event so
+			// the CSS class name uses the style fragment's base name.
+			if v := node["$173"]; v != nil {
+				dropcap["$173"] = v
+			} else if styleID, _ := asString(node["$157"]); styleID != "" {
+				if frag := r.styleFragments[styleID]; frag != nil {
+					if v := frag["$173"]; v != nil {
+						dropcap["$173"] = v
+					}
+				}
 			}
 			annotations = append([]interface{}{dropcap}, annotations...)
 			ok = true
@@ -2619,8 +2653,10 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 			anchorID, _ := asString(annotationMap["$179"])
 			styleID, _ := asString(annotationMap["$157"])
 			dropcapClass := ""
-			if lines, ok := asInt(annotationMap["$125"]); ok && lines > 0 {
-				dropcapClass = r.dropcapClass(lines)
+			dropcapLines := 0
+			if l, ok := asInt(annotationMap["$125"]); ok && l > 0 {
+				dropcapLines = l
+				dropcapClass = r.dropcapClass(l)
 			}
 			if debugAnchors := os.Getenv("KFX_DEBUG_ANCHORS"); debugAnchors != "" && anchorID != "" {
 				for _, wanted := range strings.Split(debugAnchors, ",") {
@@ -2708,15 +2744,46 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 			// then processes annotations separately. Here we create two nested events.
 			annotationStyle := r.annotationSpanClass(styleID, annotationMap)
 			if dropcapClass != "" {
-				// Dropcap event: innermost span wrapping the first N characters
-				// Port of Python is_dropcap branch (yj_to_epub_content.py:1213-1216):
-				//   add_style(event_elem, {"float": "left", "font-size": value_str(..., "em"),
-				//     "line-height": "100%", "margin-top": "0", "margin-right": "0.1em", "margin-bottom": "0"})
+				// Dropcap event: innermost span wrapping the first N characters.
+				// Port of Python is_dropcap branch (yj_to_epub_content.py:1213-1230):
+				//   1. add_style(event_elem, {float: left, font-size: Nem, ...})
+				//   2. add_style(event_elem, process_content_properties(style_event), replace=True)
+				// The dropcap element gets BOTH the float/font-size/margin AND the
+				// processed content properties from the style fragment, using the
+				// style fragment's base name for CSS class naming.
+				//
+				// Key: Python's add_kfx_style merges the $157 style fragment into the
+				// style_event, so process_content_properties sees all properties. The
+				// CSS class name comes from the $173 (-kfx-style-name) property which
+				// is set from the parent node's $157 style fragment.
+				// Since the synthetic dropcap event has no $157, we use the parent
+				// node's styleID to compute the correct base name for CSS class naming.
+				nodeStyleID, _ := asString(node["$157"])
+				dropcapBaseName := "class"
+				if nodeStyleID != "" {
+					dropcapBaseName = r.styleBaseName(nodeStyleID)
+				}
+				// Compute dropcap-specific styles with the correct base name
+				dropcapDeclStyle := styleStringFromDeclarations(dropcapBaseName, nil, []string{
+					"float: left",
+					fmt.Sprintf("font-size: %dem", dropcapLines),
+					"line-height: 100%",
+					"margin-bottom: 0",
+					"margin-right: 0.1em",
+					"margin-top: 0",
+				})
+				dropcapSpanStyle := dropcapDeclStyle
+				if annotationStyle != "" {
+					// Merge annotation content properties with dropcap styles.
+					// Python applies dropcap styles first, then process_content_properties
+					// with replace=True (which can override). mergeStyleStrings handles this.
+					dropcapSpanStyle = mergeStyleStrings(dropcapDeclStyle, annotationStyle)
+				}
 				events = append(events, event{
 					start: start,
 					end:   end,
 					open: func(parent *htmlElement) *htmlElement {
-						element := &htmlElement{Tag: "span", Attrs: map[string]string{"style": dropcapClass}}
+						element := &htmlElement{Tag: "span", Attrs: map[string]string{"style": dropcapSpanStyle}}
 						parent.Children = append(parent.Children, element)
 						return element
 					},
@@ -2946,6 +3013,23 @@ func (r *storylineRenderer) applyPositionAnchors(element *htmlElement, positionI
 		if target == nil {
 			continue
 		}
+		// Port of Python position anchor behavior (yj_to_epub_navigation.py:375-400 +
+		// yj_to_epub_content.py:1094-1098):
+		// Python processes position anchors BEFORE style events/annotations, so the
+		// anchor is placed on a raw text span. When annotations later wrap that span
+		// via replace_element_with_container, the id stays on the inner element.
+		// Go processes annotations FIRST (in applyAnnotations/processTextContent),
+		// then position anchors. So when locateOffset finds an annotation-created
+		// element (<a> with href, elements with epub:type), we must create a separate
+		// empty <span id="X"/> as a sibling before it, matching Python's output.
+		if needsSeparateAnchorSpan(target) {
+			if span := insertAnchorSpanBefore(element, target); span != nil {
+				span.Attrs = map[string]string{"id": anchorID}
+				r.emittedAnchorIDs[anchorID] = true
+				r.registerAnchorElementNames(positionID, offset, anchorID)
+				continue
+			}
+		}
 		if target.Attrs == nil {
 			target.Attrs = map[string]string{}
 		}
@@ -2955,6 +3039,57 @@ func (r *storylineRenderer) applyPositionAnchors(element *htmlElement, positionI
 			r.registerAnchorElementNames(positionID, offset, anchorID)
 		}
 	}
+}
+
+// needsSeparateAnchorSpan returns true when the target element was created by
+// annotation processing and should NOT receive the anchor id directly.
+// Instead, a separate empty <span id="X"/> should be inserted before it.
+// Port of Python's ordering: position anchors processed BEFORE annotations,
+// so the anchor span exists as a separate element before <a> wrapping.
+func needsSeparateAnchorSpan(target *htmlElement) bool {
+	if target == nil {
+		return false
+	}
+	// <a> elements with href are link annotations — always separate
+	if target.Tag == "a" && target.Attrs["href"] != "" {
+		return true
+	}
+	// Elements with epub:type attribute are annotation containers
+	if target.Attrs["epub:type"] != "" {
+		return true
+	}
+	return false
+}
+
+// insertAnchorSpanBefore inserts an empty <span/> as a sibling before target
+// by searching the element tree starting from root. Returns the new span,
+// or nil if target can't be found.
+func insertAnchorSpanBefore(root *htmlElement, target *htmlElement) *htmlElement {
+	if root == nil || target == nil {
+		return nil
+	}
+	span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+	if didInsert := insertSpanBeforeInTree(root, target, span); didInsert {
+		return span
+	}
+	return nil
+}
+
+// insertSpanBeforeInTree recursively searches root's children for target,
+// and inserts span as a sibling before it. Returns true if inserted.
+func insertSpanBeforeInTree(parent *htmlElement, target *htmlElement, span *htmlElement) bool {
+	for i, child := range parent.Children {
+		if child == target {
+			parent.Children = append(parent.Children[:i], append([]htmlPart{span}, parent.Children[i:]...)...)
+			return true
+		}
+		if ce, ok := child.(*htmlElement); ok {
+			if insertSpanBeforeInTree(ce, target, span) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (r *storylineRenderer) registerAnchorElementNames(positionID int, offset int, anchorID string) {
