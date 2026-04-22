@@ -275,6 +275,109 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	return book, nil
 }
 
+// ConvertFile converts a KFX file at inputPath to an EPUB at outputPath.
+// Port of the convert pipeline from Python's KFX Input plugin.
+func ConvertFile(inputPath, outputPath string, cacheDir string) error {
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		return err
+	}
+
+	// Handle DRMION: decrypt to CONT first
+	if bytes.HasPrefix(data, drmionSignature) {
+		pageKey, err := FindPageKey(inputPath, cacheDir)
+		if err != nil {
+			return &DRMError{Message: err.Error()}
+		}
+
+		contData, err := decryptDRMION(data, pageKey)
+		if err != nil {
+			return &DRMError{Message: fmt.Sprintf("decryption failed: %s", err)}
+		}
+
+		return convertFromDRMIONData(contData, outputPath, inputPath, pageKey)
+	}
+
+	mode, reason, err := Classify(inputPath)
+	if err != nil {
+		return err
+	}
+	if mode == "blocked" {
+		return &UnsupportedError{Message: "KFX book layout is not supported by the proof-of-concept converter: " + reason}
+	}
+
+	book, err := decodeKFX(inputPath)
+	if err != nil {
+		return err
+	}
+	if len(book.Sections) == 0 {
+		return &UnsupportedError{Message: "no readable sections were extracted from the KFX file"}
+	}
+
+	return epub.Write(outputPath, epub.Book{
+		Identifier:              book.Identifier,
+		Title:                   book.Title,
+		Language:                book.Language,
+		Authors:                 book.Authors,
+		Published:               book.Published,
+		Description:             book.Description,
+		Publisher:               book.Publisher,
+		OverrideKindleFonts:     book.OverrideKindleFonts,
+		CoverImageHref:          book.CoverImageHref,
+		Stylesheet:              book.Stylesheet,
+		Sections:                book.Sections,
+		Resources:               book.Resources,
+		Navigation:              book.Navigation,
+		Guide:                   book.Guide,
+		PageList:                book.PageList,
+		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
+	})
+}
+
+// ConvertFileWithTrace converts a KFX file and writes a debug trace.
+func ConvertFileWithTrace(inputPath string, outputPath string, tracePath string) error {
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		return err
+	}
+
+	// Handle DRMION same as ConvertFile
+	if bytes.HasPrefix(data, drmionSignature) {
+		return fmt.Errorf("trace mode does not support DRMION files; use decrypted KFX-zip instead")
+	}
+
+	state, err := buildBookState(inputPath)
+	if err != nil {
+		return err
+	}
+	trace := newTraceWriter(inputPath)
+	book, err := renderBookState(state, trace)
+	if err != nil {
+		return err
+	}
+	if err := trace.writeToFile(tracePath); err != nil {
+		return fmt.Errorf("write trace: %w", err)
+	}
+	return epub.Write(outputPath, epub.Book{
+		Identifier:              book.Identifier,
+		Title:                   book.Title,
+		Language:                book.Language,
+		Authors:                 book.Authors,
+		Published:               book.Published,
+		Description:             book.Description,
+		Publisher:               book.Publisher,
+		OverrideKindleFonts:     book.OverrideKindleFonts,
+		CoverImageHref:          book.CoverImageHref,
+		Stylesheet:              book.Stylesheet,
+		Sections:                book.Sections,
+		Resources:               book.Resources,
+		Navigation:              book.Navigation,
+		Guide:                   book.Guide,
+		PageList:                book.PageList,
+		GenerateEpub2Compatible: true,
+	})
+}
+
 func decodeKFX(path string) (*decodedBook, error) {
 	state, err := buildBookState(path)
 	if err != nil {
