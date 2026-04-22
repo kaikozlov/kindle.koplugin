@@ -738,24 +738,9 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 		}
 	}
 
-	// Determine brush type
-	opacity := 1.0
-	additiveOpacity := false
-	var brushName string
-
-	if nmdlBrushType != nil {
-		brushTypeInt, _ := nmdlBrushType.(int)
-		brushName = classifyBrushType(brushTypeInt)
-		switch brushTypeInt {
-		case 1: // HIGHLIGHTER
-			opacity = 0.2
-		case 9: // SHADER
-			opacity = 0.2
-			additiveOpacity = true
-		}
-	}
-
 	// Check for variable density and thickness
+	// Must be computed before brush type classification since
+	// brush type 7 depends on variableThickness (Python: nmdl.brush_type == 7 → MARKER if variable_thickness else PEN).
 	variableDensity := false
 	if dafVals, ok := nmdlStrokeValues["nmdl.density_adjust_factor"]; ok {
 		for _, daf := range dafVals {
@@ -773,6 +758,24 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 				variableThickness = true
 				break
 			}
+		}
+	}
+
+	// Determine brush type — must come after variableThickness computation.
+	// Python (yj_to_epub_notebook.py:330-350): brush_type 7 → MARKER if variable_thickness else PEN.
+	opacity := 1.0
+	additiveOpacity := false
+	var brushName string
+
+	if nmdlBrushType != nil {
+		brushTypeInt, _ := nmdlBrushType.(int)
+		brushName = classifyBrushTypeWithThickness(brushTypeInt, variableThickness)
+		switch brushTypeInt {
+		case 1: // HIGHLIGHTER
+			opacity = 0.2
+		case 9: // SHADER
+			opacity = 0.2
+			additiveOpacity = true
 		}
 	}
 
