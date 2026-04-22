@@ -1,40 +1,41 @@
-<div align="center">
+## Kindle Virtual Library for KOReader
 
-# kindle.koplugin
+A KOReader plugin that lets you browse and read your Kindle book library directly in KOReader. Your purchased books appear alongside your other files — just tap to read.
 
-A KOReader plugin that lets you browse and read your Kindle book library directly in KOReader.
+### Installation
 
-</div>
+1. Download the release for your device's architecture:
 
-## Features
+   | Architecture | Devices |
+   | ------------ | ------- |
+   | **armv7** | Kindle Paperwhite, Kindle Basic, Kindle Oasis, Kindle Scribe |
 
-- **Virtual Library** — Browse your full Kindle book collection from inside KOReader's file browser
-- **Seamless Opening** — Tap any book to read it. Conversions happen automatically in the background
-- **Cached for Speed** — Books are cached after the first open, so re-opening is instant
+   > **Not sure?** armv7 covers all modern Kindle models.
 
-## Installation
-
-1. Download the latest release for your device.
 2. Extract `kindle.koplugin` to your KOReader plugins directory:
    - Kindle: `/mnt/us/koreader/plugins/`
 3. Restart KOReader
 
-## Usage
+### Usage
 
-Once installed, your Kindle books appear alongside your other files in KOReader's file browser. Just tap to open — the first open of each book takes a moment while it's prepared for reading, and after that it opens instantly.
+Once installed, your Kindle books appear in KOReader's file browser automatically.
 
-## Compatibility
+**Opening a book:**
+1. Browse your library in the KOReader file browser
+2. Tap any book to open it
+3. The first open takes a moment while the book is prepared — after that, it opens instantly
 
-Designed for Kindle devices running KOReader alongside stock firmware.
+### Compatibility
 
-## License
+> Designed for Kindle devices running KOReader alongside stock firmware.
+
+### License
 
 MIT License
 
 ---
 
-<details>
-<summary>Building from source</summary>
+## Building from source
 
 ```sh
 # Build ARM binary (Docker + Nuitka)
@@ -45,5 +46,3 @@ MIT License
 ```
 
 See `AGENTS.md` for full architecture and development documentation.
-
-</details>
