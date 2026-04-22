@@ -152,6 +152,9 @@ rm -rf "$DIST_DIR/lib/python3.11/asyncio"    # async framework
 find "$DIST_DIR/lib/python3.11" -name "tests" -exec rm -rf {} + 2>/dev/null || true
 find "$DIST_DIR/lib/python3.11" -name "test" -type d -exec rm -rf {} + 2>/dev/null || true
 
+# Strip debug symbols from the Python binary (27MB -> ~7MB)
+docker run --rm --platform linux/arm/v7 -v "$(cd "$DIST_DIR" && pwd)/bin:/mnt" arm32v7/gcc:12 strip /mnt/python3
+
 # Strip unnecessary Crypto modules (only keep AES and friends)
 rm -rf "$SITE_PACKAGES/Crypto/SelfTest"
 rm -rf "$SITE_PACKAGES/Crypto/IO"
