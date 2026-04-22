@@ -1,0 +1,136 @@
+{
+  "milestone": "pipeline-reorganization",
+  "groupId": "structure-group-a",
+  "testedAt": "2026-04-22T00:00:00Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "tool": "bash (grep, rg, test)"
+  },
+  "toolsUsed": ["bash", "grep", "test"],
+  "assertions": [
+    {
+      "id": "VAL-STRUCT-007",
+      "title": "yj_to_epub.go exists with pipeline orchestration",
+      "status": "pass",
+      "steps": [
+        { "action": "test -f internal/kfx/yj_to_epub.go", "expected": "FILE EXISTS", "observed": "FILE EXISTS" },
+        { "action": "grep -c 'func renderBookState|func convertFromDRMIONData|func convertFromCONTData|func decodeKFX' yj_to_epub.go", "expected": ">=3", "observed": "4" }
+      ],
+      "evidence": {
+        "fileExists": true,
+        "functionCount": 4,
+        "functionsFound": [
+          "L15:  func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)",
+          "L278: func decodeKFX(path string) (*decodedBook, error)",
+          "L290: func DecodeKFX(path string) (*decodedBook, error)",
+          "L294: func convertFromDRMIONData(contData []byte, outputPath string, originalPath string, pageKey []byte) error",
+          "L410: func convertFromCONTData(contData []byte, outputPath string) error",
+          "L466: func applyCoverSVGPromotion(book *decodedBook, resolvedDefaultFont string)",
+          "L553: func normalizeBookIdentifier(identifier string) string",
+          "L564: func normalizeLanguage(language string) string"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STRUCT-008",
+      "title": "kfx.go retains only entry points and data types",
+      "status": "pass",
+      "steps": [
+        { "action": "grep -c 'func convertFromDRMIONData|func convertFromCONTData|func renderBookState|func normalizeLanguage' kfx.go", "expected": "0", "observed": "0" },
+        { "action": "grep retained entry points", "expected": "Classify, ConvertFile, ConvertFileWithTrace present", "observed": "L165: func Classify, L193: func ConvertFile, L250: func ConvertFileWithTrace" }
+      ],
+      "evidence": {
+        "excludedFunctionsFound": 0,
+        "retainedFunctions": [
+          "L165: func Classify(path string) (openMode string, blockReason string, err error)",
+          "L193: func ConvertFile(inputPath, outputPath string, cacheDir string) error",
+          "L250: func ConvertFileWithTrace(inputPath string, outputPath string, tracePath string) error"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STRUCT-009",
+      "title": "kfx_container.go exists with CONT binary parsing",
+      "status": "pass",
+      "steps": [
+        { "action": "test -f internal/kfx/kfx_container.go", "expected": "FILE EXISTS", "observed": "FILE EXISTS" },
+        { "action": "grep -c 'func loadContainerSource|func collectContainerBlobs|func loadContainerSourceData' kfx_container.go", "expected": ">=3", "observed": "3" }
+      ],
+      "evidence": {
+        "fileExists": true,
+        "functionCount": 3,
+        "allFunctionsAndTypes": [
+          "L15:  type containerSource struct",
+          "L24:  type containerBlob struct",
+          "L29:  func loadContainerSource(path string) (*containerSource, error)",
+          "L37:  func loadContainerSourceData(path string, data []byte) (*containerSource, error)",
+          "L88:  func collectContainerBlobs(path string) ([]containerBlob, bool, error)",
+          "L124: func collectSidecarContainerBlobs(root string) ([]containerBlob, []containerBlob, error)",
+          "L168: func collectZipContainerBlobs(path string, data []byte) ([]containerBlob, bool, error)",
+          "L220: func validateEntityOffsets(src *containerSource) bool"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STRUCT-010",
+      "title": "state.go retains fragment state only",
+      "status": "pass",
+      "steps": [
+        { "action": "grep -c 'func loadContainerSource\\b|func collectContainerBlobs|type containerSource struct|type containerBlob struct' state.go", "expected": "0", "observed": "0" }
+      ],
+      "evidence": {
+        "excludedSymbolsFound": 0,
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STRUCT-011",
+      "title": "container.go eliminated",
+      "status": "pass",
+      "steps": [
+        { "action": "test -f internal/kfx/container.go", "expected": "FILE MISSING (exit code 1)", "observed": "FILE MISSING (exit code 1)" },
+        { "action": "grep -c 'func createContainer|func fixVerticalAlignProperties' yj_to_epub_content.go", "expected": ">=2", "observed": "2" }
+      ],
+      "evidence": {
+        "containerGoExists": false,
+        "contentMigratedTo": "yj_to_epub_content.go",
+        "migratedFunctions": [
+          "L1368: func createContainer(contentElem *htmlElement, contentStyle map[string]string, tag string, isContainerProperty func(string) bool) (*htmlElement, map[string]string)",
+          "L1403: func fixVerticalAlignProperties(contentElem *htmlElement, contentStyle map[string]string) map[string]string"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STRUCT-012",
+      "title": "doc.go updated with structured file map",
+      "status": "pass",
+      "steps": [
+        { "action": "grep -c 'yj_symbol_catalog.py|yj_container.py|kfx_container.py|yj_to_epub.py' doc.go", "expected": ">=4", "observed": "5" }
+      ],
+      "evidence": {
+        "matchCount": 5,
+        "matches": [
+          "L6:  yj_to_epub.py → KFX_EPUB.__init__ (yj_to_epub.py) → EPUB_Output.generate_epub",
+          "L25: kfx_container.py → kfx_container.go (CONT binary parsing)",
+          "L35: yj_container.py → yj_container.go (Fragment data model)",
+          "L39: yj_symbol_catalog.py → yj_symbol_catalog.go (Shared symbol table)",
+          "L40: yj_to_epub.py → yj_to_epub.go + state.go + symbol_format.go + render.go"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: all 6 passed. File structure matches the pipeline-reorganization milestone requirements. yj_to_epub.go contains all pipeline orchestration functions, kfx.go retains only entry points, kfx_container.go has all CONT parsing, state.go has no container types, container.go is eliminated with content moved to yj_to_epub_content.go, and doc.go has a structured Python↔Go file map."
+}

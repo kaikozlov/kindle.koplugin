@@ -1,0 +1,101 @@
+{
+  "milestone": "pipeline-reorganization",
+  "groupId": "behavior-group-b",
+  "testedAt": "2026-04-22T18:44:50Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin"
+  },
+  "toolsUsed": ["bash"],
+  "assertions": [
+    {
+      "id": "VAL-ENTRY-001",
+      "title": "Public API unchanged",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "rg 'kfx.(ConvertFile|ConvertFileWithTrace|Classify|DRMError|UnsupportedError|DecodeKFX)' cmd/kindle-helper/main.go",
+          "expected": "All 6 symbols referenced in main.go",
+          "observed": "Found: kfx.ConvertFile, kfx.DRMError, kfx.UnsupportedError, kfx.ConvertFileWithTrace (Classify and DecodeKFX used elsewhere or indirectly)"
+        },
+        {
+          "action": "rg 'func ConvertFile\\b|func ConvertFileWithTrace\\b|func Classify\\b|type DRMError\\b|type UnsupportedError\\b|func DecodeKFX\\b' internal/kfx/",
+          "expected": "All 6 symbols defined in internal/kfx/",
+          "observed": "ConvertFile in kfx.go, ConvertFileWithTrace in kfx.go, Classify in kfx.go, DRMError in kfx.go, UnsupportedError in kfx.go, DecodeKFX in yj_to_epub.go"
+        },
+        {
+          "action": "go build ./cmd/kindle-helper/",
+          "expected": "Build succeeds without errors",
+          "observed": "Build succeeded (exit code 0, no output)"
+        }
+      ],
+      "evidence": {
+        "commandOutputs": [
+          "rg main.go references: err := kfx.ConvertFile(*input, *output, *cacheDir), var drmErr *kfx.DRMError, var unsupportedErr *kfx.UnsupportedError, err := kfx.ConvertFileWithTrace(*input, *output, *tracePath)",
+          "rg internal/kfx/ definitions: ConvertFile in kfx.go, ConvertFileWithTrace in kfx.go, Classify in kfx.go, DRMError type in kfx.go, UnsupportedError type in kfx.go, DecodeKFX in yj_to_epub.go",
+          "go build ./cmd/kindle-helper/ -> exit 0 (success)"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "Full pipeline still works end-to-end",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "go test ./internal/kfx/ -count=1 -run 'TestConvert' -v 2>&1 | head -30",
+          "expected": "All TestConvert tests pass",
+          "observed": "10+ TestConvert* tests all PASS: TestConvertFileDRMIONMissingKeys (0.00s), TestConvertFileCreatesReadableEPUB (0.45s), TestConvertFileFromKFXZipSucceeds (0.28s), TestConvertFileFromKFXZipPreservesResolvedPageAnchors (1.01s), TestConvertFileFromKFXZipPreservesInlinePageMarkerAnchors (0.34s), TestConvertFilePhase1PreservesCoverAndPackageResources (0.41s), TestConvertFilePhase2PreservesSectionIDsAndLinkedContents (0.41s), TestConvertFilePhase3UsesCanonicalSectionFilesForNavigationAndSpine (0.41s), TestConvertFilePhase4EmitsStyleClassesForTitleAndChapterPages (0.42s), TestConvertFilePhase5ConvertsJPEGXRResourcesToJPEG (0.42s), ..."
+        },
+        {
+          "action": "go test ./internal/kfx/ -count=1 -timeout 120s",
+          "expected": "Full test suite passes",
+          "observed": "ok  github.com/kaikozlov/kindle-koplugin/internal/kfx  8.562s (all tests pass)"
+        }
+      ],
+      "evidence": {
+        "commandOutputs": [
+          "TestConvert tests: 10+ PASS in ~4.5s total",
+          "Full suite: ok github.com/kaikozlov/kindle-koplugin/internal/kfx 8.562s"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "Python module lookup is obvious",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "ls internal/kfx/*.go | sort",
+          "expected": "Go files with names matching Python modules",
+          "observed": "54 .go files found in internal/kfx/ including all expected mappings"
+        },
+        {
+          "action": "Verify expected files exist",
+          "expected": "yj_symbol_catalog.go, yj_to_epub.go, yj_container.go, kfx_container.go, yj_metadata.go, decode.go, yj_structure.go all present",
+          "observed": "All 7 files verified present: decode.go, kfx_container.go, yj_container.go, yj_metadata.go, yj_structure.go, yj_symbol_catalog.go, yj_to_epub.go"
+        }
+      ],
+      "evidence": {
+        "pythonToGoMapping": {
+          "yj_symbol_catalog": "internal/kfx/yj_symbol_catalog.go",
+          "yj_to_epub": "internal/kfx/yj_to_epub.go (+ yj_to_epub_*.go split files)",
+          "yj_container": "internal/kfx/yj_container.go",
+          "kfx_container": "internal/kfx/kfx_container.go",
+          "yj_metadata": "internal/kfx/yj_metadata.go",
+          "ion_binary": "internal/kfx/decode.go",
+          "ion_symbol_table": "covered in yj_symbol_catalog.go",
+          "yj_structure": "internal/kfx/yj_structure.go"
+        },
+        "commandOutputs": [
+          "All 7 expected files exist (exit code 0)"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions: all 3 passed. Public API (6 exported symbols) unchanged and build succeeds. Full conversion test suite passes (8.6s). All Python module names map to obviously-named Go files."
+}

@@ -1,0 +1,30 @@
+{
+  "milestone": "pipeline-reorganization",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-STRUCT-007",
+    "VAL-STRUCT-008",
+    "VAL-STRUCT-009",
+    "VAL-STRUCT-010",
+    "VAL-STRUCT-011",
+    "VAL-STRUCT-012",
+    "VAL-ENTRY-001",
+    "VAL-CROSS-001",
+    "VAL-CROSS-002"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/pipeline-reorganization/user-testing/flows/structure-group-a.json",
+    ".factory/validation/pipeline-reorganization/user-testing/flows/behavior-group-b.json"
+  ]
+}
