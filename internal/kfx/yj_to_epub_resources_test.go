@@ -15,7 +15,7 @@ func TestPackageResourceStemImageUsesSymbolFormat(t *testing.T) {
 		Location:  "resource/c73-thumb.jpg",
 		MediaType: "image/jpeg",
 	}
-	stem, ext := packageResourceStem(r, symShort)
+	stem, ext := packageResourceStem(r, symShort, nil)
 	if ext != ".jpg" {
 		t.Fatalf("ext = %q", ext)
 	}
@@ -31,7 +31,7 @@ func TestPackageResourceStemResourceOriginal(t *testing.T) {
 		Location:  "path/plugin-entry.bin",
 		MediaType: "application/octet-stream",
 	}
-	stem, ext := packageResourceStem(r, symOriginal)
+	stem, ext := packageResourceStem(r, symOriginal, nil)
 	if ext != ".bin" {
 		t.Fatalf("ext = %q", ext)
 	}
@@ -45,8 +45,8 @@ func TestUniquePackageResourceFilenameDedupesCaseInsensitive(t *testing.T) {
 	used := map[string]struct{}{}
 	a := resourceFragment{ID: "a", Location: "x/img.jpg", MediaType: "image/jpeg"}
 	b := resourceFragment{ID: "b", Location: "y/img.jpg", MediaType: "image/jpeg"}
-	f0 := uniquePackageResourceFilename(a, symOriginal, used)
-	f1 := uniquePackageResourceFilename(b, symOriginal, used)
+	f0 := uniquePackageResourceFilename(a, symOriginal, used, nil)
+	f1 := uniquePackageResourceFilename(b, symOriginal, used, nil)
 	if f0 == f1 {
 		t.Fatalf("expected distinct names, got %q twice", f0)
 	}

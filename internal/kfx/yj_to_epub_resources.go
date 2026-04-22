@@ -226,7 +226,7 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 		ID:        resource_name,
 		Location:  locationFn,
 		MediaType: "image/jpeg", // simplified; full parity uses SYMBOL_FORMATS
-	}, symOriginal, rp.usedOEBPSNames)
+	}, symOriginal, rp.usedOEBPSNames, rawMedia)
 
 	// Apply page suffix to filename
 	if suffix != "" {
@@ -482,6 +482,7 @@ func parseResourceFragment(fragmentID string, value map[string]interface{}) reso
 	}
 	location, _ := asString(value["$165"])
 	mediaType, _ := asString(value["$162"])
+	format, _ := asString(value["$161"])
 
 	// Width/height from $422/$423 (or $66/$67 fallback)
 	width, _ := asInt(value["$422"])
@@ -507,6 +508,7 @@ func parseResourceFragment(fragmentID string, value map[string]interface{}) reso
 		ID:        resourceID,
 		Location:  location,
 		MediaType: mediaType,
+		Format:    format,
 		Width:     width,
 		Height:    height,
 		Variants:  variants,
@@ -584,6 +586,7 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 			continue
 		}
 		mediaType := resource.MediaType
+		format := resource.Format
 		if strings.EqualFold(mediaType, "image/jpg") {
 			mediaType = "image/jpeg"
 		}
@@ -592,13 +595,15 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 			if err == nil {
 				data = convertedData
 				mediaType = convertedType
+				format = "" // conversion changed format; clear so extension comes from mediaType
 			}
 		}
 		filename := uniquePackageResourceFilename(resourceFragment{
 			ID:        resource.ID,
 			Location:  resource.Location,
 			MediaType: mediaType,
-		}, symFmt, usedOEBPSNames)
+			Format:    format,
+		}, symFmt, usedOEBPSNames, data)
 		output = append(output, epub.Resource{
 			Filename:  filename,
 			MediaType: mediaType,
@@ -681,8 +686,8 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 // Port of KFX_EPUB.resource_location_filename (yj_to_epub_resources.py L247+).
 // Preserves path prefix from the resource location (e.g. "images/") matching Python's
 // safe_location.rpartition("/") path extraction.
-func packageResourceStem(resource resourceFragment, symFmt symType) (stem, ext string) {
-	ext = extensionForMediaType(resource.MediaType)
+func packageResourceStem(resource resourceFragment, symFmt symType, data []byte) (stem, ext string) {
+	ext = resourceExtension(resource.Format, resource.MediaType, resource.Location, data)
 	loc := resource.Location
 	if loc == "" {
 		loc = resource.ID
@@ -710,10 +715,9 @@ func packageResourceStem(resource resourceFragment, symFmt symType) (stem, ext s
 	if root == "" {
 		root = resource.ID
 	}
-	rt := "resource"
-	if strings.HasPrefix(strings.ToLower(resource.MediaType), "image/") {
-		rt = "image"
-	}
+	// Python uses RESOURCE_TYPE_OF_EXT to determine prefix from the resolved extension,
+	// not from the media type. If ext is an image type, prefix is "image", else "resource".
+	rt := resourceTypeOfExt(ext)
 	u := uniquePartOfLocalSymbol(root, symFmt)
 	prefixed := prefixUniquePartOfSymbol(u, rt)
 	return dirPath + prefixed, ext
@@ -733,8 +737,8 @@ func sanitizeLocation(loc string) string {
 	return b.String()
 }
 
-func uniquePackageResourceFilename(resource resourceFragment, symFmt symType, used map[string]struct{}) string {
-	stem, ext := packageResourceStem(resource, symFmt)
+func uniquePackageResourceFilename(resource resourceFragment, symFmt symType, used map[string]struct{}, data []byte) string {
+	stem, ext := packageResourceStem(resource, symFmt, data)
 	for n := 0; ; n++ {
 		name := stem + ext
 		if n > 0 {
@@ -805,6 +809,173 @@ func extensionForMediaType(mediaType string) string {
 		return ".pobject"
 	default:
 		return ".bin"
+	}
+}
+
+// formatSymbolToExtension maps KFX resource format symbols ($161) to file extensions.
+// Port of Python SYMBOL_FORMATS (resources.py:61-63) which is the inverse of FORMAT_SYMBOLS.
+func formatSymbolToExtension(format string) (string, bool) {
+	switch format {
+	case "$285":
+		return ".jpg", true
+	case "$284":
+		return ".png", true
+	case "$286":
+		return ".gif", true
+	case "$548":
+		return ".jxr", true
+	case "$599":
+		return ".bmp", true
+	case "$565":
+		return ".pdf", true
+	case "$420":
+		return ".pbm", true
+	case "$600":
+		return ".tiff", true
+	case "$287":
+		return ".pobject", true
+	case "$612":
+		return ".bpg", true
+	default:
+		return "", false
+	}
+}
+
+// mimeTypeToExtension maps MIME type to the first extension, for the fallback path
+// where extension is .bin/.pobject and MIME is known.
+// Port of Python EXTS_OF_MIMETYPE (resources.py:139+), returns only the first extension.
+func mimeTypeToExtension(mime string) (string, bool) {
+	switch strings.ToLower(mime) {
+	case "image/jpeg", "image/jpg":
+		return ".jpg", true
+	case "image/png":
+		return ".png", true
+	case "image/gif":
+		return ".gif", true
+	case "image/svg+xml":
+		return ".svg", true
+	case "image/tiff":
+		return ".tif", true
+	case "image/bmp":
+		return ".bmp", true
+	case "image/webp":
+		return ".webp", true
+	case "image/jxr", "image/vnd.ms-photo", "image/vnd.jxr":
+		return ".jxr", true
+	case "application/azn-plugin-object":
+		return ".pobject", true
+	case "application/pdf":
+		return ".pdf", true
+	case "application/octet-stream", "application/protobuf", "application/x-protobuf":
+		return ".bin", true
+	case "res/bin":
+		return ".bin", true
+	case "res/img":
+		return ".png", true
+	case "res/kvg":
+		return ".kvg", true
+	case "plugin/kfx-html-article", "text/html":
+		return ".html", true
+	case "application/xhtml+xml":
+		return ".xhtml", true
+	case "text/css":
+		return ".css", true
+	case "font/ttf", "application/x-font-truetype", "application/x-font-ttf", "application/vnd.ms-opentype":
+		return ".ttf", true
+	case "font/otf", "application/x-font-otf", "application/font-sfnt":
+		return ".otf", true
+	case "font/woff", "application/font-woff":
+		return ".woff", true
+	case "font/woff2", "application/font-woff2":
+		return ".woff2", true
+	case "audio/mpeg":
+		return ".mp3", true
+	case "audio/mp4":
+		return ".m4a", true
+	case "video/mp4":
+		return ".mp4", true
+	default:
+		return "", false
+	}
+}
+
+// resourceExtension resolves the file extension for a resource following Python's
+// get_external_resource extension logic (yj_to_epub_resources.py:84-105):
+//   1. If resource_format ($161) maps to a known extension, use that
+//   2. Else use .bin
+//   3. If mime ($162) maps to a known extension AND current ext is .bin/.pobject:
+//      a. If mime is "figure", detect from raw data bytes
+//      b. Else use the MIME's extension
+//   4. If still .bin/.pobject AND location has a dot, use extension from location
+func resourceExtension(format, mediaType string, location string, data []byte) string {
+	// Step 1-2: extension from resource format symbol ($161)
+	ext := ".bin"
+	if f, ok := formatSymbolToExtension(format); ok {
+		ext = f
+	}
+
+	// Step 3: if extension is .bin/.pobject, try mime type fallback
+	// Python: if mime in EXTS_OF_MIMETYPE: if extension == ".pobject" or extension == ".bin": ...
+	if ext == ".bin" || ext == ".pobject" {
+		if mediaType == "figure" {
+			// Python: extension = image_file_ext(raw_media)
+			if len(data) > 0 {
+				if detected := detectImageExtension(data); detected != ".bin" {
+					ext = detected
+				}
+			}
+		} else if mExt, ok := mimeTypeToExtension(mediaType); ok {
+			ext = mExt
+		}
+	}
+
+	// Step 4: if still .bin/.pobject, try extension from location filename
+	// Python: if (extension == ".pobject" or extension == ".bin") and "." in location_fn:
+	//     extension = "." + location_fn.rpartition(".")[2]
+	if ext == ".bin" || ext == ".pobject" {
+		locFn := location
+		if idx := strings.LastIndex(locFn, "."); idx >= 0 {
+			candidate := locFn[idx:] // e.g. ".jpg"
+			// Validate it's a reasonable extension (alphabetic after the dot)
+			if len(candidate) > 1 && isAlphaExt(candidate[1:]) {
+				ext = candidate
+			}
+		}
+	}
+
+	return ext
+}
+
+// isAlphaExt checks if a string is a simple alphabetic extension (e.g. "jpg", "png").
+func isAlphaExt(s string) bool {
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+			return false
+		}
+	}
+	return len(s) > 0
+}
+
+// resourceTypeOfExt maps file extension to resource type prefix, matching Python's
+// RESOURCE_TYPE_OF_EXT (resources.py:111-137). Used to determine the filename prefix
+// ("image" vs "resource") in resource_location_filename.
+func resourceTypeOfExt(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".bmp", ".gif", ".jpg", ".jpeg", ".jxr", ".kvg", ".pdf", ".png",
+		".svg", ".tif", ".tiff", ".webp", ".ico":
+		return "image"
+	case ".css":
+		return "styles"
+	case ".eot", ".dfont", ".otf", ".ttf", ".woff", ".woff2", ".pfb":
+		return "font"
+	case ".htm", ".html", ".js", ".xhtml":
+		return "text"
+	case ".mp3":
+		return "audio"
+	case ".mp4":
+		return "video"
+	default:
+		return "resource"
 	}
 }
 

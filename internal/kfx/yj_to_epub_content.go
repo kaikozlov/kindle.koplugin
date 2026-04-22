@@ -298,7 +298,7 @@ func processReadingOrder(
 			title = deriveSectionTitle(paragraphs, index+1)
 		}
 		book.RenderedSections = append(book.RenderedSections, renderedSection{
-			Filename:         sectionFilename(sectionID, symFmt),
+			Filename:         sectionFilename(sectionID),
 			Title:            title,
 			PageTitle:        sectionID,
 			Language:         normalizeLanguage(book.Language),

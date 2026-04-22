@@ -102,7 +102,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 			directAnchorURI[anchorID] = anchor.URI
 		} else if anchor.PositionID != 0 {
 			if sectionID := positionToSectionID[anchor.PositionID]; sectionID != "" {
-				fallbackAnchorURI[anchorID] = sectionFilename(sectionID, symFmt)
+				fallbackAnchorURI[anchorID] = sectionFilename(sectionID)
 			}
 			registerNamedPositionAnchor(navState.positionAnchors, anchorID, navTarget{PositionID: anchor.PositionID})
 		}
@@ -207,7 +207,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 		if sectionID == "" {
 			return ""
 		}
-		return sectionFilename(sectionID, symFmt)
+		return sectionFilename(sectionID)
 	}
 	navHref := func(target navTarget) string {
 		if target.PositionID == 0 {
@@ -220,7 +220,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 		if sectionID == "" {
 			return ""
 		}
-		return sectionFilename(sectionID, symFmt)
+		return sectionFilename(sectionID)
 	}
 
 	// Port of Python: process_external_resource(icon).filename maps icon resource to href.

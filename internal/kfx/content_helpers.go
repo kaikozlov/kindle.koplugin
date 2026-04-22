@@ -415,12 +415,15 @@ func intPtr(value int) *int {
 	return &value
 }
 
-func sectionFilename(sectionID string, format symType) string {
-	u := uniquePartOfLocalSymbol(sectionID, format)
-	if u == "" {
-		u = sectionID
-	}
-	return u + ".xhtml"
+// sectionFilename produces the XHTML filename for a section, matching Python's
+// SECTION_TEXT_FILEPATH % section_name convention (yj_to_epub_content.py:171,191).
+// Python uses the raw $174 symbol directly as the filename, e.g.
+// "UYqzWVgySW_Gl4WQ-Od_xQ1.xhtml". Previously Go applied uniquePartOfLocalSymbol
+// which stripped base64/UUID prefixes, producing numeric names like "1.xhtml".
+// Port of Python: self.SECTION_TEXT_FILEPATH % section_name where section_name
+// comes from section.pop("$174") — used verbatim, no uniquePartOfLocalSymbol.
+func sectionFilename(sectionID string) string {
+	return sectionID + ".xhtml"
 }
 
 func cloneStyleMap(style map[string]string) map[string]string {
