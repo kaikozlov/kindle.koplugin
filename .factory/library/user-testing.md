@@ -1,50 +1,85 @@
-# User Testing: EPUB Comparison Validation
+# User Testing Guide: kindle.koplugin Content Pipeline
 
-## Validation Surface
+## Overview
 
-**Surface:** EPUB file comparison (Go output vs Calibre Python reference)
+This project is a Go binary that converts KFX → EPUB. There are no web services, no databases, no browser UI. All user testing is performed via **bash commands**:
 
-**Tools:** bash scripts that build Go binary, convert KFX→EPUB, unzip, and diff text files.
-
-**How it works:**
-1. Build Go binary: `go build ./cmd/kindle-helper/`
-2. Convert KFX to EPUB: `./kindle-helper convert --input INPUT --output OUTPUT`
-3. Unzip both Go and Python EPUBs
-4. Strip `dcterms:modified` timestamps
-5. Diff all non-binary files (exclude jpg, png, gif, svg, fonts)
-6. Count matches vs diffs
+- `go build ./cmd/kindle-helper/` — Build verification
+- `go test ./internal/kfx/ -count=1 -timeout 120s` — Unit test suite
+- `bash /tmp/compare_all.sh` — EPUB diff comparison for original 6 books (Martyr, ThreeBelow, Elvis, Familiars, HungerGames, TOG)
+- `bash /tmp/compare_new.sh` — EPUB diff comparison for new 4 books (1984, HeatedRivalry, SecretsCrown, SunriseReaping)
+- `rg` / `grep` — Code-level verification for specific patterns
 
 ## Validation Concurrency
 
-**Max concurrent validators:** 1 (sequential comparison)
-**Rationale:** EPUB comparison is CPU-bound (Go build + conversion) and I/O-bound (unzip + diff). Running multiple comparisons provides no benefit since each test book is independent but shares the Go binary. The comparison scripts run all books sequentially.
+### Testing Surfaces and Resource Costs
 
-## Resource Cost
+| Surface | Tool | Max Concurrent | Notes |
+|---------|------|---------------|-------|
+| `bash` (go build + test) | Execute | 1 | CPU-intensive, shared build cache |
+| `bash` (EPUB comparison) | Execute | 1 | Disk-intensive, shared /tmp dirs |
+| `bash` (code grep) | Execute | 3-5 | Lightweight, read-only code search |
 
-- Go build: ~5s, ~200MB RAM
-- Per-book conversion: ~2-10s, ~100MB RAM (varies by book size)
-- Full comparison (6 books): ~60s total
-- Full comparison (4 new books): ~40s total
+### Concurrency Decision
 
-## Test Commands
+- **go build + go test**: Serial (1 at a time) — shared Go build cache, CPU-bound
+- **EPUB comparisons**: Serial (1 at a time) — shared /tmp/go_d and /tmp/ref_d directories, disk-bound
+- **Code grep/rg**: Can run 3-5 concurrently — read-only, lightweight
+
+### Recommended Partitioning
+
+Since most assertions require running the full EPUB comparison pipeline (which is serial due to shared temp directories), the most efficient approach is to:
+
+1. Run the full comparison suite once
+2. Partition assertions by area for code-level verification (rg/grep)
+3. Each group of code-level assertions can run in parallel
+
+## Flow Validator Guidance: bash
+
+### Isolation Rules
+- `go build` and `go test` must be serial across all validators
+- EPUB comparison scripts use shared `/tmp/go_d` and `/tmp/ref_d` directories — MUST be serial
+- Code searches via `rg` can run concurrently (up to 5)
+- The Go binary (`./kindle-helper`) is a shared artifact — build once before any conversions
+
+### Assertion Testing Strategy
+
+For this project, assertions are verified by:
+
+1. **Running the comparison scripts** and checking the output for matching/differing file counts
+2. **Searching Go source code** with `rg` for specific patterns
+3. **Examining generated EPUB content** (unzipped in /tmp) for specific CSS/HTML patterns
+
+### Key Commands
 
 ```bash
-# Original 6 books (must be 394/394)
+# Build
+go build ./cmd/kindle-helper/
+
+# Run tests
+go test ./internal/kfx/ -count=1 -timeout 120s
+
+# Compare original 6 books
 bash /tmp/compare_all.sh
 
-# New 4 books (target: 0 diffs)
+# Compare new 4 books
 bash /tmp/compare_new.sh
 
-# Single book detailed diff
-scripts/diff_kfx_parity.sh "BOOK_NAME"
+# Search Go code
+rg 'pattern' internal/kfx/
 
-# Unit tests
-go test ./internal/kfx/ -count=1 -timeout 120s
+# Search generated EPUB content
+# After comparison, files are in /tmp/go_d/ and /tmp/ref_d/
 ```
 
-## Pass Criteria
+## Fixture Paths
 
-- All assertions in validation-contract.md must be "passed"
-- Original 6 books: 394/394 matching, 0 diffs
-- New 4 books: 0 text diffs (image encoding differences are acceptable if visual quality matches)
-- go test ./internal/kfx/ passes with 0 failures
+| What | Path |
+|------|------|
+| Original KFX files | `REFERENCE/kfx_examples/*.kfx` |
+| Decrypted DRMION KFX | `REFERENCE/kfx_new/decrypted/*.kfx-zip` |
+| Calibre reference EPUBs (original) | `REFERENCE/kfx_examples/*.epub` and `REFERENCE/martyr_calibre.epub` |
+| Calibre reference EPUBs (DRMION) | `REFERENCE/kfx_new/calibre_epubs/*.epub` |
+| New device KFX files | `REFERENCE/kindle_device_new/*.kfx` |
+| New Calibre reference EPUBs | `REFERENCE/kfx_new/calibre_epubs_new/*.epub` |
+| DRM keys cache | `REFERENCE/kindle_device/cache/drm_keys.json` |

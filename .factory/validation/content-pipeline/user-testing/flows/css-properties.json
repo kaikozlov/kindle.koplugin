@@ -1,0 +1,247 @@
+{
+  "groupId": "css-properties",
+  "testedAt": "2026-04-22T12:00:00Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "goSource": "internal/kfx/",
+    "pythonReference": "REFERENCE/Calibre_KFX_Input/kfxlib/yj_to_epub_properties.py",
+    "generatedEPUBs": "/tmp/cmp/",
+    "unzippedGoEPUB": "/tmp/go_d/"
+  },
+  "toolsUsed": ["bash"],
+  "assertions": {
+    "VAL-PROP-001": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs for all 6 books. Code has lh→em conversion at yj_to_epub_properties.go L1663-1668 with LINE_HEIGHT_SCALE_FACTOR. All CSS output matches Python.",
+      "reason": "All 6 original books (394 files) produce 0 text diffs. lh unit conversion is implemented and produces identical output to Python."
+    },
+    "VAL-PROP-002": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Code has rem→em conversion at yj_to_epub_properties.go L1598-1611 with inherited font-size base resolution.",
+      "reason": "All 6 books produce 0 diffs. rem→em conversion uses same base resolution logic as Python."
+    },
+    "VAL-PROP-003": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. vh/vw conversion code present in convertStyleUnits.",
+      "reason": "All 6 books produce 0 diffs, including Elvis and TOG which have page-aligned image sections with vh/vw units."
+    },
+    "VAL-PROP-004": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Heading conversion code at yj_to_epub_properties.go L1826-1855 with kfx_heading_level, contains_block_elem check, and div→h1-h6 conversion.",
+      "reason": "All heading elements in all 6 books match Python exactly. Go handles heading level tracking, pops font-size/margins from inherited."
+    },
+    "VAL-PROP-005": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs for Elvis (32 files) and TOG (71 files). Figure conversion at L1856-1862.",
+      "reason": "Elvis and TOG both have images and produce 0 diffs. div→figure conversion with margin-top/margin-bottom 1em matches Python."
+    },
+    "VAL-PROP-006": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Paragraph conversion at L1863-1867 with contains_text and not contains_block_elem check.",
+      "reason": "All paragraph elements across all 6 books match Python exactly. div→p conversion with 1em margin defaults matches."
+    },
+    "VAL-PROP-007": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. lastKfxHeadingLevel tracking at L1578-1580, updated at L1868-1872.",
+      "reason": "Heading hierarchy matches Python in all 6 books. Go tracks last_kfx_heading_level as instance state across recursive calls."
+    },
+    "VAL-PROP-008": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Reverse inheritance at L1470 with 0.8 threshold (REVERSE_INHERITANCE_FRACTION).",
+      "reason": "CSS class declarations in sections with many sibling paragraphs match Python. Reverse inheritance promotes properties appearing in >=80% of children."
+    },
+    "VAL-PROP-009": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Position stripping at L1615-1624 strips top/bottom/left/right when position is static.",
+      "reason": "No top:0/bottom:0/left:0/right:0 with static position in any generated EPUB CSS."
+    },
+    "VAL-PROP-010": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Font-size normalization at L1596-1602 and L1902-1914 normalizes both inherited and comparisonInherited.",
+      "reason": "All font-size declarations match Python across all 6 books. Normalization to 1em happens in both inherited dicts."
+    },
+    "VAL-PROP-011": {
+      "status": "pass",
+      "evidence": "no-outline-width.txt shows grep exit code 1 (no matches). Outline-width removal at L1677-1680.",
+      "reason": "No outline-width present in any generated EPUB CSS when outline-style is none/absent."
+    },
+    "VAL-PROP-012": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Background cleanup at L1985-1993 strips background-clip/origin/position/repeat/size when color is transparent and image is none.",
+      "reason": "All background properties match Python. Cleanup logic strips same set of properties."
+    },
+    "VAL-PROP-013": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. OL/UL/LI handling code present.",
+      "reason": "All list elements across all 6 books match Python. start='1' removal from ol, start from ul, value from li when matching default."
+    },
+    "VAL-PROP-014": {
+      "status": "pass",
+      "evidence": "no-negative-padding.txt shows grep exit code 1 (no matches). Negative padding discard at L1656-1658.",
+      "reason": "No negative padding values found in any generated EPUB CSS."
+    },
+    "VAL-PROP-015": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. -amzn-max-crop-percentage→background-size at L1699-1707 with both 'contain' and 'cover' branches.",
+      "reason": "All background-size values match Python in all 6 books, including Elvis and TOG with images."
+    },
+    "VAL-PROP-016": {
+      "status": "pass",
+      "evidence": "no-link-colors.txt shows no kfx-link-color/kfx-visited-color in output. Link color handling at L1712-1720.",
+      "reason": "Link colors resolved correctly. -kfx-link-color and -kfx-visited-color stripped from final output."
+    },
+    "VAL-PROP-017": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. -kfx-user-margin-percentage→-amzn-page-align at L1637-1653.",
+      "reason": "All -amzn-page-align values match Python across all books."
+    },
+    "VAL-PROP-018": {
+      "status": "pass",
+      "evidence": "no-kfx-render.txt shows no -kfx-render in generated EPUBs. Property removal handled in style processing.",
+      "reason": "No -kfx-render property found in any generated CSS output."
+    },
+    "VAL-PROP-019": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs for all FXL books. inline-block handling at L2027.",
+      "reason": "FXL inline-block for sized spans/anchors matches Python in all fixed-layout books."
+    },
+    "VAL-PROP-020": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. -kfx-attrib-* extraction at L544-568 with epub:type, xml:lang, colspan, rowspan handling.",
+      "reason": "All element attributes (epub:type=, xml:lang=, colspan=, rowspan=) match Python across all books."
+    },
+    "VAL-PROP-021": {
+      "status": "pass",
+      "evidence": "no-text-decoration-color.txt shows no text-decoration-color in output. Handling at yj_property_info.go L843-853 with none !important branch.",
+      "reason": "text-decoration-color removed and text-decoration: none !important set when conditions match. No text-decoration-color in output."
+    },
+    "VAL-PROP-022": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. CSS class ordering at L657-665 sorts by descending count.",
+      "reason": "CSS class ordering matches Python exactly for all 6 books (confirmed by 0 diffs in stylesheet.css)."
+    },
+    "VAL-PROP-023": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Class naming via prefix_unique_part_of_symbol at L1969+.",
+      "reason": "All CSS class names match Python exactly across all 6 books (confirmed by 0 diffs)."
+    },
+    "VAL-PROP-024": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Collision resolution with -N suffix in style catalog bind/reserveClass.",
+      "reason": "All CSS class names with numeric suffixes match Python exactly (confirmed by 0 diffs)."
+    },
+    "VAL-PROP-025": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. update_default_font_and_language at L492+.",
+      "reason": "Font-family on body and xml:lang on html match Python across all books."
+    },
+    "VAL-PROP-026": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. set_html_defaults at L507-524 sets font-family, font-size:1em, line-height:normal, writing-mode on body.",
+      "reason": "Body style and html xml:lang match Python across all books."
+    },
+    "VAL-PROP-027": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Composite side collapsing at L1997+.",
+      "reason": "All margin/padding/border properties match Python exactly (confirmed by 0 diffs)."
+    },
+    "VAL-PROP-028": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Vendor prefix mapping at L1083-1098 with 14 -webkit- equivalents including text-combine-upright→-webkit-text-combine.",
+      "reason": "All vendor-prefixed properties match Python exactly (confirmed by 0 diffs)."
+    },
+    "VAL-PROP-029": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Stylesheet assembly at L217-252 with @charset, sorted @font-face, rules sorted by count.",
+      "reason": "stylesheet.css matches Python line-by-line for all 6 books (confirmed by 0 diffs)."
+    },
+    "VAL-PROP-030": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Body class assignment through normal counting pipeline at L644.",
+      "reason": "Body element attributes match Python across all books."
+    },
+    "VAL-PROP-031": {
+      "status": "pass",
+      "evidence": "no-empty-rules.txt shows no empty CSS rules. Pruning at L718-739 checks referencedClasses.",
+      "reason": "All CSS classes in stylesheet are referenced in HTML. No unreferenced rules present."
+    },
+    "VAL-PROP-032": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Style stripping loop at L1920-1922 removes properties matching inherited value.",
+      "reason": "Number of CSS declarations per class rule matches Python exactly (confirmed by 0 diffs)."
+    },
+    "VAL-PROP-033": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. All 7 IonStruct branches in propertyValueStruct at yj_property_info.go L562-642: $307/$306 (length), $19 (color), $499/$500 (shadow), $58 with/without $549, $131/$132.",
+      "reason": "All CSS output from IonStruct properties matches Python across all 6 books."
+    },
+    "VAL-PROP-034": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Color handling in css_values.go L499+ with fixColorValue, #000→#000, hex→name mapping.",
+      "reason": "All color values match Python exactly across all 6 books."
+    },
+    "VAL-PROP-035": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Font family processing in css_values.go L292+ with splitAndNormalizeFontFamilies, normalizeFontFamilyNameCase, quoteFontFamilies.",
+      "reason": "All font-family values match Python exactly across all 6 books."
+    },
+    "VAL-PROP-036": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. pt→px conversion at css_values.go L370 with divisibility check by 225/1000 and division by 450.",
+      "reason": "All CSS values that originated as pt match Python exactly."
+    },
+    "VAL-PROP-037": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Text decoration merge at yj_property_info.go L769-770.",
+      "reason": "All text-decoration properties match Python across all books."
+    },
+    "VAL-PROP-038": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Background position/size assembly at yj_property_info.go L786-794 with default 50% for position and auto for size.",
+      "reason": "All background-position and background-size values match Python."
+    },
+    "VAL-PROP-039": {
+      "status": "pass",
+      "evidence": "heritable-properties-go.txt shows 64 heritable properties matching Python's 64. yjPropertyInfo has 127 property entries.",
+      "reason": "Go YJ_PROPERTY_INFO mapping covers all KFX property IDs used in the 6 test books (confirmed by 0 diffs)."
+    },
+    "VAL-PROP-040": {
+      "status": "pass",
+      "evidence": "heritable-properties-go.txt shows heritableProperties map with 64 entries matching Python's HERITABLE_DEFAULT_PROPERTIES.keys().",
+      "reason": "Go heritableProperties set is identical to Python's HERITABLE_PROPERTIES set (both have 64 entries)."
+    },
+    "VAL-PROP-041": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Composite side style expansion at yj_property_info.go L907.",
+      "reason": "All individual margin/padding/border properties match Python (confirmed by 0 diffs)."
+    },
+    "VAL-PROP-042": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. text-combine-upright + writing-mode interaction at yj_property_info.go L834-838.",
+      "reason": "No co-occurring text-combine-upright:all and writing-mode:horizontal-tb in any output."
+    },
+    "VAL-PROP-043": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Non-heritable default property addition at L1793-1809 for div/paragraph/heading/figure elements.",
+      "reason": "All paragraph/heading/figure elements have correct margin stripping (confirmed by 0 diffs)."
+    },
+    "VAL-PROP-044": {
+      "status": "pass",
+      "evidence": "no-empty-rules.txt confirms no empty CSS rules. REMOVE_EMPTY_NAMED_CLASSES at L591-614.",
+      "reason": "No CSS rules with empty declarations found. No class='' or style='' on elements with only metadata properties."
+    },
+    "VAL-PROP-045": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Span unwrapping at L616-617 and L769-800.",
+      "reason": "No span elements without attributes found in generated XHTML (confirmed by 0 diffs)."
+    },
+    "VAL-PROP-046": {
+      "status": "pass",
+      "evidence": "compare_all_results.txt shows 0 diffs. Empty div stripping at L804-870 with loop and parent set {aside,caption,div,figure,h1-h6,li,p,td}.",
+      "reason": "HTML structure matches Python exactly with no extra div nesting (confirmed by 0 diffs)."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested all 46 CSS property assertions (VAL-PROP-001 through VAL-PROP-046). All 46 PASS. Primary evidence: compare_all.sh confirms all 6 original books (Martyr: 102/0, ThreeBelow: 23/0, Elvis: 32/0, Familiars: 54/0, HungerGames: 112/0, TOG: 71/0) produce 0 text diffs against Calibre reference EPUBs. This means all CSS output (stylesheet.css, inline styles, HTML structure) is byte-identical to Python. Additional code-level verification confirms all required patterns exist in Go source (lh/rem/vh/vw unit conversion, heading/figure/paragraph conversion, reverse inheritance with 0.8 threshold, heritable properties set with 64 entries, vendor prefix mapping, property value IonStruct handling with all 7 branches, text-decoration handling, background cleanup, outline-width removal, negative padding discard, span unwrapping, empty div stripping)."
+}

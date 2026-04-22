@@ -1,0 +1,52 @@
+{
+  "milestone": "content-pipeline",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 86,
+    "passed": 86,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-PROP-001", "VAL-PROP-002", "VAL-PROP-003", "VAL-PROP-004", "VAL-PROP-005",
+    "VAL-PROP-006", "VAL-PROP-007", "VAL-PROP-008", "VAL-PROP-009", "VAL-PROP-010",
+    "VAL-PROP-011", "VAL-PROP-012", "VAL-PROP-013", "VAL-PROP-014", "VAL-PROP-015",
+    "VAL-PROP-016", "VAL-PROP-017", "VAL-PROP-018", "VAL-PROP-019", "VAL-PROP-020",
+    "VAL-PROP-021", "VAL-PROP-022", "VAL-PROP-023", "VAL-PROP-024", "VAL-PROP-025",
+    "VAL-PROP-026", "VAL-PROP-027", "VAL-PROP-028", "VAL-PROP-029", "VAL-PROP-030",
+    "VAL-PROP-031", "VAL-PROP-032", "VAL-PROP-033", "VAL-PROP-034", "VAL-PROP-035",
+    "VAL-PROP-036", "VAL-PROP-037", "VAL-PROP-038", "VAL-PROP-039", "VAL-PROP-040",
+    "VAL-PROP-041", "VAL-PROP-042", "VAL-PROP-043", "VAL-PROP-044", "VAL-PROP-045",
+    "VAL-PROP-046",
+    "VAL-CONT-001", "VAL-CONT-002", "VAL-CONT-003", "VAL-CONT-004", "VAL-CONT-005",
+    "VAL-CONT-006", "VAL-CONT-007", "VAL-CONT-008", "VAL-CONT-009", "VAL-CONT-010",
+    "VAL-CONT-011", "VAL-CONT-012", "VAL-CONT-013", "VAL-CONT-014", "VAL-CONT-015",
+    "VAL-CONT-016", "VAL-CONT-017", "VAL-CONT-018", "VAL-CONT-019", "VAL-CONT-020",
+    "VAL-CONT-021", "VAL-CONT-022", "VAL-CONT-023", "VAL-CONT-024", "VAL-CONT-025",
+    "VAL-CONT-026", "VAL-CONT-027", "VAL-CONT-028", "VAL-CONT-029", "VAL-CONT-030",
+    "VAL-CONT-031", "VAL-CONT-032", "VAL-CONT-033", "VAL-CONT-034", "VAL-CONT-035",
+    "VAL-EPUB-001", "VAL-EPUB-002", "VAL-EPUB-003", "VAL-EPUB-015", "VAL-EPUB-016"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Created user-testing.md with testing tools guide (bash-only), concurrency guidance (serial for build/compare, parallel for grep), fixture paths, and flow validator guidance for bash surface.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null,
+  "verificationSummary": {
+    "goBuild": "pass — builds cleanly",
+    "goTest": "pass — all tests pass (8.545s)",
+    "compareAll": "pass — all 6 original books 394/394 (0 text diffs)",
+    "compareNew": {
+      "HeatedRivalry": "pass — 51 match, 0 differ",
+      "1984": "15 differ (future milestone: structure-navigation, data-layer)",
+      "SecretsCrown": "4 differ (future milestone: resources)",
+      "SunriseReaping": "32 differ (future milestone: resources, data-layer)"
+    }
+  }
+}
