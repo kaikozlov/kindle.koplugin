@@ -160,7 +160,7 @@ docker run --rm --platform linux/arm/v7 -v "$(cd "$DIST_DIR" && pwd)/bin:/mnt" a
 echo "  Bundling shared libs for Pillow..."
 mkdir -p "$DIST_DIR/lib/external"
 docker run --rm --platform linux/arm/v7 -v "$(cd "$DIST_DIR" && pwd)/lib/external:/out" arm32v7/gcc:12 bash -c '
-for lib in libtiff.so.6 libjpeg.so.62 libopenjp2.so.7 libxcb.so.1 libz.so.1; do
+for lib in libfreetype.so.6 libjpeg.so.62 liblcms2.so.2 libopenjp2.so.7 libtiff.so.6 libwebp.so.7 libwebpdemux.so.2 libwebpmux.so.3 libxcb.so.1 libz.so.1; do
     cp -L /lib/arm-linux-gnueabihf/$lib /out/
 done
 '
