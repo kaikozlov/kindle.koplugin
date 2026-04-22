@@ -1,0 +1,79 @@
+{
+  "groupId": "val-cross-005",
+  "testedAt": "2026-04-22T16:48:00Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "sourceKFX": "REFERENCE/kindle_device_new/Sunrise on the Reaping (The Hunger Games)_B0D6BRYLL1.kfx",
+    "referenceEPUB": "REFERENCE/kfx_new/calibre_epubs_new/SunriseReaping_B0D6BRYLL1_calibre.epub",
+    "cacheDir": "REFERENCE/kindle_device_new/"
+  },
+  "toolsUsed": ["bash"],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-005",
+      "title": "SunriseReaping produces 0 text diffs",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Convert SunriseReaping KFX to EPUB using kindle-helper",
+          "expected": "Successful conversion",
+          "observed": "Successful conversion (with 460 unlocated referenced positions warning)"
+        },
+        {
+          "action": "Unzip both Go output and Calibre reference EPUBs",
+          "expected": "Both unzipped successfully",
+          "observed": "Both unzipped: 89 files each"
+        },
+        {
+          "action": "Compare all text files (excluding binary images/fonts), stripping dcterms:modified timestamps",
+          "expected": "0 differing text files",
+          "observed": "31 differing text files, 18 matching"
+        }
+      ],
+      "evidence": {
+        "matching": 18,
+        "differing": 31,
+        "totalTextFiles": 49,
+        "diffFiles": [
+          "OEBPS/c13B.xhtml",
+          "OEBPS/c17J.xhtml",
+          "OEBPS/c1CD.xhtml",
+          "OEBPS/c1GM.xhtml",
+          "OEBPS/c1M4.xhtml",
+          "OEBPS/c1S8.xhtml",
+          "OEBPS/c1W9.xhtml",
+          "OEBPS/c21B.xhtml",
+          "OEBPS/c24Z.xhtml",
+          "OEBPS/c289.xhtml",
+          "OEBPS/c2B1.xhtml",
+          "OEBPS/c2DD.xhtml",
+          "OEBPS/c2FU.xhtml",
+          "OEBPS/c2HW.xhtml",
+          "OEBPS/c2PU.xhtml",
+          "OEBPS/c2UG.xhtml",
+          "OEBPS/c2XR.xhtml",
+          "OEBPS/c300.xhtml",
+          "OEBPS/c32W.xhtml",
+          "OEBPS/c33.xhtml",
+          "OEBPS/c372.xhtml",
+          "OEBPS/c3D4.xhtml",
+          "OEBPS/c3K9.xhtml",
+          "OEBPS/c3MA.xhtml",
+          "OEBPS/c3R9.xhtml",
+          "OEBPS/c3RY.xhtml",
+          "OEBPS/c8N.xhtml",
+          "OEBPS/cCD.xhtml",
+          "OEBPS/cFN.xhtml",
+          "OEBPS/cJX.xhtml",
+          "OEBPS/cR5.xhtml"
+        ],
+        "evidenceDir": "data-layer-followup/val-cross-005/",
+        "pattern": "All 31 diffs follow the same pattern: Go adds id=\"...\" attributes to heading <div> elements that the Calibre reference does not have. Example: Go outputs '<div id=\"a3TH\" class=\"heading_s3D-1\">...' while Calibre outputs '<div class=\"heading_s3D-1\">...'. One file (c3MA.xhtml) uses id=\"id__798_81_\" format instead of short anchor IDs."
+      },
+      "issues": "31 of 49 text files differ. All diffs are consistent: Go adds id anchor attributes to heading div elements that Calibre does not emit. This is a systematic difference in position anchor output, not content differences."
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "FAIL: SunriseReaping has 31 differing text files (expected 0). All diffs are the same pattern: Go adds id=\"...\" anchor attributes to heading <div> elements that the Calibre reference EPUB does not include. 18 text files match perfectly. No content or structural differences beyond the position anchor IDs."
+}

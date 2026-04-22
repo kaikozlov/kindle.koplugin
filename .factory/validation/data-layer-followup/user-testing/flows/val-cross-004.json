@@ -1,0 +1,80 @@
+{
+  "groupId": "val-cross-004",
+  "testedAt": "2026-04-22T16:48:12Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "binary": "./kindle-helper",
+    "sourceKFX": "REFERENCE/kindle_device_new/Secrets of the Crown_ A Fantasy Adventure About Animal Familiars on a Quest for the Snow Leopard's Crown for Kids (Ages 8-12)_B004S333MC.kfx",
+    "referenceEPUB": "REFERENCE/kfx_new/calibre_epubs_new/SecretsCrown_B004S333MC_calibre.epub",
+    "cacheDir": "REFERENCE/kindle_device_new/"
+  },
+  "toolsUsed": ["bash"],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-004",
+      "title": "SecretsCrown produces 0 text diffs",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Convert SecretsCrown KFX to EPUB using kindle-helper",
+          "expected": "Successful conversion to /tmp/secrets_go.epub",
+          "observed": "Conversion succeeded with DRM decryption (17 sources, 1 decrypted + 16 sidecar). 416 referenced positions failed to locate."
+        },
+        {
+          "action": "Unzip both Go output and Calibre reference EPUBs",
+          "expected": "Both EPUBs extracted successfully",
+          "observed": "Both extracted successfully. Go output has 26 image files (.jxr), reference has 26 image files (.jpg with different naming/dimensions)"
+        },
+        {
+          "action": "Compare all text files excluding binary images/fonts, stripping dcterms:modified timestamps",
+          "expected": "0 differing text files",
+          "observed": "25 differing text files, 10 matching text files"
+        }
+      ],
+      "evidence": {
+        "matching": 10,
+        "differing": 25,
+        "diffCategories": {
+          "image_format": "Go outputs .jxr images while Calibre outputs .jpg — affects 20 xhtml files + content.opf + stylesheet.css",
+          "image_dimensions": "Go uses original KFX dimensions (e.g., 672x903) while Calibre uses HD variants (e.g., 1172x1574) for some images",
+          "dropcap_wrapping": "2 files (xQ875.xhtml, xQ213.xhtml) have reversed class assignments on dropcap spans (class_220-0 vs class_220-1 swapped)",
+          "structural": "xQ2320.xhtml: Go uses <p>/<span> wrapping, Calibre uses <div>/<p> wrapping",
+          "css": "stylesheet.css: class_20 missing text-align:center in Calibre; additional class differences in class_2328/class_2326",
+          "cover_page": "xQ10.xhtml: Go uses <body class='class_20'> with no body content, Calibre has <body class='class-1'> with cover image div"
+        },
+        "diffFiles": [
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ10.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ21.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ85.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ94.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ213.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ337.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ447.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ551.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ644.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ745.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ875.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ990.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ1138.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ1270.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ1397.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ1508.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ1642.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ1790.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ1876.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ2004.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ2084.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ2205.xhtml",
+          "OEBPS/UYqzWVgySW_Gl4WQ-Od_xQ2320.xhtml",
+          "OEBPS/stylesheet.css",
+          "OEBPS/content.opf"
+        ],
+        "savedDiffsDir": "evidence/data-layer-followup/val-cross-004/"
+      },
+      "issues": "25 of 35 text files differ. Primary categories: (1) JXR vs JPG image format — Go outputs .jxr images without JXR-to-JPEG conversion; (2) Different image resize dimensions — Go uses base KFX dimensions while Calibre uses HD variants; (3) Dropcap span class ordering differences in 2 files; (4) Structural element wrapping differences in 1 file; (5) CSS class property differences."
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Assertion VAL-CROSS-004 FAILED: SecretsCrown produces 25 differing text files (out of 35 total), not the required 0. The differences are primarily due to JXR vs JPG image format (Go outputs .jxr, Calibre converts to .jpg), different image dimensions (Go uses base KFX dimensions while Calibre uses HD variants), dropcap class ordering issues in 2 files, and structural/CSS differences in a few files."
+}

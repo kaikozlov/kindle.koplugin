@@ -1,0 +1,49 @@
+{
+  "milestone": "data-layer-followup",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 3,
+    "passed": 0,
+    "failed": 3,
+    "blocked": 0
+  },
+  "passedAssertions": [],
+  "failedAssertions": [
+    {
+      "id": "VAL-CROSS-002",
+      "reason": "1984: 15/47 text files differ — CSS class naming (class_sN vs figure_sN-0), missing class on heading <a> tags, stylesheet differences, nav/toc ordering. 462 referenced positions failed to locate during conversion."
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "reason": "SecretsCrown: 25/35 text files differ — JXR images not converted to JPG (Go outputs .jxr, Calibre outputs .jpg), HD image dimensions missing (Go uses base KFX dimensions, Calibre uses HD variants), dropcap class ordering reversed in 2 files, structural wrapping differences in 1 file, CSS property differences."
+    },
+    {
+      "id": "VAL-CROSS-005",
+      "reason": "SunriseReaping: 31/49 text files differ — position anchor id attributes on heading <div> elements that Calibre reference does not emit. All 31 diffs follow the same pattern: Go adds id=\"...\" to heading divs where Calibre does not. No content differences beyond anchor IDs."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "systemicIssues": [
+    {
+      "id": "SYS-JXR-CONVERSION",
+      "affectedAssertions": ["VAL-CROSS-004"],
+      "description": "JXR image decoder exists (internal/jxr/) but is not wired into the EPUB resource pipeline. Go outputs .jxr images directly; Calibre converts to .jpg. Affects SecretsCrown heavily (20 xhtml files + content.opf + stylesheet.css).",
+      "suggestedFix": "Wire internal/jxr/ decoder into yj_to_epub_resources.go resource packaging pipeline to convert JXR → JPEG before EPUB packaging."
+    },
+    {
+      "id": "SYS-HEADING-ANCHOR-IDS",
+      "affectedAssertions": ["VAL-CROSS-005"],
+      "description": "Go adds position anchor id attributes to heading <div> elements that Calibre does not produce. Affects 31 files in SunriseReaping. This may be an intentional position anchor placement difference where Go places anchors on the outer div vs Calibre placing them elsewhere or not at all for heading divs.",
+      "suggestedFix": "Investigate position anchor placement logic in storyline.go — determine if heading divs should skip anchor id placement to match Calibre behavior."
+    },
+    {
+      "id": "SYS-CSS-CLASS-NAMING",
+      "affectedAssertions": ["VAL-CROSS-002"],
+      "description": "CSS class naming convention differs: Go uses class_sN where Calibre uses figure_sN-0 and other layout-hint-prefixed names. Also missing class attributes on <a> tags inside headings. Affects 1984 (15 files).",
+      "suggestedFix": "Review fixup_styles_and_classes class naming logic — specifically prefix_unique_part_of_symbol and layout hints prefix assignment."
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "groupId": "val-cross-002",
+  "testedAt": "2026-04-22T16:48:10Z",
+  "isolation": {
+    "workingDirectory": "/Users/kai/dev/projects/kindle.koplugin",
+    "sourceKFX": "REFERENCE/kindle_device_new/1984_ The Definitive Dystopian Classic on Totalitarian Power (Authorized Orwell Edition)_B003JTHWKU.kfx",
+    "referenceEPUB": "REFERENCE/kfx_new/calibre_epubs_new/1984_B003JTHWKU_calibre.epub",
+    "goOutput": "/tmp/1984_go.epub",
+    "cacheDir": "REFERENCE/kindle_device_new/"
+  },
+  "toolsUsed": ["bash"],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-002",
+      "title": "1984 produces 0 text diffs",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Convert 1984 KFX to EPUB using kindle-helper convert",
+          "expected": "Successful conversion producing /tmp/1984_go.epub",
+          "observed": "Conversion succeeded with DRM decryption (3 sources, 1 decrypted + 2 sidecar). 462 referenced positions failed to locate. Output: /tmp/1984_go.epub"
+        },
+        {
+          "action": "Unzip Go output and Calibre reference EPUBs",
+          "expected": "Both EPUBs extracted to /tmp/1984_go_d and /tmp/1984_ref_d",
+          "observed": "Both EPUBs extracted successfully. File lists are identical (no missing or extra files)."
+        },
+        {
+          "action": "Compare all text files after stripping dcterms:modified timestamps",
+          "expected": "0 differing text files",
+          "observed": "15 differing text files out of 47 total text files (32 matching). Differing files: c1HY.xhtml, c1J7.xhtml, c1K4.xhtml, c1KF.xhtml, c1MS.xhtml, c1NA.xhtml, c1RU.xhtml, c2R.xhtml, c3E.xhtml, c9.xhtml, cDT.xhtml, cP.xhtml, nav.xhtml, stylesheet.css, toc.ncx"
+        }
+      ],
+      "evidence": {
+        "matching": 32,
+        "differing": 15,
+        "diffFiles": [
+          "._OEBPS_c1HY.xhtml.diff",
+          "._OEBPS_c1J7.xhtml.diff",
+          "._OEBPS_c1K4.xhtml.diff",
+          "._OEBPS_c1KF.xhtml.diff",
+          "._OEBPS_c1MS.xhtml.diff",
+          "._OEBPS_c1NA.xhtml.diff",
+          "._OEBPS_c1RU.xhtml.diff",
+          "._OEBPS_c2R.xhtml.diff",
+          "._OEBPS_c3E.xhtml.diff",
+          "._OEBPS_c9.xhtml.diff",
+          "._OEBPS_cDT.xhtml.diff",
+          "._OEBPS_cP.xhtml.diff",
+          "._OEBPS_nav.xhtml.diff",
+          "._OEBPS_stylesheet.css.diff",
+          "._OEBPS_toc.ncx.diff"
+        ],
+        "sampleDifferences": "Go output shows class naming differences (e.g., 'class_sN' vs 'figure_sN-0'), missing class attributes on <a> tags within headings, and CSS class naming/deduplication differences. Also 462 failed position references logged during conversion."
+      },
+      "issues": "15 of 47 text files differ between Go output and Calibre reference. Primary differences include: (1) CSS class naming conventions differ (Go uses 'class_sN' where Calibre uses 'figure_sN-0'), (2) missing class attributes on <a> tags inside headings, (3) stylesheet class name differences, (4) nav/toc ordering differences."
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 1 assertion: VAL-CROSS-002 FAILED. 1984 conversion produces 15 differing text files (out of 47 total) against Calibre reference. Expected 0 diffs. Evidence diffs saved to mission evidence directory."
+}
