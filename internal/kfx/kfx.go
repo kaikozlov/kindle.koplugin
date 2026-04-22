@@ -112,11 +112,6 @@ type fontFragment struct {
 	Stretch  string
 }
 
-type symbolResolver struct {
-	localStart uint32
-	locals     []string
-}
-
 type rawBlob struct {
 	ID   string
 	Data []byte
