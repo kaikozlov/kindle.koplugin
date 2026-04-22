@@ -1,0 +1,143 @@
+{
+  "featureId": "audit-yj-to-epub-metadata",
+  "pythonFile": "REFERENCE/Calibre_KFX_Input/kfxlib/yj_to_epub_metadata.py",
+  "goFile": "internal/kfx/yj_to_epub_metadata.go",
+  "pythonLines": 290,
+  "goLines": 343,
+  "auditorSession": "af7097e7-034d-40fa-b6c9-f2c7c6ed30d3",
+  "commitId": "0ffe869",
+  "result": "pass",
+  "summary": "Full parity confirmed for all 6 test books. content.opf output is byte-identical. 2 minor fixes applied.",
+  "functions": [
+    {
+      "name": "process_document_data",
+      "pythonLines": "30-134",
+      "goFunction": "applyDocumentData",
+      "branches": 26,
+      "gaps": [],
+      "notes": "Logging-only branches (selection, spacing, pan_zoom, comic, auto_contrast, max_id) intentionally omitted as they don't affect EPUB output. document_data.pop() calls for known keys not needed in Go (no 'unexpected key' framework). process_content_properties not called separately in Go — document style properties extracted directly from value map. font_name_replacements handled via fontFixer in render.go. default_font_size/default_line_height not stored as they're only used for validation logging in Python."
+    },
+    {
+      "name": "process_content_features",
+      "pythonLines": "136-152",
+      "goFunction": "applyContentFeatures",
+      "branches": 2,
+      "gaps": [],
+      "notes": "Feature version_info processing (L143-147) omitted — only used for check_empty validation. content_features id/kfx_id validation (L149) omitted — only logs errors. Both gaps are logging-only and don't affect output."
+    },
+    {
+      "name": "process_metadata",
+      "pythonLines": "154-182",
+      "goFunction": "applyKFXEPUBInitMetadataAfterOrganize + applyMetadata + applyReadingOrderMetadata",
+      "branches": 7,
+      "gaps": [
+        {
+          "branch": "L171-175: comic default for fixed_layout books",
+          "severity": "non_blocking",
+          "notes": "Python sets book_type='comic' when fixed_layout and no book_type. Not needed for current test books. Would be needed for fixed-layout comics."
+        },
+        {
+          "branch": "L178: scribe_notebook handling",
+          "severity": "non_blocking",
+          "notes": "Not applicable to Kindle e-ink devices. Only for Kindle Scribe notebooks."
+        }
+      ]
+    },
+    {
+      "name": "process_metadata_item",
+      "pythonLines": "184-290",
+      "goFunction": "applyMetadata (categorized) + applyMetadataItem (top-level)",
+      "branches": 33,
+      "gaps": [
+        {
+          "catKey": "kindle_title_metadata/dictionary_lookup",
+          "severity": "non_blocking",
+          "notes": "Dictionary book type — not in test set"
+        },
+        {
+          "catKey": "kindle_title_metadata/periodicals_generation_V2",
+          "severity": "non_blocking",
+          "notes": "Magazine/periodical type — not in test set"
+        },
+        {
+          "catKey": "kindle_title_metadata/is_dictionary",
+          "severity": "non_blocking",
+          "notes": "Dictionary book type — not in test set"
+        },
+        {
+          "catKey": "kindle_title_metadata/is_sample",
+          "severity": "non_blocking",
+          "notes": "Sample flag — not in test set"
+        },
+        {
+          "catKey": "kindle_title_metadata/title_pronunciation",
+          "severity": "non_blocking",
+          "notes": "Pronunciation — not used by any test book. epub.Book struct has fields but decodedBook doesn't populate them."
+        },
+        {
+          "catKey": "kindle_capability_metadata/continuous_popup_progression",
+          "severity": "non_blocking",
+          "notes": "Children/comic book type — not in test set"
+        },
+        {
+          "catKey": "kindle_capability_metadata/yj_forced_continuous_scroll",
+          "severity": "non_blocking",
+          "notes": "Scroll mode flag — not in test set"
+        },
+        {
+          "catKey": "kindle_capability_metadata/yj_guided_view_native",
+          "severity": "non_blocking",
+          "notes": "Comic guided view — not in test set"
+        },
+        {
+          "catKey": "kindle_capability_metadata/yj_has_text_popups",
+          "severity": "non_blocking",
+          "notes": "Children book type — not in test set"
+        },
+        {
+          "catKey": "kindle_capability_metadata/yj_textbook",
+          "severity": "non_blocking",
+          "notes": "Textbook/PDF type — not in test set"
+        },
+        {
+          "catKey": "kindle_capability_metadata/yj_fixed_layout value 2/3",
+          "severity": "non_blocking",
+          "notes": "Go sets FixedLayout=true for all values > 0 but doesn't distinguish pdf_backed vs pdf_backed_fixed_layout. Not needed for current test books."
+        },
+        {
+          "catKey": "reading_orders",
+          "severity": "non_blocking",
+          "notes": "Reading orders handled separately in state.go organizeFragments"
+        }
+      ],
+      "fixes": [
+        {
+          "what": "support_landscape/support_portrait orientation check",
+          "pythonLine": 286,
+          "fix": "Added check for both '' and 'none' since Go defaults to '' when $433 absent but may set 'none' explicitly from $433=$349"
+        },
+        {
+          "what": "author &-split in applyMetadataItem",
+          "pythonLine": 196,
+          "fix": "Split author value by '&' and trim each part, matching Python's [a.strip() for a in value.split('&') if a]"
+        }
+      ]
+    }
+  ],
+  "verificationResults": {
+    "goBuild": "pass",
+    "goTest": "pass",
+    "compareAll": "394/394 match, 0 differ",
+    "opfDiff": "byte-identical for all 6 books (excluding dcterms:modified)"
+  },
+  "assertions": {
+    "VAL-EPUB-008": "pass — OPF manifest entries match for all 6 books",
+    "VAL-EPUB-009": "pass — Cover image has properties=\"cover-image\"",
+    "VAL-EPUB-010": "pass — OPF metadata entries match for all 6 books",
+    "VAL-EPUB-011": "pass — Spine toc=\"toc.ncx\" present",
+    "VAL-EPUB-012": "pass — Guide section entries present and correct",
+    "VAL-EPUB-017": "pass — ASIN unique-identifier present (urn:asin:XXX)",
+    "VAL-EPUB-018": "pass — Creator refinement entries with marc:relators scheme",
+    "VAL-EPUB-019": "pass — MARC namespace prefix on package element"
+  }
+}
