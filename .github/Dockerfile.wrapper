@@ -1,0 +1,84 @@
+# Minimal Dockerfile for cross-compiling the C wrapper and syscall shim.
+# Only builds two tiny C files — takes seconds, not minutes.
+# The rest of the build (Python runtime, wheels) is download-based, no Docker needed.
+
+FROM arm32v7/gcc:12
+
+RUN mkdir -p /build
+
+ENV CFLAGS="-O3 -mword-relocations -mlong-calls -ffunction-sections -fdata-sections"
+ENV LDFLAGS="-Wl,--gc-sections"
+
+# Build syscall wrapper (Kindle kernel 4.9.77 lacks preadv2/pwritev2)
+RUN printf '%s\n' \
+    '#define _GNU_SOURCE' \
+    '#include <sys/uio.h>' \
+    '#include <unistd.h>' \
+    '' \
+    'ssize_t preadv2(int fd, const struct iovec *iov, int iovcnt, off_t offset, int flags) {' \
+    '    return preadv(fd, iov, iovcnt, offset);' \
+    '}' \
+    '' \
+    'ssize_t pwritev2(int fd, const struct iovec *iov, int iovcnt, off_t offset, int flags) {' \
+    '    return pwritev(fd, iov, iovcnt, offset);' \
+    '}' \
+    > /build/syscall_wrapper.c && \
+    gcc -shared -fPIC -o /build/libsyscall_wrapper.so /build/syscall_wrapper.c && \
+    strip /build/libsyscall_wrapper.so
+
+# Build C wrapper that invokes python3 with our script
+RUN printf '%s\n' \
+    '#define _GNU_SOURCE' \
+    '#include <stdio.h>' \
+    '#include <stdlib.h>' \
+    '#include <string.h>' \
+    '#include <unistd.h>' \
+    '#include <libgen.h>' \
+    '#include <linux/limits.h>' \
+    '' \
+    'int main(int argc, char *argv[]) {' \
+    '    char exe_path[PATH_MAX];' \
+    '    char dir_path[PATH_MAX];' \
+    '    char python_path[PATH_MAX];' \
+    '    char script_path[PATH_MAX];' \
+    '    char lib_path[PATH_MAX];' \
+    '    char pypath[PATH_MAX];' \
+    '    ssize_t len;' \
+    '' \
+    '    len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);' \
+    '    if (len == -1) { perror("readlink"); return 1; }' \
+    '    exe_path[len] = 0;' \
+    '' \
+    '    strncpy(dir_path, exe_path, sizeof(dir_path));' \
+    '    char *dir = dirname(dir_path);' \
+    '' \
+    '    snprintf(python_path, sizeof(python_path), "%s/dist/bin/python3", dir);' \
+    '    snprintf(script_path, sizeof(script_path), "%s/dist/kindle_helper.py", dir);' \
+    '    snprintf(lib_path, sizeof(lib_path), "%s/libsyscall_wrapper.so", dir);' \
+    '' \
+    '    /* Set PYTHONPATH so python finds kfxlib, dedrm, etc. in dist/ */' \
+    '    snprintf(pypath, sizeof(pypath), "%s/dist:%s/dist/lib/python3.11/site-packages", dir, dir);' \
+    '    setenv("PYTHONPATH", pypath, 1);' \
+    '    setenv("LD_PRELOAD", lib_path, 1);' \
+    '    setenv("KINDLE_HELPER_BASE", dir, 1);' \
+    '    setenv("PYTHONDONTWRITEBYTECODE", "1", 1);' \
+    '' \
+    '    /* Build argv: python3 -s script [user args] */' \
+    '    int new_argc = argc + 2;' \
+    '    char **new_argv = malloc(sizeof(char *) * (new_argc + 1));' \
+    '    if (!new_argv) { perror("malloc"); return 1; }' \
+    '' \
+    '    new_argv[0] = python_path;' \
+    '    new_argv[1] = script_path;' \
+    '    for (int i = 1; i < argc; i++) {' \
+    '        new_argv[i + 1] = argv[i];' \
+    '    }' \
+    '    new_argv[argc + 1] = NULL;' \
+    '' \
+    '    execv(python_path, new_argv);' \
+    '    perror("execv python3");' \
+    '    return 1;' \
+    '}' \
+    > /build/wrapper.c && \
+    gcc -static -o /build/kindle-helper /build/wrapper.c && \
+    strip /build/kindle-helper
