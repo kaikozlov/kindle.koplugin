@@ -2639,6 +2639,9 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 					r.linkClass(styleID, annotationCoversWholeText(annotationMap, len(runes))),
 					dropcapClass,
 				)
+				// Port of Python yj_to_epub_content.py $616→epub:type on annotation links.
+				// Python: $616=$617 → -kfx-attrib-epub-type: noteref → epub:type="noteref"
+				epubType := epubTypeFromAnnotation(annotationMap)
 				events = append(events, event{
 					start: start,
 					end:   end,
@@ -2646,6 +2649,9 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 						attrs := map[string]string{"href": href}
 						if styleAttr != "" {
 							attrs["style"] = styleAttr
+						}
+						if epubType != "" {
+							attrs["epub:type"] = epubType
 						}
 						element := &htmlElement{Tag: "a", Attrs: attrs}
 						parent.Children = append(parent.Children, element)
