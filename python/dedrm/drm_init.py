@@ -27,6 +27,95 @@ _SHARED_METADATA_KEY_PREFIX = "6533356635"
 _AES_KEY_RE = re.compile(r"^EVP_256_KEY:([0-9a-f]+)\s+IV:([0-9a-f]+)")
 
 
+def _find_voucher_for_kfx(kfx_path):
+    """Find the voucher file for a specific KFX file.
+
+    Looks for *.sdr/assets/voucher next to the KFX file.
+    Returns the voucher path or None.
+    """
+    base = os.path.splitext(kfx_path)[0]
+    sdr_dir = base + ".sdr"
+    voucher_path = os.path.join(sdr_dir, "assets", "voucher")
+    if os.path.isfile(voucher_path):
+        return voucher_path
+    return None
+
+
+def extract_book_key(kfx_path, plugin_dir, cache_dir):
+    """Extract the decryption key for a single book.
+
+    Runs the device JVM with just that book's voucher, captures the key,
+    and updates drm_keys.json. Returns dict with success, book_id, etc.
+    """
+    # Step 1: Find the voucher for this specific book
+    voucher_path = _find_voucher_for_kfx(kfx_path)
+    if not voucher_path:
+        return {"ok": False, "message": "no voucher found for this book"}
+
+    # Step 2: Read device serial
+    serial = _read_device_serial()
+
+    # Step 3: Run the Java extractor with just this voucher
+    _extract_keys_with_hook(serial, [voucher_path], plugin_dir)
+
+    # Step 4: Parse captured keys
+    keys = _parse_captured_keys("/mnt/us/crypto_keys.log")
+    if not keys:
+        return {"ok": False, "message": "no keys captured from device"}
+
+    # Step 5: Extract page key
+    voucher_key = _find_voucher_key(voucher_path, keys)
+    if voucher_key is None:
+        return {"ok": False, "message": "could not match key to voucher"}
+
+    try:
+        page_key = _extract_page_key(voucher_path, voucher_key)
+    except Exception as e:
+        return {"ok": False, "message": f"page key extraction failed: {e}"}
+
+    book_id = _derive_book_id(voucher_path)
+
+    # Step 6: Update drm_keys.json (merge into existing or create new)
+    cache_path = os.path.join(cache_dir, "drm_keys.json")
+    cache = _load_key_cache(cache_path)
+    if cache is None:
+        cache = {
+            "version": 1,
+            "device_serial": serial,
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "books": {},
+        }
+
+    cache["books"][book_id] = {
+        "voucher_path": voucher_path,
+        "voucher_key_256": voucher_key.hex(),
+        "page_key_128": page_key.hex(),
+    }
+
+    os.makedirs(cache_dir, exist_ok=True)
+    with open(cache_path, "w") as f:
+        json.dump(cache, f, indent=2)
+
+    # Clean up the key log
+    try:
+        os.remove("/mnt/us/crypto_keys.log")
+    except OSError:
+        pass
+
+    return {"ok": True, "book_id": book_id}
+
+
+def _load_key_cache(cache_path):
+    """Load an existing drm_keys.json, or return None if not found."""
+    if not os.path.isfile(cache_path):
+        return None
+    try:
+        with open(cache_path, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def run(documents_root, plugin_dir, cache_dir):
     """Execute the drm-init workflow. Returns dict with books_found, keys_found."""
     # Step 1: Find voucher files

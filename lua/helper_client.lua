@@ -167,6 +167,33 @@ function HelperClient:drmInit()
     return result, err
 end
 
+--- Extracts the decryption key for a single book (JIT key extraction).
+--- @param kfx_path string: Path to the KFX file.
+--- @return table|nil: Result table, or nil on error.
+--- @return string|nil: Error message if result is nil.
+function HelperClient:extractBookKey(kfx_path)
+    local cache_dir = self.settings.cache_dir or ""
+    logger.info("KindlePlugin: extracting key for", kfx_path)
+    local result, err = self:_run({
+        self:getBinaryPath(),
+        "extract-key",
+        "--input",
+        kfx_path,
+        "--cache-dir",
+        cache_dir,
+    })
+    if result then
+        if result.ok then
+            logger.info("KindlePlugin: key extracted for", result.book_id)
+        else
+            logger.warn("KindlePlugin: key extraction failed:", result.message)
+        end
+    else
+        logger.warn("KindlePlugin: key extraction failed:", err)
+    end
+    return result, err
+end
+
 --- Extracts cover JPEG from a book's .sdr/assets/metadata.kfx sidecar.
 --- Caches the result in the cache directory as <safe_id>_cover.jpg.
 --- @param sidecar_dir string: Path to the .sdr directory.

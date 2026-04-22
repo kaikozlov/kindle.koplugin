@@ -120,28 +120,46 @@ function CacheManager:ensureCachedEpub(book)
         return epub_path
     end
 
-    if book.open_mode == "drm" then
-        local key_cache = io.open(self:getDrmKeysPath(), "rb")
-        if not key_cache then
-            logger.warn("KindlePlugin: DRM book but key cache not initialized:", book.id)
-            return nil, "drm_not_initialized"
-        end
-        key_cache:close()
-    end
-
     if not self:ensureCacheDir() then
         return nil, "failed to create cache directory"
     end
 
-    logger.info("KindlePlugin: converting", book.source_path, "->", epub_path)
+    logger.info("KindlePlugin: preparing", book.source_path, "->", epub_path)
     local result, err = self.helper_client:convert(book.source_path, epub_path)
     if not result then
-        logger.warn("KindlePlugin: conversion failed:", err)
+        logger.warn("KindlePlugin: preparation failed:", err)
         return nil, err
     end
 
     if result.ok ~= true then
-        logger.warn("KindlePlugin: conversion error:", result.code, result.message)
+        -- JIT key extraction: if DRM-protected and no key, try extracting it
+        if result.code == "drm" and book.source_path then
+            logger.info("KindlePlugin: DRM key missing, attempting JIT extraction for", book.id)
+            local key_result = self.helper_client:extractBookKey(book.source_path)
+            if key_result and key_result.ok then
+                logger.info("KindlePlugin: JIT key extracted, retrying preparation")
+                -- Invalidate any stale cache
+                os.remove(epub_path)
+                os.remove(meta_path)
+                result, err = self.helper_client:convert(book.source_path, epub_path)
+                if result and result.ok then
+                    local ok, write_err = self:writeMetadata(meta_path, book)
+                    if not ok then
+                        return nil, write_err
+                    end
+                    logger.info("KindlePlugin: preparation succeeded after key extraction:", result.output_path or epub_path)
+                    return result.output_path or epub_path
+                end
+                -- Retry also failed
+                logger.warn("KindlePlugin: preparation failed after key extraction:",
+                    result and result.code, result and result.message or err)
+            else
+                logger.warn("KindlePlugin: JIT key extraction failed:",
+                    key_result and key_result.message or err or "unknown")
+            end
+        end
+
+        logger.warn("KindlePlugin: preparation error:", result.code, result.message)
         return nil, result.code or result.message or "conversion_failed"
     end
 
@@ -150,7 +168,7 @@ function CacheManager:ensureCachedEpub(book)
         return nil, write_err
     end
 
-    logger.info("KindlePlugin: conversion succeeded:", result.output_path or epub_path)
+    logger.info("KindlePlugin: preparation succeeded:", result.output_path or epub_path)
     return result.output_path or epub_path
 end
 

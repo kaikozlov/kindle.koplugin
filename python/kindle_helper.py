@@ -656,6 +656,38 @@ def cmd_position(args):
 # CLI argument parsing
 # ---------------------------------------------------------------------------
 
+def cmd_extract_key(args):
+    """Extract the decryption key for a single book."""
+    if not args.input:
+        print("extract-key: --input is required", file=sys.stderr)
+        sys.exit(2)
+
+    input_path = args.input
+    cache_dir = getattr(args, "cache_dir", "") or ""
+    plugin_dir = getattr(args, "plugin_dir", "") or ""
+
+    if not plugin_dir:
+        plugin_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        if not os.path.isdir(os.path.join(plugin_dir, "lib")):
+            parent = os.path.dirname(plugin_dir)
+            if os.path.isdir(os.path.join(parent, "lib")):
+                plugin_dir = parent
+
+    try:
+        from dedrm.drm_init import extract_book_key
+        result = extract_book_key(input_path, plugin_dir, cache_dir)
+        exit_json({
+            "version": VERSION,
+            **result,
+        })
+    except Exception as e:
+        exit_json({
+            "version": VERSION,
+            "ok": False,
+            "message": str(e),
+        })
+
+
 def main():
     parser = argparse.ArgumentParser(prog="kindle-helper")
     sub = parser.add_subparsers(dest="command")
@@ -695,6 +727,15 @@ def main():
     p_pos.add_argument("--old-percent", type=float, required=True)
     p_pos.add_argument("--new-percent", type=float, required=True)
 
+    # extract-key
+    p_extract = sub.add_parser("extract-key")
+    p_extract.add_argument("--input", required=True,
+                           help="path to the KFX file")
+    p_extract.add_argument("--cache-dir", default="",
+                           help="cache directory for drm_keys.json")
+    p_extract.add_argument("--plugin-dir", default="",
+                           help="plugin directory containing lib/ helpers")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -708,6 +749,7 @@ def main():
         "decrypt": cmd_decrypt,
         "drm-init": cmd_drm_init,
         "position": cmd_position,
+        "extract-key": cmd_extract_key,
     }
 
     dispatch[args.command](args)
