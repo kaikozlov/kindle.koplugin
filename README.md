@@ -1,65 +1,49 @@
-# kindle.koplugin — Kindle Virtual Library for KOReader
+<div align="center">
 
-A [KOReader](https://koreader.rocks/) plugin that browses Kindle-native books from a virtual library and converts KFX files (including DRM-protected) to EPUB format.
+# kindle.koplugin
 
-## What It Does
+A KOReader plugin that lets you browse and read your Kindle book library directly in KOReader.
 
-- Scans a Kindle device's document library and indexes metadata
-- Presents a virtual library UI inside KOReader for browsing Kindle-native books
-- Converts Amazon KFX ebook files to standard EPUB format using the Calibre KFX Input plugin (kfxlib)
-- Decrypts DRM-protected (DRMION) books using on-device key extraction
-- Caches converted files for fast re-opening
+</div>
 
-## Architecture
+## Features
 
-```
-KOReader Plugin (Lua)  →  Python CLI (kindle-helper)  →  kfxlib + DeDRM ion.py
-```
+- **Virtual Library** — Browse your full Kindle book collection from inside KOReader's file browser
+- **Seamless Opening** — Tap any book to read it. Conversions happen automatically in the background
+- **Cached for Speed** — Books are cached after the first open, so re-opening is instant
 
-The Lua frontend (`main.lua` + `lua/`) integrates with KOReader's widget system and spawns the Python binary as a helper process. All heavy lifting — KFX parsing, YJ decode, EPUB assembly, DRM decryption — is done by Python libraries compiled with Nuitka for ARM.
+## Installation
 
-## Project Structure
+1. Download the latest release for your device.
+2. Extract `kindle.koplugin` to your KOReader plugins directory:
+   - Kindle: `/mnt/us/koreader/plugins/`
+3. Restart KOReader
 
-```
-python/
-  kindle_helper.py     CLI entry point — bridges Lua ↔ Python via JSON stdin/stdout
-  kfxlib/              KFX→EPUB conversion engine (from Calibre KFX Input plugin)
-  dedrm/               DRMION decryption (DeDRM ion.py) + drm-init key extraction
-lua/                   KOReader Lua frontend (widgets, cache, library index)
-lib/                   Pre-compiled DRM helpers (Java jar, C hook)
-spec/                  Busted test suite
-scripts/               Dev/CI scripts
-.github/Dockerfile.arm Nuitka ARM build pipeline
-python_build.sh        Build script (Docker + package)
-_meta.lua              KOReader plugin metadata
-main.lua               Plugin entry point
-```
+## Usage
 
-## Building
+Once installed, your Kindle books appear alongside your other files in KOReader's file browser. Just tap to open — the first open of each book takes a moment while it's prepared for reading, and after that it opens instantly.
+
+## Compatibility
+
+Designed for Kindle devices running KOReader alongside stock firmware.
+
+## License
+
+MIT License
+
+---
+
+<details>
+<summary>Building from source</summary>
 
 ```sh
 # Build ARM binary (Docker + Nuitka)
 ./python_build.sh
-```
 
-## Testing
-
-```sh
-# Lua tests (busted under luajit)
+# Run Lua tests
 ./scripts/test
-
-# Python local test
-python3 python/kindle_helper.py convert --input <kfx> --output <epub>
 ```
 
-Some tests require KFX fixture files not in the repo — they auto-skip if absent.
+See `AGENTS.md` for full architecture and development documentation.
 
-## Conversion Pipeline
-
-The plugin uses kfxlib (John Howell's Calibre KFX Input plugin) directly — no porting, no reimplementation. This guarantees byte-identical output with Calibre.
-
-- **KFX parsing** — ION binary/text parsing, symbol table resolution, fragment organization
-- **EPUB generation** — Full YJ→EPUB conversion (sections, CSS, navigation, resources)
-- **DRM decryption** — DeDRM's DrmIon for proper ION-structured DRMION parsing
-- **DRM key extraction** — On-device voucher decryption via LD_PRELOAD hook + device JVM
-- **Resource handling** — Image conversion, JXR support, font embedding
+</details>
