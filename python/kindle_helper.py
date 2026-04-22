@@ -19,7 +19,6 @@ import hashlib
 import json
 import os
 import re
-import struct
 import sys
 import zipfile
 from pathlib import Path
@@ -75,14 +74,27 @@ def _find_page_key(kfx_path, cache_dir):
     with open(keys_file, "r") as f:
         keys_data = json.load(f)
 
-    # Keys are indexed by absolute path (normalised)
+    books = keys_data.get("books", {})
+
+    # Try matching by book ID extracted from filename
+    # Keys are indexed by ASIN/book ID (e.g. "B009NG3090")
+    basename = os.path.basename(kfx_path)
+    for book_id, entry in books.items():
+        if book_id in basename:
+            key_str = entry.get("page_key_128", "") if isinstance(entry, dict) else ""
+            if key_str:
+                try:
+                    return bytes.fromhex(key_str)
+                except ValueError:
+                    pass
+
+    # Fallback: try absolute path match
     abs_path = os.path.abspath(kfx_path)
-    entry = keys_data.get(abs_path) or keys_data.get(kfx_path)
+    entry = books.get(abs_path) or books.get(kfx_path)
     if not entry:
         return None
 
-    # The key may be stored as hex string or base64
-    key_str = entry if isinstance(entry, str) else entry.get("page_key", "")
+    key_str = entry.get("page_key_128", "") if isinstance(entry, dict) else ""
     if not key_str:
         return None
     try:
@@ -96,89 +108,27 @@ def _find_page_key(kfx_path, cache_dir):
 
 
 def _decrypt_drmion(data, page_key):
-    """Decrypt a DRMION blob using AES-128-CBC with *page_key*.
+    """Decrypt a DRMION blob using DeDRM's DrmIon with proper ION parsing.
 
-    This is a simplified implementation that handles the common DRMION
-    structure: header | IV | encrypted_pages | footer.
+    Uses the DeDRM ion.py library which correctly parses the ION structure
+    of DRMION envelopes (EncryptedPage, PlainText, LZMA compression, etc).
     Returns the decrypted CONT data.
     """
-    try:
-        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-        from cryptography.hazmat.primitives import padding as crypto_padding
-    except ImportError:
-        # Fallback to pycryptodome if available
-        from Crypto.Cipher import AES
-
-        def _aes_cbc_decrypt(key, iv, ciphertext):
-            cipher = AES.new(key, AES.MODE_CBC, iv)
-            plaintext = cipher.decrypt(ciphertext)
-            # Remove PKCS7 padding
-            pad_len = plaintext[-1]
-            if 1 <= pad_len <= 16:
-                plaintext = plaintext[:-pad_len]
-            return plaintext
-
-        _HAS_CRYPTOGRAPHY = False
-    else:
-        _HAS_CRYPTOGRAPHY = True
-
-        def _aes_cbc_decrypt(key, iv, ciphertext):
-            cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
-            decryptor = cipher.decryptor()
-            plaintext = decryptor.update(ciphertext) + decryptor.finalize()
-            # Remove PKCS7 padding
-            unpadder = crypto_padding.PKCS7(128).unpadder()
-            plaintext = unpadder.update(plaintext) + unpadder.finalize()
-            return plaintext
+    from io import BytesIO as _BytesIO
+    from dedrm.ion import DrmIon as _DrmIon
 
     if not data.startswith(DRMION_SIGNATURE):
         raise ValueError("Not a DRMION file")
 
-    # DRMION format: 8-byte sig | ... | encrypted sections
-    # The actual structure is:
-    #   [0:8]   DRMION signature
-    #   [8:12]  total length (big-endian uint32)
-    #   [12:16] number of pages (big-endian uint32)
-    #   [16:24] page table offset
-    #   Then: for each page: 16-byte IV + encrypted_content
-    #   Footer: 8-byte DRMION end marker
+    class _Voucher:
+        def __init__(self, key):
+            self.secretkey = key
 
-    if len(data) < 24:
-        raise ValueError("DRMION file too short")
+    out = _BytesIO()
+    drm = _DrmIon(_BytesIO(data[8:-8]), lambda name: _Voucher(page_key))
+    drm.parse(out)
+    result = out.getvalue()
 
-    total_len = struct.unpack(">I", data[8:12])[0]
-    num_pages = struct.unpack(">I", data[12:16])[0]
-
-    # Simple approach: try to decrypt the main content region
-    # The page table starts at offset 24 for most DRMION files
-    offset = 24
-    decrypted_parts = []
-
-    for _ in range(num_pages):
-        if offset + 20 > len(data):
-            break
-        # Each page entry: 4-byte length + 16-byte IV + ciphertext
-        page_len = struct.unpack(">I", data[offset:offset+4])[0]
-        offset += 4
-
-        if page_len < 16 or offset + page_len > len(data):
-            break
-
-        iv = data[offset:offset+16]
-        ciphertext = data[offset+16:offset+page_len]
-        offset += page_len
-
-        if len(ciphertext) % 16 != 0:
-            # Not AES-block-aligned, skip
-            continue
-
-        try:
-            plaintext = _aes_cbc_decrypt(page_key, iv, ciphertext)
-            decrypted_parts.append(plaintext)
-        except Exception:
-            continue
-
-    result = b"".join(decrypted_parts)
     if not result.startswith(CONT_SIGNATURE):
         raise ValueError("Decrypted data is not a valid CONT container")
 
