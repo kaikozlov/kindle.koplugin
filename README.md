@@ -54,5 +54,3 @@ MIT License
 # Run Lua tests
 ./scripts/test
 ```
-
-See `AGENTS.md` for full architecture and development documentation.
