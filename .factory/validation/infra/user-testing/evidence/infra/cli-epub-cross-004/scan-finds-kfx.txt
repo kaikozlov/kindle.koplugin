@@ -1,5 +1,0 @@
-Command: /tmp/val-cross-004-helper scan --root /tmp/val-cross-004-scan
-Setup: Created /tmp/val-cross-004-scan/My Book_ABCDEF123456.kfx (empty file)
-Stdout: {"version":1,"root":"/tmp/val-cross-004-scan","books":[{"id":"sha1:9fdd73c420ca613df0b3cd01bc64d8e56568720a","source_path":"/tmp/val-cross-004-scan/My Book_ABCDEF123456.kfx","format":"kfx","logical_ext":"epub","title":"My Book ABCDEF123456","authors":[],"display_name":"My Book ABCDEF123456","open_mode":"blocked","block_reason":"unsupported_kfx_layout","source_mtime":1776565744,"source_size":0}]}
-Exit code: 0
-Result: PASS - Found 1 book with correct format="kfx", title extracted from filename, valid JSON

@@ -260,7 +260,7 @@ function VirtualLibrary:resolveBookPath(book)
     end
 
     -- open_mode "convert" or "drm" — both go through cache/conversion pipeline
-    -- For "drm", the Go binary handles DRMION decryption internally
+    -- For "drm", the Python binary handles DRMION decryption internally
     if not self.cache_manager then
         logger.warn("KindlePlugin: cache manager is not configured")
         return nil, "conversion_failed"

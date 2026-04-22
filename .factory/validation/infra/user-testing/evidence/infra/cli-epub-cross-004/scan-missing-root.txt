@@ -1,4 +1,0 @@
-Command: /tmp/val-cross-004-helper scan
-Stderr: scan: --root is required
-Exit code: 2
-Result: PASS - usage error for missing --root, exit code 2

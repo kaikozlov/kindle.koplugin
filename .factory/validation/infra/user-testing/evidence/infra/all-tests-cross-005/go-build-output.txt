@@ -1,3 +1,0 @@
-$ go build ./...
-[Process exited with code 0]
-Command completed successfully

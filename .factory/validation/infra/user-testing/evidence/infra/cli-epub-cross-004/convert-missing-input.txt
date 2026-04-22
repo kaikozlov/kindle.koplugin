@@ -1,4 +1,0 @@
-Command: /tmp/val-cross-004-helper convert --output /tmp/out.epub
-Stderr: convert: --input is required
-Exit code: 2
-Result: PASS - usage error for missing --input, exit code 2
