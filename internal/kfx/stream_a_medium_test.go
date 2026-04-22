@@ -259,15 +259,16 @@ func TestCheckSymbolTableExpectedUnusedExceptions(t *testing.T) {
 	checkSymbolTableWithConfig(frags, r, false, false, cfg)
 
 	output := buf.String()
-	// These should be expected unused, not reported as regular unused
-	// The "unused symbols" warning (line 1) should NOT appear since all are expected
-	// Only the "expected unused symbols" known-error log should appear.
+	// These should be expected unused, not reported as regular unused.
+	// The "unused symbols" warning (line 1) should NOT appear since all are expected.
 	if strings.Contains(output, "kfx: warning: Symbol table contains") {
 		t.Fatalf("expected no regular unused symbols warning for expected exceptions, got: %s", output)
 	}
-	// But they should be logged as expected unused (known error)
-	if !strings.Contains(output, "expected unused symbols") {
-		t.Fatalf("expected 'expected unused symbols' log, got: %s", output)
+	// Python: log_known_error is a no-op when REPORT_KNOWN_PROBLEMS is None (default).
+	// Go matches: ReportKnownProblems is nil, so expected-unused log is suppressed.
+	// The output should be empty since all unused symbols are expected and not logged.
+	if strings.Contains(output, "expected unused symbols") {
+		t.Fatalf("expected no 'expected unused symbols' log when ReportKnownProblems is nil, got: %s", output)
 	}
 }
 
@@ -338,12 +339,14 @@ func TestCheckSymbolTableSampleSuffixAd(t *testing.T) {
 	checkSymbolTableWithConfig(frags, r, false, false, cfg)
 
 	output := buf.String()
-	// "-ad" suffix with is_sample should be expected unused (known error), not regular unused warning
+	// "-ad" suffix with is_sample should be expected unused, not regular unused warning
 	if strings.Contains(output, "kfx: warning: Symbol table contains") {
 		t.Fatalf("sample -ad symbols should not produce regular unused warning, got: %s", output)
 	}
-	if !strings.Contains(output, "expected unused") {
-		t.Fatalf("expected 'expected unused' for sample -ad symbols, got: %s", output)
+	// Python: log_known_error is a no-op when REPORT_KNOWN_PROBLEMS is None (default).
+	// Go matches: ReportKnownProblems is nil, so expected-unused log is suppressed.
+	if strings.Contains(output, "expected unused") {
+		t.Fatalf("expected no 'expected unused' log when ReportKnownProblems is nil, got: %s", output)
 	}
 }
 

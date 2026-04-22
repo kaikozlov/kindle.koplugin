@@ -443,10 +443,17 @@ func checkSymbolTableWithConfig(frags fragmentCatalog, resolver *symbolResolver,
 			log.Printf("kfx: warning: Symbol table contains %d unused symbols: %v", len(unusedSymbols), truncList)
 		}
 
-		if len(expectedUnusedSymbols) > 0 {
+		// Python: self.log_known_error("Symbol table contains %d expected unused symbols: ...")
+		// log_known_error is a no-op when REPORT_KNOWN_PROBLEMS is None (the default).
+		// Match that behavior: only log when ReportKnownProblems is non-nil.
+		if len(expectedUnusedSymbols) > 0 && ReportKnownProblems != nil {
 			expectedList := sortedKeys(expectedUnusedSymbols)
 			truncList := listTruncated(expectedList, 5)
-			log.Printf("kfx: known error: Symbol table contains %d expected unused symbols: %v", len(expectedUnusedSymbols), truncList)
+			if reportKnown, _ := ReportKnownProblems.(bool); reportKnown {
+				log.Printf("kfx: error: Symbol table contains %d expected unused symbols: %v", len(expectedUnusedSymbols), truncList)
+			} else {
+				log.Printf("kfx: warning: Symbol table contains %d expected unused symbols: %v", len(expectedUnusedSymbols), truncList)
+			}
 		}
 	}
 
