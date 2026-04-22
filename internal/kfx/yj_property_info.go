@@ -644,9 +644,21 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 }
 
 // propertyValueNumeric handles int/float KFX property values (colors, px values, raw numbers).
+const alphaMask = 0xff000000
+
 func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool) string {
 	// Color property
 	if colorYJProperties[propName] {
+		// Ported from Python property_value (yj_to_epub_properties.py L1290-1291):
+		// When $70 (fill-color) has zero alpha bits, set alpha to fully opaque.
+		// Python: if yj_property_name == "$70" and int(yj_value) & ALPHA_MASK == 0:
+		//             value = int(yj_value) | ALPHA_MASK
+		if propName == "$70" {
+			i := int(v)
+			if i&alphaMask == 0 {
+				v = float64(i | alphaMask)
+			}
+		}
 		return fixColorValue(v)
 	}
 
@@ -686,6 +698,9 @@ func propertyValueList(propName string, v []interface{}, info propInfo, infoOK b
 				}
 			}
 		}
+		// Ported from Python property_value (yj_to_epub_properties.py L1352):
+		//   value = " ".join(sorted(values))
+		sort.Strings(vals)
 		return strings.Join(vals, " ")
 
 	case "$98": // transform — simplified
