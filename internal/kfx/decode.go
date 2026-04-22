@@ -2,7 +2,6 @@ package kfx
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"math"
 	"math/big"
@@ -13,17 +12,6 @@ import (
 var (
 	ionVersionMarker = []byte{0xe0, 0x01, 0x00, 0xea}
 )
-
-func entityPayload(data []byte) ([]byte, error) {
-	if len(data) < 10 || string(data[:4]) != "ENTY" {
-		return nil, &UnsupportedError{Message: "entity wrapper is invalid"}
-	}
-	headerLen := int(binary.LittleEndian.Uint32(data[6:10]))
-	if headerLen < 10 || headerLen > len(data) {
-		return nil, &UnsupportedError{Message: "entity header length is invalid"}
-	}
-	return data[headerLen:], nil
-}
 
 func decodeIonMap(data []byte, docSymbols []byte, resolver *symbolResolver) (map[string]interface{}, error) {
 	value, err := decodeIonValue(data, docSymbols, resolver)
