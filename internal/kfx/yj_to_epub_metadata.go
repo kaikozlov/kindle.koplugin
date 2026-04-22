@@ -97,11 +97,15 @@ func applyMetadata(book *decodedBook, value map[string]interface{}) {
 			case "kindle_capability_metadata/yj_publisher_panels":
 				// Python sets book_type = "comic" + virtual_panels/region_magnification; not yet wired.
 			case "kindle_title_metadata/support_landscape":
-				if value, ok := asBool(entry["$307"]); ok && !value && book.OrientationLock == "" {
+				// Python (L286): if value is False and self.orientation_lock == "none".
+				// Go uses "" as the "none" default (when $433 is absent), but applyDocumentData
+				// may have set it to "none" explicitly (when $433 == "$349"). Check both.
+				if value, ok := asBool(entry["$307"]); ok && !value && (book.OrientationLock == "" || book.OrientationLock == "none") {
 					book.OrientationLock = "portrait"
 				}
 			case "kindle_title_metadata/support_portrait":
-				if value, ok := asBool(entry["$307"]); ok && !value && book.OrientationLock == "" {
+				// Python (L289): if value is False and self.orientation_lock == "none".
+				if value, ok := asBool(entry["$307"]); ok && !value && (book.OrientationLock == "" || book.OrientationLock == "none") {
 					book.OrientationLock = "landscape"
 				}
 			}
@@ -302,8 +306,14 @@ func applyMetadataItem(book *decodedBook, key string, value interface{}) {
 			book.ASIN = s
 		}
 	case "author":
+		// Python (L196-197): if not self.authors: self.authors = [a.strip() for a in value.split("&") if a]
 		if s, ok := asString(value); ok && s != "" && len(book.Authors) == 0 {
-			book.Authors = append(book.Authors, s)
+			for _, part := range strings.Split(s, "&") {
+				trimmed := strings.TrimSpace(part)
+				if trimmed != "" {
+					book.Authors = append(book.Authors, trimmed)
+				}
+			}
 		}
 	case "cover_image":
 		if s, ok := asString(value); ok && s != "" {
