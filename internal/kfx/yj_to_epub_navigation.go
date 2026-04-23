@@ -234,6 +234,13 @@ func processNavigation(navRoots []map[string]interface{}, navContainers map[stri
 
 func (p *navProcessor) processContainer(container map[string]interface{}, hasNavHeadings bool) {
 	navType := navigationType(container)
+	// Port of Python L125-126: log error for unknown nav types.
+	switch navType {
+	case "toc", "scrubbers", "thumbnails", "landmarks", "page_list", "headings":
+		// known type
+	default:
+		log.Printf("kfx: error: nav_container has unknown type: %s", navType)
+	}
 	if imports, ok := asSlice(container["imports"]); ok {
 		for _, raw := range imports {
 			if imported := resolveNavigationContainer(raw, p.navContainers); imported != nil {
@@ -261,6 +268,9 @@ func (p *navProcessor) processContainer(container map[string]interface{}, hasNav
 	}
 }
 
+// processGuideUnit handles nav units from a landmarks ($236) nav container.
+// Port of Python process_nav_container landmarks branch (yj_to_epub_navigation.py L143-165).
+// Python only registers guide entries when landmark_type is set.
 func (p *navProcessor) processGuideUnit(entry map[string]interface{}) {
 	label := parseNavTitle(entry)
 	target := parseNavTarget(entry)
@@ -271,22 +281,42 @@ func (p *navProcessor) processGuideUnit(entry map[string]interface{}) {
 	if navUnitName == "" {
 		navUnitName = label
 	}
-	guideType := guideTypeForLandmark(asStringDefault(entry["landmark_type"]))
-	anchorName := p.uniqueAnchorName(navUnitName)
-	if anchorName == "" {
-		anchorName = p.uniqueAnchorName(guideType)
+	targetPosition := parseNavTarget(entry)
+	landmarkType := asStringDefault(entry["landmark_type"])
+
+	// Port of Python: if landmark_type: ... (yj_to_epub_navigation.py L148-165)
+	// Python only processes guide entries when landmark_type is present.
+	if landmarkType != "" {
+		guideType := guideTypeForLandmark(landmarkType)
+		// Port of Python: self.unique_anchor_name(str(nav_unit_name) or guide_type)
+		// Python's "or" returns nav_unit_name if truthy, else guide_type.
+		nameForAnchor := navUnitName
+		if nameForAnchor == "" {
+			nameForAnchor = guideType
+		}
+		anchorName := p.uniqueAnchorName(nameForAnchor)
+		p.registerAnchor(anchorName, targetPosition, nil)
+		if label == "cover-nav-unit" {
+			label = ""
+		}
+		p.guide = append(p.guide, guideEntry{Type: guideType, Title: label, Target: target})
 	}
-	p.registerAnchor(anchorName, target, nil)
-	if label == "cover-nav-unit" {
-		label = ""
-	}
-	p.guide = append(p.guide, guideEntry{Type: guideType, Title: label, Target: target})
 }
 
+// processPageUnit handles nav units from a page_list ($237) nav container.
+// Port of Python process_nav_container page_list branch (yj_to_epub_navigation.py L167-198).
 func (p *navProcessor) processPageUnit(entry map[string]interface{}) {
 	label := parseNavTitle(entry)
 	if debug := os.Getenv("KFX_DEBUG_PAGES"); debug != "" {
 		fmt.Fprintf(os.Stderr, "page unit label=%q entry=%#v\n", label, entry)
+	}
+	navUnitName, _ := asString(entry["nav_unit_name"])
+	if navUnitName == "" {
+		navUnitName = "page_list_entry"
+	}
+	// Port of Python L175-176: if nav_unit_name != "page_list_entry": log.warning(...)
+	if navUnitName != "page_list_entry" {
+		log.Printf("kfx: warning: Unexpected page_list nav_unit_name: %s", navUnitName)
 	}
 	if label == "" {
 		return
@@ -326,9 +356,17 @@ func (p *navProcessor) processNavUnit(navType string, entry map[string]interface
 	}
 	nextHeading := (*int)(nil)
 	if navType == "headings" {
-		if level, ok := headingLevelForLandmark(asStringDefault(entry["landmark_type"])); ok {
-			headingLevel = intPtr(level)
-			nextHeading = intPtr(level)
+		landmarkType := asStringDefault(entry["landmark_type"])
+		if landmarkType != "" {
+			if level, ok := headingLevelForLandmark(landmarkType); ok {
+				headingLevel = intPtr(level)
+				nextHeading = intPtr(level)
+			} else {
+				// Port of Python L214-215: log.error and set heading_level = None
+				log.Printf("kfx: error: Unexpected headings landmark_type: %s", landmarkType)
+				headingLevel = nil
+				nextHeading = nil
+			}
 		}
 		if label == "heading-nav-unit" {
 			label = ""
