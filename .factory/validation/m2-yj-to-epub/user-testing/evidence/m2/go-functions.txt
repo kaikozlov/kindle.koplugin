@@ -1,0 +1,11 @@
+func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error) {
+func ConvertFile(inputPath, outputPath string, cacheDir string) error {
+func ConvertFileWithTrace(inputPath string, outputPath string, tracePath string) error {
+func decodeKFX(path string) (*decodedBook, error) {
+func DecodeKFX(path string) (*decodedBook, error) {
+func convertFromDRMIONData(contData []byte, outputPath string, originalPath string, pageKey []byte) error {
+func convertFromCONTData(contData []byte, outputPath string) error {
+func determineBookSymbolFormat(bookSymbols map[string]struct{}, documentData map[string]interface{}, r *symbolResolver) symType {
+func documentDataHasMaxID(documentData map[string]interface{}) bool {
+func uniquePartOfLocalSymbol(symbol string, format symType) string {
+func prefixUniquePartOfSymbol(uniquePart, prefix string) string {

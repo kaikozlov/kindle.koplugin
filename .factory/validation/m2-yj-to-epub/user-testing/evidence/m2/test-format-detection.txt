@@ -1,0 +1,18 @@
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/empty_favors_SHORT
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/all_SHORT
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/all_DICTIONARY
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/mixed_SHORT_reaches_quorum
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/documentData_max_id_forces_SHORT
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/BASE64_reaches_quorum
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/ORIGINAL_fallback
+--- PASS: TestDetermineBookSymbolFormatQuorumAndPriority (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/empty_favors_SHORT (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/all_SHORT (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/all_DICTIONARY (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/mixed_SHORT_reaches_quorum (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/documentData_max_id_forces_SHORT (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/BASE64_reaches_quorum (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/ORIGINAL_fallback (0.00s)
+PASS
+ok  	github.com/kaikozlov/kindle-koplugin/internal/kfx	0.211s

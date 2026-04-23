@@ -1,0 +1,6 @@
+Files /tmp/kfx-parity.1rmnYp/go/OEBPS/content.opf and /tmp/kfx-parity.1rmnYp/ref/OEBPS/content.opf differ
+Files /tmp/kfx-parity.1rmnYp/go/OEBPS/image_rsrc3S1.jpg and /tmp/kfx-parity.1rmnYp/ref/OEBPS/image_rsrc3S1.jpg differ
+Files /tmp/kfx-parity.1rmnYp/go/OEBPS/image_rsrc3S2.jpg and /tmp/kfx-parity.1rmnYp/ref/OEBPS/image_rsrc3S2.jpg differ
+Files /tmp/kfx-parity.1rmnYp/go/OEBPS/image_rsrc3S3.jpg and /tmp/kfx-parity.1rmnYp/ref/OEBPS/image_rsrc3S3.jpg differ
+Files /tmp/kfx-parity.1rmnYp/go/OEBPS/image_rsrc3S4.jpg and /tmp/kfx-parity.1rmnYp/ref/OEBPS/image_rsrc3S4.jpg differ
+Files /tmp/kfx-parity.1rmnYp/go/OEBPS/image_rsrc3S5.jpg and /tmp/kfx-parity.1rmnYp/ref/OEBPS/image_rsrc3S5.jpg differ

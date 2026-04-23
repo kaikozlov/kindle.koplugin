@@ -1,0 +1,15 @@
+    def __init__(self, book, epub2_desired=False, force_cover=False, metadata_only=False, progress=None):
+    def decompile_to_epub(self):
+    def organize_fragments_by_type(self, fragment_list):
+    def determine_book_symbol_format(self):
+    def unique_part_of_local_symbol(self, symbol):
+    def prefix_unique_part_of_symbol(self, unique_part, prefix):
+    def replace_ion_data(self, f):
+    def get_fragment(self, ftype=None, fid=None, delete=True):
+    def get_named_fragment(self, structure, ftype=None, delete=True, name_symbol=None):
+    def check_fragment_name(self, fragment_data, ftype, fid, delete=True):
+    def get_fragment_name(self, fragment_data, ftype, delete=True):
+    def get_structure_name(self, structure, name_key, delete=True):
+    def check_empty(self, a_dict, dict_name):
+    def progress_countdown(self):
+    def update_progress(self):

@@ -1,0 +1,1 @@
+ok  	github.com/kaikozlov/kindle-koplugin/internal/kfx	9.065s
