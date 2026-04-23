@@ -1451,7 +1451,7 @@ type simplifyState struct {
 	lastKfxHeadingLevel string // tracks last seen heading level (Python: self.last_kfx_heading_level)
 }
 
-func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherited map[string]string, state *simplifyState) (containsBlock, containsText, containsImage bool) {
+func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherited map[string]string, state *simplifyState, parentKnownWidth ...bool) (containsBlock, containsText, containsImage bool) {
 	if elem == nil {
 		return false, false, false
 	}
@@ -1544,6 +1544,38 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 		}
 	}
 
+	// Ported from Python simplify_styles (yj_to_epub_properties.py L1675, L1788-1798):
+	// Convert percentage margins to pixel values for elements without a known width.
+	// Python passes known_width as a parameter (default=True) through recursion.
+	// - "width" in sty → known_width = True (explicit width means % margins can be resolved)
+	// - display == "inline-block" → known_width = False (no width context for % margins)
+	// - Otherwise → inherit parent's known_width value
+	// When known_width is False, % margins are converted to px using PX_PER_PERCENT (8.534).
+	knownWidth := true // default parameter value from Python (L1675)
+	if len(parentKnownWidth) > 0 {
+		knownWidth = parentKnownWidth[0]
+	}
+	if _, hasWidth := sty["width"]; hasWidth {
+		knownWidth = true
+	} else if sty["display"] == "inline-block" {
+		knownWidth = false
+	}
+	if !knownWidth {
+		// Choose horizontal or vertical margins based on writing-mode.
+		marginNames := []string{"margin-left", "margin-right"}
+		if sty["writing-mode"] != "horizontal-tb" {
+			marginNames = []string{"margin-bottom", "margin-top"}
+		}
+		for _, name := range marginNames {
+			if val, ok := sty[name]; ok {
+				quantity, unit := splitCSSValue(val)
+				if unit == "%" && quantity != nil {
+					sty[name] = formatCSSQuantity(math.Round(*quantity*pxPerPercent)) + "px"
+				}
+			}
+		}
+	}
+
 	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1801-1802):
 	// Remove outline-width when outline-style is none.
 	if _, hasOutlineWidth := sty["outline-width"]; hasOutlineWidth {
@@ -1612,7 +1644,7 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	for _, child := range elem.Children {
 		switch ch := child.(type) {
 		case *htmlElement:
-			childBlock, childText, childImage := simplifyStylesElementFull(ch, catalog, parentStyle, state)
+			childBlock, childText, childImage := simplifyStylesElementFull(ch, catalog, parentStyle, state, knownWidth)
 			containsBlock = containsBlock || childBlock
 			containsText = containsText || childText
 			containsImage = containsImage || childImage
@@ -3872,6 +3904,9 @@ const (
 	minimumLineHeight = 1.0
 	// useNormalLineHeight is USE_NORMAL_LINE_HEIGHT = True in Python.
 	useNormalLineHeight = true
+	// pxPerPercent is PX_PER_PERCENT = 8.534 (Python yj_to_epub_properties.py:34).
+	// Used to convert percentage margins to pixel values for elements without a known width.
+	pxPerPercent = 8.534
 )
 
 // splitCSSValue splits a CSS value string into its numeric quantity and unit parts.
