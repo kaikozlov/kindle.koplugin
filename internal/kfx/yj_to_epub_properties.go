@@ -590,6 +590,103 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 		})
 	}
 
+	// Ported from Python fixup_styles_and_classes direction/unicode-bidi conversion
+	// (yj_to_epub_properties.py L1448-1500).
+	// Convert CSS direction property to HTML dir attribute and unicode-bidi to bdi/bdo elements.
+	// Go always generates EPUB3 so the condition is always true (Python:
+	// CVT_DIRECTION_PROPERTY_TO_MARKUP or not self.generate_epub2).
+	for i := range book.RenderedSections {
+		walkHTMLElement(book.RenderedSections[i].Root, func(elem *htmlElement) {
+			if elem == nil || elem.Attrs == nil || elem.Attrs["style"] == "" {
+				return
+			}
+			style := parseDeclarationString(elem.Attrs["style"])
+			if _, hasDir := style["direction"]; !hasDir {
+				if _, hasBidi := style["unicode-bidi"]; !hasBidi {
+					return
+				}
+			}
+
+			unicodeBidi := style["unicode-bidi"]
+			if unicodeBidi == "" {
+				unicodeBidi = "normal"
+			}
+
+			// Determine has_block and has_content by iterating all descendants.
+			// Python: for ex in e.iterfind(".//*") — iterates ONLY descendants, not e itself.
+			hasBlock := false
+			hasContent := elemHasDirectText(elem) // Python: has_content = e.text
+			walkDescendantElements(elem, func(desc *htmlElement) {
+				if desc == nil {
+					return
+				}
+				if !hasBlock {
+					switch desc.Tag {
+					case "aside", "div", "figure", "h1", "h2", "h3", "h4", "h5", "h6",
+						"iframe", "li", "ol", "p", "table", "td", "ul":
+						hasBlock = true
+					}
+				}
+				if !hasContent {
+					if elemHasDirectText(desc) {
+						hasContent = true
+					} else if desc.Tag == "audio" || desc.Tag == "img" || desc.Tag == "li" ||
+						desc.Tag == "math" || desc.Tag == "object" || desc.Tag == "svg" || desc.Tag == "video" {
+						hasContent = true
+					}
+					// Python checks ex.tail — in Go's DOM, tail text is represented
+					// as htmlText siblings after the element within its parent's Children.
+					if !hasContent && elemHasTailText(desc, elem) {
+						hasContent = true
+					}
+				}
+			})
+
+			if !hasContent {
+				// No content: just remove the direction/unicode-bidi properties
+				delete(style, "direction")
+				delete(style, "unicode-bidi")
+				setElemStyle(elem, style)
+
+			} else if unicodeBidi == "embed" || unicodeBidi == "normal" || hasBlock {
+				// embed/normal or has block children: convert direction to dir attribute
+				if dir, ok := style["direction"]; ok {
+					elem.Attrs["dir"] = dir
+					delete(style, "direction")
+				}
+				delete(style, "unicode-bidi")
+				setElemStyle(elem, style)
+
+			} else if unicodeBidi == "isolate" || unicodeBidi == "bidi-override" ||
+				unicodeBidi == "isolate-override" {
+				// isolate/bidi-override/isolate-override: wrap content in bdi/bdo element
+				bdx := &htmlElement{}
+				if strings.Contains(unicodeBidi, "override") {
+					bdx.Tag = "bdo"
+				} else {
+					bdx.Tag = "bdi"
+				}
+				if dir, ok := style["direction"]; ok {
+					bdx.Attrs = map[string]string{"dir": dir}
+					delete(style, "direction")
+				}
+
+				if elem.Tag != "img" {
+					// Move element's children to bdx (Python: bdx.text = e.text, move children)
+					bdx.Children = elem.Children
+					elem.Children = []htmlPart{bdx}
+				}
+
+				delete(style, "unicode-bidi")
+				setElemStyle(elem, style)
+
+			} else {
+				log.Printf("Cannot produce EPUB3 equivalent for: unicode-bidi:%s direction:%s",
+					unicodeBidi, style["direction"])
+			}
+		})
+	}
+
 	// Ported from Python REMOVE_EMPTY_NAMED_CLASSES (yj_to_epub_properties.py:1499-1505):
 	// If an element's style has ONLY -kfx-style-name and/or -kfx-layout-hints
 	// (no real CSS properties), remove the style attr entirely so no class is assigned.
@@ -2013,6 +2110,79 @@ func walkHTMLElement(root *htmlElement, visit func(*htmlElement)) {
 		if elem, ok := child.(*htmlElement); ok {
 			walkHTMLElement(elem, visit)
 		}
+	}
+}
+
+// walkDescendantElements visits only the descendant elements of root (not root itself).
+// Equivalent to Python's e.iterfind(".//*") which yields descendants only.
+func walkDescendantElements(root *htmlElement, visit func(*htmlElement)) {
+	if root == nil || visit == nil {
+		return
+	}
+	for _, child := range root.Children {
+		if elem, ok := child.(*htmlElement); ok {
+			walkHTMLElement(elem, visit)
+		}
+	}
+}
+
+// elemHasDirectText returns true if the element has any text content directly
+// inside it (equivalent to Python lxml's e.text being non-empty/non-nil).
+// In Go's DOM, direct text is represented by htmlText nodes in Children.
+func elemHasDirectText(elem *htmlElement) bool {
+	if elem == nil {
+		return false
+	}
+	for _, child := range elem.Children {
+		if txt, ok := child.(htmlText); ok && txt.Text != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// elemHasTailText returns true if the element has tail text within the context
+// of the root element. In Python lxml, ex.tail is text that follows an element
+// within its parent. In Go's DOM, we need to check if the element appears as a
+// child and the next sibling is a text node.
+func elemHasTailText(elem *htmlElement, root *htmlElement) bool {
+	if elem == nil || root == nil {
+		return false
+	}
+	// Search for elem in root's descendants and check for tail text
+	var findTail func(parent *htmlElement) bool
+	findTail = func(parent *htmlElement) bool {
+		for i, child := range parent.Children {
+			if childElem, ok := child.(*htmlElement); ok {
+				if childElem == elem {
+					// Found the element; check if next sibling is text
+					if i+1 < len(parent.Children) {
+						if txt, ok := parent.Children[i+1].(htmlText); ok && txt.Text != "" {
+							return true
+						}
+					}
+					return false
+				}
+				if findTail(childElem) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return findTail(root)
+}
+
+// setElemStyle updates or removes the style attribute on an element from a style map.
+// If the map is empty, the style attribute is removed entirely.
+func setElemStyle(elem *htmlElement, style map[string]string) {
+	if len(style) == 0 {
+		delete(elem.Attrs, "style")
+		if len(elem.Attrs) == 0 {
+			elem.Attrs = nil
+		}
+	} else {
+		elem.Attrs["style"] = styleStringFromMap(style)
 	}
 }
 
