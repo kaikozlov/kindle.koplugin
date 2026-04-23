@@ -1,0 +1,37 @@
+{
+  "milestone": "m4-yj-to-epub-content",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "go test ./internal/kfx/ -count=1 -timeout 120s", "exitCode": 0 },
+    "typecheck": { "passed": true, "command": "go vet ./...", "exitCode": 0 },
+    "lint": { "passed": true, "command": "go vet ./...", "exitCode": 0 }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Added text_combine_in_use parity gap documentation — Python's locate_offset_in reduces text_len to 1 for text-combine-upright spans but Go does not. Affects CJK vertical-text content only.",
+      "sourceFeature": "m4-yj-to-epub-content-parity"
+    },
+    {
+      "target": "library",
+      "description": "Added htmlElementText vs combined_text parity gap documentation — Go's htmlElementText only extracts direct children text while Python's combined_text recursively descends into all descendants.",
+      "sourceFeature": "m4-yj-to-epub-content-parity"
+    }
+  ],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [
+    {
+      "observation": "Add reference to m4-yj-to-epub-content-audit.md in AGENTS.md",
+      "reason": "The library file is discoverable via .factory/library/ directory listing. Adding per-file references to AGENTS.md would bloat it — the Key References table already points to .factory/library/ as a category."
+    }
+  ],
+  "previousRound": null
+}
