@@ -27,7 +27,6 @@ import (
 //     check_located_file         → inline in collectSidecarContainerBlobs / collectZipContainerBlobs
 //     get_container              → loadContainerSourceData (kfx_container.go)
 //     expand_compressed_container → decryptDRMION (drm.go)
-//     final_actions              → N/A (Go uses standard library for cleanup)
 //     convert_to_epub            → ConvertFile (yj_to_epub.go)
 //     get_metadata               → ExtractSidecarMetadata (sidecar.go)
 //
@@ -38,6 +37,12 @@ import (
 //     convert_to_kpf             → Calibre KPF generation via Kindle Previewer CLI
 //     convert_to_zip_unpack      → Calibre ZIP unpack output
 //     convert_to_json_content    → Calibre JSON content output
+//     final_actions              → N/A (Go uses standard library for cleanup)
+//
+//   Called from decode_book, defined in yj_structure.py (BookStructure methods):
+//     check_consistency          → Excluded (yj_structure.py:192 — debug validation logging only)
+//     check_fragment_usage       → Ported as CheckFragmentUsageWithOptions (yj_structure.go:696)
+//     check_symbol_table         → Ported as checkSymbolTableWithConfig (yj_structure.go:1766)
 //
 //   Also from yj_to_epub.py (ported here):
 //     organize_fragments_by_type → organizeFragments

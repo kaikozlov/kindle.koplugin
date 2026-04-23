@@ -29,6 +29,15 @@ real names at the ION text boundary. **Go uses real names directly** in all deco
 When reading Python source, translate `$N` → real name using the catalog. When the Python
 checks `if "$145" in value`, the Go equivalent is `if "content" in value`.
 
+### Wire-Format Identifiers — When to Use `$N` in Go
+
+Although Go uses real names internally, some output formats require the raw `$N` symbol ID
+to match Calibre's wire format. The canonical example is `navTypeToSymbolID` in
+`yj_to_epub_navigation.go`, which converts human-readable nav type names back to `$N` form
+for anchor names (e.g., `$798_0_Chapter` instead of `headings_0_Chapter`). When producing
+output that Calibre consumers parse, check whether the format expects `$N` identifiers and
+use the reverse mapping (`symbolNameToID` table or equivalent) rather than real names.
+
 ### Golden-File Parity Tests
 
 Golden tests verify Go's embedded catalog matches the Calibre Python reference:

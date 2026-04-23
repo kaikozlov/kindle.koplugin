@@ -1,6 +1,6 @@
 // Package kfx — yj_to_epub.go
 //
-// Port of yj_to_epub.py (355 lines, 17 functions) → yj_to_epub.go.
+// Port of yj_to_epub.py (355 lines, 15 functions) → yj_to_epub.go.
 //
 // This file contains the top-level conversion orchestration (renderBookState, ConvertFile)
 // and the book symbol format detection functions. The Python KFX_EPUB class uses multiple
