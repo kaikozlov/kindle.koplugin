@@ -4676,20 +4676,45 @@ func wrapChildInLink(parent *htmlElement, target *htmlElement, href string) {
 	}
 }
 
-// htmlElementText extracts the combined text content of an htmlElement.
-// Port of Python's combined_text (yj_to_epub_content.py L1534-1554).
+// htmlElementText extracts the combined text content of an htmlElement by recursively
+// descending into child elements, matching Python's combined_text (yj_to_epub_content.py L1534-1554).
 // When textCombineInUse is true and the element has text-combine-upright: all,
 // returns " " (single space) matching Python behavior for CJK vertical text.
+// Port of Python combined_text:
+//
+//	if elem.tag in {"img", SVG, MATH}: return " "
+//	if self.text_combine_in_use and self.get_style(elem).get("text-combine-upright") == "all": return " "
+//	texts = []
+//	if elem.text: texts.append(elem.text)
+//	for e in elem.iterfind("*"): texts.append(self.combined_text(e))
+//	if elem.tail: texts.append(elem.tail)
+//	return "".join(texts)
 func htmlElementText(elem *htmlElement, textCombineInUse bool) string {
-	// Port of Python combined_text check (L1539-1540):
-	// if self.text_combine_in_use and self.get_style(elem).get("text-combine-upright") == "all":
-	//     return " "
+	// Python L1536-1537: if elem.tag in {"img", SVG, MATH}: return " "
+	// In Go, SVG and MATH tags are lowercase without namespace prefix.
+	switch elem.Tag {
+	case "img", "svg", "math":
+		return " "
+	}
+
+	// Python L1539-1540: if self.text_combine_in_use and self.get_style(elem).get("text-combine-upright") == "all": return " "
 	if textCombineInUse {
 		style := parseDeclarationString(elem.Attrs["style"])
 		if style["text-combine-upright"] == "all" {
 			return " "
 		}
 	}
+
+	// Python L1542-1551:
+	//   texts = []
+	//   if elem.text: texts.append(elem.text)
+	//   for e in elem.iterfind("*"): texts.append(self.combined_text(e))  // recursive descent
+	//   if elem.tail: texts.append(elem.tail)
+	//   return "".join(texts)
+	//
+	// In Go's HTML model, elem.Text/tail and child elements are all in the Children slice:
+	//   - htmlText parts represent both elem.text and child element tails
+	//   - *htmlElement parts are child elements that need recursive descent
 	var buf strings.Builder
 	for _, child := range elem.Children {
 		switch typed := child.(type) {
@@ -4697,6 +4722,9 @@ func htmlElementText(elem *htmlElement, textCombineInUse bool) string {
 			buf.WriteString(typed.Text)
 		case *htmlText:
 			buf.WriteString(typed.Text)
+		case *htmlElement:
+			// Python L1547: texts.append(self.combined_text(e))
+			buf.WriteString(htmlElementText(typed, textCombineInUse))
 		}
 	}
 	return buf.String()
