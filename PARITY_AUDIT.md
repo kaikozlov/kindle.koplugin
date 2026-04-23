@@ -114,7 +114,7 @@ If you catch yourself writing any of these, STOP and re-read the Python:
 
 - `if elem.Tag != X { continue }` — Python almost certainly handles other tags
 - `if _, ok := asMap(child); !ok { continue }` — Python handles non-map children
-- `if _, ok := asSlice(node["$146"]); !ok { return nil }` — Python also checks `$145` and `$176`
+- `if _, ok := asSlice(node["content_list"]); !ok { return nil }` — Python also checks `content` and `story_name`
 - `// Skip for now` or `// Not needed` — it IS needed
 
 ## Quick Reference: Branch/Worktree Map

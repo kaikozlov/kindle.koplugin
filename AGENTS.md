@@ -9,6 +9,45 @@
 
 ---
 
+## YJ Symbol Catalog — Real Names
+
+Go uses **human-readable symbol names** throughout the conversion pipeline. The 842 YJ shared
+symbol names are embedded at compile time from `internal/kfx/catalog.ion` (ION text format,
+sourced from `REFERENCE/kfx_symbol_catalog.ion`).
+
+**Python uses `$N` placeholders internally** (`$145`, `$179`, etc.) and only translates to
+real names at the ION text boundary. **Go uses real names directly** in all decoded ION data.
+
+| SID | Go name | Python placeholder |
+|-----|---------|-------------------|
+| 145 | `content` | `$145` |
+| 146 | `content_list` | `$146` |
+| 179 | `link_to` | `$179` |
+| 601 | `render` | `$601` |
+| 260 | `section` | `$260` |
+
+When reading Python source, translate `$N` → real name using the catalog. When the Python
+checks `if "$145" in value`, the Go equivalent is `if "content" in value`.
+
+### Golden-File Parity Tests
+
+Golden tests verify Go's embedded catalog matches the Calibre Python reference:
+
+```sh
+# Regenerate goldens (run after updating catalog.ion or yj_versions.py)
+python3 scripts/export_yj_symbol_catalog.py > internal/kfx/testdata/yj_symbols_golden.json
+python3 scripts/export_yj_versions.py > internal/kfx/testdata/yj_versions_golden.json
+```
+
+If a Calibre bump changes `yj_symbol_catalog.py` without updating Go goldens, CI fails.
+
+### Reference Snapshot Translation
+
+`scripts/kfx_reference_snapshot.py` loads the Calibre Python code with the symbol catalog
+and translates `$N` output to real names so Go↔Python comparison tests work correctly.
+
+---
+
 ## Python Porting Rules — READ BEFORE EVERY PORTING TASK
 
 This project has a recurring failure mode: **partial Python ports that silently drop unhandled branches**. Every recent diff was caused by the same pattern — porting only the "happy path" from Python while skipping branches that seem irrelevant at the time.
@@ -18,10 +57,10 @@ This project has a recurring failure mode: **partial Python ports that silently 
 | Fix | What We Skipped |
 |-----|----------------|
 | Elvis `font-size: 1em` | Python uses one `inherited_properties` dict; Go split into `inherited` + `comparisonInherited` but didn't sync updates between them |
-| HG `$179` link wrapping | Python's `find_or_create_style_event_element` handles `img`, `svg`, `div`, `a`, `aside`, `figure`, headings, `li`, `ruby`, `rb`; Go reduced all of this to `if elem.Tag != "span" { continue }` |
-| Elvis table cell `<p>` wrappers | Python's COMBINE_NESTED_DIVS operates on any child type; Go only checked `$145` text children |
-| Elvis logo FIRST EDITION | Python's `process_content` handles IonString, IonSymbol, and IonStruct children in `$146`; Go only handled IonStruct (map) children |
-| Elvis inline image wrapping | Python checks `$601` render mode to skip container `<div>` for inline images; Go wrapped all images unconditionally |
+| HG `link_to` link wrapping | Python's `find_or_create_style_event_element` handles `img`, `svg`, `div`, `a`, `aside`, `figure`, headings, `li`, `ruby`, `rb`; Go reduced all of this to `if elem.Tag != "span" { continue }` |
+| Elvis table cell `<p>` wrappers | Python's COMBINE_NESTED_DIVS operates on any child type; Go only checked `content` text children |
+| Elvis logo FIRST EDITION | Python's `process_content` handles IonString, IonSymbol, and IonStruct children in `content_list`; Go only handled IonStruct (map) children |
+| Elvis inline image wrapping | Python checks `render` mode to skip container `<div>` for inline images; Go wrapped all images unconditionally |
 
 ### Mandatory Process: Branch Audit
 
@@ -49,8 +88,9 @@ If you catch yourself writing any of these, STOP and re-read the Python:
 
 - `if elem.Tag != X { continue }` — Python almost certainly handles other tags
 - `if _, ok := asMap(child); !ok { continue }` — Python handles non-map children (strings, symbols)
-- `if _, ok := asSlice(node["$146"]); !ok { return nil }` — Python's `add_content` also checks `$145` and `$176`
+- `if _, ok := asSlice(node["content_list"]); !ok { return nil }` — Python's `add_content` also checks `content` and `story_name`
 - `// Skip for now` or `// Not needed` — it IS needed, you just haven't hit the book that triggers it yet
+- Any code checking `strings.HasPrefix(name, "$")` to identify shared symbols — use `isSharedSymbolName(name)` instead
 
 ---
 
@@ -150,6 +190,8 @@ User opens book in KOReader
 │
 ├── internal/
 │   ├── kfx/                   ← Core KFX→EPUB conversion engine (1:1 Python↔Go file map)
+│   │   ├── catalog.ion        ← Embedded YJ symbol names (842 human-readable names)
+│   │   └── testdata/           ← Golden JSON files for parity tests
 │   ├── epub/                  ← EPUB packaging
 │   ├── jxr/                   ← JPEG XR decoding
 │   ├── jsonout/               ← JSON output types for CLI responses
@@ -177,7 +219,11 @@ User opens book in KOReader
 │   └── 2-kindle-virtual-library-startup.lua ← ffi/util.realpath virtual path support
 │
 ├── scripts/                   ← Dev/CI scripts
-│   └── test                   ← Busted runner under luajit
+│   ├── test                   ← Busted runner under luajit
+│   ├── export_yj_symbol_catalog.py ← Export golden from ION catalog
+│   ├── export_yj_versions.py  ← Export KNOWN_FEATURES golden from Python
+│   ├── kfx_reference_snapshot.py ← Run Calibre Python, translate $N → real names
+│   └── replace_symbol_names.py ← Mechanical $N → real name replacement tool
 │
 ├── REFERENCE/                 ← NOT tracked in git — local reference only
 │   ├── kobo.koplugin/         ← Sister plugin (Kobo) — architectural reference
@@ -348,6 +394,22 @@ busted --lua=lua
 
 **Always use `./scripts/test` for CI/validation** — KOReader runs LuaJIT on-device, so we test against it. The `scripts/test` wrapper sets `LUA_PATH`/`LUA_CPATH` so busted's modules are findable under luajit.
 
+### Golden-File Tests
+
+Go has golden-file parity tests that compare embedded symbol data against the Calibre Python reference:
+
+```sh
+# Regenerate symbol catalog golden (after updating catalog.ion)
+python3 scripts/export_yj_symbol_catalog.py > internal/kfx/testdata/yj_symbols_golden.json
+
+# Regenerate yj_versions golden (after Calibre bump changes KNOWN_FEATURES)
+python3 scripts/export_yj_versions.py > internal/kfx/testdata/yj_versions_golden.json
+```
+
+If these tests fail, it means the Go code has drifted from the Python source of truth. Either:
+1. Update the golden by re-running the export script (if the Python changed), or
+2. Fix the Go code (if the golden is correct but Go diverged)
+
 ### Test Structure
 
 Follows `REFERENCE/kobo.koplugin/spec/` patterns:
@@ -437,6 +499,8 @@ The `arm_build.sh` script:
 | `REFERENCE/kindle_drm_classes/` | Decompiled Kindle Java DRM classes |
 | `REFERENCE/KFX_DRM/` | Working DRM extraction code (hooks, extractors, scripts) |
 | `PARITY_PROMPT.md` | Detailed parity audit instructions and rules |
+| `internal/kfx/catalog.ion` | Embedded YJ symbol catalog (842 real names, source of truth for Go) |
+| `REFERENCE/kfx_symbol_catalog.ion` | Master ION catalog file (copy to `internal/kfx/catalog.ion` to update) |
 | `.factory/library/architecture.md` | Additional architecture notes |
 | `.factory/library/python-porting-guide.md` | Python→Go porting guidelines |
 

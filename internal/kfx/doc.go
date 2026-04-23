@@ -57,6 +57,24 @@
 //	sidecar.go  | Kindle .sdr sidecar directory metadata extraction
 //	trace.go    | Conversion trace/debug output writer
 //
+// # YJ Symbol Catalog
+//
+// Go uses real human-readable symbol names (language, font_family, content, etc.)
+// throughout the conversion pipeline. These come from catalog.ion, which is embedded
+// at compile time and parsed at init time. The catalog contains 842 YJ shared symbol
+// names extracted from Amazon's Kindle Previewer.
+//
+// Python uses $N placeholders ($10, $145, etc.) internally and only translates at the
+// ION text boundary. Go uses real names directly — so node["content"] in Go corresponds
+// to node["$145"] in Python.
+//
+// Key functions:
+//   - sharedTable()        → ion.SharedSymbolTable with 842 real names + $N fallbacks
+//   - isSharedSymbolName() → checks if a name is a YJ shared symbol
+//   - resolveSharedSymbol() → resolves a SID to its real name
+//
+// To update the catalog: copy REFERENCE/kfx_symbol_catalog.ion → internal/kfx/catalog.ion
+//
 // # Golden-File Parity Tests
 //
 // These tests compare Go's static data tables against the Calibre Python reference.
