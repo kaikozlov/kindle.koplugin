@@ -841,6 +841,16 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 		catalog.addStatic(className, declarationListFromStyleMap(classStyle))
 	}
 
+	// Ported from Python inventory_style validation (yj_to_epub_properties.py L1593-1602).
+	// Validate all CSS property values in static rules against KNOWN_STYLES for
+	// development-time regression detection. Python also validates font_faces but Go
+	// processes font faces as pre-formatted CSS strings in book.Stylesheet, not as
+	// property maps, so we only validate the staticRules here.
+	for _, declarations := range catalog.staticRules {
+		style := parseDeclarationString(declarations)
+		inventoryStyle(style)
+	}
+
 	for i := range book.RenderedSections {
 		fixupEmptyClassAttributes(book.RenderedSections[i].Root)
 	}
@@ -1247,6 +1257,163 @@ var nonHeritableDefaultProperties = map[string]string{
 	"transform-origin":    "50% 50% 0",
 	"vertical-align":      "baseline",
 	"z-index":             "auto",
+}
+
+// knownStyles maps CSS property names to the set of valid values for validation purposes.
+// Ported from Python KNOWN_STYLES (yj_to_epub_properties.py L724-865).
+// Used by inventoryStyle to detect unexpected CSS property values at development time.
+// The special value "*" matches any value.
+var knownStyles = map[string]map[string]bool{
+	"-amzn-float":                 setOf("bottom", "top", "top,bottom"),
+	"-amzn-max-crop-percentage":   setOf("0 0 0 0"),
+	"-amzn-page-align":            setOf("all", "bottom", "bottom,left", "bottom,left,right", "bottom,right", "left", "left,right", "right", "top", "top,bottom,left", "top,bottom,right", "top,left", "top,left,right", "top,right"),
+	"-amzn-page-footer":           setOf("disable"),
+	"-amzn-page-header":           setOf("disable"),
+	"-amzn-shape-outside":         setOf("*"),
+	"-webkit-border-horizontal-spacing": setOf("0"),
+	"-webkit-border-vertical-spacing":   setOf("0"),
+	"-webkit-box-decoration-break":      setOf("clone", "slice"),
+	"-webkit-hyphens":             setOf("auto", "manual", "none"),
+	"-webkit-line-break":          setOf("anywhere", "auto", "loose", "normal", "strict"),
+	"-webkit-ruby-position":       setOf("over", "under"),
+	"-webkit-text-combine":        setOf("horizontal", "none"),
+	"-webkit-text-emphasis-color": setOf("#0"),
+	"-webkit-text-emphasis-position": setOf("over right", "under left"),
+	"-webkit-text-emphasis-style": setOf(
+		"filled", "filled circle", "filled dot", "filled double-circle", "filled sesame", "filled triangle",
+		"open", "open circle", "open dot", "open double-circle", "open sesame", "open triangle"),
+	"-webkit-text-orientation":    setOf("mixed", "sideways", "upright"),
+	"-webkit-text-stroke-color":   setOf("#0"),
+	"-webkit-text-stroke-width":   setOf("0"),
+	"-webkit-transform":           setOf("*"),
+	"-webkit-transform-origin":    setOf("0 0"),
+	"-webkit-writing-mode":        setOf("horizontal-tb", "vertical-lr", "vertical-rl"),
+	"background-clip":             setOf("border-box", "content-box", "padding-box"),
+	"background-color":            setOf("#0"),
+	"background-image":            setOf("*"),
+	"background-origin":           setOf("border-box", "content-box"),
+	"background-position":         setOf("0 0"),
+	"background-size":             setOf("0 0", "auto 0", "0 auto", "contain", "cover"),
+	"background-repeat":           setOf("no-repeat", "repeat-x", "repeat-y"),
+	"border-bottom-color":         setOf("#0"),
+	"border-bottom-left-radius":   setOf("0"),
+	"border-bottom-right-radius":  setOf("0"),
+	"border-bottom-style":         setOf("dashed", "dotted", "double", "groove", "inset", "none", "outset", "ridge", "solid"),
+	"border-bottom-width":         setOf("0"),
+	"border-collapse":             setOf("collapse", "separate"),
+	"border-color":                setOf("#0"),
+	"border-left-color":           setOf("#0"),
+	"border-left-style":           setOf("dashed", "dotted", "double", "groove", "inset", "none", "outset", "ridge", "solid"),
+	"border-left-width":           setOf("0"),
+	"border-right-color":          setOf("#0"),
+	"border-right-style":          setOf("dashed", "dotted", "double", "groove", "inset", "none", "outset", "ridge", "solid"),
+	"border-right-width":          setOf("0"),
+	"border-spacing":              setOf("0 0"),
+	"border-style":                setOf("dashed", "dotted", "double", "groove", "inset", "none", "outset", "ridge", "solid"),
+	"border-top-color":            setOf("#0"),
+	"border-top-left-radius":      setOf("0"),
+	"border-top-right-radius":     setOf("0"),
+	"border-top-style":            setOf("dashed", "dotted", "double", "groove", "inset", "none", "outset", "ridge", "solid"),
+	"border-top-width":            setOf("0"),
+	"border-width":                setOf("0"),
+	"bottom":                      setOf("0"),
+	"box-decoration-break":        setOf("clone", "slice"),
+	"box-shadow":                  setOf("0 0 #0", "0 0 #0 inset", "0 0 0 #0", "0 0 0 #0 inset", "0 0 0 0 #0", "0 0 0 0 #0 inset"),
+	"box-sizing":                  setOf("border-box", "content-box"),
+	"clear":                       setOf("both", "left", "none", "right"),
+	"color":                       setOf("#0"),
+	"column-count":                setOf("0", "auto"),
+	"direction":                   setOf("ltr", "rtl"),
+	"display":                     setOf("block", "inline", "inline-block", "none", "oeb-page-foot", "oeb-page-head", "inline-table"),
+	"float":                       setOf("left", "right", "snap-block"),
+	"font-family":                 setOf("*"),
+	"font-size":                   setOf("0"),
+	"font-style":                  setOf("italic", "normal", "oblique"),
+	"font-variant":                setOf("normal", "small-caps"),
+	"font-weight":                 setOf("0", "bold", "normal"),
+	"height":                      setOf("0"),
+	"hyphens":                     setOf("auto", "manual", "none"),
+	"left":                        setOf("0"),
+	"letter-spacing":              setOf("0", "normal"),
+	"line-break":                  setOf("anywhere", "auto", "loose", "normal", "strict"),
+	"line-height":                 setOf("0", "normal"),
+	"list-style-image":            setOf("*"),
+	"list-style-position":         setOf("inside", "outside"),
+	"list-style-type":             setOf(
+		"circle", "cjk-ideographic", "decimal", "decimal-leading-zero", "disc", "georgian", "katakana", "katakana-iroha",
+		"lower-alpha", "lower-armenian", "lower-greek", "lower-roman", "none", "square", "upper-alpha", "upper-armenian",
+		"upper-greek", "upper-roman"),
+	"margin":                      setOf("0"),
+	"margin-bottom":               setOf("0"),
+	"margin-left":                 setOf("0", "auto"),
+	"margin-right":                setOf("0", "auto"),
+	"margin-top":                  setOf("0"),
+	"max-height":                  setOf("0"),
+	"max-width":                   setOf("0"),
+	"min-height":                  setOf("0"),
+	"min-width":                   setOf("0"),
+	"orphans":                     setOf("0"),
+	"outline-color":               setOf("#0"),
+	"outline-offset":              setOf("0"),
+	"outline-style":               setOf("dashed", "dotted", "double", "groove", "inset", "none", "outset", "ridge", "solid"),
+	"outline-width":               setOf("0"),
+	"overflow":                    setOf("hidden"),
+	"padding":                     setOf("0"),
+	"padding-bottom":              setOf("0"),
+	"padding-left":                setOf("0"),
+	"padding-right":               setOf("0"),
+	"padding-top":                 setOf("0"),
+	"page-break-after":            setOf("always", "auto", "avoid"),
+	"page-break-before":           setOf("always", "auto", "avoid"),
+	"page-break-inside":           setOf("auto", "avoid"),
+	"position":                    setOf("absolute", "fixed", "relative"),
+	"right":                       setOf("0"),
+	"ruby-align":                  setOf("center", "space-around", "space-between", "start"),
+	"ruby-position":               setOf("over", "under"),
+	"src":                         setOf("*"),
+	"text-align":                  setOf("center", "justify", "left", "right"),
+	"text-align-last":             setOf("auto", "center", "end", "justify", "left", "right", "start"),
+	"text-combine-upright":        setOf("all", "none"),
+	"text-decoration":             setOf(
+		"line-through", "none !important", "overline", "underline",
+		"overline dashed", "overline dotted", "overline double",
+		"underline dashed", "underline dotted", "underline double",
+		"line-through dashed", "line-through dotted", "line-through double",
+		"overline underline", "line-through overline", "line-through underline",
+		"line-through overline underline"),
+	"text-decoration-color":       setOf("#0"),
+	"text-emphasis-color":         setOf("#0"),
+	"text-emphasis-position":      setOf("over right", "under left"),
+	"text-emphasis-style":         setOf(
+		"filled", "filled circle", "filled dot", "filled double-circle", "filled sesame", "filled triangle",
+		"open", "open circle", "open dot", "open double-circle", "open sesame", "open triangle"),
+	"text-indent":                 setOf("0"),
+	"text-orientation":            setOf("mixed", "sideways", "upright"),
+	"text-shadow":                 setOf("*"),
+	"text-transform":              setOf("capitalize", "none", "lowercase", "uppercase"),
+	"top":                         setOf("0"),
+	"transform":                   setOf("*"),
+	"transform-origin":            setOf("0 0"),
+	"unicode-bidi":                setOf("bidi-override", "embed", "isolate", "isolate-override", "normal", "plaintext"),
+	"vertical-align":              setOf("0", "baseline", "bottom", "middle", "sub", "super", "text-bottom", "text-top", "top"),
+	"visibility":                  setOf("hidden", "visible"),
+	"white-space":                 setOf("normal", "nowrap"),
+	"widows":                      setOf("0"),
+	"width":                       setOf("0"),
+	"word-break":                  setOf("break-all", "normal"),
+	"word-spacing":                setOf("0", "normal"),
+	"writing-mode":                setOf("horizontal-tb", "vertical-lr", "vertical-rl"),
+	"z-index":                     setOf("0"),
+}
+
+// setOf is a helper to build map[string]bool sets from string arguments.
+// Used for initializing knownStyles and similar validation maps.
+func setOf(values ...string) map[string]bool {
+	m := make(map[string]bool, len(values))
+	for _, v := range values {
+		m[v] = true
+	}
+	return m
 }
 
 func isReverseHeritableProperty(name string) bool {
@@ -4206,4 +4373,69 @@ func normalizeLanguageTag(lang string) string {
 		suffix = strings.ToUpper(suffix[:1]) + suffix[1:]
 	}
 	return prefix + "-" + suffix
+}
+
+// cssColorNames is the set of CSS named color keywords, used by zeroQuantity.
+// Ported from Python COLOR_NAMES (yj_to_epub_properties.py L678).
+var cssColorNames = map[string]bool{
+	"black": true, "navy": true, "blue": true, "green": true, "teal": true,
+	"lime": true, "cyan": true, "maroon": true, "purple": true, "olive": true,
+	"gray": true, "red": true, "magenta": true, "yellow": true, "white": true,
+}
+
+// zeroQuantity normalizes CSS values for validation comparison.
+// Ported from Python zero_quantity (yj_to_epub_properties.py L2469-2479).
+// Returns "#0" for colors, "0" for numeric values, and the original value otherwise.
+func zeroQuantity(val string) string {
+	// Check for hex color
+	if isHexColor.MatchString(val) {
+		return "#0"
+	}
+	// Check for rgba() color
+	if isRGBAColor.MatchString(val) {
+		return "#0"
+	}
+	// Check for named color
+	if cssColorNames[val] {
+		return "#0"
+	}
+	// Check for numeric value with optional unit
+	if isNumericValue.MatchString(val) {
+		return "0"
+	}
+	return val
+}
+
+// Pre-compiled regexes for zeroQuantity (ported from Python zero_quantity regexes).
+var (
+	isHexColor   = regexp.MustCompile(`^#[0-9a-f]+$`)
+	isRGBAColor  = regexp.MustCompile(`^rgba\([0-9]+,[0-9]+,[0-9]+,[0-9.]+\)$`)
+	isNumericValue = regexp.MustCompile(`^[+-]?[0-9]+\.?[0-9]*(|em|ex|ch|rem|vw|vh|vmin|vmax|%|cm|mm|in|px|pt|pc)$`)
+)
+
+// inventoryStyle validates CSS property values against known valid values.
+// Ported from Python inventory_style (yj_to_epub_properties.py L1594-1602).
+// Logs unexpected style definitions for development-time regression detection.
+func inventoryStyle(style map[string]string) {
+	reported := map[[2]string]bool{}
+	for key, value := range style {
+		parts := strings.Split(value, " ")
+		normalizedParts := make([]string, len(parts))
+		for i, p := range parts {
+			normalizedParts[i] = zeroQuantity(p)
+		}
+		simpleValue := strings.Join(normalizedParts, " ")
+		validValues := knownStyles[key]
+		if validValues == nil {
+			continue
+		}
+		if validValues[simpleValue] || validValues["*"] {
+			continue
+		}
+		pair := [2]string{key, value}
+		if !reported[pair] {
+			log.Printf("Unexpected style definition: %s: %s", key, value)
+			reported[pair] = true
+		}
+	}
 }
