@@ -5013,7 +5013,101 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 	if hadConditionalContent {
 		working["__has_conditional_content__"] = true
 	}
+	// Port of Python $696 word_boundary_list validation
+	// (yj_to_epub_content.py L940-979). Pops word_boundary_list from the node
+	// and validates that boundary positions match the text content, logging warnings
+	// for mismatches. Purely diagnostic — does not modify output.
+	if wbl, ok := asSlice(working["word_boundary_list"]); ok {
+		r.validateWordBoundaries(wbl, working)
+	}
+	delete(working, "word_boundary_list")
 	return working, true
+}
+
+// validateWordBoundaries validates $696 word_boundary_list against the node's text content.
+// Port of Python yj_to_epub_content.py L940-979.
+// The word_boundary_list is a list of [sep_len, word_len, sep_len, word_len, ...] pairs
+// that should cover the entire text. Validation logs warnings for mismatches but does
+// not modify the output.
+func (r *storylineRenderer) validateWordBoundaries(wbl []interface{}, node map[string]interface{}) {
+	if len(wbl)%2 != 0 {
+		log.Printf("kfx: warning: Unexpected word_boundary_list length: %v", wbl)
+		return
+	}
+
+	// Try to get text from the node's content reference (text nodes).
+	// Python uses combined_text(content_elem) which requires a rendered element;
+	// we validate against the raw text content from the KFX data instead.
+	var txt string
+	if ref, ok := asMap(node["content"]); ok {
+		txt = r.resolveText(ref)
+	}
+	if txt == "" {
+		return
+	}
+
+	txtLen := unicodeLen(txt)
+	offset := 0
+
+	sepRE := regexp.MustCompile(`^[ \n\u25a0\u25cf]*$`)
+
+	for i := 0; i < len(wbl); i += 2 {
+		sepLen, ok := asInt(wbl[i])
+		if !ok {
+			log.Printf("kfx: warning: Unexpected word_boundary_list separator at index %d: %v", i, wbl)
+			break
+		}
+		if sepLen < 0 || txtLen-offset < sepLen {
+			log.Printf("kfx: warning: Unexpected word_boundary_list separator len %d: %v (%d), '%s' (%d)", sepLen, wbl, i, txt, offset)
+			break
+		}
+
+		sep := unicodeSlice(txt, offset, offset+sepLen)
+		if !sepRE.MatchString(sep) {
+			log.Printf("kfx: warning: Unexpected word_boundary_list separator '%s': %v (%d), '%s' (%d)", sep, wbl, i, txt, offset)
+		}
+
+		offset += sepLen
+
+		wordLen, ok := asInt(wbl[i+1])
+		if !ok {
+			log.Printf("kfx: warning: Unexpected word_boundary_list word len at index %d: %v", i+1, wbl)
+			break
+		}
+		if wordLen <= 0 || txtLen-offset < wordLen {
+			log.Printf("kfx: warning: Unexpected word_boundary_list word len %d: %v (%d), '%s' (%d)", wordLen, wbl, i, txt, offset)
+			break
+		}
+
+		offset += wordLen
+	}
+
+	if offset < txtLen {
+		sep := unicodeSlice(txt, offset)
+		if !sepRE.MatchString(sep) {
+			log.Printf("kfx: warning: Unexpected word_boundary_list final separator '%s': %v (%d), '%s' (%d)", sep, wbl, len(wbl)-2, txt, offset)
+		}
+	}
+}
+
+// unicodeSlice returns the substring s[start:stop] using rune offsets (not byte offsets).
+// Port of Python utilities.unicode_slice (utilities.py L724-726).
+func unicodeSlice(s string, start int, stop ...int) string {
+	runes := []rune(s)
+	if len(stop) > 0 {
+		end := stop[0]
+		if end > len(runes) {
+			end = len(runes)
+		}
+		if start >= end {
+			return ""
+		}
+		return string(runes[start:end])
+	}
+	if start >= len(runes) {
+		return ""
+	}
+	return string(runes[start:])
 }
 
 func (r *storylineRenderer) mergeConditionalProperties(node map[string]interface{}, conditional map[string]interface{}) map[string]interface{} {
