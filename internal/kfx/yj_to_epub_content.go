@@ -5021,6 +5021,31 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 		r.validateWordBoundaries(wbl, working)
 	}
 	delete(working, "word_boundary_list")
+
+	// Port of Python $684 pan_zoom_viewer validation (yj_to_epub_content.py L670-672).
+	// Pops pan_zoom_viewer from the node and validates that its value is either
+	// nil (absent) or "enabled". Logs an error for unexpected values.
+	// Purely diagnostic — does not modify output.
+	if panZoomViewer, exists := working["pan_zoom_viewer"]; exists {
+		if panZoomViewer != nil {
+			if vpStr, ok := asString(panZoomViewer); !ok || vpStr != "enabled" {
+				log.Printf("kfx: error: container has pan_zoom_viewer=%v", panZoomViewer)
+			}
+		}
+	}
+	delete(working, "pan_zoom_viewer")
+
+	// Port of Python $436 selection validation (yj_to_epub_content.py L1049-1052).
+	// Pops selection from the node and validates that its value is either
+	// "disabled" or "enabled". Logs an error for unexpected values.
+	// Purely diagnostic — does not modify output.
+	if selection, exists := working["selection"]; exists {
+		if selStr, ok := asString(selection); !ok || (selStr != "disabled" && selStr != "enabled") {
+			log.Printf("kfx: error: unexpected selection: %v", selection)
+		}
+	}
+	delete(working, "selection")
+
 	return working, true
 }
 
