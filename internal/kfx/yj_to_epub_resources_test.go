@@ -62,6 +62,7 @@ func newTestResourceProcessor() *resourceProcessor {
 	return &resourceProcessor{
 		resourceCache:    map[string]*resourceObj{},
 		usedRawMedia:     map[string]bool{},
+		saveResources:    true, // Python self.save_resources (yj_to_epub_resources.py L30)
 		fragments:        map[string]map[string]interface{}{},
 		rawMedia:         map[string][]byte{},
 		oebpsFiles:       map[string]*outputFile{},

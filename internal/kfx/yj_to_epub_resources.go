@@ -62,6 +62,7 @@ type manifestEntry struct {
 type resourceProcessor struct {
 	resourceCache    map[string]*resourceObj    // cache of processed resources by name
 	usedRawMedia     map[string]bool            // set of accessed raw media locations
+	saveResources    bool                       // Python self.save_resources (yj_to_epub_resources.py L30)
 	fragments        map[string]map[string]interface{} // synthetic fragment store: "$164:name" → fragment data
 	rawMedia         map[string][]byte          // raw media data ($417 equivalent)
 	oebpsFiles       map[string]*outputFile     // saved files (dedup target)
@@ -156,14 +157,56 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 		return nil
 	}
 
-	// 7. Determine extension from format
+	// 7. Determine extension from format (Python L84-87)
 	extension := extensionForFormatSymbol(resourceFormat)
 
-	// 8. Get MIME type from fragment
+	// 8. Get MIME type from fragment (Python L89)
 	mime, _ := asString(resource["mime"])
 
-	// 9. Determine filename from location
+	// 8a. Python L90-95: if mime in EXTS_OF_MIMETYPE: if ext is .bin/.pobject: override from mime
+	if mExt, ok := mimeTypeToExtension(mime); ok {
+		if extension == ".pobject" || extension == ".bin" {
+			// Python: if mime == "figure": extension = image_file_ext(raw_media)
+			if mime == "figure" {
+				if rawMedia != nil {
+					if detected := detectImageExtension(rawMedia); detected != ".bin" {
+						extension = detected
+					}
+				}
+			} else {
+				extension = mExt
+			}
+		}
+	} else if mime != "" {
+		// Python L94-95: elif mime is not None: log.error("unknown mime type")
+		log.Printf("kfx: error: Resource %s has unknown mime type: %s", resource_name, mime)
+	}
+
+	// 9. Determine filename from location (Python L96-100)
 	locationFn := location
+
+	// Python L96-97: location_fn = resource.pop("yj.conversion.source_resource_filename", location_fn)
+	if srcFn, ok := asString(resource["yj.conversion.source_resource_filename"]); ok && srcFn != "" {
+		locationFn = srcFn
+	}
+	// Python L97: location_fn = resource.pop("yj.authoring.source_file_name", location_fn)
+	if srcFn, ok := asString(resource["yj.authoring.source_file_name"]); ok && srcFn != "" {
+		locationFn = srcFn
+	}
+
+	// Python L99: if (extension == ".pobject" or extension == ".bin") and "." in location_fn:
+	//     extension = "." + location_fn.rpartition(".")[2]
+	if (extension == ".pobject" || extension == ".bin") && strings.Contains(locationFn, ".") {
+		if idx := strings.LastIndex(locationFn, "."); idx >= 0 {
+			candidate := locationFn[idx:]
+			if len(candidate) > 1 && isAlphaExt(candidate[1:]) {
+				extension = candidate
+			}
+		}
+	}
+
+	// Python L101: if not location_fn.endswith(extension):
+	//     location_fn = location_fn.partition(".")[0] + extension
 	if !strings.HasSuffix(locationFn, extension) {
 		dotIdx := strings.Index(locationFn, ".")
 		if dotIdx >= 0 {
@@ -207,12 +250,25 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 			// no $564 → page_num = 1
 		}
 
+		// Python L104-110: margin extraction (margin, margin_left, margin_right, margin_top, margin_bottom)
+		// margin = resource.pop("$46", 0)  — stored but used for PDF rendering
+		margin := asIntDefault(resource["yj.margin"], 0)
+		_ = asIntDefault(resource["margin_left"], margin)
+		_ = asIntDefault(resource["margin_right"], margin)
+		_ = asIntDefault(resource["margin_top"], margin)
+		_ = asIntDefault(resource["margin_bottom"], margin)
+		// Note: margins are consumed from the fragment but the actual PDF rendering
+		// uses pdftoppm which renders the full page. The crop happens separately.
+
 		if FIX_PDF {
 			pageNum := 1
 			if pn, ok := asInt(resource["page_index"]); ok {
 				pageNum = pn + 1
 			}
+			// Python L112-115: try/except with convert_pdf_page_to_image
 			imgData, imgFmt := convertPDFPageToImage(location, rawMedia, pageNum, nil, false)
+			// Python: on exception → log.error and keep old raw_media.
+			// Go: convertPDFPageToImage returns placeholder on failure, so we always update.
 			rawMedia = imgData
 			resourceFormat = imgFmt
 			mime = ""
@@ -238,7 +294,7 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 		}
 	}
 
-	// 15. VARIANT SELECTION — key logic (Python lines 170-179)
+	// 15. VARIANT SELECTION — key logic (Python L170-179)
 	if !ignore_variants {
 		variants, _ := asSlice(resource["yj.variants"])
 		for _, vr := range variants {
@@ -256,6 +312,12 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 				resourceHeight = variant.height
 			}
 		}
+	}
+
+	// 15a. Python L181: if "$564" in resource: filename += "#page=%d" % (resource.pop("$564") + 1)
+	// $564 is page_index; add page fragment if present
+	if pageNumVal, ok := asInt(resource["page_index"]); ok {
+		filename += fmt.Sprintf("#page=%d", pageNumVal+1)
 	}
 
 	// 16. Cache result
@@ -328,7 +390,8 @@ func (rp *resourceProcessor) processExternalResource(resource_name string, save,
 		return nil
 	}
 
-	if save && resourceObj.rawMedia != nil {
+	// Python L189: if save and self.save_resources and resource_obj.raw_media is not None:
+	if save && rp.saveResources && resourceObj.rawMedia != nil {
 		if resourceObj.manifestEntry == nil {
 			// Determine filename: root_filename(location) if is_referred, else resource_obj.filename
 			filename := resourceObj.filename
@@ -352,12 +415,21 @@ func (rp *resourceProcessor) processExternalResource(resource_name string, save,
 				if existing.binaryData != nil && bytes.Equal(existing.binaryData, resourceObj.rawMedia) {
 					// Same binary data — reuse manifest entry (dedup)
 					me, ok := rp.manifestFiles[filename]
-					if ok && me != nil {
+					if !ok || me == nil {
+						// Python: raise Exception("Referenced file not in manifest: %s" % filename)
+						log.Printf("kfx: error: Referenced file not in manifest: %s", filename)
+					} else {
 						resourceObj.manifestEntry = me
 						me.referenceCount++
 						break
 					}
 				}
+
+				// Python: if is_referred and cnt == 0: log.error("Multiple referred resources exist...")
+				if is_referred && cnt == 0 {
+					log.Printf("kfx: error: Multiple referred resources exist with location %s", resourceObj.location)
+				}
+
 				// Generate unique filename with _N suffix
 				fn, ext := splitExt(baseFilename)
 				filename = fmt.Sprintf("%s_%d%s", fn, cnt, ext)
@@ -394,6 +466,18 @@ func (rp *resourceProcessor) processExternalResource(resource_name string, save,
 	if process_referred || save_referred {
 		for _, rr := range resourceObj.referredResources {
 			rp.processExternalResource(rr, save_referred, false, false, false, true)
+		}
+	}
+
+	// Python L222-225: validation for is_plugin / is_referred formats.
+	// if is_referred: pass
+	// elif is_plugin and format not in ["$287", "$284"]: error
+	// elif (not is_plugin) and extension == ".pobject": error
+	if !is_referred {
+		if is_plugin && resourceObj.format != "pobject" && resourceObj.format != "png" {
+			log.Printf("kfx: error: Unexpected plugin resource format %s for %s", resourceObj.format, resource_name)
+		} else if !is_plugin && resourceObj.extension == ".pobject" {
+			log.Printf("kfx: error: Unexpected non-plugin resource format %s for %s", resourceObj.extension, resource_name)
 		}
 	}
 
@@ -723,7 +807,8 @@ func packageResourceStem(resource resourceFragment, symFmt symType, data []byte)
 	return dirPath + prefixed, ext
 }
 
-// sanitizeLocation mirrors Python re.sub(r"[^A-Za-z0-9_/.-]", "_", location).
+// sanitizeLocation mirrors Python re.sub(r"[^A-Za-z0-9_/.-]", "_", location)
+// and safe_location.replace("//", "/x/") from resource_location_filename.
 func sanitizeLocation(loc string) string {
 	var b strings.Builder
 	b.Grow(len(loc))
@@ -734,7 +819,8 @@ func sanitizeLocation(loc string) string {
 			b.WriteByte('_')
 		}
 	}
-	return b.String()
+	// Python: safe_location = safe_location.replace("//", "/x/")
+	return strings.ReplaceAll(b.String(), "//", "/x/")
 }
 
 func uniquePackageResourceFilename(resource resourceFragment, symFmt symType, used map[string]struct{}, data []byte) string {
