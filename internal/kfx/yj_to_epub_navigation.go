@@ -46,6 +46,28 @@ func navigationType(value map[string]interface{}) string {
 	return navType
 }
 
+// navTypeToSymbolID converts a human-readable nav type name back to its ION $N symbol ID.
+// Python uses raw $N symbols as nav types; Go uses real names from the ION catalog.
+// Anchor names must match Calibre's format exactly (e.g. "$798_0_Chapter", not "headings_0_Chapter").
+func navTypeToSymbolID(navType string) string {
+	switch navType {
+	case "toc":
+		return "$212"
+	case "scrubbers":
+		return "$213"
+	case "thumbnails":
+		return "$214"
+	case "landmarks":
+		return "$236"
+	case "page_list":
+		return "$237"
+	case "headings":
+		return "$798"
+	default:
+		return navType
+	}
+}
+
 // parseNavRepresentation extracts (label, icon, description) from a nav unit.
 // Port of Python get_representation (yj_to_epub_navigation.py L247-271).
 // Python extracts: $245→icon+label, $146→description (content list → text), $244→label.
@@ -379,7 +401,9 @@ func (p *navProcessor) processNavUnit(navType string, entry map[string]interface
 	target := parseNavTarget(entry)
 	hasTarget := target.PositionID != 0
 	if hasTarget {
-		anchorName := fmt.Sprintf("%s_%d_%s", navType, p.tocEntryCount, navUnitName)
+		// Python uses the raw $N symbol ID as the anchor prefix (e.g. "$798_0_Chapter").
+		// Go uses real names from the ION catalog, but anchor names must match Calibre exactly.
+		anchorName := fmt.Sprintf("%s_%d_%s", navTypeToSymbolID(navType), p.tocEntryCount, navUnitName)
 		p.tocEntryCount++
 		p.registerAnchor(anchorName, target, headingLevel)
 	}
