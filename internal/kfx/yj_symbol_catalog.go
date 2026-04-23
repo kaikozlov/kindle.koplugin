@@ -31,6 +31,9 @@ func sharedTable() ion.SharedSymbolTable {
 	return ion.NewSharedSymbolTable("YJ_symbols", 10, symbols)
 }
 
+// Golden test: internal/kfx/testdata/yj_symbols_golden.json
+// Regenerate with: python3 scripts/export_yj_symbol_catalog.py > internal/kfx/testdata/yj_symbols_golden.json
+
 func yjPrelude() ([]byte, error) {
 	yjPreludeOnce.Do(func() {
 		var buf bytes.Buffer

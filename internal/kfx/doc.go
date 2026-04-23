@@ -57,6 +57,17 @@
 //	sidecar.go  | Kindle .sdr sidecar directory metadata extraction
 //	trace.go    | Conversion trace/debug output writer
 //
+// # Golden-File Parity Tests
+//
+// These tests compare Go's static data tables against the Calibre Python reference.
+// If the Python source changes, the golden files must be regenerated:
+//
+//	python3 scripts/export_yj_symbol_catalog.py > internal/kfx/testdata/yj_symbols_golden.json
+//	python3 scripts/export_yj_versions.py > internal/kfx/testdata/yj_versions_golden.json
+//
+// A Calibre bump that edits yj_symbol_catalog.py or yj_versions.py without
+// updating Go goldens will fail CI.
+//
 // # Confirmatory Testing
 //
 // Use scripts/diff_kfx_parity.sh and scripts/kfx_reference_snapshot.py (fragment-summary) per fixture:

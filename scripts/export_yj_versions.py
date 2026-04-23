@@ -30,7 +30,8 @@ for cat, keys in sorted(KNOWN_FEATURES.items()):
     feature_keys[cat] = sorted(keys.keys())
 
 # Compute a stable hash of the feature keys for quick diff detection
-canonical = json.dumps(feature_keys, sort_keys=True)
+# Use compact separators to match Go's json.Marshal output (no spaces).
+canonical = json.dumps(feature_keys, sort_keys=True, separators=(',', ':'))
 feature_keys_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 data = {
