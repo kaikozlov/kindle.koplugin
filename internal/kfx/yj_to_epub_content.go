@@ -2068,12 +2068,38 @@ func escapeHTML(text string) string {
 // ---------------------------------------------------------------------------
 
 
-func locateOffsetFull(root *htmlElement, offset int, splitAfter bool, zeroLen bool, isDropcap bool) *htmlElement {
+// hasTextCombineUprightAll checks whether elem or any of its ancestors up to root
+// has a CSS "text-combine-upright: all" style declaration. This is the Go equivalent
+// of Python's parent walk in locate_offset_in (yj_to_epub_content.py L1588-1594):
+//
+//	e = elem
+//	while e is not None:
+//	    if self.get_style(e).get("text-combine-upright") == "all":
+//	        text_len = 1
+//	        break
+//	    e = e.getparent()
+func hasTextCombineUprightAll(root, elem *htmlElement) bool {
+	e := elem
+	for e != nil {
+		style := parseDeclarationString(e.Attrs["style"])
+		if style["text-combine-upright"] == "all" {
+			return true
+		}
+		if e == root {
+			break
+		}
+		parent, _ := findParent(root, e)
+		e = parent
+	}
+	return false
+}
+
+func locateOffsetFull(root *htmlElement, offset int, splitAfter bool, zeroLen bool, isDropcap bool, textCombineInUse bool) *htmlElement {
 	if root == nil || offset < 0 {
 		return nil
 	}
 
-	result, remaining := locateOffsetInFull(root, root, offset, splitAfter, zeroLen, isDropcap)
+	result, remaining := locateOffsetInFull(root, root, offset, splitAfter, zeroLen, isDropcap, textCombineInUse)
 	if remaining < 0 {
 		return result
 	}
@@ -2093,13 +2119,29 @@ func locateOffsetFull(root *htmlElement, offset int, splitAfter bool, zeroLen bo
 	return nil
 }
 
-func locateOffsetInFull(root *htmlElement, elem *htmlElement, offset int, splitAfter bool, zeroLen bool, isDropcap bool) (*htmlElement, int) {
+func locateOffsetInFull(root *htmlElement, elem *htmlElement, offset int, splitAfter bool, zeroLen bool, isDropcap bool, textCombineInUse bool) (*htmlElement, int) {
 	if offset < 0 {
 		return nil, offset
 	}
 
 	if elem.Tag == "span" {
 		textLen := elementTextLen(elem)
+
+		// Port of Python text_combine_in_use optimization (yj_to_epub_content.py L1587-1594):
+		// When text_len > 1 and text-combine-upright has been used in this book,
+		// walk up the ancestor chain checking for text-combine-upright: all.
+		// If found, treat this span's text as a single character (text_len = 1)
+		// for offset calculation. This affects CJK vertical-text (tate-chu-yoko) content.
+		// Python: if text_len > 1 and self.text_combine_in_use:
+		//             e = elem
+		//             while e is not None:
+		//                 if self.get_style(e).get("text-combine-upright") == "all":
+		//                     text_len = 1
+		//                     break
+		//                 e = e.getparent()
+		if textLen > 1 && textCombineInUse && hasTextCombineUprightAll(root, elem) {
+			textLen = 1
+		}
 
 		if textLen > 0 {
 			if !splitAfter {
@@ -2126,7 +2168,7 @@ func locateOffsetInFull(root *htmlElement, elem *htmlElement, offset int, splitA
 
 		for _, child := range elem.Children {
 			if ce, ok := child.(*htmlElement); ok {
-				result, remaining := locateOffsetInFull(root, ce, offset, splitAfter, zeroLen, isDropcap)
+				result, remaining := locateOffsetInFull(root, ce, offset, splitAfter, zeroLen, isDropcap, textCombineInUse)
 				if remaining < 0 {
 					return result, remaining
 				}
@@ -2156,7 +2198,7 @@ func locateOffsetInFull(root *htmlElement, elem *htmlElement, offset int, splitA
 	case "a", "aside", "div", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ruby", "rb":
 		for _, child := range elem.Children {
 			if ce, ok := child.(*htmlElement); ok {
-				result, remaining := locateOffsetInFull(root, ce, offset, splitAfter, zeroLen, isDropcap)
+				result, remaining := locateOffsetInFull(root, ce, offset, splitAfter, zeroLen, isDropcap, textCombineInUse)
 				if remaining < 0 {
 					return result, remaining
 				}
@@ -2308,12 +2350,12 @@ func findOrCreateStyleEventElement(contentElem *htmlElement, eventOffset int, ev
 		panic(fmt.Sprintf("style event has length: %d", eventLength))
 	}
 
-	first := locateOffsetFull(contentElem, eventOffset, false, false, isDropcap)
+	first := locateOffsetFull(contentElem, eventOffset, false, false, isDropcap, false)
 	if first == nil {
 		return nil
 	}
 
-	last := locateOffsetFull(contentElem, eventOffset+eventLength-1, true, false, isDropcap)
+	last := locateOffsetFull(contentElem, eventOffset+eventLength-1, true, false, isDropcap, false)
 
 	if last == nil || first == last {
 		return first
@@ -3217,6 +3259,18 @@ func quoteCSSString(value string) string {
 	return `"` + replacer.Replace(value) + `"`
 }
 
+// processContentProps is a wrapper around processContentProperties that also
+// tracks textCombineInUse. Port of Python's self.text_combine_in_use tracking
+// in convert_yj_properties (yj_to_epub_properties.py L1127).
+// The resolve parameter is kept for API compatibility but uses r.resolveResource internally.
+func (r *storylineRenderer) processContentProps(content map[string]interface{}, resolveResource ResourceResolver) map[string]string {
+	css, combineInUse := processContentPropertiesWithCombineFlag(content, r.resolveResource)
+	if combineInUse {
+		r.textCombineInUse = true
+	}
+	return css
+}
+
 // ---------------------------------------------------------------------------
 // Merged from storyline.go (origin: yj_to_epub_content.py)
 // ---------------------------------------------------------------------------
@@ -3247,6 +3301,10 @@ type storylineRenderer struct {
 	conditionEvaluator  conditionEvaluator
 	resolveResource     ResourceResolver
 	storylines          map[string]map[string]interface{}
+	// textCombineInUse is set to true when any text-combine-upright: all
+	// declaration is encountered during style processing (Python: self.text_combine_in_use).
+	// Port of Python yj_to_epub_properties.py L1127 and yj_to_epub_content.py L103.
+	textCombineInUse bool
 }
 
 type conditionEvaluator struct {
@@ -3297,13 +3355,13 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	// stripped it). Now we keep text-indent in the body style and let simplify_styles'
 	// reverse inheritance handle it — matching Python's approach.
 	// delete(bodyStyle, "text_indent")
-	bodyDeclarations := cssDeclarationsFromMap(processContentProperties(bodyStyle, r.resolveResource))
+	bodyDeclarations := cssDeclarationsFromMap(r.processContentProps(bodyStyle, r.resolveResource))
 	if bodyStyleID == "" && len(bodyDeclarations) == 0 {
 		bodyStyleValues = map[string]interface{}{
 			"font_family": defaultInheritedBodyStyle()["font_family"],
 		}
 		bodyStyle = effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
-		bodyDeclarations = cssDeclarationsFromMap(processContentProperties(bodyStyle, r.resolveResource))
+		bodyDeclarations = cssDeclarationsFromMap(r.processContentProps(bodyStyle, r.resolveResource))
 	}
 	if len(bodyDeclarations) > 0 {
 		baseName := "class"
@@ -4307,7 +4365,7 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 	if !colspanSet || !rowspanSet {
 		if styleID, _ := asString(node["style"]); styleID != "" {
 			effective := effectiveStyle(r.styleFragments[styleID], node)
-			cssMap := processContentProperties(effective, r.resolveResource)
+			cssMap := r.processContentProps(effective, r.resolveResource)
 			if !colspanSet {
 				if v := cssMap["-kfx-attrib-colspan"]; v != "" {
 					if n, err := strconv.Atoi(v); err == nil && n > 1 {
@@ -4417,7 +4475,7 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 			ranges = append(ranges, textRange{childIdx: i, startOffset: offset, length: 1})
 			offset++
 		case "span":
-			text := htmlElementText(elem)
+			text := htmlElementText(elem, r.textCombineInUse)
 			ranges = append(ranges, textRange{childIdx: i, startOffset: offset, length: len([]rune(text))})
 			offset += len([]rune(text))
 		}
@@ -4509,7 +4567,7 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 			if elem.Tag != "span" {
 				continue
 			}
-			text := htmlElementText(elem)
+			text := htmlElementText(elem, r.textCombineInUse)
 			runes := []rune(text)
 			trEnd := tr.startOffset + tr.length
 			annEnd := eventStart + eventLen
@@ -4535,7 +4593,7 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 
 			// Get the annotation style
 			style := effectiveStyle(r.styleFragments[styleID], annMap)
-			cssMap := processContentProperties(style, r.resolveResource)
+			cssMap := r.processContentProps(style, r.resolveResource)
 			declarations := cssDeclarationsFromMap(cssMap)
 			if len(declarations) == 0 {
 				continue
@@ -4619,7 +4677,19 @@ func wrapChildInLink(parent *htmlElement, target *htmlElement, href string) {
 }
 
 // htmlElementText extracts the combined text content of an htmlElement.
-func htmlElementText(elem *htmlElement) string {
+// Port of Python's combined_text (yj_to_epub_content.py L1534-1554).
+// When textCombineInUse is true and the element has text-combine-upright: all,
+// returns " " (single space) matching Python behavior for CJK vertical text.
+func htmlElementText(elem *htmlElement, textCombineInUse bool) string {
+	// Port of Python combined_text check (L1539-1540):
+	// if self.text_combine_in_use and self.get_style(elem).get("text-combine-upright") == "all":
+	//     return " "
+	if textCombineInUse {
+		style := parseDeclarationString(elem.Attrs["style"])
+		if style["text-combine-upright"] == "all" {
+			return " "
+		}
+	}
 	var buf strings.Builder
 	for _, child := range elem.Children {
 		switch typed := child.(type) {
@@ -4869,7 +4939,7 @@ func (r *storylineRenderer) applyFirstLineStyle(element *htmlElement, node map[s
 	}
 	delete(style, "style_name")
 	delete(style, "yj.first_line_style_type")
-	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	declarations := cssDeclarationsFromMap(r.processContentProps(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return
 	}
@@ -5423,7 +5493,7 @@ func (r *storylineRenderer) bodyClass(styleID string, values map[string]interfac
 	if len(style) == 0 {
 		return ""
 	}
-	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	declarations := cssDeclarationsFromMap(r.processContentProps(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -5444,7 +5514,7 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 	if len(style) == 0 {
 		return ""
 	}
-	cssMap := processContentProperties(style, r.resolveResource)
+	cssMap := r.processContentProps(style, r.resolveResource)
 
 	// Handle -kfx-box-align → margin auto conversion, matching Python
 	// yj_to_epub_content.py:1390-1404. Container elements get margin-auto
@@ -5481,7 +5551,7 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
 	styleID, _ := asString(node["style"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
-	cssMap := processContentProperties(style, r.resolveResource)
+	cssMap := r.processContentProps(style, r.resolveResource)
 
 	// Handle -kfx-box-align → margin auto conversion for tables.
 	// Ported from Python yj_to_epub_content.py (~L1390-1404):
@@ -5513,7 +5583,7 @@ func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
 
 func (r *storylineRenderer) tableColumnClass(node map[string]interface{}) string {
 	style := effectiveStyle(nil, node)
-	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	declarations := cssDeclarationsFromMap(r.processContentProps(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -5531,7 +5601,7 @@ func (r *storylineRenderer) fittedContainerClass(node map[string]interface{}) st
 	if len(style) == 0 {
 		return ""
 	}
-	cssMap := processContentProperties(style, r.resolveResource)
+	cssMap := r.processContentProps(style, r.resolveResource)
 
 	// Handle -kfx-box-align → text-align conversion for fitted containers.
 	// Python yj_to_epub_content.py:1375-1381:
@@ -5565,7 +5635,7 @@ func (r *storylineRenderer) structuredContainerClass(node map[string]interface{}
 	styleID, _ := asString(node["style"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
-	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	declarations := cssDeclarationsFromMap(r.processContentProps(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -5601,9 +5671,9 @@ func (r *storylineRenderer) tableCellCombineNestedDivs(node map[string]interface
 		return true // no style conflict
 	}
 	ownStyle := effectiveStyle(r.styleFragments[styleID], node)
-	parentCSS := processContentProperties(ownStyle, r.resolveResource)
+	parentCSS := r.processContentProps(ownStyle, r.resolveResource)
 	childStyle := effectiveStyle(r.styleFragments[childStyleID], child)
-	childCSS := processContentProperties(childStyle, r.resolveResource)
+	childCSS := r.processContentProps(childStyle, r.resolveResource)
 	for prop := range parentCSS {
 		if prop == "-kfx-style-name" {
 			continue
@@ -5632,9 +5702,9 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 			childStyleID, _ := asString(child["style"])
 			if childStyleID != "" {
 				ownStyle := effectiveStyle(r.styleFragments[styleID], node)
-				parentCSS := processContentProperties(ownStyle, r.resolveResource)
+				parentCSS := r.processContentProps(ownStyle, r.resolveResource)
 				childStyle := effectiveStyle(r.styleFragments[childStyleID], child)
-				childCSS := processContentProperties(childStyle, r.resolveResource)
+				childCSS := r.processContentProps(childStyle, r.resolveResource)
 				// Python excludes -kfx-style-name from overlap check
 				hasOverlap := false
 				for prop := range parentCSS {
@@ -5653,7 +5723,7 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 		}
 	}
 
-	cssMap := processContentProperties(style, r.resolveResource)
+	cssMap := r.processContentProps(style, r.resolveResource)
 
 	// Handle -kfx-box-align → text-align conversion for table cells.
 	// In Python's process_content (yj_to_epub_content.py), -kfx-box-align is popped from
@@ -5688,7 +5758,7 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 
 func (r *storylineRenderer) inlineContainerClass(styleID string, node map[string]interface{}) string {
 	style := effectiveStyle(r.styleFragments[styleID], node)
-	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	declarations := cssDeclarationsFromMap(r.processContentProps(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -5736,7 +5806,7 @@ func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, s
 	if len(style) == 0 {
 		return "", ""
 	}
-	cssMap := processContentProperties(style, r.resolveResource)
+	cssMap := r.processContentProps(style, r.resolveResource)
 	baseName := "class"
 	if styleID != "" {
 		baseName = r.styleBaseName(styleID)
@@ -5810,7 +5880,7 @@ func (r *storylineRenderer) headingClass(styleID string) string {
 		return ""
 	}
 	className := r.headingClassName(styleID, style)
-	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	declarations := cssDeclarationsFromMap(r.processContentProps(style, r.resolveResource))
 	if mapFontStyle(style["font_style"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
@@ -5850,7 +5920,7 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 			}
 		}
 	}
-	cssMap := processContentProperties(style, r.resolveResource)
+	cssMap := r.processContentProps(style, r.resolveResource)
 	// Resolve link color: if no explicit color but -kfx-link-color == -kfx-visited-color,
 	// set color to that value. This preserves what colorDeclarations(style, linkStyle) did
 	// in the old paragraphStyleDeclarations, and matches simplifyStylesElementFull's <a> tag logic.
@@ -5890,7 +5960,7 @@ func (r *storylineRenderer) linkClass(styleID string, suppressColor bool) string
 	if len(style) == 0 {
 		return ""
 	}
-	cssMap := processContentProperties(style, r.resolveResource)
+	cssMap := r.processContentProps(style, r.resolveResource)
 	// Always resolve link color: if no explicit color but -kfx-link-color == -kfx-visited-color,
 	// set color to that value. This matches simplifyStylesElementFull's <a> tag logic.
 	// Previously we suppressed color when suppressColor was true (for paragraphs that
@@ -5923,7 +5993,7 @@ func (r *storylineRenderer) spanClass(styleID string) string {
 	if len(style) == 0 {
 		return ""
 	}
-	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	declarations := cssDeclarationsFromMap(r.processContentProps(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -5945,7 +6015,7 @@ func (r *storylineRenderer) annotationSpanClass(styleID string, annotationMap ma
 	if len(style) == 0 {
 		return ""
 	}
-	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	declarations := cssDeclarationsFromMap(r.processContentProps(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -6329,7 +6399,7 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 				// Port of Python yj_to_epub_content.py:1142 — add_kfx_style merges style fragment
 				// into annotation map, then process_content_properties uses the merged result.
 				style := effectiveStyle(r.styleFragments[styleID], annotationMap)
-				linkCSS := processContentProperties(style, r.resolveResource)
+				linkCSS := r.processContentProps(style, r.resolveResource)
 				if _, hasColor := linkCSS["color"]; !hasColor {
 					linkColor, hasLink := linkCSS["-kfx-link-color"]
 					visitedColor, hasVisited := linkCSS["-kfx-visited-color"]

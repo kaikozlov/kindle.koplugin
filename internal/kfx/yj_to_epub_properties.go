@@ -3443,8 +3443,9 @@ var collisions = map[string]string{
 // CSS property → value map, exactly as Python's convert_yj_properties.
 // -----------------------------------------------------------------------
 
-func convertYJProperties(yjProperties map[string]interface{}, resolveResource ResourceResolver) map[string]string {
+func convertYJProperties(yjProperties map[string]interface{}, resolveResource ResourceResolver) (map[string]string, bool) {
 	declarations := map[string]string{}
+	textCombineInUse := false
 
 	for yjPropName, yjValue := range yjProperties {
 		value := propertyValue(yjPropName, yjValue, resolveResource)
@@ -3539,7 +3540,9 @@ func convertYJProperties(yjProperties map[string]interface{}, resolveResource Re
 	// Ported from Python convert_yj_properties (yj_to_epub_properties.py L276-278):
 	// When text-combine-upright is "all", remove writing-mode: horizontal-tb if present.
 	// Python: if declarations.get("text-combine-upright") == "all": ...
+	// Also set textCombineInUse flag (Python: self.text_combine_in_use = True, L1127).
 	if declarations["text-combine-upright"] == "all" {
+		textCombineInUse = true
 		if declarations["writing-mode"] == "horizontal-tb" {
 			delete(declarations, "writing-mode")
 		}
@@ -3577,7 +3580,7 @@ func convertYJProperties(yjProperties map[string]interface{}, resolveResource Re
 		}
 	}
 
-	return declarations
+	return declarations, textCombineInUse
 }
 
 // -----------------------------------------------------------------------
@@ -3588,6 +3591,20 @@ func convertYJProperties(yjProperties map[string]interface{}, resolveResource Re
 // -----------------------------------------------------------------------
 
 func processContentProperties(content map[string]interface{}, resolveResource ResourceResolver) map[string]string {
+	contentProperties := map[string]interface{}{}
+	for k := range content {
+		if yjPropertyNames[k] {
+			contentProperties[k] = content[k]
+		}
+	}
+	css, _ := convertYJProperties(contentProperties, resolveResource)
+	return css
+}
+
+// processContentPropertiesWithCombineFlag is like processContentProperties but also
+// returns whether text-combine-upright: all was encountered, matching Python's
+// self.text_combine_in_use flag (yj_to_epub_properties.py L1127).
+func processContentPropertiesWithCombineFlag(content map[string]interface{}, resolveResource ResourceResolver) (map[string]string, bool) {
 	contentProperties := map[string]interface{}{}
 	for k := range content {
 		if yjPropertyNames[k] {

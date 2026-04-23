@@ -49,7 +49,7 @@ func TestConvertYJPropertiesFontFamily(t *testing.T) {
 		"margin_top":  map[string]interface{}{"value": float64(1.04167), "unit": "lh"},
 		"box_align": "center", // text-align: center
 	}
-	result := convertYJProperties(props, nil)
+	result, _ := convertYJProperties(props, nil)
 
 	if result["font-family"] == "" {
 		t.Error("expected font-family to be set")
@@ -72,7 +72,7 @@ func TestConvertYJPropertiesBorderTop(t *testing.T) {
 		"border_style_top": "solid",
 		"border_weight_top": map[string]interface{}{"value": float64(0.45), "unit": "pt"},
 	}
-	result := convertYJProperties(props, nil)
+	result, _ := convertYJProperties(props, nil)
 
 	if result["border-top-color"] != "#636363" {
 		t.Errorf("expected border-top-color=#636363, got %q", result["border-top-color"])
@@ -119,7 +119,7 @@ func TestConvertYJPropertiesNoFontFamily(t *testing.T) {
 		"border_style_top":  "solid",
 		"border_weight_top":  map[string]interface{}{"value": float64(0.45), "unit": "pt"},
 	}
-	result := convertYJProperties(props, nil)
+	result, _ := convertYJProperties(props, nil)
 
 	if _, ok := result["font-family"]; ok {
 		t.Error("s36C should not have font-family")
