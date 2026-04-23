@@ -3759,14 +3759,21 @@ func (r *storylineRenderer) processMathMLAnnotation(node map[string]interface{},
 			svg.Children = append(svg.Children, desc)
 		}
 
-		// Python: if ("$56" in content and self.property_value("$56", copy.deepcopy(content["$56"])) == self.get_style(svg).get("width")):
-		//           content.pop("$56")
-		// $56 → "width". Remove width property if it matches the SVG's width style.
-		// This is an edge case for when the annotation width matches the SVG width.
-		// For now, we skip this width property check since Go doesn't have property_value/get_style
-		// at this point in the pipeline (styles are already rendered as CSS classes).
-		// TODO: Consider implementing width property removal if needed by future books.
-		_ = node
+		// Port of Python yj_to_epub_content.py L899-901:
+		//   if ("$56" in content and
+		//           self.property_value("$56", copy.deepcopy(content["$56"])) == self.get_style(svg).get("width")):
+		//       content.pop("$56")
+		// $56 → "width". Remove width property from the node if its resolved CSS value
+		// matches the SVG element's current width style attribute.
+		if widthVal, ok := node["width"]; ok {
+			resolvedWidth := propertyValue("width", widthVal, r.resolveResource)
+			if svgStyle, hasStyle := svg.Attrs["style"]; hasStyle && resolvedWidth != "" {
+				styleMap := parseDeclarationString(svgStyle)
+				if svgWidth := styleMap["width"]; svgWidth == resolvedWidth {
+					delete(node, "width")
+				}
+			}
+		}
 	} else {
 		// Python: log.error("Missing svg for mathml annotation in: %s" % etree.tostring(content_elem))
 		fmt.Fprintf(os.Stderr, "kfx: error: missing svg for mathml annotation\n")
