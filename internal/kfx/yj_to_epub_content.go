@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/kaikozlov/kindle-koplugin/internal/epub"
 )
 
 
@@ -6355,3 +6357,106 @@ func (r *storylineRenderer) consumeVisibleElement() bool {
 	return isFirst
 }
 
+
+// ---------------------------------------------------------------------------
+// Merged from render.go (origin: yj_to_epub_content.py / epub_output.py)
+// ---------------------------------------------------------------------------
+
+func renderedSectionBodyHTML(section renderedSection) string {
+	if section.Root == nil {
+		return ""
+	}
+	return renderHTMLParts(section.Root.Children, true)
+}
+
+func replaceSectionDOMClassTokens(section *renderedSection, replacer *strings.Replacer) {
+	if section == nil || section.Root == nil || replacer == nil {
+		return
+	}
+	replaceHTMLClassTokens(section.Root, replacer)
+}
+
+func replaceHTMLClassTokens(element *htmlElement, replacer *strings.Replacer) {
+	if element == nil || replacer == nil {
+		return
+	}
+	if element.Attrs != nil {
+		if className := element.Attrs["class"]; className != "" {
+			element.Attrs["class"] = replacer.Replace(className)
+		}
+	}
+	for _, child := range element.Children {
+		if childElement, ok := child.(*htmlElement); ok {
+			replaceHTMLClassTokens(childElement, replacer)
+		}
+	}
+}
+
+func materializeRenderedSections(rendered []renderedSection) []epub.Section {
+	sections := make([]epub.Section, 0, len(rendered))
+	for _, section := range rendered {
+		sections = append(sections, epub.Section{
+			Filename:    section.Filename,
+			Title:       section.Title,
+			PageTitle:   section.PageTitle,
+			Language:    section.Language,
+			BodyLanguage: section.BodyLanguage,
+			BodyClass:   section.BodyClass,
+			Paragraphs:  append([]string(nil), section.Paragraphs...),
+			BodyHTML:    renderedSectionBodyHTML(section),
+			Properties:  section.Properties,
+		})
+	}
+	return sections
+}
+
+func cleanupRenderedSections(sections []renderedSection) {
+	for index := range sections {
+		if sections[index].Root == nil {
+			continue
+		}
+		sections[index].Root.Children = cleanupHTMLParts(sections[index].Root.Children)
+	}
+}
+
+func cleanupHTMLParts(parts []htmlPart) []htmlPart {
+	cleaned := make([]htmlPart, 0, len(parts))
+	for _, part := range parts {
+		switch typed := part.(type) {
+		case *htmlElement:
+			typed.Children = cleanupHTMLParts(typed.Children)
+			if isEmptyWrapper(typed) {
+				continue
+			}
+			if shouldCollapseNestedDiv(typed) {
+				cleaned = append(cleaned, typed.Children[0])
+				continue
+			}
+			cleaned = append(cleaned, typed)
+		default:
+			cleaned = append(cleaned, part)
+		}
+	}
+	return cleaned
+}
+
+func isEmptyWrapper(element *htmlElement) bool {
+	if element == nil {
+		return true
+	}
+	if element.Tag != "span" || len(element.Attrs) > 0 {
+		return false
+	}
+	return len(element.Children) == 0
+}
+
+func shouldCollapseNestedDiv(element *htmlElement) bool {
+	if element == nil || element.Tag != "div" || len(element.Attrs) > 0 || len(element.Children) != 1 {
+		return false
+	}
+	child, ok := element.Children[0].(*htmlElement)
+	if !ok || child == nil || child.Tag != "div" || len(child.Attrs) > 0 {
+		return false
+	}
+	return true
+}

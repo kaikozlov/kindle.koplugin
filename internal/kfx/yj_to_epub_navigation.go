@@ -658,3 +658,209 @@ type sortablePositionStrings []string
 func (s sortablePositionStrings) Len() int           { return len(s) }
 func (s sortablePositionStrings) Less(i, j int) bool { return s[i] < s[j] }
 func (s sortablePositionStrings) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+// ---------------------------------------------------------------------------
+// Merged from render.go (origin: yj_to_epub_navigation.py anchor handling)
+// ---------------------------------------------------------------------------
+
+func registerNamedPositionAnchor(positionAnchors map[int]map[int][]string, name string, target navTarget) {
+	if name == "" || target.PositionID == 0 {
+		return
+	}
+	offsets := positionAnchors[target.PositionID]
+	if offsets == nil {
+		offsets = map[int][]string{}
+		positionAnchors[target.PositionID] = offsets
+	}
+	names := offsets[target.Offset]
+	for _, existing := range names {
+		if existing == name {
+			return
+		}
+	}
+	offsets[target.Offset] = append([]string{name}, names...)
+}
+
+func firstAnchorNameForPosition(positionAnchors map[int]map[int][]string, positionID int, offset int) string {
+	offsets := positionAnchors[positionID]
+	if offsets == nil {
+		return ""
+	}
+	names := offsets[offset]
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0]
+}
+
+func resolveRenderedAnchorURIs(sections []renderedSection, renderer *storylineRenderer) map[string]string {
+	resolved := map[string]string{}
+	if renderer != nil {
+		for name, uri := range renderer.directAnchorURI {
+			if uri != "" {
+				resolved[name] = uri
+			}
+		}
+		for name, uri := range renderer.fallbackAnchorURI {
+			if uri != "" && resolved[name] == "" {
+				resolved[name] = uri
+			}
+		}
+	}
+	for _, section := range sections {
+		if section.Root == nil {
+			continue
+		}
+		visibleSeen := false
+		resolveAnchorURIsInParts(section.Root.Children, section.Filename, renderer, resolved, &visibleSeen)
+	}
+	return resolved
+}
+
+func resolveAnchorURIsInParts(parts []htmlPart, filename string, renderer *storylineRenderer, resolved map[string]string, visibleSeen *bool) {
+	for _, part := range parts {
+		switch typed := part.(type) {
+		case htmlText:
+			if strings.TrimSpace(typed.Text) != "" {
+				*visibleSeen = true
+			}
+		case *htmlText:
+			if typed != nil && strings.TrimSpace(typed.Text) != "" {
+				*visibleSeen = true
+			}
+		case *htmlElement:
+			if typed == nil {
+				continue
+			}
+			resolveAnchorURIsForElement(typed, filename, renderer, resolved, *visibleSeen)
+			if elementCountsAsVisible(typed) {
+				*visibleSeen = true
+			}
+			resolveAnchorURIsInParts(typed.Children, filename, renderer, resolved, visibleSeen)
+		}
+	}
+}
+
+func resolveAnchorURIsForElement(element *htmlElement, filename string, renderer *storylineRenderer, resolved map[string]string, visibleBefore bool) {
+	if element == nil || renderer == nil {
+		return
+	}
+	anchorID := element.Attrs["id"]
+	if anchorID == "" {
+		return
+	}
+	names := renderer.anchorNamesByID[anchorID]
+	if len(names) == 0 {
+		return
+	}
+	defaultURI := filename + "#" + anchorID
+	allMovable := true
+	anyMovable := false
+	for _, name := range names {
+		movable := !strings.HasPrefix(name, "$798_")
+		if movable {
+			anyMovable = true
+		} else {
+			allMovable = false
+		}
+		resolved[name] = defaultURI
+	}
+	if !visibleBefore && anyMovable {
+		for _, name := range names {
+			if !strings.HasPrefix(name, "$798_") {
+				resolved[name] = filename
+			}
+		}
+		if allMovable {
+			delete(element.Attrs, "id")
+		}
+	}
+}
+
+func elementCountsAsVisible(element *htmlElement) bool {
+	if element == nil {
+		return false
+	}
+	switch element.Tag {
+	case "img", "svg", "audio", "video", "object", "iframe", "br":
+		return true
+	}
+	return false
+}
+
+func replaceRenderedAnchorPlaceholders(sections []renderedSection, resolved map[string]string) {
+	for index := range sections {
+		if sections[index].Root == nil {
+			continue
+		}
+		replaceAnchorPlaceholdersInParts(sections[index].Root.Children, resolved)
+	}
+}
+
+func attachSectionAliasAnchors(sections []renderedSection, renderer *storylineRenderer) {
+	if renderer == nil {
+		return
+	}
+	for index := range sections {
+		root := sections[index].Root
+		if root == nil {
+			continue
+		}
+		sectionID := strings.TrimSuffix(sections[index].Filename, ".xhtml")
+		for positionID, mappedSectionID := range renderer.positionToSection {
+			if mappedSectionID != sectionID {
+				continue
+			}
+			offsets := renderer.positionAnchors[positionID]
+			if len(offsets) == 0 {
+				continue
+			}
+			if anchorID := renderer.anchorIDForPosition(positionID, 0); anchorID != "" && len(renderer.anchorNamesByID[anchorID]) == 0 {
+				if root.Attrs == nil {
+					root.Attrs = map[string]string{}
+				}
+				if root.Attrs["id"] == "" {
+					root.Attrs["id"] = anchorID
+				}
+				renderer.emittedAnchorIDs[anchorID] = true
+				renderer.registerAnchorElementNames(positionID, 0, anchorID)
+			}
+			for offset := range offsets {
+				if offset <= 0 {
+					continue
+				}
+				anchorID := renderer.anchorIDForPosition(positionID, offset)
+				if anchorID == "" || len(renderer.anchorNamesByID[anchorID]) > 0 {
+					continue
+				}
+				target := locateOffset(root, offset)
+				if target == nil {
+					continue
+				}
+				if target.Attrs == nil {
+					target.Attrs = map[string]string{}
+				}
+				if target.Attrs["id"] == "" {
+					target.Attrs["id"] = anchorID
+				}
+				renderer.emittedAnchorIDs[anchorID] = true
+				renderer.registerAnchorElementNames(positionID, offset, anchorID)
+			}
+		}
+	}
+}
+
+func replaceAnchorPlaceholdersInParts(parts []htmlPart, resolved map[string]string) {
+	for _, part := range parts {
+		element, ok := part.(*htmlElement)
+		if !ok || element == nil {
+			continue
+		}
+		if href := element.Attrs["href"]; strings.HasPrefix(href, "anchor:") {
+			if resolvedHref := resolved[strings.TrimPrefix(href, "anchor:")]; resolvedHref != "" {
+				element.Attrs["href"] = resolvedHref
+			}
+		}
+		replaceAnchorPlaceholdersInParts(element.Children, resolved)
+	}
+}
