@@ -707,8 +707,33 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 
 	var stylesheet strings.Builder
 	fontFaceLines := make([]string, 0, len(fontLocations))
+	// Python process_fonts: used_fonts tracks location→filename to dedup fonts at same location
+	usedFontLocations := map[string]string{}
 	for _, location := range fontLocations {
 		font := fonts[location]
+
+		// Python L297: if location in used_fonts: reuse existing filename as src
+		if existingFilename, ok := usedFontLocations[location]; ok {
+			// Reuse the same src URL for this duplicate location
+			family := font.Family
+			if currentFontFixer != nil {
+				family = currentFontFixer.fixFontName(family, true, false)
+			}
+			declarations := []string{"font-family: " + quoteFontName(family)}
+			if font.Style != "" && font.Style != "normal" {
+				declarations = append(declarations, "font-style: "+font.Style)
+			}
+			if font.Weight != "" && font.Weight != "normal" {
+				declarations = append(declarations, "font-weight: "+font.Weight)
+			}
+			if font.Stretch != "" && font.Stretch != "normal" {
+				declarations = append(declarations, "font-stretch: "+font.Stretch)
+			}
+			declarations = append(declarations, "src: url("+existingFilename+")")
+			fontFaceLines = append(fontFaceLines, "@font-face {"+strings.Join(canonicalDeclarations(declarations), "; ")+"}")
+			continue
+		}
+
 		data := raw[location]
 		if detectFontExtension(data) == ".bin" {
 			data = nil
@@ -726,6 +751,7 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 			MediaType: fontMediaType(filename),
 			Data:      data,
 		})
+		usedFontLocations[location] = filename // Python process_fonts: used_fonts[location] = filename
 
 		family := font.Family
 		if currentFontFixer != nil {
@@ -1331,6 +1357,7 @@ func combineImageTiles(
 				if tWidth != tileWidth+leftPadding+rightPadding || tHeight != tileHeight+topPadding+bottomPadding {
 					log.Printf("kfx: error: Resource %s tile %d, %d size (%d, %d) does not have padding %d of expected size (%d, %d)",
 						resourceName, x, y, tWidth, tHeight, tilePadding, tileWidth, tileHeight)
+					log.Printf("kfx: info: tile padding ltrb: %d, %d, %d, %d", leftPadding, topPadding, rightPadding, bottomPadding)
 				}
 
 				// Crop: remove padding
