@@ -5,8 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 )
+
 
 // Port of LIST_STYLE_TYPES / list marker → HTML list tag (yj_to_epub_content.py top; used from storyline emit).
 var listTagByMarker = map[string]string{
@@ -1424,3 +1430,4928 @@ func fixVerticalAlignProperties(contentElem *htmlElement, contentStyle map[strin
 
 	return contentStyle
 }
+
+// ---------------------------------------------------------------------------
+// Merged from fragments.go (origin: yj_to_epub_content.py)
+// ---------------------------------------------------------------------------
+
+
+// Port of Python process_reading_order reading order iteration (yj_to_epub_content.py L105+).
+// Python iterates all reading orders; Go merges all section lists.
+func readSectionOrder(value map[string]interface{}) []string {
+	entries, ok := asSlice(value["$169"])
+	if !ok {
+		return nil
+	}
+	seen := map[string]bool{}
+	var result []string
+	for _, entry := range entries {
+		entryMap, ok := asMap(entry)
+		if !ok {
+			continue
+		}
+		sections, ok := asSlice(entryMap["$170"])
+		if !ok {
+			continue
+		}
+		for _, item := range sections {
+			if text, ok := asString(item); ok && text != "" && !seen[text] {
+				seen[text] = true
+				result = append(result, text)
+			}
+		}
+	}
+	return result
+}
+
+func parsePositionMapSectionID(fragmentID string, value map[string]interface{}) string {
+	return chooseFragmentIdentity(fragmentID, value["$174"])
+}
+
+func readPositionMap(value map[string]interface{}) []int {
+	entries, ok := asSlice(value["$181"])
+	if !ok {
+		return nil
+	}
+	positions := make([]int, 0, len(entries))
+	for _, entry := range entries {
+		pair, ok := asSlice(entry)
+		if !ok || len(pair) != 2 {
+			continue
+		}
+		positionID, ok := asInt(pair[1])
+		if !ok || positionID == 0 {
+			continue
+		}
+		positions = append(positions, positionID)
+	}
+	return positions
+}
+
+func sectionStorylineID(section map[string]interface{}) string {
+	containers, ok := asSlice(section["$141"])
+	if !ok || len(containers) == 0 {
+		return ""
+	}
+	first, ok := asMap(containers[0])
+	if !ok {
+		return ""
+	}
+	storylineID, _ := asString(first["$176"])
+	return storylineID
+}
+
+func parseSectionFragment(fragmentID string, value map[string]interface{}) sectionFragment {
+	id := chooseFragmentIdentity(fragmentID, value["$174"])
+	containers, ok := asSlice(value["$141"])
+	if !ok || len(containers) == 0 {
+		return sectionFragment{ID: id}
+	}
+	templates := make([]pageTemplateFragment, 0, len(containers))
+	for _, raw := range containers {
+		container, ok := asMap(raw)
+		if !ok {
+			continue
+		}
+		storylineID, _ := asString(container["$176"])
+		pageTemplateStyle, _ := asString(container["$157"])
+		positionID, _ := asInt(container["$155"])
+		templates = append(templates, pageTemplateFragment{
+			PositionID:         positionID,
+			Storyline:          storylineID,
+			PageTemplateStyle:  pageTemplateStyle,
+			PageTemplateValues: filterBodyStyleValues(container),
+			HasCondition:       container["$171"] != nil,
+			Condition:          container["$171"],
+		})
+	}
+	if len(templates) == 0 {
+		return sectionFragment{ID: id}
+	}
+	mainTemplate := templates[len(templates)-1]
+	return sectionFragment{
+		ID:                 id,
+		PositionID:         mainTemplate.PositionID,
+		Storyline:          mainTemplate.Storyline,
+		PageTemplateStyle:  mainTemplate.PageTemplateStyle,
+		PageTemplateValues: mainTemplate.PageTemplateValues,
+		PageTemplates:      templates,
+	}
+}
+
+func collectStorylinePositions(nodes []interface{}, sectionID string, positions map[int]string) {
+	for _, raw := range nodes {
+		node, ok := asMap(raw)
+		if !ok {
+			continue
+		}
+		if positionID, ok := asInt(node["$155"]); ok && positionID != 0 && positions[positionID] == "" {
+			positions[positionID] = sectionID
+		}
+		if children, ok := asSlice(node["$146"]); ok {
+			collectStorylinePositions(children, sectionID, positions)
+		}
+		if cols, ok := asSlice(node["$152"]); ok {
+			collectStorylinePositions(cols, sectionID, positions)
+		}
+	}
+}
+
+func parseAnchorFragment(fragmentID string, value map[string]interface{}) anchorFragment {
+	id := chooseFragmentIdentity(fragmentID, value["$180"])
+	if debugAnchors := os.Getenv("KFX_DEBUG_ANCHORS"); debugAnchors != "" {
+		for _, wanted := range strings.Split(debugAnchors, ",") {
+			if strings.TrimSpace(wanted) == id || strings.TrimSpace(wanted) == fragmentID {
+				fmt.Fprintf(os.Stderr, "anchor fragment id=%s fragment=%s value=%#v\n", id, fragmentID, value)
+			}
+		}
+	}
+	if uri, ok := asString(value["$186"]); ok {
+		if uri == "http://" || uri == "https://" {
+			uri = ""
+		}
+		return anchorFragment{ID: id, URI: uri}
+	}
+	// Port of Python yj_to_epub_navigation.py:55-63 — anchor fragments with $183
+	// reference a position. Python: register_anchor(name, get_position(anchor.pop("$183")))
+	// where get_position extracts (eid, offset) from $183.$155/$598 and $183.$143.
+	target, ok := asMap(value["$183"])
+	if !ok {
+		return anchorFragment{ID: id}
+	}
+	positionID, _ := asInt(target["$155"])
+	offset, _ := asInt(target["$143"])
+	return anchorFragment{
+		ID:         id,
+		PositionID: positionID,
+		Offset:     offset,
+	}
+}
+
+func chooseFragmentIdentity(fragmentID string, rawValue interface{}) string {
+	valueID, _ := asString(rawValue)
+	if isResolvedIdentity(valueID) {
+		return valueID
+	}
+	if isResolvedIdentity(fragmentID) {
+		return fragmentID
+	}
+	if valueID != "" {
+		return valueID
+	}
+	return fragmentID
+}
+
+func isResolvedIdentity(value string) bool {
+	if value == "" {
+		return false
+	}
+	return !(strings.HasPrefix(value, "$") && len(value) > 1)
+}
+
+func isPlaceholderSymbol(value string) bool {
+	if !strings.HasPrefix(value, "$") || len(value) == 1 {
+		return false
+	}
+	for _, r := range value[1:] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// ---------------------------------------------------------------------------
+// Merged from html.go (origin: yj_to_epub_content.py)
+// ---------------------------------------------------------------------------
+
+
+type htmlPart interface{}
+
+type htmlText struct {
+	Text string
+}
+
+type htmlElement struct {
+	Tag      string
+	Attrs    map[string]string
+	Children []htmlPart
+}
+
+func splitTextHTMLParts(text string) []htmlPart {
+	if text == "" {
+		return nil
+	}
+	lines := strings.Split(text, "\n")
+	parts := make([]htmlPart, 0, len(lines)*2)
+	for index, line := range lines {
+		if index > 0 {
+			parts = append(parts, &htmlElement{Tag: "br", Attrs: map[string]string{}})
+		}
+		if line != "" {
+			parts = append(parts, htmlText{Text: line})
+		}
+	}
+	return parts
+}
+
+func appendTextHTMLParts(element *htmlElement, text string) {
+	if element == nil || text == "" {
+		return
+	}
+	// Merge with last htmlText child if possible, matching Python's etree text
+	// concatenation behavior. Without merging, the annotation event loop creates
+	// individual htmlText nodes per character, which breaks locateOffsetIn for
+	// page markers when wrapped in spans.
+	if len(element.Children) > 0 {
+		switch last := element.Children[len(element.Children)-1].(type) {
+		case htmlText:
+			element.Children[len(element.Children)-1] = htmlText{Text: last.Text + text}
+			return
+		case *htmlText:
+			element.Children[len(element.Children)-1] = &htmlText{Text: last.Text + text}
+			return
+		}
+	}
+	element.Children = append(element.Children, splitTextHTMLParts(text)...)
+}
+
+func locateOffset(root *htmlElement, offset int) *htmlElement {
+	if root == nil || offset < 0 {
+		return nil
+	}
+	if found, ok := locateOffsetIn(root, offset); ok {
+		return found
+	}
+	return nil
+}
+
+func locateOffsetIn(elem *htmlElement, offset int) (*htmlElement, bool) {
+	if elem == nil {
+		return nil, false
+	}
+	if elem.Tag == "img" {
+		return elem, offset == 0
+	}
+	for index := 0; index < len(elem.Children); index++ {
+		switch child := elem.Children[index].(type) {
+		case htmlText:
+			length := len([]rune(child.Text))
+			if offset == 0 {
+				span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+				elem.Children = insertHTMLParts(elem.Children, index, []htmlPart{span})
+				return span, true
+			}
+			if offset < length {
+				runes := []rune(child.Text)
+				parts := make([]htmlPart, 0, 3)
+				if offset > 0 {
+					parts = append(parts, htmlText{Text: string(runes[:offset])})
+				}
+				span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+				parts = append(parts, span)
+				if offset < len(runes) {
+					parts = append(parts, htmlText{Text: string(runes[offset:])})
+				}
+				elem.Children = replaceHTMLParts(elem.Children, index, parts)
+				return span, true
+			}
+			offset -= length
+		case *htmlElement:
+			if offset == 0 {
+				// Port of Python locate_offset_in (yj_to_epub_content.py:1588-1589):
+				// When offset is 0, return the element directly.
+				// However, Python processes position anchors BEFORE annotations/style events,
+				// so the element is always a raw text span. Go processes style events first,
+				// so we may find styled spans, <a> links, or other annotation-created elements.
+				// We need to insert an empty <span/> BEFORE it as a sibling, matching
+				// Python's behavior where the anchor is a separate element.
+				if child.Tag == "span" && len(child.Attrs) > 0 {
+					// Styled span at offset 0: insert empty span before it as sibling
+					span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+					elem.Children = insertHTMLParts(elem.Children, index, []htmlPart{span})
+					return span, true
+				}
+				if child.Tag == "span" && len(child.Attrs) == 0 && len(child.Children) >= 1 {
+					// Unstyled wrapper span: insert empty span as first child
+					firstIsText := false
+					switch child.Children[0].(type) {
+					case htmlText, *htmlText:
+						firstIsText = true
+					}
+					if firstIsText {
+						span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+						child.Children = insertHTMLParts(child.Children, 0, []htmlPart{span})
+						return span, true
+					}
+				}
+				// Annotation-created elements (<a>, styled <div>, etc.) at offset 0:
+				// insert empty <span/> BEFORE them as a sibling, matching Python's
+				// behavior where position anchors are placed before annotation elements.
+				// Python processes position anchors first, then annotations, so the
+				// anchor span exists as a separate element before the <a> is created.
+				if child.Tag != "span" || len(child.Attrs) > 0 {
+					span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+					elem.Children = insertHTMLParts(elem.Children, index, []htmlPart{span})
+					return span, true
+				}
+				return child, true
+			}
+			length := htmlPartLength(child)
+			if offset < length {
+				return locateOffsetIn(child, offset)
+			}
+			offset -= length
+		}
+	}
+	if offset == 0 {
+		span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+		elem.Children = append(elem.Children, span)
+		return span, true
+	}
+	return nil, false
+}
+
+func htmlPartLength(part htmlPart) int {
+	switch typed := part.(type) {
+	case htmlText:
+		return len([]rune(typed.Text))
+	case *htmlElement:
+		if typed == nil {
+			return 0
+		}
+		if typed.Tag == "img" {
+			return 1
+		}
+		length := 0
+		for _, child := range typed.Children {
+			length += htmlPartLength(child)
+		}
+		return length
+	default:
+		return 0
+	}
+}
+
+func replaceHTMLParts(parts []htmlPart, index int, replacement []htmlPart) []htmlPart {
+	out := make([]htmlPart, 0, len(parts)-1+len(replacement))
+	out = append(out, parts[:index]...)
+	out = append(out, replacement...)
+	out = append(out, parts[index+1:]...)
+	return out
+}
+
+func insertHTMLParts(parts []htmlPart, index int, inserted []htmlPart) []htmlPart {
+	out := make([]htmlPart, 0, len(parts)+len(inserted))
+	out = append(out, parts[:index]...)
+	out = append(out, inserted...)
+	out = append(out, parts[index:]...)
+	return out
+}
+
+func renderHTMLParts(parts []htmlPart, multiline bool) string {
+	var out strings.Builder
+	for index, part := range parts {
+		if index > 0 && multiline {
+			out.WriteByte('\n')
+		}
+		out.WriteString(renderHTMLPart(part))
+	}
+	return out.String()
+}
+
+func renderHTMLPart(part htmlPart) string {
+	switch typed := part.(type) {
+	case nil:
+		return ""
+	case htmlText:
+		return escapeHTML(typed.Text)
+	case *htmlText:
+		return escapeHTML(typed.Text)
+	case *htmlElement:
+		return renderHTMLElement(typed)
+	default:
+		return ""
+	}
+}
+
+type preformatState struct {
+	firstInBlock     bool
+	previousChar     rune
+	previousReplaced bool
+	priorText        *htmlText
+}
+
+func (s *preformatState) reset() {
+	s.firstInBlock = true
+	s.previousChar = 0
+	s.previousReplaced = false
+	s.priorText = nil
+}
+
+func (s *preformatState) setMediaBoundary() {
+	s.firstInBlock = false
+	s.previousChar = '?'
+	s.previousReplaced = false
+	s.priorText = nil
+}
+
+func normalizeHTMLWhitespace(root *htmlElement) {
+	if root == nil {
+		return
+	}
+	state := &preformatState{}
+	state.reset()
+	root.Children = normalizeHTMLChildren(root.Tag, root.Children, state)
+}
+
+func normalizeHTMLChildren(tag string, children []htmlPart, state *preformatState) []htmlPart {
+	if state == nil {
+		state = &preformatState{}
+		state.reset()
+	}
+	switch {
+	case isPreformatMediaTag(tag):
+		state.setMediaBoundary()
+	case isPreformatInlineTag(tag):
+	default:
+		state.reset()
+	}
+	normalized := make([]htmlPart, 0, len(children))
+	for _, child := range children {
+		switch typed := child.(type) {
+		case nil:
+			continue
+		case htmlText:
+			normalized = append(normalized, normalizeHTMLTextParts(typed.Text, state)...)
+		case *htmlText:
+			normalized = append(normalized, normalizeHTMLTextParts(typed.Text, state)...)
+		case *htmlElement:
+			typed.Children = normalizeHTMLChildren(typed.Tag, typed.Children, state)
+			normalized = append(normalized, typed)
+		default:
+			normalized = append(normalized, child)
+		}
+	}
+	return normalized
+}
+
+func normalizeHTMLTextParts(text string, state *preformatState) []htmlPart {
+	if text == "" {
+		return nil
+	}
+	parts := []htmlPart{}
+	var segment []rune
+	flushSegment := func() {
+		if len(segment) == 0 {
+			return
+		}
+		if part := preformatHTMLText(string(segment), state); part != nil {
+			parts = append(parts, part)
+		}
+		segment = segment[:0]
+	}
+	for _, ch := range text {
+		if isEOLRune(ch) {
+			flushSegment()
+			parts = append(parts, &htmlElement{Tag: "br", Attrs: map[string]string{}})
+			state.reset()
+			continue
+		}
+		segment = append(segment, ch)
+	}
+	flushSegment()
+	return parts
+}
+
+func preformatHTMLText(text string, state *preformatState) htmlPart {
+	if text == "" {
+		return nil
+	}
+	runes := []rune(text)
+	out := make([]rune, 0, len(runes))
+	for _, ch := range runes {
+		orig := ch
+		didReplace := false
+		if ch == ' ' && (state.firstInBlock || state.previousChar == ' ') {
+			if state.previousChar == ' ' && !state.previousReplaced {
+				if len(out) > 0 {
+					out[len(out)-1] = '\u00a0'
+				} else if state.priorText != nil {
+					state.priorText.Text = replaceLastRune(state.priorText.Text, '\u00a0')
+				}
+			}
+			ch = '\u00a0'
+			didReplace = true
+		}
+		out = append(out, ch)
+		state.firstInBlock = false
+		state.previousChar = orig
+		state.previousReplaced = didReplace
+	}
+	part := &htmlText{Text: string(out)}
+	state.priorText = part
+	return part
+}
+
+func replaceLastRune(text string, replacement rune) string {
+	runes := []rune(text)
+	if len(runes) == 0 {
+		return text
+	}
+	runes[len(runes)-1] = replacement
+	return string(runes)
+}
+
+func isEOLRune(ch rune) bool {
+	switch ch {
+	case '\n', '\r', '\u2028', '\u2029':
+		return true
+	default:
+		return false
+	}
+}
+
+func isPreformatInlineTag(tag string) bool {
+	switch tag {
+	case "a", "b", "bdi", "bdo", "em", "i", "path", "rb", "rt", "ruby", "span", "strong", "sub", "sup", "u":
+		return true
+	default:
+		return false
+	}
+}
+
+func isPreformatMediaTag(tag string) bool {
+	switch tag {
+	case "audio", "iframe", "img", "object", "svg", "video":
+		return true
+	default:
+		return false
+	}
+}
+
+func renderHTMLElement(element *htmlElement) string {
+	if element == nil {
+		return ""
+	}
+	if element.Tag == "" {
+		return renderHTMLParts(element.Children, false)
+	}
+	var out strings.Builder
+	out.WriteByte('<')
+	out.WriteString(element.Tag)
+	attrOrder := []string{"id", "class", "href", "src", "alt"}
+	switch element.Tag {
+	case "a":
+		attrOrder = []string{"id", "href", "class"}
+	case "img":
+		attrOrder = []string{"src", "alt", "id", "class"}
+	case "col":
+		attrOrder = []string{"span", "class"}
+	case "td":
+		attrOrder = []string{"id", "colspan", "rowspan", "class"}
+	case "h1", "h2", "h3", "h4", "h5", "h6":
+		attrOrder = []string{"id", "class"}
+	case "p":
+		attrOrder = []string{"id", "class"}
+	}
+	for _, key := range attrOrder {
+		value, ok := element.Attrs[key]
+		if !ok || (value == "" && key != "alt") {
+			continue
+		}
+		out.WriteString(` ` + key + `="` + escapeHTML(value) + `"`)
+	}
+	remaining := make([]string, 0, len(element.Attrs))
+	seen := map[string]bool{}
+	for _, key := range attrOrder {
+		seen[key] = true
+	}
+	for key := range element.Attrs {
+		if !seen[key] {
+			remaining = append(remaining, key)
+		}
+	}
+	sort.Strings(remaining)
+	for _, key := range remaining {
+		value := element.Attrs[key]
+		if value == "" {
+			continue
+		}
+		out.WriteString(` ` + key + `="` + escapeHTML(value) + `"`)
+	}
+	if len(element.Children) == 0 {
+		out.WriteString(`/>`)
+		return out.String()
+	}
+	out.WriteByte('>')
+	for _, child := range element.Children {
+		out.WriteString(renderHTMLPart(child))
+	}
+	out.WriteString(`</` + element.Tag + `>`)
+	return out.String()
+}
+
+func escapeHTML(text string) string {
+	var replacer = strings.NewReplacer(
+		"&", "&amp;",
+		`"`, "&quot;",
+		"<", "&lt;",
+		">", "&gt;",
+	)
+	return replacer.Replace(text)
+}
+
+// ---------------------------------------------------------------------------
+// Merged from style_events.go (origin: yj_to_epub_content.py)
+// ---------------------------------------------------------------------------
+
+
+func locateOffsetFull(root *htmlElement, offset int, splitAfter bool, zeroLen bool, isDropcap bool) *htmlElement {
+	if root == nil || offset < 0 {
+		return nil
+	}
+
+	result, remaining := locateOffsetInFull(root, root, offset, splitAfter, zeroLen, isDropcap)
+	if remaining < 0 {
+		return result
+	}
+
+	if remaining == 0 && !splitAfter {
+		span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+		root.Children = append(root.Children, span)
+		return span
+	}
+
+	if isDropcap {
+		span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+		root.Children = append(root.Children, span)
+		return span
+	}
+
+	return nil
+}
+
+func locateOffsetInFull(root *htmlElement, elem *htmlElement, offset int, splitAfter bool, zeroLen bool, isDropcap bool) (*htmlElement, int) {
+	if offset < 0 {
+		return nil, offset
+	}
+
+	if elem.Tag == "span" {
+		textLen := elementTextLen(elem)
+
+		if textLen > 0 {
+			if !splitAfter {
+				if offset == 0 {
+					return elem, -1
+				} else if offset < textLen {
+					newSpan := splitSpan(root, elem, offset)
+					if zeroLen {
+						splitSpan(root, newSpan, 0)
+					}
+					return newSpan, -1
+				}
+			} else {
+				if offset == textLen-1 {
+					return elem, -1
+				} else if offset < textLen {
+					splitSpan(root, elem, offset+1)
+					return elem, -1
+				}
+			}
+
+			offset -= textLen
+		}
+
+		for _, child := range elem.Children {
+			if ce, ok := child.(*htmlElement); ok {
+				result, remaining := locateOffsetInFull(root, ce, offset, splitAfter, zeroLen, isDropcap)
+				if remaining < 0 {
+					return result, remaining
+				}
+				offset = remaining
+			}
+		}
+
+		return nil, offset
+	}
+
+	if isDropcap {
+		style := parseDeclarationString(elem.Attrs["style"])
+		if style["float"] != "" {
+			return nil, offset
+		}
+	}
+
+	if elem.Tag == "img" || elem.Tag == "svg" || elem.Tag == "math" {
+		if offset == 0 {
+			return elem, -1
+		}
+		offset--
+		return nil, offset
+	}
+
+	switch elem.Tag {
+	case "a", "aside", "div", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ruby", "rb":
+		for _, child := range elem.Children {
+			if ce, ok := child.(*htmlElement); ok {
+				result, remaining := locateOffsetInFull(root, ce, offset, splitAfter, zeroLen, isDropcap)
+				if remaining < 0 {
+					return result, remaining
+				}
+				offset = remaining
+			}
+		}
+		return nil, offset
+
+	case "rt":
+		return nil, offset
+
+	default:
+		return nil, offset
+	}
+}
+
+func elementTextLen(elem *htmlElement) int {
+	length := 0
+	for _, child := range elem.Children {
+		if t, ok := child.(htmlText); ok {
+			length += utf8.RuneCountInString(t.Text)
+		} else {
+			break
+		}
+	}
+	return length
+}
+
+func splitSpan(root *htmlElement, oldSpan *htmlElement, firstTextLen int) *htmlElement {
+	var textRunes []rune
+	textEnd := 0
+	for i, child := range oldSpan.Children {
+		if t, ok := child.(htmlText); ok {
+			textRunes = append(textRunes, []rune(t.Text)...)
+			textEnd = i + 1
+		} else {
+			break
+		}
+	}
+
+	var firstText string
+	var secondText string
+	if firstTextLen <= 0 {
+		firstText = ""
+		secondText = string(textRunes)
+	} else if firstTextLen >= len(textRunes) {
+		firstText = string(textRunes)
+		secondText = ""
+	} else {
+		firstText = string(textRunes[:firstTextLen])
+		secondText = string(textRunes[firstTextLen:])
+	}
+
+	var firstParts []htmlPart
+	if firstText != "" {
+		firstParts = []htmlPart{htmlText{Text: firstText}}
+	}
+
+	remaining := oldSpan.Children[textEnd:]
+
+	newChildren := make([]htmlPart, 0, len(firstParts)+len(remaining))
+	newChildren = append(newChildren, firstParts...)
+	newChildren = append(newChildren, remaining...)
+	oldSpan.Children = newChildren
+
+	newSpan := &htmlElement{Tag: "span", Attrs: cloneAttrs(oldSpan)}
+	if secondText != "" {
+		newSpan.Children = []htmlPart{htmlText{Text: secondText}}
+	}
+
+	parent, idx := findParent(root, oldSpan)
+	if parent != nil {
+		parent.Children = insertHTMLParts(parent.Children, idx+1, []htmlPart{newSpan})
+	}
+
+	return newSpan
+}
+
+func findParent(root, target *htmlElement) (parent *htmlElement, index int) {
+	if root == nil || target == nil {
+		return nil, -1
+	}
+	for i, child := range root.Children {
+		if ce, ok := child.(*htmlElement); ok {
+			if ce == target {
+				return root, i
+			}
+			if p, idx := findParent(ce, target); p != nil {
+				return p, idx
+			}
+		}
+	}
+	return nil, -1
+}
+
+func cloneAttrs(elem *htmlElement) map[string]string {
+	if len(elem.Attrs) == 0 {
+		return map[string]string{}
+	}
+	cloned := make(map[string]string, len(elem.Attrs))
+	for k, v := range elem.Attrs {
+		cloned[k] = v
+	}
+	return cloned
+}
+
+func hasNoLeadingText(elem *htmlElement) bool {
+	for _, child := range elem.Children {
+		if t, ok := child.(htmlText); ok {
+			if utf8.RuneCountInString(t.Text) > 0 {
+				return false
+			}
+			continue
+		}
+		break
+	}
+	return true
+}
+
+func isFirstElementChild(parent *htmlElement, child *htmlElement) bool {
+	for _, c := range parent.Children {
+		if ce, ok := c.(*htmlElement); ok {
+			return ce == child
+		}
+	}
+	return false
+}
+
+func isLastElementChild(parent *htmlElement, child *htmlElement) bool {
+	for i := len(parent.Children) - 1; i >= 0; i-- {
+		if ce, ok := parent.Children[i].(*htmlElement); ok {
+			return ce == child
+		}
+	}
+	return false
+}
+
+func elementTailIsEmpty(parent *htmlElement, childIndex int) bool {
+	if childIndex+1 < len(parent.Children) {
+		if t, ok := parent.Children[childIndex+1].(htmlText); ok {
+			return utf8.RuneCountInString(t.Text) == 0
+		}
+	}
+	return true
+}
+
+func findOrCreateStyleEventElement(contentElem *htmlElement, eventOffset int, eventLength int, isDropcap bool) *htmlElement {
+	if eventLength <= 0 {
+		panic(fmt.Sprintf("style event has length: %d", eventLength))
+	}
+
+	first := locateOffsetFull(contentElem, eventOffset, false, false, isDropcap)
+	if first == nil {
+		return nil
+	}
+
+	last := locateOffsetFull(contentElem, eventOffset+eventLength-1, true, false, isDropcap)
+
+	if last == nil || first == last {
+		return first
+	}
+
+	firstParent, _ := findParent(contentElem, first)
+	lastParent, _ := findParent(contentElem, last)
+
+	if firstParent != lastParent {
+		tryFirst := first
+		firsts := []*htmlElement{tryFirst}
+
+		for firstParent != nil && hasNoLeadingText(firstParent) && isFirstElementChild(firstParent, tryFirst) {
+			tryFirst = firstParent
+			firstParent, _ = findParent(contentElem, tryFirst)
+			if firstParent != nil {
+				firsts = append(firsts, tryFirst)
+			}
+		}
+
+		tryLast := last
+		lasts := []*htmlElement{tryLast}
+
+		_, origLastIdx := findParent(contentElem, last)
+		origLastParent := lastParent
+
+		for lastParent != nil && elementTailIsEmpty(origLastParent, origLastIdx) && isLastElementChild(lastParent, tryLast) {
+			tryLast = lastParent
+			lastParent, _ = findParent(contentElem, tryLast)
+			if lastParent != nil {
+				lasts = append(lasts, tryLast)
+			}
+		}
+
+		found := false
+		for _, tf := range firsts {
+			for _, tl := range lasts {
+				tfParent, _ := findParent(contentElem, tf)
+				tlParent, _ := findParent(contentElem, tl)
+				if tfParent == tlParent && tfParent != nil {
+					first = tf
+					last = tl
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+
+		if !found {
+			return nil
+		}
+	}
+
+	eventElem := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+
+	seParent, firstIndex := findParent(contentElem, first)
+	_, lastIndex := findParent(contentElem, last)
+
+	moved := make([]htmlPart, lastIndex-firstIndex+1)
+	copy(moved, seParent.Children[firstIndex:lastIndex+1])
+
+	eventElem.Children = moved
+
+	newChildren := make([]htmlPart, 0, len(seParent.Children)-(lastIndex-firstIndex))
+	newChildren = append(newChildren, seParent.Children[:firstIndex]...)
+	newChildren = append(newChildren, eventElem)
+	newChildren = append(newChildren, seParent.Children[lastIndex+1:]...)
+	seParent.Children = newChildren
+
+	return eventElem
+}
+
+// ---------------------------------------------------------------------------
+// Merged from content_helpers.go (origin: yj_to_epub_content.py)
+// ---------------------------------------------------------------------------
+
+
+var (
+	cssIdentPattern = regexp.MustCompile(`^[-_a-zA-Z0-9]*$`)
+)
+
+type fontNameFixer struct {
+	fixedNames       map[string]string
+	nameReplacements map[string]string
+}
+
+var currentFontFixer *fontNameFixer
+
+var cssGenericFontNames = map[string]bool{
+	"serif":      true,
+	"sans-serif": true,
+	"cursive":    true,
+	"fantasy":    true,
+	"monospace":  true,
+}
+
+func cloneMap(src map[string]interface{}) map[string]interface{} {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]interface{}, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
+}
+
+func effectiveStyle(base map[string]interface{}, values map[string]interface{}) map[string]interface{} {
+	style := cloneMap(base)
+	if style == nil {
+		style = map[string]interface{}{}
+	}
+	for key, value := range values {
+		style[key] = value
+	}
+	return style
+}
+
+func mergeStyleValues(dst map[string]interface{}, src map[string]interface{}) map[string]interface{} {
+	if len(src) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = map[string]interface{}{}
+	}
+	for key, value := range src {
+		if _, exists := dst[key]; !exists {
+			dst[key] = value
+		}
+	}
+	return dst
+}
+
+func filterBodyStyleValues(values map[string]interface{}) map[string]interface{} {
+	if len(values) == 0 {
+		return nil
+	}
+	allowed := map[string]bool{
+		"$11":  true,
+		"$12":  true,
+		"$16":  true,
+		"$36":  true,
+		"$41":  true,
+		"$42":  true,
+		"$47":  true,
+		"$48":  true,
+		"$49":  true,
+		"$50":  true,
+		"$70":  true,
+		"$72":  true,
+		"$580": true,
+		"$583": true,
+	}
+	filtered := map[string]interface{}{}
+	for key, value := range values {
+		if allowed[key] {
+			filtered[key] = value
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
+}
+
+func declarationSet(declarations []string) map[string]bool {
+	if len(declarations) == 0 {
+		return nil
+	}
+	result := make(map[string]bool, len(declarations))
+	for _, declaration := range declarations {
+		result[declaration] = true
+	}
+	return result
+}
+
+func inheritedDefaultSet(declarations []string) map[string]bool {
+	result := declarationSet(declarations)
+	if result == nil {
+		result = map[string]bool{}
+	}
+	hasTextIndent := false
+	for declaration := range result {
+		if strings.HasPrefix(declaration, "text-indent: ") {
+			hasTextIndent = true
+			break
+		}
+	}
+	if !hasTextIndent {
+		result["text-indent: 0"] = true
+	}
+	return result
+}
+
+func defaultBodyDeclarations(bodyClass string) []string {
+	switch bodyClass {
+	case "class-0":
+		return []string{"font-family: FreeFontSerif,serif", "text-align: center"}
+	case "class-1":
+		return []string{"font-family: FreeFontSerif,serif"}
+	case "class-2":
+		return []string{"font-family: FreeFontSerif,serif", "text-align: justify", "text-indent: 1.44em"}
+	case "class-3":
+		return []string{"font-family: FreeFontSerif,serif", "text-align: justify"}
+	case "class-7":
+		return []string{"font-family: FreeFontSerif,serif", "font-style: italic", "text-align: justify", "text-indent: 1.44em"}
+	case "class-8":
+		return []string{"font-family: Shift Light,Palatino,Palatino Linotype,Palatino LT Std,Book Antiqua,Georgia,serif"}
+	default:
+		return nil
+	}
+}
+
+// defaultBodyDeclarationsWithFont returns the CSS declarations for a static body class,
+// using the resolved default font family. When the resolved font is "serif" (the CSS default),
+// font-family is omitted from the declarations since it would be stripped by simplify_styles.
+// When the resolved font is something else (e.g. "FreeFontSerif,serif" for Martyr), it is included.
+func defaultBodyDeclarationsWithFont(bodyClass string, resolvedFont string) []string {
+	switch bodyClass {
+	case "class-0":
+		if resolvedFont != "" && resolvedFont != "serif" {
+			return []string{"font-family: " + resolvedFont, "text-align: center"}
+		}
+		return []string{"text-align: center"}
+	case "class-1":
+		if resolvedFont != "" && resolvedFont != "serif" {
+			return []string{"font-family: " + resolvedFont}
+		}
+		return []string{"font-family: serif"}
+	case "class-2":
+		if resolvedFont != "" && resolvedFont != "serif" {
+			return []string{"font-family: " + resolvedFont, "text-align: justify", "text-indent: 1.44em"}
+		}
+		return []string{"text-align: justify", "text-indent: 1.44em"}
+	case "class-3":
+		if resolvedFont != "" && resolvedFont != "serif" {
+			return []string{"font-family: " + resolvedFont, "text-align: justify"}
+		}
+		return []string{"text-align: justify"}
+	case "class-7":
+		if resolvedFont != "" && resolvedFont != "serif" {
+			return []string{"font-family: " + resolvedFont, "font-style: italic", "text-align: justify", "text-indent: 1.44em"}
+		}
+		return []string{"font-style: italic", "text-align: justify", "text-indent: 1.44em"}
+	case "class-8":
+		return []string{"font-family: Shift Light,Palatino,Palatino Linotype,Palatino LT Std,Book Antiqua,Georgia,serif"}
+	default:
+		return nil
+	}
+}
+
+// defaultBodyFontDeclarations returns additional font-family declarations for the body that
+// should be used for inheritance filtering. Not needed since defaultBodyDeclarations already
+// includes font-family.
+func defaultBodyFontDeclarations(bodyClass string) []string {
+	return nil
+}
+
+func isStaticBodyClass(bodyClass string) bool {
+	switch bodyClass {
+	case "class-0", "class-1", "class-2", "class-3", "class-7", "class-8":
+		return true
+	default:
+		return false
+	}
+}
+
+func staticBodyClassForDeclarations(declarations []string) string {
+	// Alternates: declarations without font-family (for books where font-family is "serif"
+	// and gets stripped by simplify_styles), plus any variant with a non-"serif" font.
+	alternates := map[string][][]string{
+		"class-0": {
+			{"text-align: center"},
+		},
+		"class-2": {
+			{"text-align: justify", "text-indent: 1.44em"},
+		},
+		"class-3": {
+			{"text-align: justify"},
+		},
+		"class-7": {
+			{"font-style: italic", "text-align: justify", "text-indent: 1.44em"},
+		},
+	}
+	for _, bodyClass := range []string{"class-0", "class-1", "class-2", "class-3", "class-7", "class-8"} {
+		expected := defaultBodyDeclarations(bodyClass)
+		if len(expected) != len(declarations) {
+			for _, alternate := range alternates[bodyClass] {
+				if len(alternate) != len(declarations) {
+					continue
+				}
+				match := true
+				for index := range alternate {
+					if alternate[index] != declarations[index] {
+						match = false
+						break
+					}
+				}
+				if match {
+					return bodyClass
+				}
+			}
+			continue
+		}
+		match := true
+		for index := range expected {
+			if expected[index] != declarations[index] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return bodyClass
+		}
+	}
+	return ""
+}
+
+func flattenParagraphs(nodes []interface{}, contents map[string][]string) []string {
+	result := make([]string, 0, 64)
+	var walk func(items []interface{})
+	walk = func(items []interface{}) {
+		for _, item := range items {
+			node, ok := asMap(item)
+			if !ok {
+				continue
+			}
+			if ref, ok := asMap(node["$145"]); ok {
+				name, _ := asString(ref["name"])
+				index, ok := asInt(ref["$403"])
+				if ok {
+					if values, found := contents[name]; found && index >= 0 && index < len(values) {
+						text := strings.TrimSpace(values[index])
+						if text != "" {
+							result = append(result, text)
+						}
+					}
+				}
+			}
+			if children, ok := asSlice(node["$146"]); ok {
+				walk(children)
+			}
+		}
+	}
+	walk(nodes)
+	return result
+}
+
+func deriveSectionTitle(paragraphs []string, sectionNumber int) string {
+	for _, paragraph := range paragraphs {
+		trimmed := strings.TrimSpace(paragraph)
+		if trimmed == "" {
+			continue
+		}
+		if len(trimmed) > 80 {
+			break
+		}
+		return trimmed
+	}
+	return fmt.Sprintf("Section %d", sectionNumber)
+}
+
+func naturalSortKey(value string) string {
+	lower := strings.ToLower(value)
+	var out strings.Builder
+	for index := 0; index < len(lower); {
+		if lower[index] < '0' || lower[index] > '9' {
+			out.WriteByte(lower[index])
+			index++
+			continue
+		}
+		start := index
+		for index < len(lower) && lower[index] >= '0' && lower[index] <= '9' {
+			index++
+		}
+		digits := lower[start:index]
+		if pad := 8 - len(digits); pad > 0 {
+			out.WriteString(strings.Repeat("0", pad))
+		}
+		out.WriteString(digits)
+	}
+	return out.String()
+}
+
+func mapField(value interface{}, key string) (interface{}, bool) {
+	if mapped, ok := value.(map[string]interface{}); ok {
+		result, found := mapped[key]
+		return result, found
+	}
+	rv := reflect.ValueOf(value)
+	if !rv.IsValid() || rv.Kind() != reflect.Map {
+		return nil, false
+	}
+	for _, mapKey := range rv.MapKeys() {
+		if mapKeyString(mapKey.Interface()) == key {
+			return rv.MapIndex(mapKey).Interface(), true
+		}
+	}
+	return nil, false
+}
+
+func mapKeyString(value interface{}) string {
+	if text, ok := asString(value); ok {
+		return text
+	}
+	return fmt.Sprint(value)
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func debugSectionMappings(sections map[string]sectionFragment, navTitles map[string]string, order []string) {
+	if os.Getenv("KFX_DEBUG") == "" {
+		return
+	}
+	for _, sectionID := range order {
+		section := sections[sectionID]
+		fmt.Fprintf(os.Stderr, "section id=%s pos=%d storyline=%s title=%s\n", sectionID, section.PositionID, section.Storyline, navTitles[sectionID])
+	}
+}
+
+func debugStorylineNodes(sectionID string, nodes []interface{}, depth int) {
+	if os.Getenv("KFX_DEBUG") == "" {
+		return
+	}
+	debugSections := os.Getenv("KFX_DEBUG_SECTIONS")
+	if debugSections == "" {
+		if sectionID != "c73" && sectionID != "c109" && sectionID != "c6P" {
+			return
+		}
+	} else if !strings.Contains(","+debugSections+",", ","+sectionID+",") {
+		return
+	}
+	prefix := strings.Repeat("  ", depth)
+	for _, raw := range nodes {
+		node, ok := asMap(raw)
+		if !ok {
+			continue
+		}
+		positionID, _ := asInt(node["$155"])
+		styleID, _ := asString(node["$157"])
+		text := ""
+		if ref, ok := asMap(node["$145"]); ok {
+			text = truncateDebugText(ref)
+		}
+		fmt.Fprintf(os.Stderr, "story %s %spos=%d type=%s style=%s text=%q keys=%v\n", sectionID, prefix, positionID, asStringDefault(node["$159"]), styleID, text, sortedMapKeys(node))
+		if cols, ok := asSlice(node["$152"]); ok {
+			fmt.Fprintf(os.Stderr, "story %s %scols=%#v\n", sectionID, prefix, cols)
+		}
+		if children, ok := asSlice(node["$146"]); ok {
+			debugStorylineNodes(sectionID, children, depth+1)
+		}
+	}
+}
+
+func sortedMapKeys(value map[string]interface{}) []string {
+	keys := make([]string, 0, len(value))
+	for key := range value {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func truncateDebugText(ref map[string]interface{}) string {
+	name, _ := asString(ref["name"])
+	index, _ := asInt(ref["$403"])
+	return fmt.Sprintf("%s[%d]", name, index)
+}
+
+func asStringDefault(value interface{}) string {
+	result, _ := asString(value)
+	return result
+}
+
+func intPtr(value int) *int {
+	return &value
+}
+
+// sectionFilename produces the XHTML filename for a section, matching Python's
+// SECTION_TEXT_FILEPATH % section_name convention (yj_to_epub_content.py:171,191).
+// Python uses the raw $174 symbol directly as the filename, e.g.
+// "UYqzWVgySW_Gl4WQ-Od_xQ1.xhtml". Previously Go applied uniquePartOfLocalSymbol
+// which stripped base64/UUID prefixes, producing numeric names like "1.xhtml".
+// Port of Python: self.SECTION_TEXT_FILEPATH % section_name where section_name
+// comes from section.pop("$174") — used verbatim, no uniquePartOfLocalSymbol.
+func sectionFilename(sectionID string) string {
+	return sectionID + ".xhtml"
+}
+
+func cloneStyleMap(style map[string]string) map[string]string {
+	if len(style) == 0 {
+		return map[string]string{}
+	}
+	cloned := make(map[string]string, len(style))
+	for key, value := range style {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func resolveContentText(contentFragments map[string][]string, ref map[string]interface{}) string {
+	name, _ := asString(ref["name"])
+	index, ok := asInt(ref["$403"])
+	if !ok {
+		return ""
+	}
+	values := contentFragments[name]
+	if index < 0 || index >= len(values) {
+		return ""
+	}
+	return values[index]
+}
+
+func inferBookLanguage(defaultLanguage string, contentFragments map[string][]string, storylines map[string]map[string]interface{}, styleFragments map[string]map[string]interface{}) string {
+	defaultKey := languageKey(defaultLanguage)
+	if defaultKey == "" {
+		return defaultLanguage
+	}
+	merits := map[string]int{}
+	for _, storyline := range storylines {
+		nodes, _ := asSlice(storyline["$146"])
+		accumulateContentLanguageMerits(nodes, defaultKey, merits, contentFragments, styleFragments)
+	}
+	bestLanguage := defaultKey
+	bestMerit := 0
+	for language, merit := range merits {
+		if merit <= bestMerit || !languageMatchesDefault(language, defaultKey) {
+			continue
+		}
+		bestLanguage = language
+		bestMerit = merit
+	}
+	if bestMerit == 0 {
+		return defaultLanguage
+	}
+	return bestLanguage
+}
+
+func accumulateContentLanguageMerits(nodes []interface{}, currentLanguage string, merits map[string]int, contentFragments map[string][]string, styleFragments map[string]map[string]interface{}) {
+	for _, raw := range nodes {
+		node, ok := asMap(raw)
+		if !ok {
+			continue
+		}
+		language := currentLanguage
+		styleID, _ := asString(node["$157"])
+		style := effectiveStyle(styleFragments[styleID], node)
+		if rawLanguage, ok := asString(style["$10"]); ok && rawLanguage != "" {
+			language = languageKey(rawLanguage)
+		}
+		if ref, ok := asMap(node["$145"]); ok && language != "" {
+			merits[language] += len([]rune(resolveContentText(contentFragments, ref)))
+		}
+		if children, ok := asSlice(node["$146"]); ok {
+			accumulateContentLanguageMerits(children, language, merits, contentFragments, styleFragments)
+		}
+	}
+}
+
+func languageKey(language string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(language), "_", "-"))
+}
+
+func languageMatchesDefault(candidate string, defaultLanguage string) bool {
+	if candidate == "" || defaultLanguage == "" {
+		return false
+	}
+	return candidate == defaultLanguage || strings.HasPrefix(candidate, defaultLanguage+"-")
+}
+
+func bodyPromotionPresenceStyle(bodyClass string) map[string]interface{} {
+	switch bodyClass {
+	case "class-0":
+		return map[string]interface{}{"$11": true, "$34": true}
+	case "class-1":
+		return map[string]interface{}{"$11": true}
+	case "class-2":
+		return map[string]interface{}{"$11": true, "$34": true, "$36": true}
+	case "class-3":
+		return map[string]interface{}{"$11": true, "$34": true}
+	default:
+		return nil
+	}
+}
+
+func storylineUsesJustifiedBody(nodes []interface{}) bool {
+	for _, raw := range nodes {
+		node, ok := asMap(raw)
+		if !ok {
+			continue
+		}
+		styleID, _ := asString(node["$157"])
+		if styleID == "s6E" || styleID == "s6G" {
+			return true
+		}
+		if children, ok := asSlice(node["$146"]); ok && storylineUsesJustifiedBody(children) {
+			return true
+		}
+	}
+	return false
+}
+
+func estimateBodyClass(nodes []interface{}) string {
+	if storylineUsesJustifiedBody(nodes) {
+		return "class-2"
+	}
+	if storylineIsCentered(nodes) {
+		return "class-0"
+	}
+	return "class-1"
+}
+
+func storylineIsCentered(nodes []interface{}) bool {
+	return !storylineContainsParagraph(nodes)
+}
+
+func storylineContainsParagraph(nodes []interface{}) bool {
+	for _, raw := range nodes {
+		node, ok := asMap(raw)
+		if !ok {
+			continue
+		}
+		if _, ok := asMap(node["$145"]); ok && headingLevel(node) == 0 {
+			return true
+		}
+		if children, ok := asSlice(node["$146"]); ok && storylineContainsParagraph(children) {
+			return true
+		}
+	}
+	return false
+}
+
+func appendClassNames(existing string, classNames ...string) string {
+	parts := []string{}
+	seen := map[string]bool{}
+	for _, raw := range append([]string{existing}, classNames...) {
+		for _, className := range strings.Fields(strings.TrimSpace(raw)) {
+			if className == "" || seen[className] {
+				continue
+			}
+			seen[className] = true
+			parts = append(parts, className)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func newFontNameFixer() *fontNameFixer {
+	return &fontNameFixer{
+		fixedNames:       map[string]string{},
+		nameReplacements: map[string]string{},
+	}
+}
+
+// setDefaultFontFamily sets up the default font name replacement map, matching Python's
+// process_document_data (yj_to_epub_metadata.py L100-116):
+//   self.font_name_replacements["default"] = DEFAULT_DOCUMENT_FONT_FAMILY  # "serif"
+//   for default_name in DEFAULT_FONT_NAMES:
+//       for font_family in self.default_font_family.split(","):
+//           self.font_name_replacements[default_name] = self.strip_font_name(font_family)
+// This ensures that "default" and "$amzn_fixup_default_font$" in KFX font-family lists
+// resolve to the book's actual default font (e.g., "serif") instead of being kept as "default".
+// registerFontFamilies should be called first so that @font-face names are available
+// for proper case resolution.
+// defaultFontFamily is the raw $11 value from document data, which may contain font names
+// like "akba_9780593537626_epub3_cvi_r1-freefontserif" that need prefix stripping and
+// case resolution through registered font names.
+func (f *fontNameFixer) setDefaultFontFamily(defaultFontFamily string) {
+	if defaultFontFamily == "" {
+		defaultFontFamily = "serif"
+	}
+	// Resolve the raw default font family through fixFontName to get proper case.
+	// This handles cases like "akba_9780593537626_epub3_cvi_r1-freefontserif" → "FreeFontSerif"
+	// when @font-face has registered the name with proper case.
+	resolvedFamily := f.splitAndFixFontFamilyList(defaultFontFamily)
+	if len(resolvedFamily) > 0 {
+		defaultFontFamily = strings.Join(resolvedFamily, ",")
+	}
+	// Python: self.font_name_replacements["default"] = DEFAULT_DOCUMENT_FONT_FAMILY
+	f.nameReplacements["default"] = "serif"
+	// Python: for default_name in DEFAULT_FONT_NAMES:
+	//   for font_family in self.default_font_family.split(","):
+	//     self.font_name_replacements[default_name] = self.strip_font_name(font_family)
+	for _, defaultName := range []string{"default", "$amzn_fixup_default_font$"} {
+		for _, fontFamily := range strings.Split(defaultFontFamily, ",") {
+			f.nameReplacements[strings.ToLower(defaultName)] = stripFontName(fontFamily)
+		}
+	}
+}
+
+// registerFontFamilies registers @font-face font names with add=true, matching Python's
+// process_fonts (yj_to_epub_resources.py) which calls fix_font_name(font["$11"], add=True).
+// This registers each font with its proper case so that subsequent lookups (e.g., when
+// resolving "default" from KFX metadata) find the properly-cased name.
+// Must be called before setDefaultFontFamily to ensure proper case resolution.
+func (f *fontNameFixer) registerFontFamilies(fonts map[string]fontFragment) {
+	for _, font := range fonts {
+		if font.Family == "" {
+			continue
+		}
+		// Register the raw font name (may have prefix like "akba_...-freefontserif").
+		// This handles prefix-stripped names with the "?-" key convention.
+		resolved := f.fixFontName(font.Family, true, false)
+		// Also ensure the resolved name is registered without the "?-" prefix.
+		// This handles lookups of the resolved name directly (e.g., "FreeFontSerif").
+		// When the raw name had a prefix, the resolved name was stored with "?-" key,
+		// but subsequent lookups use the plain lowercase key.
+		if resolved != "" && !cssGenericFontNames[strings.ToLower(resolved)] {
+			key := strings.ToLower(resolved)
+			if _, ok := f.nameReplacements[key]; !ok {
+				f.nameReplacements[key] = resolved
+			}
+			if _, ok := f.fixedNames[key]; !ok {
+				f.fixedNames[key] = resolved
+			}
+		}
+	}
+}
+
+// resolvedDefaultFontFamily returns the resolved default font family for use in
+// setHTMLDefaults. This is the properly-cased, quoted font family string that
+// Python would use for self.default_font_family. For books where the document
+// default is just "serif", this returns "serif". For books like Martyr where the
+// document default resolves to "FreeFontSerif", this returns "FreeFontSerif,serif".
+func (f *fontNameFixer) resolvedDefaultFontFamily() string {
+	if replacement, ok := f.nameReplacements["default"]; ok && replacement != "serif" {
+		return f.fixAndQuoteFontFamilyList(replacement + ",serif")
+	}
+	return "serif"
+}
+
+func (f *fontNameFixer) fixAndQuoteFontFamilyList(value string) string {
+	families := f.splitAndFixFontFamilyList(value)
+	if len(families) == 0 {
+		return ""
+	}
+	seen := map[string]bool{}
+	quoted := make([]string, 0, len(families))
+	for _, family := range families {
+		key := strings.ToLower(family)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		quoted = append(quoted, quoteFontName(family))
+	}
+	return strings.Join(quoted, ",")
+}
+
+func (f *fontNameFixer) splitAndFixFontFamilyList(value string) []string {
+	parts := strings.Split(value, ",")
+	families := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if family := f.fixFontName(part, false, false); family != "" {
+			families = append(families, family)
+		}
+	}
+	return families
+}
+
+func stripFontName(name string) string {
+	name = strings.TrimSpace(name)
+	if len(name) > 0 && (name[0] == '\'' || name[0] == '"') {
+		name = name[1:]
+	}
+	if len(name) > 0 && (name[len(name)-1] == '\'' || name[len(name)-1] == '"') {
+		name = name[:len(name)-1]
+	}
+	return strings.TrimSpace(name)
+}
+
+func (f *fontNameFixer) fixFontName(name string, add bool, generic bool) string {
+	name = stripFontName(name)
+	if name == "" {
+		return ""
+	}
+	origName := strings.ToLower(name)
+	if fixed, ok := f.fixedNames[origName]; ok {
+		return fixed
+	}
+	name = strings.ReplaceAll(name, `\`, "")
+	lower := strings.ToLower(name)
+	replacements := map[string]string{
+		"san-serif": "sans-serif",
+		"ariel":     "Arial",
+	}
+	if replacement, ok := replacements[lower]; ok {
+		name = replacement
+		lower = strings.ToLower(name)
+	}
+	for _, suffix := range []string{"-oblique", "-italic", "-bold", "-regular", "-roman", "-medium"} {
+		if strings.HasSuffix(lower, suffix) {
+			name = name[:len(name)-len(suffix)] + " " + strings.TrimPrefix(suffix, "-")
+			break
+		}
+	}
+	hasPrefix := strings.Contains(name, "-") && name != "sans-serif"
+	if hasPrefix {
+		name = strings.ReplaceAll(name, "sans-serif", "sans_serif")
+		name = name[strings.LastIndex(name, "-")+1:]
+		name = strings.ReplaceAll(name, "sans_serif", "sans-serif")
+	}
+	name = strings.TrimSpace(name)
+	if add {
+		key := strings.ToLower(name)
+		if hasPrefix {
+			key = "?-" + key
+		}
+		if replacement, ok := f.nameReplacements[key]; ok {
+			name = replacement
+		} else {
+			f.nameReplacements[key] = name
+		}
+	} else {
+		if replacement, ok := f.nameReplacements[strings.ToLower(name)]; ok {
+			name = replacement
+		} else if cssGenericFontNames[strings.ToLower(name)] {
+			name = strings.ToLower(name)
+		} else {
+			name = capitalizeFontName(name)
+		}
+	}
+	f.fixedNames[origName] = name
+	return name
+}
+
+func capitalizeFontName(name string) string {
+	words := strings.Fields(name)
+	for i, word := range words {
+		if len(word) > 2 {
+			words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
+		} else {
+			words[i] = strings.ToUpper(word)
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+func quoteFontName(value string) string {
+	for _, ident := range strings.Split(value, " ") {
+		if ident == "" {
+			break
+		}
+		first := ident[0]
+		if (first >= '0' && first <= '9') || (len(ident) >= 2 && ident[:2] == "--") || !cssIdentPattern.MatchString(ident) {
+			return quoteCSSString(value)
+		}
+		if first == '-' && len(ident) > 1 && ident[1] >= '0' && ident[1] <= '9' {
+			return quoteCSSString(value)
+		}
+	}
+	return value
+}
+
+func canonicalDeclarations(declarations []string) []string {
+	if len(declarations) == 0 {
+		return declarations
+	}
+	out := make([]string, 0, len(declarations))
+	seen := map[string]bool{}
+	for _, declaration := range declarations {
+		declaration = strings.TrimSpace(declaration)
+		if declaration == "" || seen[declaration] {
+			continue
+		}
+		seen[declaration] = true
+		out = append(out, declaration)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ni := out[i]
+		nj := out[j]
+		pi := ni
+		if idx := strings.IndexByte(ni, ':'); idx >= 0 {
+			pi = ni[:idx]
+		}
+		pj := nj
+		if idx := strings.IndexByte(nj, ':'); idx >= 0 {
+			pj = nj[:idx]
+		}
+		if pi == pj {
+			return ni < nj
+		}
+		return pi < pj
+	})
+	return out
+}
+
+func quoteCSSString(value string) string {
+	if !strings.Contains(value, "'") && !strings.Contains(value, `\`) {
+		return "'" + value + "'"
+	}
+	replacer := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	return `"` + replacer.Replace(value) + `"`
+}
+
+// ---------------------------------------------------------------------------
+// Merged from storyline.go (origin: yj_to_epub_content.py)
+// ---------------------------------------------------------------------------
+
+
+type storylineRenderer struct {
+	contentFragments    map[string][]string
+	rubyGroups          map[string]map[string]interface{}
+	rubyContents        map[string]map[string]interface{}
+	resourceHrefByID    map[string]string
+	resourceFragments   map[string]resourceFragment
+	anchorToFilename    map[string]string
+	directAnchorURI     map[string]string
+	fallbackAnchorURI   map[string]string
+	positionToSection   map[int]string
+	positionAnchors     map[int]map[int][]string
+	positionAnchorID    map[int]map[int]string
+	anchorNamesByID     map[string][]string
+	anchorHeadingLevel  map[string]int
+	emittedAnchorIDs    map[string]bool
+	styleFragments      map[string]map[string]interface{}
+	styles              *styleCatalog
+	activeBodyClass     string
+	activeBodyDefaults  map[string]bool
+	firstVisibleSeen    bool
+	lastKFXHeadingLevel int
+	symFmt              symType
+	conditionEvaluator  conditionEvaluator
+	resolveResource     ResourceResolver
+}
+
+type conditionEvaluator struct {
+	orientationLock   string
+	fixedLayout       bool
+	illustratedLayout bool
+}
+
+func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID string, bodyStyleValues map[string]interface{}, storyline map[string]interface{}, nodes []interface{}) renderedStoryline {
+	result := renderedStoryline{}
+	contentNodes := nodes
+	promotedBody := false
+	inferredBody := false
+	if bodyStyleID == "" {
+		if promotedStyleID, promotedNodes, ok := promotedBodyContainer(nodes); ok {
+			bodyStyleID = promotedStyleID
+			bodyStyleValues = nil
+			contentNodes = promotedNodes
+			promotedBody = true
+		}
+	}
+	if promotedBody {
+		bodyStyleValues = mergeStyleValues(bodyStyleValues, r.inferPromotedBodyStyle(contentNodes))
+	}
+	if bodyStyleID == "" && len(bodyStyleValues) == 0 {
+		bodyStyleValues = r.inferBodyStyleValues(contentNodes, defaultInheritedBodyStyle())
+		inferredBody = true
+		if len(bodyStyleValues) == 0 {
+			bodyStyleValues = map[string]interface{}{
+				"$11": defaultInheritedBodyStyle()["$11"],
+			}
+		}
+	}
+	if os.Getenv("KFX_DEBUG_BODY") != "" {
+		fmt.Fprintf(os.Stderr, "body infer styleID=%s values=%#v\n", bodyStyleID, bodyStyleValues)
+	}
+	r.activeBodyDefaults = nil
+	r.firstVisibleSeen = false
+	r.lastKFXHeadingLevel = 1
+	if bodyStyleID == "" {
+		bodyStyleID, _ = asString(storyline["$157"])
+	}
+	bodyStyle := effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
+	// In Python, text-indent is NOT set on the body element during rendering. Instead,
+	// it's promoted to the body by reverse inheritance during simplify_styles.
+	// Go previously stripped $36 here, but that prevented text-indent from appearing
+	// in child classes (the inherited default "0" matched children's "0", so simplify
+	// stripped it). Now we keep text-indent in the body style and let simplify_styles'
+	// reverse inheritance handle it — matching Python's approach.
+	// delete(bodyStyle, "$36")
+	bodyDeclarations := cssDeclarationsFromMap(processContentProperties(bodyStyle, r.resolveResource))
+	if bodyStyleID == "" && len(bodyDeclarations) == 0 {
+		bodyStyleValues = map[string]interface{}{
+			"$11": defaultInheritedBodyStyle()["$11"],
+		}
+		bodyStyle = effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
+		bodyDeclarations = cssDeclarationsFromMap(processContentProperties(bodyStyle, r.resolveResource))
+	}
+	if len(bodyDeclarations) > 0 {
+		baseName := "class"
+		if bodyStyleID != "" {
+			baseName = r.styleBaseName(bodyStyleID)
+		}
+		result.BodyStyle = styleStringFromDeclarations(baseName, nil, bodyDeclarations)
+	}
+	if os.Getenv("KFX_DEBUG_BODY") != "" {
+		fmt.Fprintf(os.Stderr, "body resolved styleID=%s decls=%v style=%s inferred=%v\n", bodyStyleID, bodyDeclarations, result.BodyStyle, inferredBody)
+	}
+	result.BodyStyleInferred = inferredBody
+	if len(bodyDeclarations) > 0 {
+		r.activeBodyDefaults = inheritedDefaultSet(bodyDeclarations)
+	}
+	bodyParts := make([]htmlPart, 0, len(contentNodes))
+	for _, node := range contentNodes {
+		rendered := r.renderNode(node, 0)
+		if rendered != nil {
+			bodyParts = append(bodyParts, rendered)
+		}
+	}
+	root := &htmlElement{Attrs: map[string]string{}, Children: bodyParts}
+	normalizeHTMLWhitespace(root)
+	r.applyPositionAnchors(root, sectionPositionID, false)
+	result.Root = root
+	result.BodyHTML = renderHTMLParts(root.Children, true)
+	if strings.Contains(result.BodyHTML, "<svg ") {
+		result.Properties = "svg"
+	}
+	return result
+}
+
+func (r *storylineRenderer) promoteCommonChildStyles(element *htmlElement) {
+	if element == nil {
+		return
+	}
+	for _, child := range element.Children {
+		if childElement, ok := child.(*htmlElement); ok {
+			r.promoteCommonChildStyles(childElement)
+		}
+	}
+	if element.Tag != "div" {
+		return
+	}
+	baseName, parentStyle, ok := r.dynamicClassStyle(element.Attrs["class"])
+	if !ok {
+		return
+	}
+	children := make([]*htmlElement, 0, len(element.Children))
+	for _, child := range element.Children {
+		childElement, ok := child.(*htmlElement)
+		if !ok {
+			continue
+		}
+		children = append(children, childElement)
+	}
+	if len(children) == 0 {
+		return
+	}
+	const reverseInheritanceFraction = 0.8
+	keys := []string{"font-family", "font-style", "font-weight", "font-variant", "text-align", "text-indent", "text-transform"}
+	valueCounts := map[string]map[string]int{}
+	for _, child := range children {
+		_, childStyle, ok := r.dynamicClassStyle(child.Attrs["class"])
+		if !ok {
+			continue
+		}
+		for _, key := range keys {
+			value := childStyle[key]
+			if value == "" {
+				continue
+			}
+			if valueCounts[key] == nil {
+				valueCounts[key] = map[string]int{}
+			}
+			valueCounts[key][value]++
+		}
+	}
+	newHeritable := map[string]string{}
+	for _, key := range keys {
+		values := valueCounts[key]
+		if len(values) == 0 {
+			continue
+		}
+		total := 0
+		mostCommonValue := ""
+		mostCommonCount := 0
+		for value, count := range values {
+			total += count
+			if count > mostCommonCount {
+				mostCommonValue = value
+				mostCommonCount = count
+			}
+		}
+		if total < len(children) && parentStyle[key] == "" {
+			continue
+		}
+		if float64(mostCommonCount) >= float64(len(children))*reverseInheritanceFraction {
+			newHeritable[key] = mostCommonValue
+		}
+	}
+	if len(newHeritable) == 0 {
+		return
+	}
+	oldParentStyle := cloneStyleMap(parentStyle)
+	for _, child := range children {
+		childBaseName, childStyle, ok := r.dynamicClassStyle(child.Attrs["class"])
+		if !ok {
+			continue
+		}
+		for key, newValue := range newHeritable {
+			if childStyle[key] == newValue {
+				delete(childStyle, key)
+			} else if childStyle[key] == "" && oldParentStyle[key] != "" && oldParentStyle[key] != newValue {
+				childStyle[key] = oldParentStyle[key]
+			}
+		}
+		r.setDynamicClassStyle(child, childBaseName, childStyle)
+	}
+	for key, value := range newHeritable {
+		parentStyle[key] = value
+	}
+	r.setDynamicClassStyle(element, baseName, parentStyle)
+}
+
+func (r *storylineRenderer) dynamicClassStyle(className string) (string, map[string]string, bool) {
+	if r == nil || className == "" || r.styles == nil {
+		return "", nil, false
+	}
+	entry, ok := r.styles.byToken[className]
+	if !ok {
+		return "", nil, false
+	}
+	return entry.baseName, parseDeclarationString(entry.declarations), true
+}
+
+func (r *storylineRenderer) styleBaseName(styleID string) string {
+	if styleID == "" {
+		return "class"
+	}
+	simplified := uniquePartOfLocalSymbol(styleID, r.symFmt)
+	if simplified == "" {
+		return "class"
+	}
+	return "class_" + simplified
+}
+
+func (r *storylineRenderer) setDynamicClassStyle(element *htmlElement, baseName string, style map[string]string) {
+	if element == nil {
+		return
+	}
+	if len(style) == 0 {
+		delete(element.Attrs, "class")
+		return
+	}
+	declarations := declarationListFromStyleMap(style)
+	if len(declarations) == 0 {
+		delete(element.Attrs, "class")
+		return
+	}
+	element.Attrs["class"] = r.styles.bind(baseName, declarations)
+}
+
+func (r *storylineRenderer) setDynamicStyle(element *htmlElement, baseName string, layoutHints []string, declarations []string) {
+	if element == nil {
+		return
+	}
+	setElementStyleString(element, mergeStyleStrings(element.Attrs["style"], styleStringFromDeclarations(baseName, layoutHints, declarations)))
+}
+
+func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
+	node, ok := asMap(raw)
+	if !ok {
+		// IonString entries in $146 lists create text nodes.
+		// Python process_content (yj_to_epub_content.py:397-399) wraps them in <span>.
+		if text, ok := asString(raw); ok && text != "" {
+			return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
+		}
+		return nil
+	}
+	node, ok = r.prepareRenderableNode(node)
+	if !ok {
+		return nil
+	}
+	switch asStringDefault(node["$159"]) {
+	case "$276":
+		if list := r.renderListNode(node, depth); list != nil {
+			return r.wrapNodeLink(node, list)
+		}
+	case "$277":
+		if item := r.renderListItemNode(node, depth); item != nil {
+			return r.wrapNodeLink(node, item)
+		}
+	case "$596":
+		if rule := r.renderRuleNode(node); rule != nil {
+			return r.wrapNodeLink(node, rule)
+		}
+	case "$439":
+		if hidden := r.renderHiddenNode(node, depth); hidden != nil {
+			return r.wrapNodeLink(node, hidden)
+		}
+	case "$278":
+		if table := r.renderTableNode(node, depth); table != nil {
+			return r.wrapNodeLink(node, table)
+		}
+	case "$270":
+		if container := r.renderFittedContainer(node, depth); container != nil {
+			return r.wrapNodeLink(node, container)
+		}
+	case "$272":
+		if svg := r.renderSVGNode(node); svg != nil {
+			return r.wrapNodeLink(node, svg)
+		}
+	case "$274":
+		if plugin := r.renderPluginNode(node); plugin != nil {
+			return r.wrapNodeLink(node, plugin)
+		}
+	case "$454":
+		if tbody := r.renderStructuredContainer(node, "tbody", depth); tbody != nil {
+			return r.wrapNodeLink(node, tbody)
+		}
+	case "$151":
+		if thead := r.renderStructuredContainer(node, "thead", depth); thead != nil {
+			return r.wrapNodeLink(node, thead)
+		}
+	case "$455":
+		if tfoot := r.renderStructuredContainer(node, "tfoot", depth); tfoot != nil {
+			return r.wrapNodeLink(node, tfoot)
+		}
+	case "$279":
+		if row := r.renderTableRow(node, depth); row != nil {
+			return r.wrapNodeLink(node, row)
+		}
+	}
+
+	if imageNode := r.renderImageNode(node); imageNode != nil {
+		return r.wrapNodeLink(node, imageNode)
+	}
+
+	if textNode := r.renderTextNode(node, depth); textNode != nil {
+		return r.wrapNodeLink(node, textNode)
+	}
+
+	children, ok := asSlice(node["$146"])
+	if !ok {
+		if hasRenderableContainer(node) {
+			element := &htmlElement{Tag: "div", Attrs: map[string]string{}}
+			if styleAttr := r.containerClass(node); styleAttr != "" {
+				element.Attrs["style"] = styleAttr
+			}
+			r.applyStructuralNodeAttrs(element, node, "")
+			return r.wrapNodeLink(node, element)
+		}
+		return nil
+	}
+
+	if inline := r.renderInlineRenderContainer(node, children, depth); inline != nil {
+		return r.wrapNodeLink(node, inline)
+	}
+	// Python defers heading conversion to simplify_styles (yj_to_epub_properties.py:1922).
+	// We create a <div> here and store the heading level as a data attribute.
+	// simplify_styles will convert it to <h1>-<h6> after seeing all children.
+	hl := r.layoutHintHeadingLevel(node, children)
+	if hl > 0 {
+		element := &htmlElement{Tag: "div", Attrs: map[string]string{}}
+		for _, child := range children {
+			if inline := r.renderInlineContent(child, depth+1); inline != nil {
+				element.Children = append(element.Children, inline)
+			}
+		}
+		if len(element.Children) > 0 {
+			if styleAttr := r.containerClass(node); styleAttr != "" {
+				element.Attrs["style"] = styleAttr
+			}
+			// Store heading level for simplify_styles to read. Python reads this from
+			// sty.pop("-kfx-heading-level", self.last_kfx_heading_level) (line 1858).
+			element.Attrs["data-kfx-heading-level"] = fmt.Sprintf("%d", hl)
+			r.applyStructuralNodeAttrs(element, node, "")
+			if positionID, _ := asInt(node["$155"]); positionID != 0 {
+				r.applyPositionAnchors(element, positionID, false)
+			}
+			return r.wrapNodeLink(node, element)
+		}
+	}
+	if figure := r.renderFigureHintContainer(node, children, depth); figure != nil {
+		return r.wrapNodeLink(node, figure)
+	}
+	if paragraph := r.renderInlineParagraphContainer(node, children, depth); paragraph != nil {
+		return r.wrapNodeLink(node, paragraph)
+	}
+
+	container := &htmlElement{Tag: "div", Attrs: map[string]string{}}
+	for _, child := range children {
+		rendered := r.renderContentChild(child, depth+1, node)
+		if rendered != nil {
+			container.Children = append(container.Children, rendered)
+		}
+	}
+	// Python yj_to_epub_content.py:1112+: $142 style events are applied to the
+	// content element after all children are added. For containers with both element
+	// and text children (like the Elvis logo: <img/> + "FIRST EDITION"), the style events
+	// wrap text ranges in styled spans. applyContainerStyleEvents implements this.
+	r.applyContainerStyleEvents(node, container)
+	if len(container.Children) == 0 {
+		return nil
+	}
+	// Python's COMBINE_NESTED_DIVS: if the container wraps a single image wrapper div
+	// (<div><img/></div>), merge them into one div. The image wrapper (from imageClasses)
+	// already partitioned properties. containerClass includes properties promoted from
+	// children via inferPromotedStyleValues.
+	// Python: content_style.update(child_sty, replace=False) — parent keeps its values,
+	// child only adds properties not already present. So container overwrites wrapper.
+	if wrapper := singleImageWrapperChild(container); wrapper != nil {
+		containerStyle := r.containerClass(node)
+		wrapperStyle := ""
+		if wrapper.Attrs != nil {
+			wrapperStyle = wrapper.Attrs["style"]
+		}
+		// mergeStyleStrings processes in order: first arg's properties can be overwritten
+		// by second arg. We want container (parent) to win, so wrapper goes first.
+		mergedStyle := mergeStyleStrings(wrapperStyle, containerStyle)
+		if mergedStyle != "" {
+			wrapper.Attrs["style"] = mergedStyle
+		} else {
+			delete(wrapper.Attrs, "style")
+		}
+		r.applyStructuralNodeAttrs(wrapper, node, "")
+		if positionID, _ := asInt(node["$155"]); positionID != 0 {
+			r.applyPositionAnchors(wrapper, positionID, false)
+		}
+		return r.wrapNodeLink(node, wrapper)
+	}
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		container.Attrs["style"] = styleAttr
+	}
+	r.applyStructuralNodeAttrs(container, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(container, positionID, false)
+	}
+	return r.wrapNodeLink(node, container)
+}
+
+func singleImageWrapperChild(container *htmlElement) *htmlElement {
+	if len(container.Children) != 1 {
+		return nil
+	}
+	div, ok := container.Children[0].(*htmlElement)
+	if !ok || div.Tag != "div" {
+		return nil
+	}
+	if len(div.Children) != 1 {
+		return nil
+	}
+	img, ok := div.Children[0].(*htmlElement)
+	if !ok || img.Tag != "img" {
+		return nil
+	}
+	return div
+}
+
+func (r *storylineRenderer) renderListNode(node map[string]interface{}, depth int) htmlPart {
+	tag := listTagByMarker[asStringDefault(node["$100"])]
+	if tag == "" {
+		tag = "ul"
+	}
+	list := &htmlElement{Tag: tag, Attrs: map[string]string{}}
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		list.Attrs["style"] = styleAttr
+	}
+	if start, ok := asInt(node["$104"]); ok && start > 0 && tag == "ol" && start != 1 {
+		list.Attrs["start"] = strconv.Itoa(start)
+	}
+	children, _ := asSlice(node["$146"])
+	for _, child := range children {
+		if rendered := r.renderNode(child, depth+1); rendered != nil {
+			list.Children = append(list.Children, rendered)
+		}
+	}
+	if len(list.Children) == 0 {
+		return nil
+	}
+	r.applyStructuralNodeAttrs(list, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(list, positionID, false)
+	}
+	return list
+}
+
+func (r *storylineRenderer) renderListItemNode(node map[string]interface{}, depth int) htmlPart {
+	item := &htmlElement{Tag: "li", Attrs: map[string]string{}}
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		item.Attrs["style"] = styleAttr
+	}
+	if value, ok := asInt(node["$104"]); ok && value > 0 {
+		item.Attrs["value"] = strconv.Itoa(value)
+	}
+	if ref, ok := asMap(node["$145"]); ok {
+		text := r.resolveText(ref)
+		if text != "" {
+			item.Children = append(item.Children, r.applyAnnotations(text, node)...)
+		}
+	} else if children, ok := asSlice(node["$146"]); ok {
+		for _, child := range children {
+			if rendered := r.renderNode(child, depth+1); rendered != nil {
+				item.Children = append(item.Children, rendered)
+				continue
+			}
+			if inline := r.renderInlinePart(child, depth+1); inline != nil {
+				item.Children = append(item.Children, inline)
+			}
+		}
+	}
+	if len(item.Children) == 0 {
+		return nil
+	}
+	r.applyStructuralNodeAttrs(item, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(item, positionID, false)
+	}
+	return item
+}
+
+func (r *storylineRenderer) renderRuleNode(node map[string]interface{}) htmlPart {
+	rule := &htmlElement{Tag: "hr", Attrs: map[string]string{}}
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		rule.Attrs["style"] = styleAttr
+	}
+	r.applyStructuralNodeAttrs(rule, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(rule, positionID, false)
+	}
+	return rule
+}
+
+func (r *storylineRenderer) renderHiddenNode(node map[string]interface{}, depth int) htmlPart {
+	element := &htmlElement{Tag: "div", Attrs: map[string]string{}}
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		element.Attrs["style"] = styleAttr
+	}
+	if hiddenStyle := styleStringFromDeclarations("class", nil, []string{"display: none"}); hiddenStyle != "" {
+		element.Attrs["style"] = mergeStyleStrings(element.Attrs["style"], hiddenStyle)
+	}
+	if children, ok := asSlice(node["$146"]); ok {
+		for _, child := range children {
+			if rendered := r.renderNode(child, depth+1); rendered != nil {
+				element.Children = append(element.Children, rendered)
+				continue
+			}
+			if inline := r.renderInlinePart(child, depth+1); inline != nil {
+				element.Children = append(element.Children, inline)
+			}
+		}
+	}
+	if len(element.Children) == 0 {
+		return nil
+	}
+	r.applyStructuralNodeAttrs(element, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(element, positionID, false)
+	}
+	return element
+}
+
+func (r *storylineRenderer) renderFittedContainer(node map[string]interface{}, depth int) htmlPart {
+	fitWidth, _ := asBool(node["$478"])
+	if !fitWidth {
+		return nil
+	}
+	outer := &htmlElement{Tag: "div", Attrs: map[string]string{}}
+	if styleAttr := r.fittedContainerClass(node); styleAttr != "" {
+		outer.Attrs["style"] = styleAttr
+	}
+	inner := &htmlElement{Tag: "div", Attrs: map[string]string{}}
+	children, _ := asSlice(node["$146"])
+	for _, child := range children {
+		rendered := r.renderNode(child, depth+1)
+		if rendered != nil {
+			inner.Children = append(inner.Children, rendered)
+		}
+	}
+	if len(inner.Children) == 0 {
+		return nil
+	}
+	styleID, _ := asString(node["$157"])
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	if styleAttr := styleStringFromDeclarations(baseName, nil, []string{"display: inline-block"}); styleAttr != "" {
+		inner.Attrs["style"] = styleAttr
+	}
+	outer.Children = []htmlPart{inner}
+	r.applyStructuralNodeAttrs(outer, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(outer, positionID, false)
+	}
+	return outer
+}
+
+func (r *storylineRenderer) renderPluginNode(node map[string]interface{}) htmlPart {
+	resourceID, _ := asString(node["$175"])
+	if resourceID == "" {
+		return nil
+	}
+	href := r.resourceHrefByID[resourceID]
+	if href == "" {
+		return nil
+	}
+	resource := r.resourceFragments[resourceID]
+	alt, _ := asString(node["$584"])
+	switch {
+	case resource.MediaType == "plugin/kfx-html-article" || resource.MediaType == "text/html" || resource.MediaType == "application/xhtml+xml":
+		element := &htmlElement{
+			Tag:   "iframe",
+			Attrs: map[string]string{"src": href},
+		}
+		if styleAttr := styleStringFromDeclarations("class", nil, []string{
+			"border-bottom-style: none",
+			"border-left-style: none",
+			"border-right-style: none",
+			"border-top-style: none",
+			"height: 100%",
+			"width: 100%",
+		}); styleAttr != "" {
+			element.Attrs["style"] = styleAttr
+		}
+		r.applyStructuralNodeAttrs(element, node, "")
+		return element
+	case strings.HasPrefix(resource.MediaType, "audio/"):
+		element := &htmlElement{
+			Tag:   "audio",
+			Attrs: map[string]string{"src": href, "controls": "controls"},
+		}
+		r.applyStructuralNodeAttrs(element, node, "")
+		return element
+	case strings.HasPrefix(resource.MediaType, "video/"):
+		element := &htmlElement{
+			Tag:   "video",
+			Attrs: map[string]string{"src": href, "controls": "controls"},
+		}
+		if alt != "" {
+			element.Attrs["aria-label"] = alt
+		}
+		r.applyStructuralNodeAttrs(element, node, "")
+		return element
+	case strings.HasPrefix(resource.MediaType, "image/"):
+		return r.renderImageNode(node)
+	default:
+		element := &htmlElement{
+			Tag:   "object",
+			Attrs: map[string]string{"data": href},
+		}
+		if resource.MediaType != "" {
+			element.Attrs["type"] = resource.MediaType
+		}
+		if alt != "" {
+			element.Children = []htmlPart{htmlText{Text: alt}}
+		}
+		r.applyStructuralNodeAttrs(element, node, "")
+		return element
+	}
+}
+
+func (r *storylineRenderer) renderSVGNode(node map[string]interface{}) htmlPart {
+	width, hasWidth := asInt(node["$66"])
+	height, hasHeight := asInt(node["$67"])
+	attrs := map[string]string{
+		"version":             "1.1",
+		"preserveAspectRatio": "xMidYMid meet",
+	}
+	if hasWidth && hasHeight && width > 0 && height > 0 {
+		attrs["viewBox"] = fmt.Sprintf("0 0 %d %d", width, height)
+	}
+	element := &htmlElement{
+		Tag:   "svg",
+		Attrs: attrs,
+	}
+	r.applyStructuralNodeAttrs(element, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(element, positionID, false)
+	}
+	return element
+}
+
+func (r *storylineRenderer) renderTableNode(node map[string]interface{}, depth int) htmlPart {
+	table := &htmlElement{Tag: "table", Attrs: map[string]string{}}
+	if styleAttr := r.tableClass(node); styleAttr != "" {
+		table.Attrs["style"] = styleAttr
+	}
+	if cols, ok := asSlice(node["$152"]); ok && len(cols) > 0 {
+		colgroup := &htmlElement{Tag: "colgroup", Attrs: map[string]string{}}
+		for _, raw := range cols {
+			colMap, ok := asMap(raw)
+			if !ok {
+				continue
+			}
+			col := &htmlElement{Tag: "col", Attrs: map[string]string{}}
+			if span, ok := asInt(colMap["$118"]); ok && span > 1 {
+				col.Attrs["span"] = strconv.Itoa(span)
+			}
+			if styleAttr := r.tableColumnClass(colMap); styleAttr != "" {
+				col.Attrs["style"] = styleAttr
+			}
+			colgroup.Children = append(colgroup.Children, col)
+		}
+		if len(colgroup.Children) > 0 {
+			table.Children = append(table.Children, colgroup)
+		}
+	}
+	if children, ok := asSlice(node["$146"]); ok {
+		for _, child := range children {
+			rendered := r.renderNode(child, depth+1)
+			if rendered != nil {
+				if childNode, ok := asMap(child); ok {
+					r.applyStructuralAttrsToPart(rendered, childNode, table.Tag)
+				}
+				table.Children = append(table.Children, rendered)
+			}
+		}
+	}
+	if len(table.Children) == 0 {
+		return nil
+	}
+	r.applyStructuralNodeAttrs(table, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(table, positionID, false)
+	}
+	return table
+}
+
+func (r *storylineRenderer) renderStructuredContainer(node map[string]interface{}, tag string, depth int) htmlPart {
+	element := &htmlElement{Tag: tag, Attrs: map[string]string{}}
+	if styleAttr := r.structuredContainerClass(node); styleAttr != "" {
+		element.Attrs["style"] = styleAttr
+	}
+	if children, ok := asSlice(node["$146"]); ok {
+		for _, child := range children {
+			rendered := r.renderNode(child, depth+1)
+			if rendered != nil {
+				element.Children = append(element.Children, rendered)
+			}
+		}
+	}
+	if len(element.Children) == 0 {
+		return nil
+	}
+	r.applyStructuralNodeAttrs(element, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(element, positionID, false)
+	}
+	return element
+}
+
+func (r *storylineRenderer) renderTableRow(node map[string]interface{}, depth int) htmlPart {
+	row := &htmlElement{Tag: "tr", Attrs: map[string]string{}}
+	if styleID, _ := asString(node["$157"]); styleID != "" {
+		if styleAttr := r.structuredContainerClass(node); styleAttr != "" {
+			row.Attrs["style"] = styleAttr
+		}
+	}
+	children, _ := asSlice(node["$146"])
+	for _, child := range children {
+		cellNode, ok := asMap(child)
+		if !ok {
+			continue
+		}
+		cell := r.renderTableCell(cellNode, depth+1)
+		if cell != nil {
+			row.Children = append(row.Children, cell)
+		}
+	}
+	if len(row.Children) == 0 {
+		return nil
+	}
+	r.applyStructuralNodeAttrs(row, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(row, positionID, false)
+	}
+	return row
+}
+
+func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth int) htmlPart {
+	cell := &htmlElement{Tag: "td", Attrs: map[string]string{}}
+	// Extract colspan/rowspan.
+	// In KFX data, these can be either:
+	// 1. Directly on the node as $148/$149 (some fixtures)
+	// 2. In the style fragment as property $148/$149, converted to -kfx-attrib-colspan/rowspan
+	// Python extracts them via -kfx-attrib-* partition in fixup_styles_and_classes.
+	// Go's cssDeclarationsFromMap strips -kfx- prefixed properties, so we also extract
+	// from the style fragment here.
+	colspanSet := false
+	rowspanSet := false
+	if colspan, ok := asInt(node["$148"]); ok && colspan > 1 {
+		cell.Attrs["colspan"] = strconv.Itoa(colspan)
+		colspanSet = true
+	}
+	if rowspan, ok := asInt(node["$149"]); ok && rowspan > 1 {
+		cell.Attrs["rowspan"] = strconv.Itoa(rowspan)
+		rowspanSet = true
+	}
+	if !colspanSet || !rowspanSet {
+		if styleID, _ := asString(node["$157"]); styleID != "" {
+			effective := effectiveStyle(r.styleFragments[styleID], node)
+			cssMap := processContentProperties(effective, r.resolveResource)
+			if !colspanSet {
+				if v := cssMap["-kfx-attrib-colspan"]; v != "" {
+					if n, err := strconv.Atoi(v); err == nil && n > 1 {
+						cell.Attrs["colspan"] = v
+					}
+				}
+			}
+			if !rowspanSet {
+				if v := cssMap["-kfx-attrib-rowspan"]; v != "" {
+					if n, err := strconv.Atoi(v); err == nil && n > 1 {
+						cell.Attrs["rowspan"] = v
+					}
+			}
+			}
+		}
+	}
+
+	// Python COMBINE_NESTED_DIVS check: when the cell $269 has a single $269 child with $145
+	// text, and the parent and child CSS have no overlapping properties, the nested divs
+	// merge into one. The merged result becomes <td>text</td> after retag + span strip.
+	// When there IS overlap, no merge happens: the child $269 keeps its own <div> which
+	// simplify_styles later promotes to <p>, giving <td><p class="child">text</p></td>.
+	merged := r.tableCellCombineNestedDivs(node)
+
+	if styleAttr := r.tableCellClass(node); styleAttr != "" {
+		cell.Attrs["style"] = styleAttr
+	}
+	if ref, ok := asMap(node["$145"]); ok {
+		text := r.resolveText(ref)
+		if text != "" {
+			cell.Children = append(cell.Children, r.applyAnnotations(text, node)...)
+		}
+	} else if children, ok := asSlice(node["$146"]); ok {
+		for _, child := range children {
+			childNode, ok := asMap(child)
+			if !ok {
+				// Python process_content IonString case (line 397-399):
+				// bare string → <span>text</span>
+				if text, ok := asString(child); ok {
+					s := &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
+					cell.Children = append(cell.Children, s)
+				}
+				continue
+			}
+			if ref, ok := asMap(childNode["$145"]); ok && merged {
+				// COMBINE_NESTED_DIVS merged: extract text directly into <td>.
+				// Python: merge removes inner div, leaving <span>text</span> which
+				// epub_output.py later strips, giving bare text in <td>.
+				text := r.resolveText(ref)
+				if text != "" {
+					cell.Children = append(cell.Children, r.applyAnnotations(text, childNode)...)
+				}
+				// When the merged child has its own position ID with anchors,
+				// promote those anchors to the <td>. In Python, these anchors
+				// end up on the <td> after simplify_styles and beautify_html.
+				if childPosID, _ := asInt(childNode["$155"]); childPosID != 0 {
+					if len(r.positionAnchors[childPosID]) > 0 {
+						r.applyPositionAnchors(cell, childPosID, false)
+					}
+				}
+				continue
+			}
+			// No merge: render child as full node. For a $269 with $145,
+			// renderTextNode produces <p class="child">text</p>, matching Python's
+			// simplify_styles div→p promotion.
+			if rendered := r.renderContentChild(child, depth+1); rendered != nil {
+				cell.Children = append(cell.Children, rendered)
+			}
+		}
+	}
+	r.applyStructuralNodeAttrs(cell, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(cell, positionID, false)
+	}
+	return cell
+}
+
+// renderInlineContent dispatches a $146 list child the same way Python's process_content
+// handles IonString vs IonStruct (yj_to_epub_content.py:395-405).
+// - IonString (Go string): creates <span>text</span>  (Python line 397-399)
+// - IonStruct (Go map): delegates to renderInlinePart
+// applyContainerStyleEvents applies $142 style events to a container element's children,
+// matching Python's post-add_content style event processing (yj_to_epub_content.py:1112+).
+// Python's find_or_create_style_event_element locates text at character offsets within
+// the content element and wraps ranges in styled spans. This implementation handles the
+// common case where text children (from IonString $146 items) need annotation wrapping.
+func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{}, container *htmlElement) {
+	annotations, ok := asSlice(node["$142"])
+	if !ok || len(annotations) == 0 {
+		return
+	}
+	// Build text offset map
+	type textRange struct {
+		childIdx    int
+		startOffset int
+		length      int
+	}
+	var ranges []textRange
+	offset := 0
+	for i, child := range container.Children {
+		elem, ok := child.(*htmlElement)
+		if !ok {
+			continue
+		}
+		switch elem.Tag {
+		case "img", "svg":
+			ranges = append(ranges, textRange{childIdx: i, startOffset: offset, length: 1})
+			offset++
+		case "span":
+			text := htmlElementText(elem)
+			ranges = append(ranges, textRange{childIdx: i, startOffset: offset, length: len([]rune(text))})
+			offset += len([]rune(text))
+		}
+	}
+	// Apply each annotation to the matching text range
+	for _, ann := range annotations {
+		annMap, ok := asMap(ann)
+		if !ok {
+			continue
+		}
+		eventStart, _ := asInt(annMap["$143"])
+		eventLen, _ := asInt(annMap["$144"])
+		if eventLen <= 0 {
+			continue
+		}
+		anchorID, _ := asString(annMap["$179"])
+		styleID, _ := asString(annMap["$157"])
+
+		// Phase 1: Handle non-span children (img, svg, div wrappers with img children) for $179 link wrapping.
+		// Python: if "$179" in style_event: event_elem = replace_element_with_container(event_elem, "a")
+		// Python's locate_offset traverses the element tree and can find <img> nested inside
+		// wrapper <div>s. Each img/svg counts as 1 character in the offset map.
+		if anchorID != "" {
+			href := r.anchorHref(anchorID)
+			if href != "" {
+				for _, tr := range ranges {
+					elem := container.Children[tr.childIdx].(*htmlElement)
+					if elem.Tag == "span" {
+						continue
+					}
+					annEnd := eventStart + eventLen
+					trEnd := tr.startOffset + tr.length
+					if eventStart >= trEnd || annEnd <= tr.startOffset {
+						continue
+					}
+					// Find the actual target element.
+					// If the direct child is a <div> wrapping an <img>, Python's locate_offset
+					// would traverse into the div and find the <img> at the same offset.
+					target := elem
+					if elem.Tag == "div" {
+						if img := findFirstDescendantByTag(elem, "img"); img != nil {
+							target = img
+						} else if svg := findFirstDescendantByTag(elem, "svg"); svg != nil {
+							target = svg
+						}
+					}
+					if target != elem {
+						// Target is nested: find target's parent and replace target with <a><target/></a>.
+						var findParent func(*htmlElement) *htmlElement
+						findParent = func(e *htmlElement) *htmlElement {
+							for _, c := range e.Children {
+								if ch, ok := c.(*htmlElement); ok {
+									if ch == target {
+										return e
+									}
+									if p := findParent(ch); p != nil {
+										return p
+									}
+								}
+							}
+							return nil
+						}
+						if p := findParent(elem); p != nil {
+							wrapChildInLink(p, target, href)
+						}
+					} else {
+						linkAttrs := map[string]string{"href": href}
+						if epubType := epubTypeFromAnnotation(annMap); epubType != "" {
+							linkAttrs["epub:type"] = epubType
+						}
+						container.Children[tr.childIdx] = &htmlElement{
+							Tag:      "a",
+							Attrs:    linkAttrs,
+							Children: []htmlPart{elem},
+						}
+					}
+					break
+				}
+			}
+		}
+
+		// Phase 2: Handle span children for style application.
+		if styleID == "" {
+			continue
+		}
+		// Find which text range(s) this annotation covers
+		for _, tr := range ranges {
+			elem := container.Children[tr.childIdx].(*htmlElement)
+			if elem.Tag != "span" {
+				continue
+			}
+			text := htmlElementText(elem)
+			runes := []rune(text)
+			trEnd := tr.startOffset + tr.length
+			annEnd := eventStart + eventLen
+
+			// Check overlap
+			if eventStart >= trEnd || annEnd <= tr.startOffset {
+				continue
+			}
+
+			// Compute local offset within this span's text
+			localStart := eventStart - tr.startOffset
+			if localStart < 0 {
+				localStart = 0
+			}
+			localEnd := annEnd - tr.startOffset
+			if localEnd > len(runes) {
+				localEnd = len(runes)
+			}
+
+			if localStart >= localEnd {
+				continue
+			}
+
+			// Get the annotation style
+			style := effectiveStyle(r.styleFragments[styleID], annMap)
+			cssMap := processContentProperties(style, r.resolveResource)
+			declarations := cssDeclarationsFromMap(cssMap)
+			if len(declarations) == 0 {
+				continue
+			}
+			baseName := "class"
+			if styleID != "" {
+				baseName = r.styleBaseName(styleID)
+			}
+			styledSpanClass := styleStringFromDeclarations(baseName, nil, declarations)
+
+			// Split the span: before + styled + after
+			before := string(runes[:localStart])
+			styled := string(runes[localStart:localEnd])
+			after := string(runes[localEnd:])
+
+			var newChildren []htmlPart
+			if before != "" {
+				newChildren = append(newChildren, &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: before}}})
+			}
+			styledSpan := &htmlElement{
+				Tag:      "span",
+				Attrs:    map[string]string{"style": styledSpanClass},
+				Children: []htmlPart{htmlText{Text: styled}},
+			}
+
+			// Handle $179 (link) wrapping for text spans.
+			// Python: if "$179" in style_event: event_elem.tag = "a"; event_elem.set("href", ...)
+			if anchorID, ok := asString(annMap["$179"]); ok && anchorID != "" {
+				if href := r.anchorHref(anchorID); href != "" {
+					linkAttrs := map[string]string{"href": href}
+					if epubType := epubTypeFromAnnotation(annMap); epubType != "" {
+						linkAttrs["epub:type"] = epubType
+					}
+					styledSpan = &htmlElement{
+						Tag:      "a",
+						Attrs:    linkAttrs,
+						Children: []htmlPart{styledSpan},
+					}
+				}
+			}
+			newChildren = append(newChildren, styledSpan)
+			if after != "" {
+				newChildren = append(newChildren, &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: after}}})
+			}
+
+			// Replace the single span child with the split children
+			container.Children = append(container.Children[:tr.childIdx], append(newChildren, container.Children[tr.childIdx+1:]...)...)
+			break // annotation applied, move to next
+		}
+	}
+}
+
+// findFirstDescendantByTag finds the first descendant element with the given tag.
+func findFirstDescendantByTag(elem *htmlElement, tag string) *htmlElement {
+	for _, child := range elem.Children {
+		if ch, ok := child.(*htmlElement); ok {
+			if ch.Tag == tag {
+				return ch
+			}
+			if found := findFirstDescendantByTag(ch, tag); found != nil {
+				return found
+			}
+		}
+	}
+	return nil
+}
+
+// wrapChildInLink replaces a child element inside its parent's children list
+// with <a href="..."><child/></a>.
+func wrapChildInLink(parent *htmlElement, target *htmlElement, href string) {
+	for i, child := range parent.Children {
+		if ch, ok := child.(*htmlElement); ok && ch == target {
+			parent.Children[i] = &htmlElement{
+				Tag:      "a",
+				Attrs:    map[string]string{"href": href},
+				Children: []htmlPart{target},
+			}
+			return
+		}
+	}
+}
+
+// htmlElementText extracts the combined text content of an htmlElement.
+func htmlElementText(elem *htmlElement) string {
+	var buf strings.Builder
+	for _, child := range elem.Children {
+		switch typed := child.(type) {
+		case htmlText:
+			buf.WriteString(typed.Text)
+		case *htmlText:
+			buf.WriteString(typed.Text)
+		}
+	}
+	return buf.String()
+}
+
+func (r *storylineRenderer) renderInlineContent(child interface{}, depth int) htmlPart {
+	if text, ok := asString(child); ok {
+		return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
+	}
+	return r.renderInlinePart(child, depth)
+}
+
+// renderContentChild dispatches a $146 list child the same way Python's process_content
+// handles IonString vs IonStruct for block-level container paths.
+// - IonString (Go string): creates <span>text</span> with parent annotations applied
+// - IonStruct (Go map): delegates to renderNode, falls back to renderInlinePart
+func (r *storylineRenderer) renderContentChild(child interface{}, depth int, parentNode ...map[string]interface{}) htmlPart {
+	if text, ok := asString(child); ok {
+		return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
+	}
+	if rendered := r.renderNode(child, depth); rendered != nil {
+		return rendered
+	}
+	return r.renderInlinePart(child, depth)
+}
+
+func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPart {
+	node, ok := asMap(raw)
+	if !ok {
+		return nil
+	}
+	node, ok = r.prepareRenderableNode(node)
+	if !ok {
+		return nil
+	}
+	if imageNode := r.renderImageNode(node); imageNode != nil {
+		return imageNode
+	}
+	if ref, ok := asMap(node["$145"]); ok {
+		text := r.resolveText(ref)
+		if text == "" {
+			return nil
+		}
+		content := r.applyAnnotations(text, node)
+		styleID, _ := asString(node["$157"])
+		positionID, _ := asInt(node["$155"])
+		if styleID == "" && positionID == 0 && len(content) == 1 {
+			return content[0]
+		}
+		element := &htmlElement{Tag: "span", Attrs: map[string]string{}, Children: content}
+		if styleAttr := r.spanClass(styleID); styleAttr != "" {
+			element.Attrs["style"] = styleAttr
+		}
+		r.applyStructuralNodeAttrs(element, node, "")
+		if positionID != 0 {
+			r.applyPositionAnchors(element, positionID, false)
+		}
+		return element
+	}
+	children, ok := asSlice(node["$146"])
+	if !ok {
+		return nil
+	}
+	styleID, _ := asString(node["$157"])
+	container := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+	for _, child := range children {
+		if rendered := r.renderInlinePart(child, depth+1); rendered != nil {
+			container.Children = append(container.Children, rendered)
+		}
+	}
+	if len(container.Children) == 0 {
+		return nil
+	}
+	if styleAttr := r.inlineContainerClass(styleID, node); styleAttr != "" {
+		container.Attrs["style"] = styleAttr
+	}
+	r.applyStructuralNodeAttrs(container, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(container, positionID, false)
+	}
+	return container
+}
+
+func (r *storylineRenderer) renderImageNode(node map[string]interface{}) htmlPart {
+	node, ok := r.prepareRenderableNode(node)
+	if !ok {
+		return nil
+	}
+	resourceID, _ := asString(node["$175"])
+	if resourceID == "" {
+		return nil
+	}
+	href := r.resourceHrefByID[resourceID]
+	if href == "" {
+		return nil
+	}
+	alt, _ := asString(node["$584"])
+	image := &htmlElement{
+		Tag:   "img",
+		Attrs: map[string]string{"src": href, "alt": alt},
+	}
+	wrapperClass, imageClass := r.imageClasses(node)
+	if imageClass != "" {
+		image.Attrs["style"] = imageClass
+	}
+	// Python process_content $283 (inline render) for <img> (yj_to_epub_content.py:1295-1298):
+	// render=="$283" adds -kfx-render:inline to style but does NOT create a container wrapper.
+	// The wrapper div is only created in the else branch (non-inline render, line 1324-1330).
+	// Without this check, inline images get a wrapper <div> which causes containsBlock=true
+	// in simplify_styles, preventing <div>→<p> promotion for containers with mixed image+text.
+	renderMode, _ := asString(node["$601"])
+	isInlineRender := renderMode == "$283"
+	if wrapperClass == "" || isInlineRender {
+		firstVisible := r.consumeVisibleElement()
+		r.applyStructuralNodeAttrs(image, node, "")
+		if positionID, _ := asInt(node["$155"]); positionID != 0 {
+			r.applyPositionAnchors(image, positionID, firstVisible)
+		}
+		return image
+	}
+	wrapper := &htmlElement{
+		Tag:      "div",
+		Attrs:    map[string]string{"style": wrapperClass},
+		Children: []htmlPart{image},
+	}
+	r.applyStructuralNodeAttrs(wrapper, node, "")
+	firstVisible := r.consumeVisibleElement()
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(wrapper, positionID, firstVisible)
+	}
+	return wrapper
+}
+
+func (r *storylineRenderer) renderTextNode(node map[string]interface{}, depth int) htmlPart {
+	_ = depth
+	var ok bool
+	node, ok = r.prepareRenderableNode(node)
+	if !ok {
+		return nil
+	}
+	ref, ok := asMap(node["$145"])
+	if !ok {
+		return nil
+	}
+	text := r.resolveText(ref)
+	if text == "" {
+		return nil
+	}
+	positionID, _ := asInt(node["$155"])
+	if os.Getenv("KFX_DEBUG") != "" && (positionID == 1110 || positionID == 1111 || positionID == 1177 || positionID == 1178) {
+		fmt.Fprintf(os.Stderr, "render text pos=%d text=%q style=%s\n", positionID, text[:minInt(len(text), 32)], asStringDefault(node["$157"]))
+	}
+	content := r.applyAnnotations(text, node)
+	annotationStyleID := fullParagraphAnnotationStyleID(node, text)
+
+	styleID, _ := asString(node["$157"])
+	level := headingLevel(node)
+	if level == 0 {
+		level = r.headingLevelForPosition(positionID, 0)
+	}
+	// Port of Python simplify_styles heading tag selection (yj_to_epub_properties.py ~L1928):
+	// Only promote to <h1>-<h6> when layout hints include "heading" AND not fixed/illustrated layout.
+	// Python: "heading" in kfx_layout_hints and not contains_block_elem → elem.tag = "h" + level
+	isHeading := layoutHintsInclude(r.nodeLayoutHints(node), "heading")
+	if level > 0 {
+		r.lastKFXHeadingLevel = level
+		if !isHeading {
+			// Heading level stored in CSS ($790) but layout hints don't confirm heading;
+			// render as <p> like Python does (simplify_styles won't promote this <div>).
+			level = 0
+		}
+	} else if isHeading {
+		level = r.lastKFXHeadingLevel
+	}
+	if level > 0 {
+		firstVisible := r.consumeVisibleElement()
+		element := &htmlElement{
+			Tag:      fmt.Sprintf("h%d", level),
+			Attrs:    map[string]string{},
+			Children: content,
+		}
+		if styleID != "" {
+			if styleAttr := r.headingClass(styleID); styleAttr != "" {
+				element.Attrs["style"] = styleAttr
+			}
+		}
+		r.applyStructuralNodeAttrs(element, node, "")
+		r.applyPositionAnchors(element, positionID, firstVisible)
+		return element
+	}
+
+	firstVisible := r.consumeVisibleElement()
+	element := &htmlElement{
+		Tag:      "p",
+		Attrs:    map[string]string{},
+		Children: content,
+	}
+	if styleID != "" {
+		if styleAttr := r.paragraphClass(styleID, annotationStyleID); styleAttr != "" {
+			element.Attrs["style"] = styleAttr
+		}
+	}
+	r.applyFirstLineStyle(element, node)
+	r.applyStructuralNodeAttrs(element, node, "")
+	r.applyPositionAnchors(element, positionID, firstVisible)
+	return element
+}
+
+func removeSingleFullTextLinkClass(parts []htmlPart) {
+	if len(parts) != 1 {
+		return
+	}
+	link, ok := parts[0].(*htmlElement)
+	if !ok || link == nil || link.Tag != "a" {
+		return
+	}
+	delete(link.Attrs, "class")
+	delete(link.Attrs, "style")
+}
+
+func (r *storylineRenderer) applyStructuralAttrsToPart(part htmlPart, node map[string]interface{}, parentTag string) {
+	element, ok := part.(*htmlElement)
+	if !ok {
+		return
+	}
+	r.applyStructuralNodeAttrs(element, node, parentTag)
+}
+
+func (r *storylineRenderer) applyFirstLineStyle(element *htmlElement, node map[string]interface{}) {
+	if r == nil || element == nil || node == nil {
+		return
+	}
+	raw, ok := asMap(node["$622"])
+	if !ok {
+		return
+	}
+	style := cloneMap(raw)
+	if styleID, _ := asString(style["$173"]); styleID != "" {
+		style = effectiveStyle(r.styleFragments[styleID], style)
+	}
+	delete(style, "$173")
+	delete(style, "$625")
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	if len(declarations) == 0 {
+		return
+	}
+	className := r.styles.reserveClass("kfx-firstline")
+	if className == "" {
+		return
+	}
+	element.Attrs["class"] = appendClassNames(element.Attrs["class"], className)
+	r.styles.addStatic("."+className+"::first-line", declarations)
+}
+
+func (r *storylineRenderer) wrapNodeLink(node map[string]interface{}, part htmlPart) htmlPart {
+	if node == nil || part == nil {
+		return part
+	}
+	anchorID, _ := asString(node["$179"])
+	if anchorID == "" {
+		return part
+	}
+	href := r.anchorHref(anchorID)
+	if href == "" {
+		return part
+	}
+	if element, ok := part.(*htmlElement); ok && element != nil && element.Tag == "a" {
+		if element.Attrs == nil {
+			element.Attrs = map[string]string{}
+		}
+		if element.Attrs["href"] == "" {
+			element.Attrs["href"] = href
+		}
+		return element
+	}
+	// Build link attributes including epub:type from $616 (Python: -kfx-attrib-epub-type)
+	linkAttrs := map[string]string{"href": href}
+	if epubType := r.epubTypeFromNode(node); epubType != "" {
+		linkAttrs["epub:type"] = epubType
+	}
+	return &htmlElement{
+		Tag:      "a",
+		Attrs:    linkAttrs,
+		Children: []htmlPart{part},
+	}
+}
+
+// epubTypeFromAnnotation extracts epub:type value from a $142 style event annotation.
+// Python: $616=$617 → -kfx-attrib-epub-type: noteref → epub:type="noteref"
+func epubTypeFromAnnotation(annMap map[string]interface{}) string {
+	raw, ok := annMap["$616"]
+	if !ok {
+		return ""
+	}
+	v, ok := asString(raw)
+	if !ok {
+		return ""
+	}
+	switch v {
+	case "$617":
+		return "noteref"
+	default:
+		return v
+	}
+}
+
+// epubTypeFromNode extracts epub:type from $616 property on a node.
+// Python: $616=$617 → -kfx-attrib-epub-type: noteref → epub:type="noteref"
+func (r *storylineRenderer) epubTypeFromNode(node map[string]interface{}) string {
+	raw, ok := node["$616"]
+	if !ok {
+		return ""
+	}
+	// $617 → "noteref" (Python yj_to_epub_properties.py line 564)
+	if v, ok := asString(raw); ok {
+		switch v {
+		case "$617":
+			return "noteref"
+		default:
+			return v
+		}
+	}
+	return ""
+}
+
+func (r *storylineRenderer) anchorHref(anchorID string) string {
+	if anchorID == "" {
+		return ""
+	}
+	if href := r.directAnchorURI[anchorID]; href != "" {
+		return href
+	}
+	if href := r.anchorToFilename[anchorID]; href != "" {
+		return href
+	}
+	if r.anchorNameRegistered(anchorID) {
+		return "anchor:" + anchorID
+	}
+	return anchorID
+}
+
+func (r *storylineRenderer) anchorNameRegistered(anchorID string) bool {
+	if r == nil || anchorID == "" {
+		return false
+	}
+	for _, offsets := range r.positionAnchors {
+		for _, names := range offsets {
+			for _, name := range names {
+				if name == anchorID {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (map[string]interface{}, bool) {
+	if node == nil {
+		return nil, false
+	}
+	working := cloneMap(node)
+	hadConditionalContent := working["$592"] != nil || working["$591"] != nil || working["$663"] != nil
+	if include := working["$592"]; include != nil && !r.conditionEvaluator.evaluateBinary(include) {
+		return nil, false
+	}
+	delete(working, "$592")
+	if exclude := working["$591"]; exclude != nil && r.conditionEvaluator.evaluateBinary(exclude) {
+		return nil, false
+	}
+	delete(working, "$591")
+	if rawConditional, ok := asSlice(working["$663"]); ok {
+		for _, raw := range rawConditional {
+			props, ok := asMap(raw)
+			if !ok {
+				continue
+			}
+			if merged := r.mergeConditionalProperties(working, props); merged != nil {
+				working = merged
+			}
+		}
+	}
+	delete(working, "$663")
+	if hadConditionalContent {
+		working["__has_conditional_content__"] = true
+	}
+	return working, true
+}
+
+func (r *storylineRenderer) mergeConditionalProperties(node map[string]interface{}, conditional map[string]interface{}) map[string]interface{} {
+	if node == nil || conditional == nil {
+		return node
+	}
+	props := cloneMap(conditional)
+	apply := false
+	if include := props["$592"]; include != nil {
+		apply = r.conditionEvaluator.evaluateBinary(include)
+		delete(props, "$592")
+	} else if exclude := props["$591"]; exclude != nil {
+		apply = !r.conditionEvaluator.evaluateBinary(exclude)
+		delete(props, "$591")
+	}
+	if !apply {
+		return node
+	}
+	merged := cloneMap(node)
+	for key, value := range props {
+		merged[key] = value
+	}
+	return merged
+}
+
+func (r *storylineRenderer) applyStructuralNodeAttrs(element *htmlElement, node map[string]interface{}, parentTag string) {
+	if element == nil || node == nil {
+		return
+	}
+	if element.Tag == "div" {
+		if r.shouldPromoteLayoutHints() && layoutHintsInclude(r.nodeLayoutHints(node), "figure") && htmlPartContainsImage(element) {
+			element.Tag = "figure"
+		}
+	}
+	classification, _ := asString(node["$615"])
+	switch {
+	case classification == "$453" && parentTag == "table" && element.Tag == "div":
+		element.Tag = "caption"
+	case classificationEPUBType[classification] != "" && element.Tag == "div":
+		element.Tag = "aside"
+	}
+	if epubType := classificationEPUBType[classification]; epubType != "" && element.Tag == "aside" {
+		element.Attrs["epub:type"] = epubType
+	}
+	if classification == "$688" {
+		element.Attrs["role"] = "math"
+	}
+	switch asStringDefault(node["$156"]) {
+	case "$324", "$325":
+		if styleAttr := styleStringFromDeclarations("class", nil, []string{"position: fixed"}); styleAttr != "" {
+			element.Attrs["style"] = mergeStyleStrings(element.Attrs["style"], styleAttr)
+		}
+	}
+}
+
+func (r *storylineRenderer) nodeLayoutHints(node map[string]interface{}) []string {
+	if node == nil {
+		return nil
+	}
+	styleID, _ := asString(node["$157"])
+	style := effectiveStyle(r.styleFragments[styleID], node)
+	switch typed := style["$761"].(type) {
+	case string:
+		if typed == "" {
+			return nil
+		}
+		if hint := layoutHintElementNames[typed]; hint != "" {
+			return []string{hint}
+		}
+		return strings.Fields(typed)
+	case []interface{}:
+		hints := make([]string, 0, len(typed))
+		for _, raw := range typed {
+			value, ok := asString(raw)
+			if !ok || value == "" {
+				continue
+			}
+			if hint := layoutHintElementNames[value]; hint != "" {
+				hints = append(hints, hint)
+				continue
+			}
+			hints = append(hints, strings.Fields(value)...)
+		}
+		if len(hints) == 0 {
+			return nil
+		}
+		return hints
+	default:
+		return nil
+	}
+}
+
+// layoutHintHeadingLevel returns the heading level (1-6) if the node should become a heading,
+// or 0 if it should not. Previously this returned an HTML tag like "h1" and the caller
+// created that tag directly. Now we defer the tag decision to simplify_styles (matching
+// Python yj_to_epub_properties.py:1922) and only communicate the heading level.
+func (r *storylineRenderer) layoutHintHeadingLevel(node map[string]interface{}, children []interface{}) int {
+	if !r.shouldPromoteStructuralContainer(node) {
+		return 0
+	}
+	if !layoutHintsInclude(r.nodeLayoutHints(node), "heading") {
+		return 0
+	}
+	level := headingLevel(node)
+	if level <= 0 || level > 6 {
+		return 0
+	}
+	for _, child := range children {
+		if r.renderInlinePart(child, 0) == nil {
+			return 0
+		}
+	}
+	return level
+}
+
+// renderInlineParagraphContainer creates a <div> for inline-only containers with text.
+// Python creates a <div> via process_content and simplify_styles later converts to <p>.
+// Previously Go created <p> here directly — now deferred to simplify_styles (Python parity).
+func (r *storylineRenderer) renderInlineParagraphContainer(node map[string]interface{}, children []interface{}, depth int) htmlPart {
+	if !r.shouldPromoteStructuralContainer(node) || len(children) != 1 || !nodeContainsTextContent(children) {
+		return nil
+	}
+	element := &htmlElement{Tag: "div", Attrs: map[string]string{}}
+	for _, child := range children {
+		if inline := r.renderInlinePart(child, depth+1); inline != nil {
+			element.Children = append(element.Children, inline)
+			continue
+		}
+		return nil
+	}
+	if len(element.Children) == 0 {
+		return nil
+	}
+	styleID, _ := asString(node["$157"])
+	if styleAttr := r.paragraphClass(styleID, ""); styleAttr != "" {
+		element.Attrs["style"] = styleAttr
+	}
+	r.applyFirstLineStyle(element, node)
+	r.applyStructuralNodeAttrs(element, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(element, positionID, false)
+	}
+	return element
+}
+
+func (r *storylineRenderer) renderInlineRenderContainer(node map[string]interface{}, children []interface{}, depth int) htmlPart {
+	renderMode, _ := asString(node["$601"])
+	if renderMode != "$283" {
+		return nil
+	}
+	styleID, _ := asString(node["$157"])
+	element := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+	for _, child := range children {
+		if inline := r.renderInlinePart(child, depth+1); inline != nil {
+			element.Children = append(element.Children, inline)
+			continue
+		}
+		return nil
+	}
+	if len(element.Children) == 0 {
+		return nil
+	}
+	if styleAttr := r.inlineContainerClass(styleID, node); styleAttr != "" {
+		element.Attrs["style"] = styleAttr
+	}
+	r.applyStructuralNodeAttrs(element, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(element, positionID, false)
+	}
+	return element
+}
+
+func (r *storylineRenderer) renderFigureHintContainer(node map[string]interface{}, children []interface{}, depth int) htmlPart {
+	if !r.shouldPromoteStructuralContainer(node) || !layoutHintsInclude(r.nodeLayoutHints(node), "figure") {
+		return nil
+	}
+	element := &htmlElement{Tag: "div", Attrs: map[string]string{}}
+	for _, child := range children {
+		if rendered := r.renderNode(child, depth+1); rendered != nil {
+			element.Children = append(element.Children, rendered)
+			continue
+		}
+		if inline := r.renderInlinePart(child, depth+1); inline != nil {
+			element.Children = append(element.Children, inline)
+			continue
+		}
+		return nil
+	}
+	if len(element.Children) == 0 || !htmlPartContainsImage(element) {
+		return nil
+	}
+	// Python's COMBINE_NESTED_DIVS for figure containers.
+	if wrapper := singleImageWrapperChild(element); wrapper != nil {
+		containerStyle := r.containerClass(node)
+		wrapperStyle := ""
+		if wrapper.Attrs != nil {
+			wrapperStyle = wrapper.Attrs["style"]
+		}
+		// Parent (container) wins on conflicts, matching Python's replace=False
+		mergedStyle := mergeStyleStrings(wrapperStyle, containerStyle)
+		if mergedStyle != "" {
+			wrapper.Attrs["style"] = mergedStyle
+		} else {
+			delete(wrapper.Attrs, "style")
+		}
+		r.applyStructuralNodeAttrs(wrapper, node, "")
+		if positionID, _ := asInt(node["$155"]); positionID != 0 {
+			r.applyPositionAnchors(wrapper, positionID, false)
+		}
+		return wrapper
+	}
+	if styleAttr := r.containerClass(node); styleAttr != "" {
+		element.Attrs["style"] = styleAttr
+	}
+	r.applyStructuralNodeAttrs(element, node, "")
+	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		r.applyPositionAnchors(element, positionID, false)
+	}
+	return element
+}
+
+func (r *storylineRenderer) shouldPromoteLayoutHints() bool {
+	if r == nil {
+		return true
+	}
+	return !r.conditionEvaluator.fixedLayout && !r.conditionEvaluator.illustratedLayout
+}
+
+func (r *storylineRenderer) shouldPromoteStructuralContainer(node map[string]interface{}) bool {
+	if !r.shouldPromoteLayoutHints() || node == nil {
+		return false
+	}
+	if node["__has_conditional_content__"] != nil || node["$615"] != nil {
+		return false
+	}
+	switch asStringDefault(node["$156"]) {
+	case "$324", "$325":
+		return false
+	}
+	return true
+}
+
+func nodeContainsTextContent(children []interface{}) bool {
+	for _, raw := range children {
+		node, ok := asMap(raw)
+		if !ok {
+			continue
+		}
+		if _, ok := asMap(node["$145"]); ok {
+			return true
+		}
+		if nested, ok := asSlice(node["$146"]); ok && nodeContainsTextContent(nested) {
+			return true
+		}
+	}
+	return false
+}
+
+func layoutHintsInclude(hints []string, want string) bool {
+	for _, hint := range hints {
+		if hint == want {
+			return true
+		}
+	}
+	return false
+}
+
+func htmlPartContainsImage(part htmlPart) bool {
+	switch typed := part.(type) {
+	case *htmlElement:
+		if typed == nil {
+			return false
+		}
+		if typed.Tag == "img" {
+			return true
+		}
+		for _, child := range typed.Children {
+			if htmlPartContainsImage(child) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *storylineRenderer) bodyClass(styleID string, values map[string]interface{}) string {
+	style := effectiveStyle(r.styleFragments[styleID], values)
+	if len(style) == 0 {
+		return ""
+	}
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	if len(declarations) == 0 {
+		return ""
+	}
+	if bodyClass := staticBodyClassForDeclarations(declarations); bodyClass != "" {
+		return bodyClass
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, nil, declarations)
+}
+
+func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
+	styleID, _ := asString(node["$157"])
+	style := effectiveStyle(r.styleFragments[styleID], node)
+	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
+	if len(style) == 0 {
+		return ""
+	}
+	cssMap := processContentProperties(style, r.resolveResource)
+
+	// Handle -kfx-box-align → margin auto conversion, matching Python
+	// yj_to_epub_content.py:1390-1404. Container elements get margin-auto
+	// only when they have a width property (or are tables).
+	if boxAlign, ok := cssMap["-kfx-box-align"]; ok {
+		delete(cssMap, "-kfx-box-align")
+		if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" {
+			_, hasWidth := cssMap["width"]
+			if hasWidth {
+				if boxAlign != "left" {
+					cssMap["margin-left"] = "auto"
+				}
+				if boxAlign != "right" {
+					cssMap["margin-right"] = "auto"
+				}
+			}
+		}
+	}
+
+	declarations := cssDeclarationsFromMap(cssMap)
+	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
+		declarations = append(declarations, "font-style: normal")
+	}
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, r.nodeLayoutHints(node), declarations)
+}
+
+func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
+	styleID, _ := asString(node["$157"])
+	style := effectiveStyle(r.styleFragments[styleID], node)
+	cssMap := processContentProperties(style, r.resolveResource)
+
+	// Handle -kfx-box-align → margin auto conversion for tables.
+	// Ported from Python yj_to_epub_content.py (~L1390-1404):
+	// For tables with box-align left/right/center, set the appropriate
+	// margin-left/margin-right to auto (replacing any explicit value).
+	// Tables always have a known width, so auto margins are appropriate.
+	if boxAlign, ok := cssMap["-kfx-box-align"]; ok {
+		delete(cssMap, "-kfx-box-align")
+		if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" {
+			if boxAlign != "left" {
+				cssMap["margin-left"] = "auto"
+			}
+			if boxAlign != "right" {
+				cssMap["margin-right"] = "auto"
+			}
+		}
+	}
+
+	declarations := cssDeclarationsFromMap(cssMap)
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, nil, declarations)
+}
+
+func (r *storylineRenderer) tableColumnClass(node map[string]interface{}) string {
+	style := effectiveStyle(nil, node)
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	if len(declarations) == 0 {
+		return ""
+	}
+	return styleStringFromDeclarations("class", nil, declarations)
+}
+
+// fittedContainerClass generates the style class for the outer wrapper of a fitted container.
+// It handles -kfx-box-align by converting it to text-align on the outer wrapper (not margin-auto),
+// matching Python yj_to_epub_content.py:1375-1381 where fitted (inline-block) elements get
+// a wrapper with text-align from box-align so the inline-block is horizontally positioned.
+func (r *storylineRenderer) fittedContainerClass(node map[string]interface{}) string {
+	styleID, _ := asString(node["$157"])
+	style := effectiveStyle(r.styleFragments[styleID], node)
+	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
+	if len(style) == 0 {
+		return ""
+	}
+	cssMap := processContentProperties(style, r.resolveResource)
+
+	// Handle -kfx-box-align → text-align conversion for fitted containers.
+	// Python yj_to_epub_content.py:1375-1381:
+	//   if "-kfx-box-align" in content_style:
+	//       container_elem, container_style = self.create_container(
+	//           content_elem, content_style, "div", BLOCK_ALIGNED_CONTAINER_PROPERTIES)
+	//       container_style["text-align"] = container_style.pop("-kfx-box-align")
+	// The outer wrapper gets text-align, which positions the inline-block inner element.
+	if boxAlign, ok := cssMap["-kfx-box-align"]; ok {
+		delete(cssMap, "-kfx-box-align")
+		if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" {
+			cssMap["text-align"] = boxAlign
+		}
+	}
+
+	declarations := cssDeclarationsFromMap(cssMap)
+	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
+		declarations = append(declarations, "font-style: normal")
+	}
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, r.nodeLayoutHints(node), declarations)
+}
+
+func (r *storylineRenderer) structuredContainerClass(node map[string]interface{}) string {
+	styleID, _ := asString(node["$157"])
+	style := effectiveStyle(r.styleFragments[styleID], node)
+	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, nil, declarations)
+}
+
+// tableCellCombineNestedDivs returns true when Python's COMBINE_NESTED_DIVS
+// (yj_to_epub_content.py:1408-1448) would merge the cell $269 with its single child $269.
+// This happens when the parent and child CSS properties don't overlap (excluding -kfx-style-name).
+func (r *storylineRenderer) tableCellCombineNestedDivs(node map[string]interface{}) bool {
+	children, ok := asSlice(node["$146"])
+	if !ok || len(children) != 1 {
+		return false
+	}
+	child, ok := asMap(children[0])
+	if !ok {
+		return false
+	}
+	childContentType, _ := asString(child["$159"])
+	if childContentType != "$269" {
+		return false
+	}
+	if _, has145 := asMap(child["$145"]); !has145 {
+		return false // child doesn't have text content to merge
+	}
+	styleID, _ := asString(node["$157"])
+	childStyleID, _ := asString(child["$157"])
+	if styleID == "" || childStyleID == "" {
+		return true // no style conflict
+	}
+	ownStyle := effectiveStyle(r.styleFragments[styleID], node)
+	parentCSS := processContentProperties(ownStyle, r.resolveResource)
+	childStyle := effectiveStyle(r.styleFragments[childStyleID], child)
+	childCSS := processContentProperties(childStyle, r.resolveResource)
+	for prop := range parentCSS {
+		if prop == "-kfx-style-name" {
+			continue
+		}
+		if _, exists := childCSS[prop]; exists {
+			return false // overlap → no merge
+		}
+	}
+	return true // no overlap → merge
+}
+
+func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
+	styleID, _ := asString(node["$157"])
+	style := effectiveStyle(r.styleFragments[styleID], node)
+	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
+
+	// Replicate Python's COMBINE_NESTED_DIVS for table cells.
+	// In Python, process_content creates nested divs for cell + content, then
+	// COMBINE_NESTED_DIVS merges them when parent has no text, single child div,
+	// block display, static position, no float, no overlapping properties.
+	// content_style.update(child_sty, replace=False) adds child-only properties.
+	// We check overlap against the parent's own CSS properties (before inference),
+	// since inferred properties are reverse-inherited from children.
+	if children, ok := asSlice(node["$146"]); ok && len(children) == 1 {
+		if child, ok := asMap(children[0]); ok {
+			childStyleID, _ := asString(child["$157"])
+			if childStyleID != "" {
+				ownStyle := effectiveStyle(r.styleFragments[styleID], node)
+				parentCSS := processContentProperties(ownStyle, r.resolveResource)
+				childStyle := effectiveStyle(r.styleFragments[childStyleID], child)
+				childCSS := processContentProperties(childStyle, r.resolveResource)
+				// Python excludes -kfx-style-name from overlap check
+				hasOverlap := false
+				for prop := range parentCSS {
+					if prop == "-kfx-style-name" {
+						continue
+					}
+					if _, exists := childCSS[prop]; exists {
+						hasOverlap = true
+						break
+					}
+				}
+				if !hasOverlap {
+					style = mergeStyleValues(style, childStyle)
+				}
+			}
+		}
+	}
+
+	cssMap := processContentProperties(style, r.resolveResource)
+
+	// Handle -kfx-box-align → text-align conversion for table cells.
+	// In Python's process_content (yj_to_epub_content.py), -kfx-box-align is popped from
+	// td element styles. Since cssDeclarationsFromMap strips -kfx- prefixed properties,
+	// we convert it to text-align here to preserve alignment information, matching the old
+	// tableCellStyleDeclarations which used mapBoxAlign to convert $580/$34 values to text-align.
+	if boxAlign, ok := cssMap["-kfx-box-align"]; ok {
+		if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" || boxAlign == "justify" {
+			if _, exists := cssMap["text-align"]; !exists {
+				cssMap["text-align"] = boxAlign
+			}
+		}
+		delete(cssMap, "-kfx-box-align")
+	}
+
+	// Strip -kfx-attrib-colspan/rowspan from style — already handled as direct HTML attributes.
+	// cssDeclarationsFromMap now preserves -kfx-attrib-* properties, but for table cells
+	// these are redundant (extracted from $148/$149 into colspan/rowspan attrs directly).
+	delete(cssMap, "-kfx-attrib-colspan")
+	delete(cssMap, "-kfx-attrib-rowspan")
+
+	declarations := cssDeclarationsFromMap(cssMap)
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, nil, declarations)
+}
+
+func (r *storylineRenderer) inlineContainerClass(styleID string, node map[string]interface{}) string {
+	style := effectiveStyle(r.styleFragments[styleID], node)
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, nil, declarations)
+}
+
+var blockAlignedContainerProperties = map[string]bool{
+	"-kfx-attrib-colspan": true, "-kfx-attrib-rowspan": true,
+	"-kfx-box-align": true, "-kfx-heading-level": true, "-kfx-layout-hints": true,
+	"-kfx-table-vertical-align": true,
+	"box-sizing": true,
+	"float": true,
+	"margin-left": true, "margin-right": true, "margin-top": true, "margin-bottom": true,
+	"overflow": true,
+	"page-break-after": true, "page-break-before": true, "page-break-inside": true,
+	"text-indent": true,
+	"transform": true, "transform-origin": true,
+}
+
+var reverseHeritablePropertiesExcludes = map[string]bool{
+	"-amzn-page-align":                   true,
+	"-kfx-user-margin-bottom-percentage": true,
+	"-kfx-user-margin-left-percentage":   true,
+	"-kfx-user-margin-right-percentage":  true,
+	"-kfx-user-margin-top-percentage":    true,
+	"font-size":  true,
+	"line-height": true,
+}
+
+func isBlockContainerProperty(prop string) bool {
+	if blockAlignedContainerProperties[prop] || prop == "display" {
+		return true
+	}
+	return heritableProperties[prop] && !reverseHeritablePropertiesExcludes[prop]
+}
+
+func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, string) {
+	styleID, _ := asString(node["$157"])
+	style := effectiveStyle(r.styleFragments[styleID], node)
+	style = r.adjustRenderableStyle(style, node)
+	if len(style) == 0 {
+		return "", ""
+	}
+	cssMap := processContentProperties(style, r.resolveResource)
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+
+	// Handle -kfx-box-align → text-align conversion.
+	// The old imageWrapperStyleDeclarations used mapBoxAlign to convert $580/$34
+	// directly to text-align. processContentProperties outputs -kfx-box-align instead.
+	// Convert it to text-align for CSS output, matching the old behavior.
+	if boxAlign, ok := cssMap["-kfx-box-align"]; ok {
+		if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" || boxAlign == "justify" {
+			cssMap["text-align"] = boxAlign
+		}
+		delete(cssMap, "-kfx-box-align")
+	}
+
+	// Partition properties between wrapper div and image element, matching Python's
+	// create_container(BLOCK_CONTAINER_PROPERTIES) in yj_to_epub_content.py:1324.
+	// Container gets: REVERSE_HERITABLE_PROPERTIES | BLOCK_ALIGNED_CONTAINER_PROPERTIES | {"display"}.
+	// Image keeps everything else. No properties are dropped.
+	wrapperProps := map[string]string{}
+	imageProps := map[string]string{}
+	for prop, val := range cssMap {
+		if isBlockContainerProperty(prop) {
+			wrapperProps[prop] = val
+		} else {
+			imageProps[prop] = val
+		}
+	}
+
+	// Python yj_to_epub_content.py:1328-1331: when container has float, move % width
+	// from inner image to container and set image width to 100%.
+	if _, hasFloat := wrapperProps["float"]; hasFloat {
+		if w, ok := imageProps["width"]; ok && strings.HasSuffix(w, "%") {
+			wrapperProps["width"] = w
+			imageProps["width"] = "100%"
+		}
+	}
+
+	wrapperDecls := cssDeclarationsFromMap(wrapperProps)
+	imageDecls := cssDeclarationsFromMap(imageProps)
+
+	switch {
+	case len(wrapperDecls) > 0 && len(imageDecls) > 0:
+		return styleStringFromDeclarations(baseName, nil, wrapperDecls), styleStringFromDeclarations(baseName, nil, imageDecls)
+	case len(wrapperDecls) > 0:
+		return styleStringFromDeclarations(baseName, nil, wrapperDecls), ""
+	case len(imageDecls) > 0:
+		return "", styleStringFromDeclarations(baseName, nil, imageDecls)
+	default:
+		return "", ""
+	}
+}
+
+func (r *storylineRenderer) adjustRenderableStyle(style map[string]interface{}, node map[string]interface{}) map[string]interface{} {
+	if len(style) == 0 {
+		return style
+	}
+	if fitTight, _ := asBool(node["$784"]); fitTight {
+		if value := cssLengthProperty(style["$56"], "$56"); value == "100%" {
+			style = cloneMap(style)
+			delete(style, "$56")
+		}
+	}
+	return style
+}
+
+func (r *storylineRenderer) headingClass(styleID string) string {
+	style := effectiveStyle(r.styleFragments[styleID], nil)
+	if len(style) == 0 {
+		return ""
+	}
+	className := r.headingClassName(styleID, style)
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
+		declarations = append(declarations, "font-style: normal")
+	}
+	if style["$36"] == nil && activeTextIndentNeedsReset(r.activeBodyDefaults) {
+		declarations = append(declarations, "text-indent: 0")
+	}
+	if len(declarations) == 0 {
+		return ""
+	}
+	return styleStringFromDeclarations(className, []string{"heading"}, declarations)
+}
+
+func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID string) string {
+	style := effectiveStyle(r.styleFragments[styleID], nil)
+	if len(style) == 0 {
+		return ""
+	}
+	// Merge link style inheritance: when paragraph doesn't have certain properties,
+	// inherit them from the link (annotation) style. This preserves the behavior of
+	// the old paragraphStyleDeclarations link inheritance block (kfx.go:1164-1201).
+	linkStyle := effectiveStyle(r.styleFragments[annotationStyleID], nil)
+	if linkStyle != nil {
+		// Merge link color properties ($576=visited-color, $577=link-color) for color resolution
+		for _, yjProp := range []string{"$576", "$577"} {
+			if _, ok := style[yjProp]; !ok {
+				if val, ok := linkStyle[yjProp]; ok {
+					style[yjProp] = val
+				}
+			}
+		}
+		// Merge link font/typographic properties when paragraph doesn't have them
+		for _, yjProp := range []string{"$11", "$12", "$13", "$583", "$41"} {
+			if _, ok := style[yjProp]; !ok {
+				if val, ok := linkStyle[yjProp]; ok {
+					style[yjProp] = val
+				}
+			}
+		}
+	}
+	cssMap := processContentProperties(style, r.resolveResource)
+	// Resolve link color: if no explicit color but -kfx-link-color == -kfx-visited-color,
+	// set color to that value. This preserves what colorDeclarations(style, linkStyle) did
+	// in the old paragraphStyleDeclarations, and matches simplifyStylesElementFull's <a> tag logic.
+	if _, hasColor := cssMap["color"]; !hasColor {
+		linkColor, hasLink := cssMap["-kfx-link-color"]
+		visitedColor, hasVisited := cssMap["-kfx-visited-color"]
+		if hasLink && hasVisited && linkColor == visitedColor {
+			cssMap["color"] = linkColor
+		}
+	}
+	declarations := cssDeclarationsFromMap(cssMap)
+	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
+		declarations = append(declarations, "font-style: normal")
+	}
+	if style["$36"] == nil && activeTextIndentNeedsReset(r.activeBodyDefaults) {
+		declarations = append(declarations, "text-indent: 0")
+	}
+	if os.Getenv("KFX_DEBUG_PARAGRAPH_STYLE") != "" {
+		fmt.Fprintf(os.Stderr, "paragraph style=%s body=%s decls=%v\n", styleID, r.activeBodyClass, declarations)
+	}
+	className := ""
+	if len(declarations) > 0 {
+		baseName := "class"
+		if styleID != "" {
+			baseName = r.styleBaseName(styleID)
+		}
+		className = styleStringFromDeclarations(baseName, nil, declarations)
+	}
+	if annotationStyleID != "" {
+		_ = r.linkClass(annotationStyleID, true)
+	}
+	return className
+}
+
+func (r *storylineRenderer) linkClass(styleID string, suppressColor bool) string {
+	style := effectiveStyle(r.styleFragments[styleID], nil)
+	if len(style) == 0 {
+		return ""
+	}
+	cssMap := processContentProperties(style, r.resolveResource)
+	// Always resolve link color: if no explicit color but -kfx-link-color == -kfx-visited-color,
+	// set color to that value. This matches simplifyStylesElementFull's <a> tag logic.
+	// Previously we suppressed color when suppressColor was true (for paragraphs that
+	// handle color via link style inheritance). But simplify_styles will strip the
+	// redundant color from <a> if it matches inherited, so we don't need to suppress.
+	if _, hasColor := cssMap["color"]; !hasColor {
+		linkColor, hasLink := cssMap["-kfx-link-color"]
+		visitedColor, hasVisited := cssMap["-kfx-visited-color"]
+		if hasLink && hasVisited && linkColor == visitedColor {
+			cssMap["color"] = linkColor
+		}
+	}
+	// Always strip -kfx- properties (they're not real CSS and will appear in the
+	// style catalog if not removed here).
+	delete(cssMap, "-kfx-link-color")
+	delete(cssMap, "-kfx-visited-color")
+	declarations := cssDeclarationsFromMap(cssMap)
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, nil, declarations)
+}
+
+func (r *storylineRenderer) spanClass(styleID string) string {
+	style := effectiveStyle(r.styleFragments[styleID], nil)
+	if len(style) == 0 {
+		return ""
+	}
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, nil, declarations)
+}
+
+// annotationSpanClass generates the CSS class for an annotation's styled span.
+// Port of Python yj_to_epub_content.py:1142 + 1307:
+//   self.add_kfx_style(style_event, style_event.pop("$157", None))  → merges style fragment into event
+//   self.add_style(event_elem, self.process_content_properties(style_event), replace=True)
+// Python merges the style fragment properties INTO the annotation map, then processes all properties.
+// Go must do the same: merge the style fragment with the annotation's own properties.
+func (r *storylineRenderer) annotationSpanClass(styleID string, annotationMap map[string]interface{}) string {
+	style := effectiveStyle(r.styleFragments[styleID], annotationMap)
+	if len(style) == 0 {
+		return ""
+	}
+	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
+	if len(declarations) == 0 {
+		return ""
+	}
+	baseName := "class"
+	if styleID != "" {
+		baseName = r.styleBaseName(styleID)
+	}
+	return styleStringFromDeclarations(baseName, nil, declarations)
+}
+
+func (r *storylineRenderer) resolveText(ref map[string]interface{}) string {
+	return resolveContentText(r.contentFragments, ref)
+}
+
+func hasRenderableContainer(node map[string]interface{}) bool {
+	_, hasStyle := asString(node["$157"])
+	children, hasChildren := asSlice(node["$146"])
+	_, hasImage := asString(node["$175"])
+	_, hasText := asMap(node["$145"])
+	return hasStyle && !hasImage && !hasText && (!hasChildren || len(children) == 0)
+}
+
+func promotedBodyContainer(nodes []interface{}) (string, []interface{}, bool) {
+	if len(nodes) != 1 {
+		return "", nil, false
+	}
+	node, ok := asMap(nodes[0])
+	if !ok {
+		return "", nil, false
+	}
+	styleID, _ := asString(node["$157"])
+	children, ok := asSlice(node["$146"])
+	if !ok || len(children) == 0 || styleID == "" {
+		return "", nil, false
+	}
+	if _, ok := asMap(node["$145"]); ok {
+		return "", nil, false
+	}
+	if _, ok := asString(node["$175"]); ok {
+		return "", nil, false
+	}
+	if headingLevel(node) > 0 {
+		return "", nil, false
+	}
+	return styleID, children, true
+}
+
+func defaultInheritedBodyStyle() map[string]interface{} {
+	zero := 0.0
+	return map[string]interface{}{
+		"$11": "default,serif",
+		"$12": "$350",
+		"$13": "$350",
+		"$36": map[string]interface{}{
+			"$306": "$308",
+			"$307": &zero,
+		},
+	}
+}
+
+func (r *storylineRenderer) inferBodyStyleValues(nodes []interface{}, parentStyle map[string]interface{}) map[string]interface{} {
+	return r.inferSharedHeritableStyle(parentStyle, nodes)
+}
+
+func (r *storylineRenderer) inferPromotedBodyStyle(nodes []interface{}) map[string]interface{} {
+	return r.inferSharedHeritableStyle(nil, nodes)
+}
+
+func (r *storylineRenderer) inferPromotedStyleValues(node map[string]interface{}) map[string]interface{} {
+	children, ok := asSlice(node["$146"])
+	if !ok || len(children) == 0 {
+		return nil
+	}
+	styleID, _ := asString(node["$157"])
+	return r.inferSharedHeritableStyle(effectiveStyle(r.styleFragments[styleID], node), children)
+}
+
+func (r *storylineRenderer) inferSharedHeritableStyle(parentStyle map[string]interface{}, nodes []interface{}) map[string]interface{} {
+	if len(nodes) == 0 {
+		return nil
+	}
+	type valueCount struct {
+		count int
+		raw   interface{}
+	}
+	const reverseInheritanceFraction = 0.8
+	keys := []string{"$11", "$12", "$13", "$34", "$36", "$41", "$583"}
+	valueCounts := map[string]map[string]*valueCount{}
+	numChildren := 0
+	debugInfer := os.Getenv("KFX_DEBUG_INFER_COUNTS") != ""
+	debugStyleIDs := make([]string, 0, len(nodes))
+	for _, raw := range nodes {
+		node, ok := asMap(raw)
+		if !ok {
+			continue
+		}
+		styleID, _ := asString(node["$157"])
+		if debugInfer {
+			debugStyleIDs = append(debugStyleIDs, styleID)
+		}
+		style := effectiveStyle(r.styleFragments[styleID], node)
+		if childPromoted := r.inferPromotedStyleValues(node); len(childPromoted) > 0 {
+			style = mergeStyleValues(style, childPromoted)
+		}
+		numChildren++
+		if len(style) == 0 {
+			continue
+		}
+		for _, key := range keys {
+			rawValue, ok := style[key]
+			if !ok {
+				continue
+			}
+			valueKey := fmt.Sprintf("%#v", rawValue)
+			if valueCounts[key] == nil {
+				valueCounts[key] = map[string]*valueCount{}
+			}
+			entry := valueCounts[key][valueKey]
+			if entry == nil {
+				entry = &valueCount{raw: rawValue}
+				valueCounts[key][valueKey] = entry
+			}
+			entry.count++
+		}
+	}
+	if numChildren == 0 {
+		return nil
+	}
+	values := map[string]interface{}{}
+	for _, key := range keys {
+		counts := valueCounts[key]
+		if len(counts) == 0 {
+			continue
+		}
+		var (
+			bestKey   string
+			bestValue interface{}
+			bestCount int
+			total     int
+		)
+		for valueKey, entry := range counts {
+			total += entry.count
+			if entry.count > bestCount {
+				bestKey = valueKey
+				bestValue = entry.raw
+				bestCount = entry.count
+			}
+		}
+		if bestKey == "" {
+			continue
+		}
+		if total < numChildren && (parentStyle == nil || parentStyle[key] == nil) {
+			continue
+		}
+		if float64(bestCount) >= float64(numChildren)*reverseInheritanceFraction {
+			values[key] = bestValue
+		}
+	}
+	if len(values) == 0 {
+		if debugInfer {
+			fmt.Fprintf(os.Stderr, "infer none numChildren=%d styles=%v counts=", numChildren, debugStyleIDs)
+			for _, key := range keys {
+				if len(valueCounts[key]) == 0 {
+					continue
+				}
+				fmt.Fprintf(os.Stderr, " %s:{", key)
+				first := true
+				for valueKey, entry := range valueCounts[key] {
+					if !first {
+						fmt.Fprint(os.Stderr, ", ")
+					}
+					first = false
+					fmt.Fprintf(os.Stderr, "%s=%d", valueKey, entry.count)
+				}
+				fmt.Fprint(os.Stderr, "}")
+			}
+			fmt.Fprintln(os.Stderr)
+		}
+		return nil
+	}
+	if debugInfer {
+		fmt.Fprintf(os.Stderr, "infer values numChildren=%d styles=%v values=%#v\n", numChildren, debugStyleIDs, values)
+	}
+	return values
+}
+
+func headingLevel(node map[string]interface{}) int {
+	value, ok := node["$790"]
+	if !ok {
+		return 0
+	}
+	level, _ := asInt(value)
+	return level
+}
+
+func fullParagraphAnnotationStyleID(node map[string]interface{}, text string) string {
+	annotations, ok := asSlice(node["$142"])
+	if !ok || len(annotations) == 0 {
+		return ""
+	}
+	runeCount := len([]rune(text))
+	for _, raw := range annotations {
+		annotationMap, ok := asMap(raw)
+		if !ok || !annotationCoversWholeText(annotationMap, runeCount) {
+			continue
+		}
+		styleID, _ := asString(annotationMap["$157"])
+		return styleID
+	}
+	return ""
+}
+
+func annotationCoversWholeText(annotationMap map[string]interface{}, runeCount int) bool {
+	if annotationMap == nil || runeCount == 0 {
+		return false
+	}
+	start, hasStart := asInt(annotationMap["$143"])
+	length, hasLength := asInt(annotationMap["$144"])
+	_, hasAnchor := asString(annotationMap["$179"])
+	return hasAnchor && hasStart && hasLength && start == 0 && length >= runeCount
+}
+
+func (r *storylineRenderer) headingClassName(styleID string, style map[string]interface{}) string {
+	simplified := uniquePartOfLocalSymbol(styleID, r.symFmt)
+	if simplified != "" {
+		return "heading_" + simplified
+	}
+	return "heading_" + styleID
+}
+
+func filterBodyDefaultDeclarations(declarations []string, bodyDefaults map[string]bool) []string {
+	if len(declarations) == 0 {
+		return declarations
+	}
+	filtered := make([]string, 0, len(declarations))
+	for _, declaration := range declarations {
+		if bodyDefaults != nil && bodyDefaults[declaration] {
+			continue
+		}
+		filtered = append(filtered, declaration)
+	}
+	return filtered
+}
+
+func activeTextIndentNeedsReset(bodyDefaults map[string]bool) bool {
+	if len(bodyDefaults) == 0 {
+		return false
+	}
+	for declaration := range bodyDefaults {
+		if strings.HasPrefix(declaration, "text-indent: ") {
+			return declaration != "text-indent: 0"
+		}
+	}
+	return false
+}
+
+func bodyDefaultsInclude(bodyDefaults map[string]bool, declaration string) bool {
+	if len(bodyDefaults) == 0 {
+		return false
+	}
+	return bodyDefaults[declaration]
+}
+
+func (r *storylineRenderer) applyAnnotations(text string, node map[string]interface{}) []htmlPart {
+	annotations, ok := asSlice(node["$142"])
+	type event struct {
+		start int
+		end   int
+		open  func(parent *htmlElement) *htmlElement
+		close func(opened *htmlElement)
+	}
+	type activeEvent struct {
+		event  event
+		opened *htmlElement
+	}
+	runes := []rune(text)
+	// Port of Python yj_to_epub_content.py:1117-1131:
+	// Python's add_kfx_style merges the $157 style fragment properties INTO the content node,
+	// so $125/$126 (dropcap_lines/dropcap_chars) become part of the node. Go doesn't merge —
+	// it uses effectiveStyle() to compute the combined style lazily. So we must look up
+	// $125/$126 from the effective style when not directly in the node.
+	dropcapLinesVal, hasDropcapLines := asInt(node["$125"])
+	if !hasDropcapLines || dropcapLinesVal <= 0 {
+		if styleID, _ := asString(node["$157"]); styleID != "" {
+			if frag := r.styleFragments[styleID]; frag != nil {
+				dropcapLinesVal, hasDropcapLines = asInt(frag["$125"])
+			}
+		}
+	}
+	dropcapCharsVal, hasDropcapChars := asInt(node["$126"])
+	if !hasDropcapChars || dropcapCharsVal <= 0 {
+		if styleID, _ := asString(node["$157"]); styleID != "" {
+			if frag := r.styleFragments[styleID]; frag != nil {
+				dropcapCharsVal, hasDropcapChars = asInt(frag["$126"])
+			}
+		}
+	}
+	if hasDropcapLines && dropcapLinesVal > 0 {
+		if hasDropcapChars && dropcapCharsVal > 0 {
+			dropcap := map[string]interface{}{
+				"$143": 0,
+				"$144": dropcapCharsVal,
+				"$125": dropcapLinesVal,
+			}
+			// Port of Python yj_to_epub_content.py:1129:
+			//   if "$173" in content: dropcap_style_event[IS("$173")] = content["$173"]
+			// Copy $173 (kfx-style-name) from content node to dropcap event so
+			// the CSS class name uses the style fragment's base name.
+			if v := node["$173"]; v != nil {
+				dropcap["$173"] = v
+			} else if styleID, _ := asString(node["$157"]); styleID != "" {
+				if frag := r.styleFragments[styleID]; frag != nil {
+					if v := frag["$173"]; v != nil {
+						dropcap["$173"] = v
+					}
+				}
+			}
+			annotations = append([]interface{}{dropcap}, annotations...)
+			ok = true
+		}
+	}
+	events := make([]event, 0, len(annotations))
+	if ok {
+		for _, raw := range annotations {
+			annotationMap, ok := asMap(raw)
+			if !ok {
+				continue
+			}
+			start, hasStart := asInt(annotationMap["$143"])
+			length, hasLength := asInt(annotationMap["$144"])
+			if !hasStart || !hasLength || length <= 0 || start < 0 || start >= len(runes) {
+				continue
+			}
+			end := start + length
+			if end > len(runes) {
+				end = len(runes)
+			}
+			anchorID, _ := asString(annotationMap["$179"])
+			styleID, _ := asString(annotationMap["$157"])
+			dropcapClass := ""
+			dropcapLines := 0
+			if l, ok := asInt(annotationMap["$125"]); ok && l > 0 {
+				dropcapLines = l
+				dropcapClass = r.dropcapClass(l)
+			}
+			if debugAnchors := os.Getenv("KFX_DEBUG_ANCHORS"); debugAnchors != "" && anchorID != "" {
+				for _, wanted := range strings.Split(debugAnchors, ",") {
+					if strings.TrimSpace(wanted) == anchorID {
+						fmt.Fprintf(os.Stderr, "annotation anchor=%s style=%s value=%#v\n", anchorID, styleID, annotationMap)
+					}
+				}
+			}
+			href := r.anchorHref(anchorID)
+			rubyName, hasRubyName := asString(annotationMap["$757"])
+			if hasRubyName && rubyName != "" {
+				rubyIDs := r.rubyAnnotationIDs(annotationMap, end-start)
+				var rubyElement *htmlElement
+				events = append(events, event{
+					start: start,
+					end:   end,
+					open: func(parent *htmlElement) *htmlElement {
+						rubyElement = &htmlElement{Tag: "ruby", Attrs: map[string]string{}}
+						parent.Children = append(parent.Children, rubyElement)
+						rb := &htmlElement{Tag: "rb", Attrs: map[string]string{}}
+						rubyElement.Children = append(rubyElement.Children, rb)
+						return rb
+					},
+					close: func(opened *htmlElement) {
+						if opened == nil || rubyElement == nil {
+							return
+						}
+						for _, rubyID := range rubyIDs {
+							rt := &htmlElement{Tag: "rt", Attrs: map[string]string{}, Children: r.rubyContentParts(rubyName, rubyID)}
+							rubyElement.Children = append(rubyElement.Children, rt)
+						}
+					},
+				})
+				continue
+			}
+			if href != "" {
+				// Port of Python yj_to_epub_content.py:1142 — add_kfx_style merges style fragment
+				// into annotation map, then process_content_properties uses the merged result.
+				style := effectiveStyle(r.styleFragments[styleID], annotationMap)
+				linkCSS := processContentProperties(style, r.resolveResource)
+				if _, hasColor := linkCSS["color"]; !hasColor {
+					linkColor, hasLink := linkCSS["-kfx-link-color"]
+					visitedColor, hasVisited := linkCSS["-kfx-visited-color"]
+					if hasLink && hasVisited && linkColor == visitedColor {
+						linkCSS["color"] = linkColor
+					}
+				}
+				delete(linkCSS, "-kfx-link-color")
+				delete(linkCSS, "-kfx-visited-color")
+				linkDecls := cssDeclarationsFromMap(linkCSS)
+				linkBaseName := "class"
+				if styleID != "" {
+					linkBaseName = r.styleBaseName(styleID)
+				}
+				styleAttr := mergeStyleStrings(
+					styleStringFromDeclarations(linkBaseName, nil, linkDecls),
+					dropcapClass,
+				)
+				// Port of Python yj_to_epub_content.py $616→epub:type on annotation links.
+				// Python: $616=$617 → -kfx-attrib-epub-type: noteref → epub:type="noteref"
+				epubType := epubTypeFromAnnotation(annotationMap)
+				events = append(events, event{
+					start: start,
+					end:   end,
+					open: func(parent *htmlElement) *htmlElement {
+						attrs := map[string]string{"href": href}
+						if styleAttr != "" {
+							attrs["style"] = styleAttr
+						}
+						if epubType != "" {
+							attrs["epub:type"] = epubType
+						}
+						element := &htmlElement{Tag: "a", Attrs: attrs}
+						parent.Children = append(parent.Children, element)
+						return element
+					},
+				})
+				continue
+			}
+			// Port of Python yj_to_epub_content.py:1117-1131 — dropcap events are
+			// separate from annotation style events. The dropcap wraps the first N
+			// characters in an inner span with float/font-size/line-height/margin,
+			// and the annotation wraps it in an outer span with annotation styles.
+			// Python inserts the dropcap_style_event at position 0 in style_events,
+			// then processes annotations separately. Here we create two nested events.
+			annotationStyle := r.annotationSpanClass(styleID, annotationMap)
+			if dropcapClass != "" {
+				// Dropcap event: innermost span wrapping the first N characters.
+				// Port of Python is_dropcap branch (yj_to_epub_content.py:1213-1230):
+				//   1. add_style(event_elem, {float: left, font-size: Nem, ...})
+				//   2. add_style(event_elem, process_content_properties(style_event), replace=True)
+				// The dropcap element gets BOTH the float/font-size/margin AND the
+				// processed content properties from the style fragment, using the
+				// style fragment's base name for CSS class naming.
+				//
+				// Key: Python's add_kfx_style merges the $157 style fragment into the
+				// style_event, so process_content_properties sees all properties. The
+				// CSS class name comes from the $173 (-kfx-style-name) property which
+				// is set from the parent node's $157 style fragment.
+				// Since the synthetic dropcap event has no $157, we use the parent
+				// node's styleID to compute the correct base name for CSS class naming.
+				nodeStyleID, _ := asString(node["$157"])
+				dropcapBaseName := "class"
+				if nodeStyleID != "" {
+					dropcapBaseName = r.styleBaseName(nodeStyleID)
+				}
+				// Compute dropcap-specific styles with the correct base name
+				dropcapDeclStyle := styleStringFromDeclarations(dropcapBaseName, nil, []string{
+					"float: left",
+					fmt.Sprintf("font-size: %dem", dropcapLines),
+					"line-height: 100%",
+					"margin-bottom: 0",
+					"margin-right: 0.1em",
+					"margin-top: 0",
+				})
+				dropcapSpanStyle := dropcapDeclStyle
+				if annotationStyle != "" {
+					// Merge annotation content properties with dropcap styles.
+					// Python applies dropcap styles first, then process_content_properties
+					// with replace=True (which can override). mergeStyleStrings handles this.
+					dropcapSpanStyle = mergeStyleStrings(dropcapDeclStyle, annotationStyle)
+				}
+				events = append(events, event{
+					start: start,
+					end:   end,
+					open: func(parent *htmlElement) *htmlElement {
+						element := &htmlElement{Tag: "span", Attrs: map[string]string{"style": dropcapSpanStyle}}
+						parent.Children = append(parent.Children, element)
+						return element
+					},
+				})
+			}
+			if annotationStyle != "" {
+				// Annotation event: outer wrapper with annotation CSS
+				events = append(events, event{
+					start: start,
+					end:   end,
+					open: func(parent *htmlElement) *htmlElement {
+						element := &htmlElement{Tag: "span", Attrs: map[string]string{"style": annotationStyle}}
+						parent.Children = append(parent.Children, element)
+						return element
+					},
+				})
+			}
+		}
+	}
+	if len(events) == 0 {
+		return splitTextHTMLParts(text)
+	}
+	sort.SliceStable(events, func(i, j int) bool {
+		if events[i].start == events[j].start {
+			return events[i].end > events[j].end
+		}
+		return events[i].start < events[j].start
+	})
+	root := &htmlElement{Attrs: map[string]string{}}
+	stack := []*activeEvent{{opened: root}}
+	last := 0
+	for index, rch := range runes {
+		if last < index {
+			appendTextHTMLParts(stack[len(stack)-1].opened, string(runes[last:index]))
+			last = index
+		}
+		for _, ev := range events {
+			if ev.start == index {
+				opened := ev.open(stack[len(stack)-1].opened)
+				stack = append(stack, &activeEvent{event: ev, opened: opened})
+			}
+		}
+		appendTextHTMLParts(stack[len(stack)-1].opened, string(rch))
+		last = index + 1
+		for i := len(events) - 1; i >= 0; i-- {
+			if events[i].end == index+1 {
+				if len(stack) > 1 {
+					active := stack[len(stack)-1]
+					if active.event.close != nil {
+						active.event.close(active.opened)
+					}
+					stack = stack[:len(stack)-1]
+				}
+			}
+		}
+	}
+	if last < len(runes) {
+		appendTextHTMLParts(stack[len(stack)-1].opened, string(runes[last:]))
+	}
+
+	// Port of Python add_content (yj_to_epub_content.py:364-370):
+	// Python wraps ALL text in <span> elements via SubElement(parent, "span").
+	// This ensures no bare text nodes exist in the tree, which is critical for
+	// simplify_styles reverse inheritance (Python skips when elem.text or elem.tail
+	// is set, line 1875-1876). During simplify_styles, empty spans are unwrapped
+	// (matching etree.strip_tags in epub_output.py:783-789).
+	for i, child := range root.Children {
+		switch child.(type) {
+		case htmlText, *htmlText:
+			root.Children[i] = &htmlElement{
+				Tag:      "span",
+				Attrs:    map[string]string{},
+				Children: []htmlPart{child},
+			}
+		}
+	}
+
+	return root.Children
+}
+
+func (r *storylineRenderer) rubyAnnotationIDs(annotationMap map[string]interface{}, eventLength int) []int {
+	if annotationMap == nil {
+		return nil
+	}
+	if rubyID, ok := asInt(annotationMap["$758"]); ok {
+		return []int{rubyID}
+	}
+	rawIDs, ok := asSlice(annotationMap["$759"])
+	if !ok {
+		return nil
+	}
+	ids := make([]int, 0, len(rawIDs))
+	for _, raw := range rawIDs {
+		entry, ok := asMap(raw)
+		if !ok {
+			continue
+		}
+		if rubyID, ok := asInt(entry["$758"]); ok {
+			ids = append(ids, rubyID)
+		}
+	}
+	return ids
+}
+
+func (r *storylineRenderer) rubyContentParts(rubyName string, rubyID int) []htmlPart {
+	content := r.getRubyContent(rubyName, rubyID)
+	if content == nil {
+		return nil
+	}
+	if ref, ok := asMap(content["$145"]); ok {
+		if text := r.resolveText(ref); text != "" {
+			return splitTextHTMLParts(text)
+		}
+	}
+	if children, ok := asSlice(content["$146"]); ok {
+		parts := make([]htmlPart, 0, len(children))
+		for _, child := range children {
+			if rendered := r.renderInlinePart(child, 0); rendered != nil {
+				parts = append(parts, rendered)
+			}
+		}
+		return parts
+	}
+	return nil
+}
+
+func (r *storylineRenderer) getRubyContent(rubyName string, rubyID int) map[string]interface{} {
+	group := r.rubyGroups[rubyName]
+	if group == nil {
+		return nil
+	}
+	children, _ := asSlice(group["$146"])
+	for _, raw := range children {
+		switch typed := raw.(type) {
+		case string:
+			if content := r.rubyContents[typed]; content != nil {
+				if id, ok := asInt(content["$758"]); ok && id == rubyID {
+					return cloneMap(content)
+				}
+			}
+		default:
+			entry, ok := asMap(raw)
+			if !ok {
+				continue
+			}
+			if id, ok := asInt(entry["$758"]); ok && id == rubyID {
+				return cloneMap(entry)
+			}
+		}
+	}
+	return nil
+}
+
+func (r *storylineRenderer) dropcapClass(lines int) string {
+	if lines <= 0 {
+		return ""
+	}
+	return styleStringFromDeclarations("class", nil, []string{
+		"float: left",
+		fmt.Sprintf("font-size: %dem", lines),
+		"line-height: 100%",
+		"margin-bottom: 0",
+		"margin-right: 0.1em",
+		"margin-top: 0",
+	})
+}
+
+func (r *storylineRenderer) anchorIDForPosition(positionID int, offset int) string {
+	offsets := r.positionAnchorID[positionID]
+	if offsets == nil {
+		return ""
+	}
+	return offsets[offset]
+}
+
+func (r *storylineRenderer) anchorOnlyMovable(positionID int, offset int) bool {
+	offsets := r.positionAnchors[positionID]
+	if offsets == nil {
+		return false
+	}
+	names := offsets[offset]
+	if len(names) == 0 {
+		return false
+	}
+	for _, name := range names {
+		if strings.HasPrefix(name, "$798_") {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *storylineRenderer) applyPositionAnchors(element *htmlElement, positionID int, isFirstVisible bool) {
+	if element == nil || positionID == 0 {
+		return
+	}
+	if os.Getenv("KFX_DEBUG") != "" && (positionID == 1110 || positionID == 1111 || positionID == 1177 || positionID == 1178) {
+		fmt.Fprintf(os.Stderr, "apply anchors pos=%d tag=%s first=%v raw=%v ids=%v\n", positionID, element.Tag, isFirstVisible, r.positionAnchors[positionID], r.positionAnchorID[positionID])
+	}
+	offsets := r.positionAnchors[positionID]
+	if len(offsets) == 0 {
+		return
+	}
+	if anchorID := r.anchorIDForPosition(positionID, 0); anchorID != "" {
+		if !isFirstVisible && !strings.HasPrefix(anchorID, "id__212_") {
+			element.Attrs["id"] = anchorID
+			r.emittedAnchorIDs[anchorID] = true
+			r.registerAnchorElementNames(positionID, 0, anchorID)
+			if os.Getenv("KFX_DEBUG") != "" && (positionID == 1110 || positionID == 1111 || positionID == 1177 || positionID == 1178 || positionID == 1007 || positionID == 1053) {
+				fmt.Fprintf(os.Stderr, "set id pos=%d tag=%s id=%s class=%s\n", positionID, element.Tag, anchorID, element.Attrs["class"])
+			}
+		}
+	}
+	ordered := make([]int, 0, len(offsets))
+	for offset := range offsets {
+		if offset > 0 {
+			ordered = append(ordered, offset)
+		}
+	}
+	sort.Ints(ordered)
+	for _, offset := range ordered {
+		anchorID := r.anchorIDForPosition(positionID, offset)
+		if anchorID == "" {
+			continue
+		}
+		target := locateOffset(element, offset)
+		if target == nil {
+			continue
+		}
+		// Port of Python position anchor behavior (yj_to_epub_navigation.py:375-400 +
+		// yj_to_epub_content.py:1094-1098):
+		// Python processes position anchors BEFORE style events/annotations, so the
+		// anchor is placed on a raw text span. When annotations later wrap that span
+		// via replace_element_with_container, the id stays on the inner element.
+		// Go processes annotations FIRST (in applyAnnotations/processTextContent),
+		// then position anchors. So when locateOffset finds an annotation-created
+		// element (<a> with href, elements with epub:type), we must create a separate
+		// empty <span id="X"/> as a sibling before it, matching Python's output.
+		if needsSeparateAnchorSpan(target) {
+			if span := insertAnchorSpanBefore(element, target); span != nil {
+				span.Attrs = map[string]string{"id": anchorID}
+				r.emittedAnchorIDs[anchorID] = true
+				r.registerAnchorElementNames(positionID, offset, anchorID)
+				continue
+			}
+		}
+		if target.Attrs == nil {
+			target.Attrs = map[string]string{}
+		}
+		if target.Attrs["id"] == "" {
+			target.Attrs["id"] = anchorID
+			r.emittedAnchorIDs[anchorID] = true
+			r.registerAnchorElementNames(positionID, offset, anchorID)
+		}
+	}
+}
+
+// needsSeparateAnchorSpan returns true when the target element was created by
+// annotation processing and should NOT receive the anchor id directly.
+// Instead, a separate empty <span id="X"/> should be inserted before it.
+// Port of Python's ordering: position anchors processed BEFORE annotations,
+// so the anchor span exists as a separate element before <a> wrapping.
+func needsSeparateAnchorSpan(target *htmlElement) bool {
+	if target == nil {
+		return false
+	}
+	// <a> elements with href are link annotations — always separate
+	if target.Tag == "a" && target.Attrs["href"] != "" {
+		return true
+	}
+	// Elements with epub:type attribute are annotation containers
+	if target.Attrs["epub:type"] != "" {
+		return true
+	}
+	return false
+}
+
+// insertAnchorSpanBefore inserts an empty <span/> as a sibling before target
+// by searching the element tree starting from root. Returns the new span,
+// or nil if target can't be found.
+func insertAnchorSpanBefore(root *htmlElement, target *htmlElement) *htmlElement {
+	if root == nil || target == nil {
+		return nil
+	}
+	span := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+	if didInsert := insertSpanBeforeInTree(root, target, span); didInsert {
+		return span
+	}
+	return nil
+}
+
+// insertSpanBeforeInTree recursively searches root's children for target,
+// and inserts span as a sibling before it. Returns true if inserted.
+func insertSpanBeforeInTree(parent *htmlElement, target *htmlElement, span *htmlElement) bool {
+	for i, child := range parent.Children {
+		if child == target {
+			parent.Children = append(parent.Children[:i], append([]htmlPart{span}, parent.Children[i:]...)...)
+			return true
+		}
+		if ce, ok := child.(*htmlElement); ok {
+			if insertSpanBeforeInTree(ce, target, span) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *storylineRenderer) registerAnchorElementNames(positionID int, offset int, anchorID string) {
+	if r == nil || anchorID == "" {
+		return
+	}
+	offsets := r.positionAnchors[positionID]
+	if offsets == nil {
+		return
+	}
+	names := offsets[offset]
+	if len(names) == 0 {
+		return
+	}
+	if r.anchorNamesByID == nil {
+		r.anchorNamesByID = map[string][]string{}
+	}
+	seen := map[string]bool{}
+	for _, existing := range r.anchorNamesByID[anchorID] {
+		seen[existing] = true
+	}
+	for _, name := range names {
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		r.anchorNamesByID[anchorID] = append(r.anchorNamesByID[anchorID], name)
+	}
+}
+
+func (r *storylineRenderer) headingLevelForPosition(positionID int, offset int) int {
+	if r == nil || positionID == 0 || r.anchorHeadingLevel == nil {
+		return 0
+	}
+	offsets := r.positionAnchors[positionID]
+	if offsets == nil {
+		return 0
+	}
+	for _, name := range offsets[offset] {
+		if level := r.anchorHeadingLevel[name]; level > 0 {
+			return level
+		}
+	}
+	return 0
+}
+
+func (r *storylineRenderer) consumeVisibleElement() bool {
+	isFirst := !r.firstVisibleSeen
+	r.firstVisibleSeen = true
+	return isFirst
+}
+
