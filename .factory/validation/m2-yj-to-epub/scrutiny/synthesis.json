@@ -1,0 +1,57 @@
+{
+  "milestone": "m2-yj-to-epub",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "go test ./internal/kfx/ -count=1 -timeout 120s",
+      "exitCode": 0,
+      "note": "Initial run failed due to pre-existing TestConvertFileMatchesReferenceStructureIgnoringImages (anchor name format mismatch). Fixed by adding navTypeToSymbolID() in yj_to_epub_navigation.go. All tests pass after fix."
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "go vet ./...",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "go vet ./...",
+      "exitCode": 0,
+      "note": "Project uses go vet as lint"
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Created audit-yj-to-epub-navigation-findings.md already exists from prior audit. No new library entries needed.",
+      "sourceFeature": "m2-yj-to-epub-parity"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add note to YJ Symbol Catalog section: when generating anchor names or other wire-format identifiers that must match Calibre output exactly, use the original $N symbol ID format instead of human-readable names. The navTypeToSymbolID() function in yj_to_epub_navigation.go is the example pattern.",
+      "evidence": "TestConvertFileMatchesReferenceStructureIgnoringImages failed after the $N→real-name conversion because anchor names like '$798_0_Chapter' became 'headings_0_Chapter'. The fix required adding navTypeToSymbolID() to map back to $N format for anchor name generation only.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Document replace_ion_data → mergeIonReferencedStringSymbols design rationale in library",
+      "reason": "Useful knowledge but highly specific to this one function pair. The design difference is already implicitly documented in the function mapping comment in yj_to_epub.go. Adding a library entry for every function's design rationale would create excessive documentation."
+    },
+    {
+      "observation": "Document the mismatch between 15 Python functions and 11 Go functions (6 Go-specific)",
+      "reason": "Already clearly documented in the function mapping header comment in yj_to_epub.go. The mapping is comprehensive and explicit."
+    }
+  ],
+  "previousRound": null
+}

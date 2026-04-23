@@ -1,0 +1,33 @@
+{
+  "featureId": "m2-yj-to-epub-parity",
+  "reviewedAt": "2026-04-23T05:45:00Z",
+  "commitId": "20bfd4f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The worker audited yj_to_epub.py (355 lines, 15 methods — not 17 as stated in the feature description) against yj_to_epub.go and documented a complete Python→Go function mapping. The only code change was adding a 38-line documentation comment block to the top of yj_to_epub.go. No functional code was modified. All 15 Python methods are accounted for: 7 ported directly, 5 replaced by Go's typed catalog pattern (valid design difference), 2 excluded (progress callbacks, not needed in Go's batch model), 1 excluded (check_empty, not needed with typed maps). The mapping is accurate and the design differences are justified.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_to_epub.go",
+        "line": 1,
+        "severity": "non_blocking",
+        "description": "Documentation header says '17 functions' but yj_to_epub.py has exactly 15 def statements (confirmed by rg -c). The worker's own detailed mapping lists exactly 15 functions. The '17' count in the feature description was likely copied from a rough estimate. Minor inaccuracy in documentation only."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The replace_ion_data → mergeIonReferencedStringSymbols mapping is a genuine design difference worth documenting. Python's replace_ion_data has dual purpose: (1) recursively reconstruct ION wrapper types and (2) collect IonSymbol values into book_symbols. Go doesn't need to reconstruct ION data because its ION decoder produces native map[string]interface{} directly, so only the symbol-collection aspect is needed. This design rationale is implicit but not documented in .factory/library/architecture.md.",
+      "evidence": "Python yj_to_epub.py:270-293 (replace_ion_data) vs Go yj_book.go:126-141 (mergeIonReferencedStringSymbols). The Go version only collects strings from shared-symbol keys; the Python version traverses all ION types and adds any IonSymbol."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The handoff reports '11 functions found' in yj_to_epub.go (rg '^func'), but the actual function count includes several DRM/DRMION handling functions (convertFromDRMIONData, convertFromCONTData, convertFromCONTData, decodeKFX, DecodeKFX, ConvertFileWithTrace) that don't directly correspond to yj_to_epub.py functions. These are Go-specific additions for the CLI conversion pipeline. Not a gap, but worth noting for future auditors who might wonder about the mismatch between 15 Python functions and 11 Go functions.",
+      "evidence": "Go yj_to_epub.go has 11 top-level functions, of which 4 directly map to Python functions (determineBookSymbolFormat, uniquePartOfLocalSymbol, prefixUniquePartOfSymbol, documentDataHasMaxID). renderBookState maps to __init__, ConvertFile maps to decompile_to_epub. The other 6 Go functions are Go-specific orchestration."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The m2-yj-to-epub-parity feature is a documentation-only change (38-line header comment) that accurately maps all 15 Python methods to their Go counterparts. The mapping is correct: 7 direct ports, 5 replaced by Go's typed catalog pattern (valid design choice), 3 excluded by design (progress callbacks and generic validation not needed). The pre-existing test failure (TestConvertFileMatchesReferenceStructureIgnoringImages) and the navTypeToSymbolID fix noted in the task context are unrelated to this feature's scope. Minor: the header says '17 functions' but the Python file has exactly 15."
+}
