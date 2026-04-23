@@ -1,3 +1,41 @@
+// Package kfx — yj_to_epub.go
+//
+// Port of yj_to_epub.py (355 lines, 17 functions) → yj_to_epub.go.
+//
+// This file contains the top-level conversion orchestration (renderBookState, ConvertFile)
+// and the book symbol format detection functions. The Python KFX_EPUB class uses multiple
+// inheritance to mix in 8+ modules; Go uses a functional decomposition instead.
+//
+// Function mapping (Python → Go):
+//
+//   Core pipeline (ported):
+//     KFX_EPUB.__init__           → renderBookState + organizeFragments (yj_book.go)
+//     decompile_to_epub           → ConvertFile → epub.Write
+//     organize_fragments_by_type  → organizeFragments (yj_book.go:211)
+//     determine_book_symbol_format → determineBookSymbolFormat (L571)
+//     unique_part_of_local_symbol → uniquePartOfLocalSymbol (L600)
+//     prefix_unique_part_of_symbol → prefixUniquePartOfSymbol (L623)
+//     replace_ion_data            → mergeIonReferencedStringSymbols (yj_book.go)
+//
+//   Fragment access helpers (design difference — Go uses typed catalog):
+//     get_fragment                → Direct typed map access (e.g., contentFragments[name])
+//     get_named_fragment          → Direct typed map access + notebook callbacks
+//     get_fragment_name           → chooseFragmentIdentity (yj_book.go:1593)
+//     check_fragment_name         → chooseFragmentIdentity (validation in organizeFragments)
+//     get_structure_name          → Inline map access (value["name_key"])
+//
+//   Progress (excluded — Go has no interactive progress callback):
+//     progress_countdown          → N/A
+//     update_progress             → N/A
+//
+//   Validation (excluded — Go uses typed catalog, no generic book_data map):
+//     check_empty                 → N/A (Python validates generic dict emptiness)
+//
+//   __init__ cleanup sequence (L86-174, design difference):
+//     Python pops fragment types from a generic book_data dict and validates emptiness.
+//     Go uses typed fragmentCatalog maps consumed directly during rendering. The cleanup
+//     validation (check_empty calls) is not needed because Go's typed maps are consumed
+//     explicitly by each processing stage.
 package kfx
 
 import (
