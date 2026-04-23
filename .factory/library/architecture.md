@@ -38,6 +38,14 @@ Packages HTML sections into EPUB format with:
 - Resources (images, fonts)
 - Stylesheet
 
+## Python→Go Structural Differences
+
+### Singleton Collapse (organize_fragments_by_type)
+Python's `organize_fragments_by_type` collapses single-entry fragment categories from lists into scalars (e.g., `[title_metadata]` → `title_metadata`). Go's `fragmentCatalog` struct uses typed fields (`TitleMetadata`, `ContentFeatures`, `DocumentData` as `map[string]interface{}`), making singleton collapse implicit — there's no list-to-scalar conversion needed because Go never wraps single entries in lists.
+
+### File Type Detection
+Python dispatches on file extension (`.kfx`, `.azw8`, `.ion`, `.kpf`) in `decode_book`. Go uses magic-byte detection (`\xeaCONT\xee` / `\xeaDRMION\xee`) in `kfx_container.go`, which is more robust for the on-device use case where only CONT and DRMION formats are relevant.
+
 ## Key Data Structures
 
 - `PipelineState` (state.go): Main pipeline state, holds all fragment data and book metadata

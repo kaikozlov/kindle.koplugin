@@ -1,0 +1,55 @@
+{
+  "featureId": "m1-yj-book-parity",
+  "reviewedAt": "2026-04-23T05:12:00Z",
+  "commitId": "4aa8c86",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The commit (4aa8c86) adds documentation comments to yj_book.go mapping all 18 Python functions from yj_book.py to their Go counterparts. No behavioral code was changed. The mapping is accurate: 12 core pipeline functions are correctly mapped to existing Go implementations across yj_book.go, kfx_container.go, drm.go, sidecar.go, and yj_to_epub.go; 6 Calibre output mode functions are correctly excluded by design. The worker performed a thorough branch audit and verified parity across all core functions.",
+    "issues": [
+      {
+        "file": "internal/kfx/yj_book.go",
+        "line": 29,
+        "severity": "non_blocking",
+        "description": "The function mapping header comment lists 'final_actions → N/A' twice (under both 'Core pipeline' and implicitly through the decode_book flow). The Python file has only one final_actions method. This is cosmetic — the comment accurately describes both call sites but could be clearer."
+      },
+      {
+        "file": "internal/kfx/yj_book.go",
+        "line": 403,
+        "severity": "non_blocking",
+        "description": "The naming of RubyGroups/RubyContents is counter-intuitive: fragment type 'structure' ($608) stores into RubyContents, while 'ruby_content' ($756) stores into RubyGroups. The logic is correct (matching Python's $608→ruby_id and $756→ruby_name FRAGMENT_ID_KEYS), but the field names don't match the fragment type names, which could confuse future readers."
+      },
+      {
+        "file": "internal/kfx/yj_book.go",
+        "line": 33,
+        "severity": "non_blocking",
+        "description": "Python's check_consistency() and check_fragment_usage() from yj_structure.py are called in decode_book but not ported to Go. These are validation/diagnostic functions that log errors but don't affect EPUB output. The Go code has checkSymbolTable and reportFeaturesAndMetadata ported, but these two are missing. This is acceptable since they're pure validation, but should be documented as intentionally excluded."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The worker correctly identified that Go uses magic-byte detection (CONT/DRMION signatures) instead of Python's extension-based file type dispatch (.kfx, .azw8, .ion, .kpf). This design difference isn't explicitly documented in AGENTS.md but is a valid architectural decision for the on-device use case where only CONT and DRMION formats are relevant.",
+      "evidence": "Python yj_book.py L248-280 checks datafile.ext; Go kfx_container.go L114-145 checks bytes.HasPrefix(data, contSignature) / drmionSignature"
+    },
+    {
+      "area": "conventions",
+      "observation": "The singleton collapse pattern (Python organize_fragments_by_type L207-213) is intentionally omitted in Go because Go's typed fragmentCatalog struct uses direct map fields instead of nested dicts. This design choice should be documented in the porting guide as a known structural difference that doesn't affect output parity.",
+      "evidence": "Python yj_to_epub.py L207-213 collapses single-entry categories; Go fragmentCatalog uses TitleMetadata/ContentFeatures/DocumentData as direct map[string]interface{} fields (yj_book.go L49-51)"
+    },
+    {
+      "area": "skills",
+      "observation": "The parity-auditor skill was used and followedProcedure=true. The worker's approach was methodical: enumerate all Python functions, find Go counterparts, run branch audits, verify with tests. The skill worked well for this M1 documentation-only task.",
+      "evidence": "Worker transcript shows systematic function enumeration, branch audit tool usage, and verification across build/vet/test/parity_check commands"
+    },
+    {
+      "area": "knowledge",
+      "observation": "The $N → real name mapping for fragment types is critical for understanding parity between Python and Go. AGENTS.md documents this for general symbol names but doesn't specifically list the fragment type SID mappings. The worker had to manually verify SID mappings (e.g., $270=container, $262=font, $387=preview_images, $608=structure, $756=ruby_content). A fragment type reference table would speed up future parity audits.",
+      "evidence": "Worker transcript shows multiple catalog.ion lookups to verify SID → name mappings for fragment types"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The M1 parity audit commit is documentation-only (31 lines of comments added to yj_book.go header). The function mapping is verified accurate: all 18 Python functions in yj_book.py are accounted for. 12 core pipeline functions have correct Go counterparts in yj_book.go, kfx_container.go, drm.go, sidecar.go, and yj_to_epub.go. 6 Calibre output mode functions are correctly excluded by design (convert_to_single_kfx, convert_to_cbz, convert_to_pdf, convert_to_kpf, convert_to_zip_unpack, convert_to_json_content). The Go organizeFragments function handles all fragment types that Python's organize_fragments_by_type handles, with the singleton collapse being implicit in Go's typed struct design. Build, vet pass; the single pre-existing test failure (c109.xhtml) is in M4/M5 territory. No regressions introduced."
+}

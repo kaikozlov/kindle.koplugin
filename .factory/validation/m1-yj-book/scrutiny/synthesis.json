@@ -1,0 +1,76 @@
+{
+  "milestone": "m1-yj-book",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": false,
+      "command": "go test ./internal/kfx/ -count=1 -timeout 120s",
+      "exitCode": 1,
+      "note": "749/750 tests pass. Single pre-existing failure: TestConvertFileMatchesReferenceStructureIgnoringImages (OEBPS/c109.xhtml text mismatch) — existed before M1 changes and is in M4/M5 territory (content rendering). M1 commit only added documentation comments."
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "go vet ./...",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "go vet ./...",
+      "exitCode": 0,
+      "note": "Project uses go vet as lint (no separate lint tool configured in services.yaml)"
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "m1-yj-book-parity",
+      "severity": "non_blocking",
+      "description": "Duplicate 'final_actions → N/A' entry in function mapping comment (cosmetic)"
+    },
+    {
+      "featureId": "m1-yj-book-parity",
+      "severity": "non_blocking",
+      "description": "RubyGroups/RubyContents naming is counter-intuitive: fragment type 'structure' ($608) → RubyContents, 'ruby_content' ($756) → RubyGroups"
+    },
+    {
+      "featureId": "m1-yj-book-parity",
+      "severity": "non_blocking",
+      "description": "Python's check_consistency() and check_fragment_usage() are intentionally not ported (validation-only, don't affect EPUB output). Should be documented as excluded."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Added singleton collapse design difference to python-porting-guide.md: Python's organize_fragments_by_type collapses single-entry categories into scalars; Go's typed fragmentCatalog struct makes this implicit.",
+      "sourceFeature": "m1-yj-book-parity"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add note about Go using magic-byte detection (CONT/DRMION signatures) vs Python's extension-based dispatch (.kfx, .azw8, .ion, .kpf). This is a deliberate architectural decision for the on-device use case.",
+      "evidence": "Python yj_book.py L248-280 checks datafile.ext; Go kfx_container.go L114-145 checks bytes.HasPrefix for magic bytes.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Consider adding a fragment type SID reference table to speed up future parity audits. Workers currently have to manually verify SID→name mappings via catalog.ion lookups.",
+      "evidence": "M1 worker transcript shows multiple catalog.ion lookups for fragment type SIDs ($270=container, $262=font, $387=preview_images, $608=structure, $756=ruby_content).",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Skill effectiveness: parity-auditor skill worked well for this M1 documentation-only task.",
+      "reason": "Not actionable as a library or guidance update. This is skill feedback, not codebase knowledge."
+    }
+  ],
+  "previousRound": null
+}
