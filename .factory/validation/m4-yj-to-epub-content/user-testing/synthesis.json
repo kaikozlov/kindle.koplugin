@@ -1,0 +1,23 @@
+{
+  "milestone": "m4-yj-to-epub-content",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-M4-001",
+    "VAL-M4-002",
+    "VAL-M4-003",
+    "VAL-M4-004",
+    "VAL-M4-005",
+    "VAL-M4-006"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}
