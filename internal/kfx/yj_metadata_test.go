@@ -497,19 +497,15 @@ func TestIsImageBasedFixedLayout_True(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	// Need to make getOrderedImageResources succeed.
 	// That requires isFixedLayout=true AND at least one image resource in section content.
-	// Since getOrderedImageResources is a stub that always returns "no image resources",
-	// isImageBasedFixedLayout will return false until the full implementation is done.
-	// For now, verify the function returns false when resources exist but gOIR fails.
+	// Since the test catalog has no fixed-layout metadata and no section content with images,
+	// isImageBasedFixedLayout will return false.
 	cat.ResourceFragments["img1"] = resourceFragment{ID: "img1", Location: "loc1"}
 	ci := newCacheInfo()
-	// With the current stub getOrderedImageResources, it returns an error (no images found).
-	// So isImageBasedFixedLayout should be false.
 	result := isImageBasedFixedLayout(cat, ci)
-	// Once getOrderedImageResources is fully implemented with A5 scope,
-	// this test should be updated to verify true when proper data is provided.
-	// For now, verify it doesn't panic and returns false (stub behavior).
+	// Without fixed-layout metadata and actual image content in sections,
+	// isImageBasedFixedLayout returns false.
 	if result {
-		t.Error("expected isImageBasedFixedLayout=false with stub getOrderedImageResources")
+		t.Error("expected isImageBasedFixedLayout=false — no fixed-layout metadata and no image content in sections")
 	}
 }
 
@@ -1424,8 +1420,7 @@ func TestIsKfxV1_VersionOneIsTrue(t *testing.T) {
 //   else: cached = True
 //
 // The function returns true ONLY if getOrderedImageResources succeeds.
-// Currently getOrderedImageResources is a stub that requires collect_content_position_info
-// (A5 scope), so it returns "no image resources" error.
+// getOrderedImageResources now calls CollectContentPositionInfo to walk section content.
 // This test verifies the correct calling pattern.
 // ---------------------------------------------------------------------------
 
@@ -1442,9 +1437,8 @@ func TestIsImageBasedFixedLayout_NonFixedLayoutReturnsFalse(t *testing.T) {
 
 func TestIsImageBasedFixedLayout_FixedLayoutNoImagesReturnsFalse(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
-	// Fixed-layout book (via scribe notebook flag) but no images
-	// Since isImageBasedFixedLayout doesn't take isScribeNotebook,
-	// we need to set up the metadata for fixed-layout
+	// Fixed-layout book but no images — getOrderedImageResources will fail
+	// because there are no image resources in section content
 	ci := newCacheInfo()
 	// getOrderedImageResources will fail because there are no image resources
 	// and the book is not fixed layout (no yj_fixed_layout metadata)
@@ -1459,12 +1453,12 @@ func TestIsImageBasedFixedLayout_DelegatesToGetOrderedImageResources(t *testing.
 	cat.ResourceFragments["img1"] = resourceFragment{ID: "img1", Location: "loc1"}
 
 	ci := newCacheInfo()
-	// The current stub getOrderedImageResources always returns "no image resources" error,
+	// getOrderedImageResources will fail because there are no image resources in section content,
 	// so even with resource fragments present, isImageBasedFixedLayout returns false.
 	// This verifies we delegate to gOIR instead of just checking len(ResourceFragments) > 0.
 	result := isImageBasedFixedLayout(cat, ci)
 	if result {
-		t.Error("expected false: gOIR stub returns error for no image resources")
+		t.Error("expected false: gOIR returns error for no image resources in section content")
 	}
 }
 

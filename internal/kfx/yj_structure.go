@@ -1667,33 +1667,79 @@ func matchConditionPattern(fv interface{}) bool {
 }
 
 // Port of BookStructure.get_ordered_image_resources (yj_structure.py L1258-1298).
-// Returns (ordered_image_resources, ordered_image_resource_pids, error).
-// The full Python version calls collect_content_position_info which is not yet ported (A5 scope),
-// so this function validates the fixed-layout constraint and provides stub data collection
-// for section fragments. The full position-aware version will be completed when A5 is ported.
-func getOrderedImageResources(frags fragmentCatalog, isFixedLayout bool) ([]string, []int, error) {
+// Returns (ordered_image_resources, ordered_image_resource_pids, content_pos_info, error).
+// Calls CollectContentPositionInfo to walk section content and extract image resources,
+// then validates that the book contains only images (no text) and that each section has
+// at most two images, none mixing foreground and background.
+func getOrderedImageResources(frags *fragmentCatalog, isFixedLayout bool) ([]string, []int, []*ContentChunk, error) {
 	if !isFixedLayout {
-		return nil, nil, fmt.Errorf("book is not fixed-layout")
+		return nil, nil, nil, fmt.Errorf("book is not fixed-layout")
 	}
 
-	// Collect image resources from section fragments (simplified version).
-	// Full implementation requires collect_content_position_info (A5 scope).
+	// Python: content_pos_info = self.collect_content_position_info(
+	//     skip_non_rendered_content=True, include_background_images=True)
+	bpl := &BookPosLoc{
+		Fragments:       frags,
+		OrderedSections: orderedSectionNames(*frags),
+		IsFixedLayout:   true,
+		Store:           NewFragmentStore(),
+	}
+	contentPosInfo := bpl.CollectContentPositionInfo(false, true, true)
+
 	var orderedImageResources []string
 	var orderedImageResourcePids []int
+	nextPID := 0
+	sectionImages := map[string][]*ContentChunk{} // Python: collections.defaultdict(list)
 
-	// Walk section fragments for resources
-	for _, section := range frags.SectionFragments {
-		// Check page templates for image resources
-		for _, pt := range section.PageTemplates {
-			_ = pt // Image resource extraction requires content position info (A5)
+	// Python L1270-1280: for chunk in content_pos_info
+	for _, chunk := range contentPosInfo {
+		// Python L1271: if chunk.text is not None
+		if chunk.HasText {
+			return nil, nil, nil, fmt.Errorf("book contains unexpected text")
+		}
+
+		// Python L1274: if chunk.image_resource is not None
+		if chunk.ImageResource != "" {
+			orderedImageResources = append(orderedImageResources, chunk.ImageResource)
+			orderedImageResourcePids = append(orderedImageResourcePids, chunk.PID)
+			sectionImages[chunk.SectionName] = append(sectionImages[chunk.SectionName], chunk)
+		}
+
+		// Python L1280: next_pid += chunk.length
+		nextPID += chunk.Length
+	}
+	_ = nextPID // used only for PID tracking
+
+	// Python L1281: if len(ordered_image_resources) == 0
+	if len(orderedImageResources) == 0 {
+		return nil, nil, nil, fmt.Errorf("book does not contain image resources")
+	}
+
+	// Python L1284-1297: validate section image constraints
+	for sectionName, chunkList := range sectionImages {
+		// Python L1285: if len(chunk_list) > 2
+		if len(chunkList) > 2 {
+			return nil, nil, nil, fmt.Errorf("section %s contains more than two images", sectionName)
+		}
+
+		hasForegroundImage := false
+		hasBackgroundImage := false
+		for _, chunk := range chunkList {
+			// Python L1290: if chunk.length > 0
+			if chunk.Length > 0 {
+				hasForegroundImage = true
+			} else {
+				hasBackgroundImage = true
+			}
+		}
+
+		// Python L1295: if has_foreground_image and has_background_image
+		if hasForegroundImage && hasBackgroundImage {
+			return nil, nil, nil, fmt.Errorf("section %s contains both background and foreground images", sectionName)
 		}
 	}
 
-	if len(orderedImageResources) == 0 {
-		return nil, nil, fmt.Errorf("book does not contain image resources")
-	}
-
-	return orderedImageResources, orderedImageResourcePids, nil
+	return orderedImageResources, orderedImageResourcePids, contentPosInfo, nil
 }
 
 // checkSymbolTableConfig holds the book-level flags needed for symbol table validation.

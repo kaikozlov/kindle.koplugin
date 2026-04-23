@@ -741,7 +741,7 @@ func TestGetOrderedImageResourcesNotFixedLayout(t *testing.T) {
 	frags := fragmentCatalog{
 		SectionFragments: map[string]sectionFragment{},
 	}
-	_, _, err := getOrderedImageResources(frags, false)
+	_, _, _, err := getOrderedImageResources(&frags, false)
 	if err == nil {
 		t.Fatalf("expected error for non-fixed-layout book")
 	}
@@ -754,7 +754,7 @@ func TestGetOrderedImageResourcesNoImages(t *testing.T) {
 	frags := fragmentCatalog{
 		SectionFragments: map[string]sectionFragment{},
 	}
-	_, _, err := getOrderedImageResources(frags, true)
+	_, _, _, err := getOrderedImageResources(&frags, true)
 	if err == nil {
 		t.Fatalf("expected error for book with no image resources")
 	}

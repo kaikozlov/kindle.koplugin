@@ -334,7 +334,7 @@ func isImageBasedFixedLayout(cat *fragmentCatalog, ci *cacheInfo) bool {
 	// Python calls get_ordered_image_resources which checks is_fixed_layout first.
 	// We pass the result of isFixedLayout to the function.
 	isFXL := isFixedLayout(cat, false, ci)
-	_, _, err := getOrderedImageResources(*cat, isFXL)
+	_, _, _, err := getOrderedImageResources(cat, isFXL)
 	result := err == nil
 	ci.isImageBasedFXL = &result
 	return result
