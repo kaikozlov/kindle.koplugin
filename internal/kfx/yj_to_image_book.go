@@ -43,7 +43,7 @@ const DebugVariants = false
 // ImageResource represents an image to be included in a CBZ or PDF.
 // Port of Python resources.ImageResource and PdfImageResource.
 type ImageResource struct {
-	Format     string // YJ format symbol (e.g. "$284" for PNG, "$285" for JPG)
+	Format     string // YJ format symbol (e.g. "png" for PNG, "jpg" for JPG)
 	Location   string // resource location path
 	RawMedia   []byte // raw image data
 	Height     int    // image height in pixels
@@ -97,7 +97,7 @@ func (b *KFXImageBook) getOrderedImages(splitLandscape, isComic, isRTL bool) []I
 		}
 
 		// Split landscape comic images
-		if splitLandscape && isComic && imgRes.Format != "$565" && imgRes.Width > imgRes.Height {
+		if splitLandscape && isComic && imgRes.Format != "pdf" && imgRes.Width > imgRes.Height {
 			splitImageCount++
 			newWidth := imgRes.Width / 2
 
@@ -169,8 +169,8 @@ func (b *KFXImageBook) getOrderedImagesV2(splitLandscape, isComic, isRTL bool, p
 		}
 
 		// Split landscape comic images
-		// Python: split_landscape_comic_images and is_comic and image_resource.format != "$565" and image_resource.width > image_resource.height
-		if splitLandscape && isComic && imgRes.Format != "$565" && imgRes.Width > imgRes.Height {
+		// Python: split_landscape_comic_images and is_comic and image_resource.format != "pdf" and image_resource.width > image_resource.height
+		if splitLandscape && isComic && imgRes.Format != "pdf" && imgRes.Width > imgRes.Height {
 			splitImageCount++
 			newWidth := imgRes.Width / 2
 
@@ -233,18 +233,18 @@ func (b *KFXImageBook) getResourceImage(resourceID string, ignoreVariants bool) 
 		return nil
 	}
 
-	resourceFormat, _ := asString(resData["$161"])
-	resourceHeight := intFromVal(resData["$423"], resData["$67"])
-	resourceWidth := intFromVal(resData["$422"], resData["$66"])
-	pageIndex := intFromVal(resData["$564"])
+	resourceFormat, _ := asString(resData["format"])
+	resourceHeight := intFromVal(resData["resource_height"], resData["fixed_height"])
+	resourceWidth := intFromVal(resData["resource_width"], resData["fixed_width"])
+	pageIndex := intFromVal(resData["page_index"])
 
 	var location string
 	var rawMedia []byte
 
 	// Check for tiles ($636) — D2-11: full tile reassembly via combineImageTiles
 	// Python: yj_to_image_book.py:168-186
-	if _, hasTiles := resData["$636"]; hasTiles {
-		yjTilesRaw, ok := asSlice(resData["$636"])
+	if _, hasTiles := resData["yj.tiles"]; hasTiles {
+		yjTilesRaw, ok := asSlice(resData["yj.tiles"])
 		if !ok || len(yjTilesRaw) == 0 {
 			return nil
 		}
@@ -292,9 +292,9 @@ func (b *KFXImageBook) getResourceImage(resourceID string, ignoreVariants bool) 
 		}
 
 		// Get tile dimensions from resource
-		tileHeight := intFromVal(resData["$638"])
-		tileWidth := intFromVal(resData["$637"])
-		tilePadding := intFromVal(resData["$797"])
+		tileHeight := intFromVal(resData["yj.tile_height"])
+		tileWidth := intFromVal(resData["yj.tile_width"])
+		tilePadding := intFromVal(resData["yj.tile_padding"])
 
 		// Reassemble tiles via combineImageTiles
 		combinedMedia, combinedFormat := combineImageTiles(
@@ -310,7 +310,7 @@ func (b *KFXImageBook) getResourceImage(resourceID string, ignoreVariants bool) 
 		resourceFormat = combinedFormat
 	} else {
 		// Direct resource: get location from $165
-		locVal, _ := asString(resData["$165"])
+		locVal, _ := asString(resData["location"])
 		location = locVal
 		if location != "" {
 			rawMedia = b.fragments.RawFragments[location]
@@ -319,8 +319,8 @@ func (b *KFXImageBook) getResourceImage(resourceID string, ignoreVariants bool) 
 
 	// Variant handling: try higher resolution variants
 	// Python: yj_to_image_book.py:188-201
-	if resourceFormat != "$565" && !ignoreVariants {
-		variants, _ := asSlice(resData["$635"])
+	if resourceFormat != "pdf" && !ignoreVariants {
+		variants, _ := asSlice(resData["yj.variants"])
 		for _, vr := range variants {
 			variantName, _ := asString(vr)
 			if variantName == "" {
@@ -343,9 +343,9 @@ func (b *KFXImageBook) getResourceImage(resourceID string, ignoreVariants bool) 
 	}
 
 	// Python: yj_to_image_book.py:204-213
-	if resourceFormat == "$565" {
+	if resourceFormat == "pdf" {
 		return &ImageResource{
-			Format:     "$565",
+			Format:     "pdf",
 			Location:   location,
 			RawMedia:   rawMedia,
 			PageNums:   []int{pageIndex + 1}, // Python: page_nums = [page_index + 1]
@@ -482,11 +482,11 @@ func combineImagesIntoCBZ(orderedImages []ImageResource, metadata interface{}) [
 		imageResourceFormats[fmtUpper][imgRes.Location] = true
 
 		switch imgRes.Format {
-		case "$286", "$285", "$284": // GIF, JPG, PNG — direct
+		case "gif", "jpg", "png": // GIF, JPG, PNG — direct
 			// Python: page_images.append(image_resource)
 			pageImages = append(pageImages, imgRes)
 
-		case "$565": // PDF — convert pages to images
+		case "pdf": // PDF — convert pages to images
 			// Python: yj_to_image_book.py:326-330
 			for _, pageNum := range imgRes.PageNums {
 				imageData, fmt := convertPDFPageToImage(
@@ -498,7 +498,7 @@ func combineImagesIntoCBZ(orderedImages []ImageResource, metadata interface{}) [
 				})
 			}
 
-		case "$548": // JXR — convert to JPEG/PNG
+		case "jxr": // JXR — convert to JPEG/PNG
 			// Python: yj_to_image_book.py:331-333
 			imageData, fmt := convertJXRToJpegOrPNG(imgRes.RawMedia, imgRes.Location)
 			pageImages = append(pageImages, ImageResource{
@@ -577,7 +577,7 @@ func combineImagesIntoPDF(orderedImages []ImageResource, metadata map[string]str
 	// Convert each image to a PDF page
 	var pages []pdfPage
 	for _, imgRes := range orderedImages {
-		if imgRes.Format == "$565" {
+		if imgRes.Format == "pdf" {
 			// PDF resource — for now, skip (would need pypdf-like page extraction)
 			log.Printf("kfx: warning: PDF resource %s skipped in PDF output", imgRes.Location)
 			continue
@@ -593,7 +593,7 @@ func combineImagesIntoPDF(orderedImages []ImageResource, metadata map[string]str
 		// Re-encode as JPEG for PDF embedding (or use raw if already JPEG)
 		var jpegData []byte
 		var isJPEG bool
-		if imgRes.Format == "$285" {
+		if imgRes.Format == "jpg" {
 			jpegData = imgRes.RawMedia
 			isJPEG = true
 		} else {

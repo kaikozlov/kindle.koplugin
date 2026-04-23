@@ -27,8 +27,8 @@ const (
 // RANGE_OPERS lists operators that represent range operations (start_eid left nil).
 // Port of Python RANGE_OPERS (yj_position_location.py line 27).
 var RANGE_OPERS = map[string]bool{
-	"$298": true,
-	"$299": true,
+	"<": true,
+	"<=": true,
 }
 
 // ContentChunk represents a unit of content position information.
@@ -321,11 +321,11 @@ func (bpl *BookPosLoc) anchorEidOffset(anchor interface{}) (interface{}, int, bo
 
 	// Look for a $266 fragment with fid matching the anchor name
 	if bpl.Store != nil {
-		for _, frag := range bpl.Store.GetAll("$266") {
-			if fid, _ := asString(frag["$180"]); fid == anchorStr {
-				if pos, ok := asMap(frag["$183"]); ok {
-					eid := pos["$155"]
-					offset := asIntDefault(pos["$143"], 0)
+		for _, frag := range bpl.Store.GetAll("anchor") {
+			if fid, _ := asString(frag["anchor_name"]); fid == anchorStr {
+				if pos, ok := asMap(frag["position"]); ok {
+					eid := pos["id"]
+					offset := asIntDefault(pos["offset"], 0)
 					return eid, offset, true
 				}
 			}
@@ -346,7 +346,7 @@ func (bpl *BookPosLoc) anchorEidOffset(anchor interface{}) (interface{}, int, bo
 
 // HasNonImageRenderInline walks $259/$608 fragments to detect non-image render-inline elements.
 // Port of Python has_non_image_render_inline (yj_position_location.py:588-616).
-// Returns true if any struct has $159!="$271" AND $601=="$283".
+// Returns true if any struct has $159!="image" AND $601=="inline".
 func (bpl *BookPosLoc) HasNonImageRenderInline() bool {
 	if bpl.cachedHasNonImageRenderInline != nil {
 		return *bpl.cachedHasNonImageRenderInline
@@ -365,10 +365,10 @@ func (bpl *BookPosLoc) HasNonImageRenderInline() bool {
 				}
 			}
 		case map[string]interface{}: // IonStruct
-			// Check condition: $159 != "$271" AND $601 == "$283"
-			typ, _ := asString(v["$159"])
-			renderMode, _ := asString(v["$601"])
-			if typ != "$271" && renderMode == "$283" {
+			// Check condition: $159 != "image" AND $601 == "inline"
+			typ, _ := asString(v["type"])
+			renderMode, _ := asString(v["render"])
+			if typ != "image" && renderMode == "inline" {
 				return true
 			}
 			for _, val := range v {
@@ -381,7 +381,7 @@ func (bpl *BookPosLoc) HasNonImageRenderInline() bool {
 	}
 
 	if bpl.Store != nil {
-		for _, ftype := range []string{"$259", "$608"} {
+		for _, ftype := range []string{"storyline", "structure"} {
 			for _, frag := range bpl.Store.GetAll(ftype) {
 				if walk(frag) {
 					result = true
@@ -506,25 +506,25 @@ func (bpl *BookPosLoc) CreateLocationMap(locInfo []*ContentChunk) bool {
 
 	// Remove old $550 and $621 fragments
 	if bpl.Store != nil {
-		bpl.Store.RemoveAll("$550")
-		bpl.Store.RemoveAll("$621")
+		bpl.Store.RemoveAll("location_map")
+		bpl.Store.RemoveAll("yj.location_pid_map")
 
 		// Build new $550 fragment
 		locations := make([]interface{}, 0, len(locInfo))
 		for _, loc := range locInfo {
 			entry := map[string]interface{}{
-				"$155": loc.EID,
-				"$143": loc.EIDOffset,
+				"id": loc.EID,
+				"offset": loc.EIDOffset,
 			}
 			locations = append(locations, entry)
 		}
 
 		locationMap := []interface{}{
 			map[string]interface{}{
-				"$182": locations,
+				"locations": locations,
 			},
 		}
-		bpl.Store.Append("$550", map[string]interface{}{"$550": locationMap})
+		bpl.Store.Append("location_map", map[string]interface{}{"location_map": locationMap})
 	}
 
 	return hasYJLocationPidMap
@@ -610,12 +610,12 @@ func DetermineApproximatePages(posInfo []*ContentChunk, pageTemplateEIDs map[int
 // makePageEntry creates a page entry map matching Python's IonStruct format.
 func makePageEntry(eid interface{}, eidOffset, pageNum int) map[string]interface{} {
 	return map[string]interface{}{
-		"$241": map[string]interface{}{
-			"$244": fmt.Sprintf("%d", pageNum),
+		"representation": map[string]interface{}{
+			"label": fmt.Sprintf("%d", pageNum),
 		},
-		"$246": map[string]interface{}{
-			"$155": eid,
-			"$143": eidOffset,
+		"target_position": map[string]interface{}{
+			"id": eid,
+			"offset": eidOffset,
 		},
 	}
 }
@@ -733,9 +733,9 @@ func (bpl *BookPosLoc) CreatePositionMap(posInfo []*ContentChunk) (bool, bool) {
 		log.Printf("kfx: warning: Position map creation for KPF or dictionary not supported")
 
 		if bpl.Store != nil {
-			bpl.Store.RemoveAll("$264")
-			bpl.Store.RemoveAll("$265")
-			bpl.Store.RemoveAll("$610")
+			bpl.Store.RemoveAll("position_map")
+			bpl.Store.RemoveAll("position_id_map")
+			bpl.Store.RemoveAll("yj.eidhash_eid_section_map")
 		}
 
 		return false, false
@@ -744,7 +744,7 @@ func (bpl *BookPosLoc) CreatePositionMap(posInfo []*ContentChunk) (bool, bool) {
 	// Remove old mapping fragments first
 	// Port of Python lines 918–922: removes $264, $265, $609, $610, $611
 	if bpl.Store != nil {
-		for _, ftype := range []string{"$264", "$265", "$609", "$610", "$611"} {
+		for _, ftype := range []string{"position_map", "position_id_map", "section_position_id_map", "yj.eidhash_eid_section_map", "yj.section_pid_count_map"} {
 			bpl.Store.RemoveAll(ftype)
 		}
 	}
@@ -767,13 +767,13 @@ func (bpl *BookPosLoc) CreatePositionMap(posInfo []*ContentChunk) (bool, bool) {
 			eidList = append(eidList, eid)
 		}
 		positionMap = append(positionMap, map[string]interface{}{
-			"$181": eidList,
-			"$174": sectionName,
+			"contains": eidList,
+			"section_name": sectionName,
 		})
 	}
 
 	if bpl.Store != nil {
-		bpl.Store.Append("$264", map[string]interface{}{"$264": positionMap})
+		bpl.Store.Append("position_map", map[string]interface{}{"position_map": positionMap})
 	}
 
 	// Build position_id_map ($265): flat list of {pid, eid, offset}
@@ -784,11 +784,11 @@ func (bpl *BookPosLoc) CreatePositionMap(posInfo []*ContentChunk) (bool, bool) {
 
 	for _, chunk := range posInfo {
 		entry := map[string]interface{}{
-			"$184": pid,
-			"$185": chunk.EID,
+			"pid": pid,
+			"eid": chunk.EID,
 		}
 		if chunk.EIDOffset != 0 {
-			entry["$143"] = chunk.EIDOffset
+			entry["offset"] = chunk.EIDOffset
 			hasPositionIDOffset = true
 		}
 		positionIDMap = append(positionIDMap, entry)
@@ -797,12 +797,12 @@ func (bpl *BookPosLoc) CreatePositionMap(posInfo []*ContentChunk) (bool, bool) {
 
 	// Terminal entry
 	positionIDMap = append(positionIDMap, map[string]interface{}{
-		"$184": pid,
-		"$185": 0,
+		"pid": pid,
+		"eid": 0,
 	})
 
 	if bpl.Store != nil {
-		bpl.Store.Append("$265", map[string]interface{}{"$265": positionIDMap})
+		bpl.Store.Append("position_id_map", map[string]interface{}{"position_id_map": positionIDMap})
 	}
 
 	return hasSPIM, hasPositionIDOffset
@@ -856,7 +856,7 @@ func (bpl *BookPosLoc) CollectPositionMapInfo() []*ContentChunk {
 			case isMap:
 				extraKeys := false
 				for k := range piMap {
-					if k != "$184" && k != "$185" && k != "$143" {
+					if k != "pid" && k != "eid" && k != "offset" {
 						extraKeys = true
 						break
 					}
@@ -865,9 +865,9 @@ func (bpl *BookPosLoc) CollectPositionMapInfo() []*ContentChunk {
 					log.Printf("kfx: error: Bad section_position_id_map list keys at %d", i)
 					return
 				}
-				nextPID, _ = asInt(piMap["$184"])
-				nextEIDInt, _ = asInt(piMap["$185"])
-				nextOffset = asIntDefault(piMap["$143"], 0)
+				nextPID, _ = asInt(piMap["pid"])
+				nextEIDInt, _ = asInt(piMap["eid"])
+				nextOffset = asIntDefault(piMap["offset"], 0)
 			default:
 				log.Printf("kfx: error: Bad section_position_id_map entry type at %d", i)
 				return
@@ -941,9 +941,9 @@ func (bpl *BookPosLoc) CollectPositionMapInfo() []*ContentChunk {
 	if bpl.IsDictionary || bpl.IsKPFPub {
 		// Dictionary/KPF path: process $611 → $609 SPIM fragments
 		if bpl.Store != nil {
-			fragment611 := bpl.Store.Get("$611")
+			fragment611 := bpl.Store.Get("yj.section_pid_count_map")
 			if fragment611 != nil {
-				sectMaps, ok := asSlice(fragment611["$181"])
+				sectMaps, ok := asSlice(fragment611["contains"])
 				if ok {
 					sectionPIDCount := map[string]int{}
 					for _, sm := range sectMaps {
@@ -951,32 +951,32 @@ func (bpl *BookPosLoc) CollectPositionMapInfo() []*ContentChunk {
 						if !ok {
 							continue
 						}
-						sn, _ := asString(smMap["$174"])
-						length, _ := asInt(smMap["$144"])
+						sn, _ := asString(smMap["section_name"])
+						length, _ := asInt(smMap["length"])
 						sectionPIDCount[sn] = length
 					}
 
 					sectionStartPID := 0
 					for _, sectionName := range bpl.OrderedSections {
-						spimFrag := bpl.Store.Get("$609")
+						spimFrag := bpl.Store.Get("section_position_id_map")
 						if spimFrag == nil {
 							log.Printf("kfx: error: section_position_id_map missing for section %s", sectionName)
 							sectionStartPID += sectionPIDCount[sectionName]
 							continue
 						}
 
-						spim, ok := asMap(spimFrag["$609"])
+						spim, ok := asMap(spimFrag["section_position_id_map"])
 						if !ok {
 							sectionStartPID += sectionPIDCount[sectionName]
 							continue
 						}
-						spimSectionName, _ := asString(spim["$174"])
+						spimSectionName, _ := asString(spim["section_name"])
 						if spimSectionName != sectionName {
 							log.Printf("kfx: error: section_position_id_map for section %s has section %s", sectionName, spimSectionName)
 						}
 
 						addLen := sectionPIDCount[sectionName]
-						processSPIM(toIfaceSlice(spim["$181"]), sectionStartPID, sectionName,
+						processSPIM(toIfaceSlice(spim["contains"]), sectionStartPID, sectionName,
 							&addLen, nil, false, true, false)
 						sectionStartPID += sectionPIDCount[sectionName]
 					}
@@ -986,7 +986,7 @@ func (bpl *BookPosLoc) CollectPositionMapInfo() []*ContentChunk {
 
 		// Check for excess $264/$265
 		if bpl.Store != nil {
-			for _, ftype := range []string{"$264", "$265"} {
+			for _, ftype := range []string{"position_map", "position_id_map"} {
 				if bpl.Store.Has(ftype) {
 					log.Printf("kfx: error: Excess mapping fragment: %s", ftype)
 				}
@@ -995,9 +995,9 @@ func (bpl *BookPosLoc) CollectPositionMapInfo() []*ContentChunk {
 	} else {
 		// Normal book path: process $264 (position_map) and $265 (position_id_map)
 		if bpl.Store != nil {
-			fragment264 := bpl.Store.Get("$264")
+			fragment264 := bpl.Store.Get("position_map")
 			if fragment264 != nil {
-				pmSlice, ok := asSlice(fragment264["$264"])
+				pmSlice, ok := asSlice(fragment264["position_map"])
 				if ok {
 					extraSections := map[string]bool{}
 					missingSections := map[string]bool{}
@@ -1010,13 +1010,13 @@ func (bpl *BookPosLoc) CollectPositionMapInfo() []*ContentChunk {
 						if !ok {
 							continue
 						}
-						sectionName, _ := asString(pmMap["$174"])
+						sectionName, _ := asString(pmMap["section_name"])
 						if !missingSections[sectionName] {
 							extraSections[sectionName] = true
 						}
 						delete(missingSections, sectionName)
 
-						eidList, ok := asSlice(pmMap["$181"])
+						eidList, ok := asSlice(pmMap["contains"])
 						if !ok {
 							continue
 						}
@@ -1044,16 +1044,16 @@ func (bpl *BookPosLoc) CollectPositionMapInfo() []*ContentChunk {
 
 			hasSPIM := false
 			_ = hasSPIM // tracked for SPIM format detection
-			fragment265 := bpl.Store.Get("$265")
+			fragment265 := bpl.Store.Get("position_id_map")
 			if fragment265 != nil {
-				val := fragment265["$265"]
+				val := fragment265["position_id_map"]
 				if valSlice, ok := asSlice(val); ok {
 					// Simple list format
 					processSPIM(valSlice, 0, "", nil, nil, false, false, true)
 				} else if valMap, ok := asMap(val); ok {
 					// SPIM format with per-section maps
 					hasSPIM = true
-					sectMaps, ok := asSlice(valMap["$181"])
+					sectMaps, ok := asSlice(valMap["contains"])
 					if ok {
 						bookPID := 0
 						for _, sm := range sectMaps {
@@ -1061,32 +1061,32 @@ func (bpl *BookPosLoc) CollectPositionMapInfo() []*ContentChunk {
 							if !ok {
 								continue
 							}
-							sectionName, _ := asString(smMap["$174"])
-							sectionStartPID, _ := asInt(smMap["$184"])
+							sectionName, _ := asString(smMap["section_name"])
+							sectionStartPID, _ := asInt(smMap["pid"])
 
 							if sectionStartPID != bookPID {
 								log.Printf("kfx: error: section %s start pid %d, expected %d",
 									sectionName, sectionStartPID, bookPID)
 							}
 
-							spimFrag := bpl.Store.Get("$609")
+							spimFrag := bpl.Store.Get("section_position_id_map")
 							if spimFrag == nil {
 								log.Printf("kfx: error: section_position_id_map missing for section %s", sectionName)
 								continue
 							}
 
-							spim, ok := asMap(spimFrag["$609"])
+							spim, ok := asMap(spimFrag["section_position_id_map"])
 							if !ok {
 								continue
 							}
-							spimSectionName, _ := asString(spim["$174"])
+							spimSectionName, _ := asString(spim["section_name"])
 							if spimSectionName != sectionName {
 								log.Printf("kfx: error: section_position_id_map for section %s has section %s",
 									sectionName, spimSectionName)
 							}
 
-							sectionLength, _ := asInt(smMap["$144"])
-							processSPIM(toIfaceSlice(spim["$181"]), sectionStartPID, sectionName,
+							sectionLength, _ := asInt(smMap["length"])
+							processSPIM(toIfaceSlice(spim["contains"]), sectionStartPID, sectionName,
 								nil, &sectionLength, true, false, true)
 							bookPID += sectionLength
 						}
@@ -1116,7 +1116,7 @@ func (bpl *BookPosLoc) CollectPositionMapInfo() []*ContentChunk {
 			}
 
 			// Check for excess $611/$610
-			for _, ftype := range []string{"$611", "$610"} {
+			for _, ftype := range []string{"yj.section_pid_count_map", "yj.eidhash_eid_section_map"} {
 				if bpl.Store.Has(ftype) {
 					log.Printf("kfx: error: Excess mapping fragment: %s", ftype)
 				}
@@ -1165,10 +1165,10 @@ func (bpl *BookPosLoc) CollectLocationMapInfo(posInfo []*ContentChunk) []*Conten
 	// Port of Python collect_location_map_info $550 handling
 	fragment550 := bpl.getFragment550()
 	if fragment550 != nil {
-		// The $550 fragment value is: {"$550": [{"$182": [entries...]}]}
+		// The $550 fragment value is: {"location_map": [{"locations": [entries...]}]}
 		// Need to unwrap the $550 key to get the location map list
 		var locationMapList []interface{}
-		if outer, ok := asSlice(fragment550["$550"]); ok && len(outer) > 0 {
+		if outer, ok := asSlice(fragment550["location_map"]); ok && len(outer) > 0 {
 			locationMapList = outer
 		} else {
 			// Alternative: $182 directly on the fragment (some test data)
@@ -1180,7 +1180,7 @@ func (bpl *BookPosLoc) CollectLocationMapInfo(posInfo []*ContentChunk) []*Conten
 			if !ok {
 				continue
 			}
-			entries, ok := asSlice(lmMap["$182"])
+			entries, ok := asSlice(lmMap["locations"])
 			if !ok {
 				log.Printf("kfx: error: Bad location_map fragment: missing or invalid $182 list")
 				continue
@@ -1191,12 +1191,12 @@ func (bpl *BookPosLoc) CollectLocationMapInfo(posInfo []*ContentChunk) []*Conten
 					log.Printf("kfx: error: Bad location_map entry at index %d: expected map", i)
 					continue
 				}
-				eid := entryMap["$155"]
+				eid := entryMap["id"]
 				if eid == nil {
 					log.Printf("kfx: error: Bad location_map entry at index %d: missing $155", i)
 					continue
 				}
-				eidOffset := asIntDefault(entryMap["$143"], 0)
+				eidOffset := asIntDefault(entryMap["offset"], 0)
 
 				pid := bpl.PidForEid(eid, eidOffset, posInfo)
 				if pid == nil {
@@ -1214,7 +1214,7 @@ func (bpl *BookPosLoc) CollectLocationMapInfo(posInfo []*ContentChunk) []*Conten
 	fragment621 := bpl.getFragment621()
 	hasYJLocationPidMap := fragment621 != nil
 	if hasYJLocationPidMap {
-		locationPIDs, ok := asSlice(fragment621["$182"])
+		locationPIDs, ok := asSlice(fragment621["locations"])
 		if !ok {
 			log.Printf("kfx: error: Bad yj.location_pid_map fragment: %v", fragment621)
 		} else {
@@ -1258,7 +1258,7 @@ func (bpl *BookPosLoc) CollectLocationMapInfo(posInfo []*ContentChunk) []*Conten
 // getFragment550 returns the $550 location_map fragment data if available.
 func (bpl *BookPosLoc) getFragment550() map[string]interface{} {
 	if bpl.Store != nil {
-		return bpl.Store.Get("$550")
+		return bpl.Store.Get("location_map")
 	}
 	return nil
 }
@@ -1266,7 +1266,7 @@ func (bpl *BookPosLoc) getFragment550() map[string]interface{} {
 // getFragment621 returns the $621 yj.location_pid_map fragment data if available.
 func (bpl *BookPosLoc) getFragment621() map[string]interface{} {
 	if bpl.Store != nil {
-		return bpl.Store.Get("$621")
+		return bpl.Store.Get("yj.location_pid_map")
 	}
 	return nil
 }
@@ -1306,21 +1306,21 @@ func (bpl *BookPosLoc) CreateApproximatePageList(desiredNumPages int) {
 	inlineNavContainers := true
 
 	if bpl.Store != nil {
-		bookNavVal := bpl.Store.Get("$389")
+		bookNavVal := bpl.Store.Get("book_navigation")
 		if bookNavVal != nil {
-			navList, ok := asSlice(bookNavVal["$389"])
+			navList, ok := asSlice(bookNavVal["book_navigation"])
 			if ok {
 				for _, bn := range navList {
 					bnMap, ok := asMap(bn)
 					if !ok {
 						continue
 					}
-					roName, _ := asString(bnMap["$178"])
+					roName, _ := asString(bnMap["reading_order_name"])
 					if roName != readingOrderName {
 						continue
 					}
 					bookNav = &bnMap
-					ncList, ok := asSlice(bnMap["$392"])
+					ncList, ok := asSlice(bnMap["nav_containers"])
 					if !ok {
 						break
 					}
@@ -1331,11 +1331,11 @@ func (bpl *BookPosLoc) CreateApproximatePageList(desiredNumPages int) {
 						if !ok {
 							continue
 						}
-						navType, _ := asString(ncMap["$235"])
-						if navType == "$237" {
+						navType, _ := asString(ncMap["nav_type"])
+						if navType == "page_list" {
 							// Found existing approximate page list — remove it
 							navContainers = append(navContainers[:i], navContainers[i+1:]...)
-							(*bookNav)["$392"] = navContainers
+							(*bookNav)["nav_containers"] = navContainers
 							break
 						}
 					}
@@ -1386,10 +1386,10 @@ func (bpl *BookPosLoc) CreateApproximatePageList(desiredNumPages int) {
 	if len(pages) > 0 && bpl.Store != nil {
 		if bookNav == nil {
 			newNav := map[string]interface{}{
-				"$178": readingOrderName,
-				"$392": []interface{}{},
+				"reading_order_name": readingOrderName,
+				"nav_containers": []interface{}{},
 			}
-			bpl.Store.Append("$389", map[string]interface{}{"$389": []interface{}{newNav}})
+			bpl.Store.Append("book_navigation", map[string]interface{}{"book_navigation": []interface{}{newNav}})
 			bookNav = &newNav
 			navContainers = nil
 		}
@@ -1401,19 +1401,19 @@ func (bpl *BookPosLoc) CreateApproximatePageList(desiredNumPages int) {
 		}
 
 		navContainerData := map[string]interface{}{
-			"$235": "$237",
-			"$239": "approximate_page_list",
-			"$247": pageEntries,
+			"nav_type": "page_list",
+			"nav_container_name": "approximate_page_list",
+			"entries": pageEntries,
 		}
 
 		if inlineNavContainers {
 			navContainers = append(navContainers, navContainerData)
 		} else {
-			bpl.Store.Append("$391", map[string]interface{}{"$391": navContainerData})
+			bpl.Store.Append("nav_container", map[string]interface{}{"nav_container": navContainerData})
 			navContainers = append(navContainers, "approximate_page_list")
 		}
 
-		(*bookNav)["$392"] = navContainers
+		(*bookNav)["nav_containers"] = navContainers
 	}
 }
 
@@ -1421,10 +1421,10 @@ func (bpl *BookPosLoc) CreateApproximatePageList(desiredNumPages int) {
 func (bpl *BookPosLoc) hasDoublePageSpread() bool {
 	if bpl.Fragments != nil {
 		if md, ok := asMap(bpl.Fragments.TitleMetadata); ok {
-			if caps, ok := asSlice(md["$590"]); ok {
+			if caps, ok := asSlice(md["features"]); ok {
 				for _, cap := range caps {
 					if capMap, ok := asMap(cap); ok {
-						if name, _ := asString(capMap["$591"]); name == "yj_double_page_spread" {
+						if name, _ := asString(capMap["exclude"]); name == "yj_double_page_spread" {
 							return true
 						}
 					}
@@ -1447,7 +1447,7 @@ func (bpl *BookPosLoc) readingOrderNames() []string {
 		if !ok {
 			continue
 		}
-		if name, ok := asString(orderMap["$178"]); ok && name != "" {
+		if name, ok := asString(orderMap["reading_order_name"]); ok && name != "" {
 			names = append(names, name)
 		}
 	}
@@ -1650,10 +1650,10 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 		case map[string]interface{}: // IonStruct
 			// Port of lines 230–577 (IonStruct branch)
 			// Set up EID tracking — Python lines 230–245
-			if contentKey != "$259" {
-				eid := v["$155"]
+			if contentKey != "storyline" {
+				eid := v["id"]
 				if eid == nil {
-					eid = v["$598"]
+					eid = v["kfx_id"]
 				}
 				if eid != nil {
 					_ = currentEID // parentEID not used in simplified version
@@ -1669,11 +1669,11 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 				}
 			}
 
-			typ, _ := asString(v["$159"])
+			typ, _ := asString(v["type"])
 
 			// Skip non-rendered content (Python lines 250–251)
 			if skipNonRenderedContent {
-				if skip, _ := asBool(v["$69"]); skip || typ == "$439" {
+				if skip, _ := asBool(v["ignore"]); skip || typ == "zoom_target" {
 					return
 				}
 			}
@@ -1682,17 +1682,17 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 
 			// Handle $596, $271, $272, $274 types — Python lines 256–258
 			switch typ {
-			case "$596", "$271", "$272", "$274":
+			case "horizontal_rule", "image", "kvg", "plugin":
 				imgRes := ""
-				if typ == "$271" {
-					imgRes, _ = asString(v["$175"])
+				if typ == "image" {
+					imgRes, _ = asString(v["resource_name"])
 				}
 				imgOpt := func(cc *ContentChunk) { cc.ImageResource = imgRes }
 				haveContent(currentEID, 1, advance, imgOpt)
-			case "$270", "$277", "$269", "$151":
+			case "container", "listitem", "text", "header":
 				// Check for content keys — Python lines 259–264
 				hasContent := false
-				for _, ct := range []string{"$145", "$146", "$176"} {
+				for _, ct := range []string{"content", "content_list", "story_name"} {
 					if _, ok := v[ct]; ok {
 						hasContent = true
 						break
@@ -1704,18 +1704,18 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 			}
 
 			// Handle $141 (page templates) — Python lines 290–360
-			if ptList, ok := asSlice(v["$141"]); ok {
+			if ptList, ok := asSlice(v["page_templates"]); ok {
 				if bpl.HasIllustratedLayoutConditionalPageTemplate {
 					pidSave := bpl.cpiPID
 					for _, pt := range ptList {
-						extractPositionData(pt, currentEID, "$141", 0, 0, advance, noteRefs)
+						extractPositionData(pt, currentEID, "page_templates", 0, 0, advance, noteRefs)
 
 						// Check for $171 condition — Python lines 303–327
 						if ptMap, ok := asMap(pt); ok {
-							if condition, ok := asSlice(ptMap["$171"]); ok &&
+							if condition, ok := asSlice(ptMap["condition"]); ok &&
 								len(condition) == 3 {
 								condOp, _ := asString(condition[0])
-								if condOp == "$294" || condOp == "$299" || condOp == "$298" {
+								if condOp == "==" || condOp == "<=" || condOp == "<" {
 									// Parse condition_eid_offset from condition[2][1]
 									if anchorList, ok := asSlice(condition[2]); ok && len(anchorList) >= 2 {
 										anchorEID, anchorOffset, found := bpl.anchorEidOffset(anchorList[1])
@@ -1735,19 +1735,19 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 					bpl.cpiPID = pidSave
 				} else {
 					for _, pt := range ptList {
-						extractPositionData(pt, currentEID, "$141", 0, 0, advance, noteRefs)
+						extractPositionData(pt, currentEID, "page_templates", 0, 0, advance, noteRefs)
 					}
 				}
 			}
 
 			// Handle $146 (children) — Python lines 375–376
-			if children, ok := asSlice(v["$146"]); ok && typ != "$274" && typ != "$272" {
+			if children, ok := asSlice(v["content_list"]); ok && typ != "plugin" && typ != "kvg" {
 				haveContent(currentEID, 1, advance)
-				extractPositionData(children, currentEID, "$146", 0, 0, advance, noteRefs)
+				extractPositionData(children, currentEID, "content_list", 0, 0, advance, noteRefs)
 			}
 
 			// Handle $145 (content) — Python lines 386–393
-			if contentVal := v["$145"]; contentVal != nil {
+			if contentVal := v["content"]; contentVal != nil {
 				if strVal, ok := asString(contentVal); ok {
 					haveContent(currentEID, unicodeLen(strVal), advance,
 						func(cc *ContentChunk) { cc.Text = strVal; cc.HasText = true })
@@ -1755,16 +1755,16 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 			}
 
 			// Handle $176 (story) — Python lines 402–422
-			if storyName, ok := asString(v["$176"]); ok && contentKey != "$259" {
+			if storyName, ok := asString(v["story_name"]); ok && contentKey != "storyline" {
 				haveContent(currentEID, 1, advance)
 
 				if !bpl.HasIllustratedLayoutConditionalPageTemplate {
 					if !processedStoryNames[storyName] {
 						// Walk storyline fragment
 						if bpl.Store != nil {
-							if storylineFrag := bpl.Store.Get("$259"); storylineFrag != nil {
-								if storylineData, ok := storylineFrag["$259"]; ok {
-									extractPositionData(storylineData, nil, "$259", 0, 0, advance, noteRefs)
+							if storylineFrag := bpl.Store.Get("storyline"); storylineFrag != nil {
+								if storylineData, ok := storylineFrag["storyline"]; ok {
+									extractPositionData(storylineData, nil, "storyline", 0, 0, advance, noteRefs)
 								}
 							}
 						}
@@ -1787,8 +1787,8 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 
 			// Handle other non-string values — Python lines 423–429
 			skipKeys := map[string]bool{
-				"$749": true, "$584": true, "$683": true, "$145": true,
-				"$146": true, "$141": true, "$702": true, "$250": true, "$176": true,
+				"alt_content": true, "alt_text": true, "annotations": true, "content": true,
+				"content_list": true, "page_templates": true, "reading_order_switch_map": true, "shape_list": true, "story_name": true,
 			}
 			for fk, fv := range v {
 				if _, isStr := fv.(string); !isStr && !skipKeys[fk] && fk != "" {
@@ -1797,8 +1797,8 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 			}
 
 			// Adjust cpiPIDForOffset for render-inline — Python lines 430–432
-			if typ != "$271" {
-				if renderMode, _ := asString(v["$601"]); renderMode == "$283" &&
+			if typ != "image" {
+				if renderMode, _ := asString(v["render"]); renderMode == "inline" &&
 					bpl.cpiPIDForOffset > saveCPIDPIDForOffset+1 {
 					bpl.cpiPIDForOffset = saveCPIDPIDForOffset + 1
 				}
@@ -1806,7 +1806,7 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 
 		case string: // IonString
 			length := unicodeLen(v)
-			if contentKey == "$146" && listIndex == 0 {
+			if contentKey == "content_list" && listIndex == 0 {
 				length -= 1
 			}
 			haveContent(currentEID, length, advance,
@@ -1822,10 +1822,10 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 
 		// Extract from section fragment ($260)
 		if bpl.Store != nil {
-			sectionFrag := bpl.Store.Get("$260")
+			sectionFrag := bpl.Store.Get("section")
 			if sectionFrag != nil {
-				if sectionData, ok := sectionFrag["$260"]; ok {
-					extractPositionData(sectionData, nil, "$260", 0, 0, true, nil)
+				if sectionData, ok := sectionFrag["section"]; ok {
+					extractPositionData(sectionData, nil, "section", 0, 0, true, nil)
 				}
 			}
 		}

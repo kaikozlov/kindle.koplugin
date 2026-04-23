@@ -25,26 +25,43 @@ def fragment_summary(input_path):
         replace_ion_data = KFX_EPUB.replace_ion_data
         organize_fragments_by_type = KFX_EPUB.organize_fragments_by_type
 
-    book = YJ_Book(input_path)
+    # Load the symbol catalog to translate $N -> real names
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(script_dir)
+    catalog_path = os.path.join(repo_root, "REFERENCE", "kfx_symbol_catalog.ion")
+    symbol_catalog = None
+    if os.path.isfile(catalog_path):
+        symbol_catalog = catalog_path
+
+    book = YJ_Book(input_path, symbol_catalog_filename=symbol_catalog)
     book.decode_book(retain_yj_locals=True)
     organizer = Organizer()
     organized = organizer.organize_fragments_by_type(book.fragments)
+
+    # Build $N -> real name mapping from the catalog
+    name_map = {}
+    if book.symtab and hasattr(book.symtab, 'export_translate'):
+        name_map = book.symtab.export_translate
+
+    def translate(name):
+        return name_map.get(name, name)
 
     summary = {
         "title": os.path.splitext(os.path.basename(input_path))[0],
         "types": {},
     }
-    singleton_struct_types = {"$258", "$490", "$538", "$585"}
+    singleton_struct_types = {"book_metadata", "content_features", "document_data", "metadata"}
     for fragment_type, value in organized.items():
+        real_type = translate(fragment_type)
         if isinstance(value, dict):
-            payload = {"count": 1 if fragment_type in singleton_struct_types else len(value)}
-            if fragment_type not in singleton_struct_types:
+            payload = {"count": 1 if real_type in singleton_struct_types else len(value)}
+            if real_type not in singleton_struct_types:
                 payload["ids"] = sorted(str(key) for key in value.keys())
-            summary["types"][fragment_type] = payload
+            summary["types"][real_type] = payload
         elif isinstance(value, list):
-            summary["types"][fragment_type] = {"count": len(value)}
+            summary["types"][real_type] = {"count": len(value)}
         else:
-            summary["types"][fragment_type] = {"count": 1}
+            summary["types"][real_type] = {"count": 1}
 
     return summary
 

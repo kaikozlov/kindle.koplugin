@@ -181,9 +181,9 @@ func TestFragmentValidation_KpfPrepub610(t *testing.T) {
 	// When isKpfPrepub=true, $610 fragments should be added to the
 	// discovery set (unreferenced_fragment_types).
 	fragments := FragmentList{
-		{FType: "$270", FID: "container1", Value: map[string]interface{}{}},
-		{FType: "$610", FID: "position_data_1", Value: map[string]interface{}{
-			"$602": "position_data_1",
+		{FType: "container", FID: "container1", Value: map[string]interface{}{}},
+		{FType: "yj.eidhash_eid_section_map", FID: "position_data_1", Value: map[string]interface{}{
+			"block": "position_data_1",
 		}},
 	}
 
@@ -193,7 +193,7 @@ func TestFragmentValidation_KpfPrepub610(t *testing.T) {
 	})
 	found610 := false
 	for _, f := range result.Referenced {
-		if f.FType == "$610" {
+		if f.FType == "yj.eidhash_eid_section_map" {
 			found610 = true
 		}
 	}
@@ -206,7 +206,7 @@ func TestFragmentValidation_KpfPrepub610(t *testing.T) {
 	})
 	found610Prepub := false
 	for _, f := range resultPrepub.Referenced {
-		if f.FType == "$610" {
+		if f.FType == "yj.eidhash_eid_section_map" {
 			found610Prepub = true
 		}
 	}
@@ -248,20 +248,20 @@ func TestIonDataEq_Different(t *testing.T) {
 
 func TestIonDataEq_Struct(t *testing.T) {
 	// Equal structs
-	s1 := map[string]interface{}{"$174": "section1", "$176": "storyline1"}
-	s2 := map[string]interface{}{"$174": "section1", "$176": "storyline1"}
+	s1 := map[string]interface{}{"section_name": "section1", "story_name": "storyline1"}
+	s2 := map[string]interface{}{"section_name": "section1", "story_name": "storyline1"}
 	if !IonDataEq(s1, s2) {
 		t.Error("IonDataEq(equal structs) should be true")
 	}
 
 	// Different length structs
-	s3 := map[string]interface{}{"$174": "section1"}
+	s3 := map[string]interface{}{"section_name": "section1"}
 	if IonDataEq(s1, s3) {
 		t.Error("IonDataEq(different length structs) should be false")
 	}
 
 	// Missing key
-	s4 := map[string]interface{}{"$174": "section1", "$176": "different"}
+	s4 := map[string]interface{}{"section_name": "section1", "story_name": "different"}
 	if IonDataEq(s1, s4) {
 		t.Error("IonDataEq(structs with different values) should be false")
 	}
@@ -291,15 +291,15 @@ func TestIonDataEq_Slice(t *testing.T) {
 func TestIonDataEq_Nested(t *testing.T) {
 	// Nested structures
 	n1 := map[string]interface{}{
-		"$170": []interface{}{
-			map[string]interface{}{"$174": "s1"},
-			map[string]interface{}{"$174": "s2"},
+		"sections": []interface{}{
+			map[string]interface{}{"section_name": "s1"},
+			map[string]interface{}{"section_name": "s2"},
 		},
 	}
 	n2 := map[string]interface{}{
-		"$170": []interface{}{
-			map[string]interface{}{"$174": "s1"},
-			map[string]interface{}{"$174": "s2"},
+		"sections": []interface{}{
+			map[string]interface{}{"section_name": "s1"},
+			map[string]interface{}{"section_name": "s2"},
 		},
 	}
 	if !IonDataEq(n1, n2) {
@@ -307,9 +307,9 @@ func TestIonDataEq_Nested(t *testing.T) {
 	}
 
 	n3 := map[string]interface{}{
-		"$170": []interface{}{
-			map[string]interface{}{"$174": "s1"},
-			map[string]interface{}{"$174": "s3"}, // different
+		"sections": []interface{}{
+			map[string]interface{}{"section_name": "s1"},
+			map[string]interface{}{"section_name": "s3"}, // different
 		},
 	}
 	if IonDataEq(n1, n3) {
@@ -327,9 +327,9 @@ func TestIonDataEq_FloatNaN(t *testing.T) {
 func TestFragmentValidation_DuplicateDetection(t *testing.T) {
 	// Identical duplicate fragments should not be fatal
 	fragments := FragmentList{
-		{FType: "$270", FID: "container1", Value: map[string]interface{}{}},
-		{FType: "$164", FID: "resource1", Value: map[string]interface{}{"$175": "resource1"}},
-		{FType: "$164", FID: "resource1", Value: map[string]interface{}{"$175": "resource1"}}, // identical dup
+		{FType: "container", FID: "container1", Value: map[string]interface{}{}},
+		{FType: "external_resource", FID: "resource1", Value: map[string]interface{}{"resource_name": "resource1"}},
+		{FType: "external_resource", FID: "resource1", Value: map[string]interface{}{"resource_name": "resource1"}}, // identical dup
 	}
 
 	result := CheckFragmentUsageWithOptions(fragments, nil, FragmentValidationOptions{
@@ -343,9 +343,9 @@ func TestFragmentValidation_DuplicateDetection(t *testing.T) {
 
 	// Content-differing duplicate fragments should be detected
 	fragments2 := FragmentList{
-		{FType: "$270", FID: "container1", Value: map[string]interface{}{}},
-		{FType: "$164", FID: "resource1", Value: map[string]interface{}{"$175": "resource1"}},
-		{FType: "$164", FID: "resource1", Value: map[string]interface{}{"$175": "different"}}, // different dup!
+		{FType: "container", FID: "container1", Value: map[string]interface{}{}},
+		{FType: "external_resource", FID: "resource1", Value: map[string]interface{}{"resource_name": "resource1"}},
+		{FType: "external_resource", FID: "resource1", Value: map[string]interface{}{"resource_name": "different"}}, // different dup!
 	}
 
 	// This should detect the differing duplicate and set DiffDupeFragments=true
@@ -366,12 +366,12 @@ func TestFragmentValidation_KpfPrepubCleanup(t *testing.T) {
 	// When isKpfPrepub=true, unreferenced $391/$266/$259/$260/$608 fragments
 	// should be removed from the unreferenced list.
 	fragments := FragmentList{
-		{FType: "$270", FID: "container1", Value: map[string]interface{}{}},
-		{FType: "$391", FID: "nav1", Value: map[string]interface{}{"$239": "nav1"}},
-		{FType: "$266", FID: "style1", Value: map[string]interface{}{"$180": "style1"}},
-		{FType: "$259", FID: "story1", Value: map[string]interface{}{"$176": "story1"}},
-		{FType: "$260", FID: "section1", Value: map[string]interface{}{"$174": "section1"}},
-		{FType: "$608", FID: "content1", Value: map[string]interface{}{"$598": "content1"}},
+		{FType: "container", FID: "container1", Value: map[string]interface{}{}},
+		{FType: "nav_container", FID: "nav1", Value: map[string]interface{}{"nav_container_name": "nav1"}},
+		{FType: "anchor", FID: "style1", Value: map[string]interface{}{"anchor_name": "style1"}},
+		{FType: "storyline", FID: "story1", Value: map[string]interface{}{"story_name": "story1"}},
+		{FType: "section", FID: "section1", Value: map[string]interface{}{"section_name": "section1"}},
+		{FType: "structure", FID: "content1", Value: map[string]interface{}{"kfx_id": "content1"}},
 	}
 
 	// Without isKpfPrepub, these should be unreferenced (not referenced by any root fragment)
@@ -391,7 +391,7 @@ func TestFragmentValidation_KpfPrepubCleanup(t *testing.T) {
 		IsKpfPrepub: true,
 	})
 	for _, f := range resultPrepub.Unreferenced {
-		for _, badType := range []string{"$391", "$266", "$259", "$260", "$608"} {
+		for _, badType := range []string{"nav_container", "anchor", "storyline", "section", "structure"} {
 			if f.FType == badType {
 				t.Errorf("isKpfPrepub=true: %s should be removed from unreferenced, but found (%s, %s)",
 					badType, f.FType, f.FID)
@@ -413,9 +413,9 @@ func TestFragmentValidation_KpfPrepubCleanup(t *testing.T) {
 func TestFragmentValidation_SampleDict597(t *testing.T) {
 	// When isSample or isDictionary, unreferenced $597 fragments should be silently accepted
 	fragments := FragmentList{
-		{FType: "$270", FID: "container1", Value: map[string]interface{}{}},
-		{FType: "$597", FID: "extra_data", Value: map[string]interface{}{
-			"$174": "extra_data", "$598": "ad",
+		{FType: "container", FID: "container1", Value: map[string]interface{}{}},
+		{FType: "auxiliary_data", FID: "extra_data", Value: map[string]interface{}{
+			"section_name": "extra_data", "kfx_id": "ad",
 		}},
 	}
 
@@ -426,7 +426,7 @@ func TestFragmentValidation_SampleDict597(t *testing.T) {
 	})
 	found597 := false
 	for _, f := range result.Unreferenced {
-		if f.FType == "$597" {
+		if f.FType == "auxiliary_data" {
 			found597 = true
 		}
 	}
@@ -439,7 +439,7 @@ func TestFragmentValidation_SampleDict597(t *testing.T) {
 		IsSample: true,
 	})
 	for _, f := range resultSample.Unreferenced {
-		if f.FType == "$597" {
+		if f.FType == "auxiliary_data" {
 			t.Errorf("isSample=true: $597 should be silently accepted, not unreferenced: (%s, %s)",
 				f.FType, f.FID)
 		}
@@ -450,7 +450,7 @@ func TestFragmentValidation_SampleDict597(t *testing.T) {
 		IsDictionary: true,
 	})
 	for _, f := range resultDict.Unreferenced {
-		if f.FType == "$597" {
+		if f.FType == "auxiliary_data" {
 			t.Errorf("isDictionary=true: $597 should be silently accepted, not unreferenced: (%s, %s)",
 				f.FType, f.FID)
 		}
@@ -475,15 +475,15 @@ func TestDictionaryAnnotations_OnlyForDicts(t *testing.T) {
 	// a behavioral change that we need to implement.
 
 	// For now, we verify the data constants are correct:
-	if !ExpectedDictionaryAnnotations[[3]string{"$260", "$141", "$608"}] {
+	if !ExpectedDictionaryAnnotations[[3]string{"section", "page_templates", "structure"}] {
 		t.Error("ExpectedDictionaryAnnotations should contain ($260, $141, $608)")
 	}
-	if !ExpectedDictionaryAnnotations[[3]string{"$259", "$146", "$608"}] {
+	if !ExpectedDictionaryAnnotations[[3]string{"storyline", "content_list", "structure"}] {
 		t.Error("ExpectedDictionaryAnnotations should contain ($259, $146, $608)")
 	}
 
 	// Verify these are NOT in ExpectedAnnotations (only in dictionary annotations)
-	if ExpectedAnnotations[[3]string{"$260", "$141", "$608"}] {
+	if ExpectedAnnotations[[3]string{"section", "page_templates", "structure"}] {
 		t.Error("($260, $141, $608) should NOT be in ExpectedAnnotations")
 	}
 }
@@ -499,21 +499,21 @@ func TestRebuild_SkipsDictionary(t *testing.T) {
 
 	// Verify the RebuildFragments function exists and handles the skip correctly
 	fragments := FragmentList{
-		{FType: "$270", FID: "container1", Value: map[string]interface{}{
-			"$409": "CR!OLD",
-			"$161": "KFX main",
-			"$587": "tool1.0",
-			"$588": "pkg1.0",
+		{FType: "container", FID: "container1", Value: map[string]interface{}{
+			"bcContId": "CR!OLD",
+			"format": "KFX main",
+			"major_version": "tool1.0",
+			"minor_version": "pkg1.0",
 			"version": 1,
 		}},
-		{FType: "$260", FID: "section1", Value: map[string]interface{}{}},
+		{FType: "section", FID: "section1", Value: map[string]interface{}{}},
 	}
 
 	// Normal rebuild — should regenerate $270
 	resultNormal := RebuildFragments(fragments, nil, false, false)
 	found270Normal := false
 	for _, f := range resultNormal {
-		if f.FType == "$270" {
+		if f.FType == "container" {
 			found270Normal = true
 			// The $270 should have been regenerated
 		}
@@ -524,7 +524,7 @@ func TestRebuild_SkipsDictionary(t *testing.T) {
 	resultDict := RebuildFragments(fragments, nil, true, false)
 	found270Dict := false
 	for _, f := range resultDict {
-		if f.FType == "$270" {
+		if f.FType == "container" {
 			found270Dict = true
 		}
 	}
@@ -536,7 +536,7 @@ func TestRebuild_SkipsDictionary(t *testing.T) {
 	resultScribe := RebuildFragments(fragments, nil, false, true)
 	found270Scribe := false
 	for _, f := range resultScribe {
-		if f.FType == "$270" {
+		if f.FType == "container" {
 			found270Scribe = true
 		}
 	}
@@ -588,24 +588,24 @@ func TestCreateContainerID_ContainerFormat(t *testing.T) {
 	// Verify the $161 field in rebuilt containers uses "KFX main" not "KFX_MAIN"
 	// matching Python yj_container.py:15 CONTAINER_FORMAT_KFX_MAIN
 	fragments := FragmentList{
-		{FType: "$270", FID: "c1", Value: map[string]interface{}{
-			"$409": "CR!OLD",
-			"$161": "KFX main",
-			"$587": "v1",
-			"$588": "v2",
+		{FType: "container", FID: "c1", Value: map[string]interface{}{
+			"bcContId": "CR!OLD",
+			"format": "KFX main",
+			"major_version": "v1",
+			"minor_version": "v2",
 			"version": 1,
 		}},
-		{FType: "$260", FID: "s1", Value: map[string]interface{}{}},
+		{FType: "section", FID: "s1", Value: map[string]interface{}{}},
 	}
 
 	result := RebuildFragments(fragments, nil, false, false)
 	for _, f := range result {
-		if f.FType == "$270" {
+		if f.FType == "container" {
 			val, ok := f.Value.(map[string]interface{})
 			if !ok {
 				t.Fatal("$270 value is not a map")
 			}
-			format, ok := val["$161"].(string)
+			format, ok := val["format"].(string)
 			if !ok {
 				t.Fatal("$161 is not a string")
 			}

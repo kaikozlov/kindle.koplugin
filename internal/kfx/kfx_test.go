@@ -814,11 +814,11 @@ func readFixtureDocSymbols(t *testing.T, path string) []byte {
 		t.Fatalf("decodeIonMap(container_info) error = %v", err)
 	}
 
-	docSymbolOffset, ok := asInt(containerInfo["$415"])
+	docSymbolOffset, ok := asInt(containerInfo["bcDocSymbolOffset"])
 	if !ok {
 		t.Fatalf("container_info missing $415")
 	}
-	docSymbolLength, ok := asInt(containerInfo["$416"])
+	docSymbolLength, ok := asInt(containerInfo["bcDocSymbolLength"])
 	if !ok {
 		t.Fatalf("container_info missing $416")
 	}

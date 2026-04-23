@@ -2,6 +2,7 @@ package kfx
 
 import (
 	"bytes"
+	"fmt"
 	_ "embed"
 	"sync"
 
@@ -73,6 +74,31 @@ func yjSymbols() ([]string, error) {
 	return yjSymbolsData, yjSymbolsErr
 }
 
+// sharedSymbolSet returns a set of all YJ shared symbol names for quick lookup.
+// Used by isSharedSymbolName() to identify shared symbols without the $N prefix.
+var sharedSymbolSetOnce sync.Once
+var sharedSymbolSetData map[string]bool
+
+func sharedSymbolSet() map[string]bool {
+	sharedSymbolSetOnce.Do(func() {
+		syms, err := yjSymbols()
+		if err != nil || len(syms) == 0 {
+			panic("kfx: failed to parse embedded YJ symbol catalog: " + err.Error())
+		}
+		sharedSymbolSetData = make(map[string]bool, len(syms))
+		for _, s := range syms {
+			sharedSymbolSetData[s] = true
+		}
+	})
+	return sharedSymbolSetData
+}
+
+// isSharedSymbolName checks whether a name is a YJ shared symbol.
+// Replaces the old strings.HasPrefix(name, "$") heuristic.
+func isSharedSymbolName(name string) bool {
+	return sharedSymbolSet()[name]
+}
+
 func sharedCatalog() ion.Catalog {
 	return ion.NewCatalog(sharedTable())
 }
@@ -82,6 +108,11 @@ func sharedTable() ion.SharedSymbolTable {
 	if err != nil || len(syms) == 0 {
 		// Fallback: this should never happen with a valid embedded catalog
 		panic("kfx: failed to parse embedded YJ symbol catalog: " + err.Error())
+	}
+	// Extend to SID 1000 (991 entries total) to match the original $N range.
+	// SIDs beyond the catalog (852-1000) get $N placeholder names.
+	for len(syms) < 991 {
+		syms = append(syms, fmt.Sprintf("$%d", len(syms)+10))
 	}
 	return ion.NewSharedSymbolTable("YJ_symbols", 10, syms)
 }

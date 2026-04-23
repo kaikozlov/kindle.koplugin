@@ -45,13 +45,13 @@ func TestGetMetadataValue_TwoTierLookup_FirstTierWins(t *testing.T) {
 
 	// Tier 1: $490 fragment with title = "Title A"
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "title",
-						"$307": "Title A",
+						"key": "title",
+						"value": "Title A",
 					},
 				},
 			},
@@ -60,7 +60,7 @@ func TestGetMetadataValue_TwoTierLookup_FirstTierWins(t *testing.T) {
 
 	// Tier 2: $258 fragment with title symbol = "Title B" (fallback)
 	cat.ReadingOrderMetadata = map[string]interface{}{
-		"$153": "Title B",
+		"title": "Title B",
 	}
 
 	result := getMetadataValue(cat, "title", "kindle_title_metadata", nil)
@@ -77,7 +77,7 @@ func TestGetMetadataValue_TwoTierLookup_Fallback(t *testing.T) {
 
 	// Tier 2: $258 fragment with title symbol = "Title B"
 	cat.ReadingOrderMetadata = map[string]interface{}{
-		"$153": "Title B",
+		"title": "Title B",
 	}
 
 	result := getMetadataValue(cat, "title", "kindle_title_metadata", nil)
@@ -113,22 +113,22 @@ func TestGetMetadataValue_NonDefaultCategory(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_fixed_layout",
-						"$307": "should_not_match",
+						"key": "yj_fixed_layout",
+						"value": "should_not_match",
 					},
 				},
 			},
 			map[string]interface{}{
-				"$495": "kindle_capability_metadata",
-				"$258": []interface{}{
+				"category": "kindle_capability_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_fixed_layout",
-						"$307": 2,
+						"key": "yj_fixed_layout",
+						"value": 2,
 					},
 				},
 			},
@@ -149,14 +149,14 @@ func TestGetFeatureValue_YJConversionNamespace_MajorOnly(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 
 	cat.ContentFeatures = map[string]interface{}{
-		"$590": []interface{}{
+		"features": []interface{}{
 			map[string]interface{}{
-				"$586": "com.amazon.yjconversion",
-				"$492": "yj.illustrated_layout",
-				"$589": map[string]interface{}{
+				"namespace": "com.amazon.yjconversion",
+				"key": "yj.illustrated_layout",
+				"version_info": map[string]interface{}{
 					"version": map[string]interface{}{
-						"$587": 2,
-						"$588": 0,
+						"major_version": 2,
+						"minor_version": 0,
 					},
 				},
 			},
@@ -173,14 +173,14 @@ func TestGetFeatureValue_YJConversionNamespace_MajorMinor(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 
 	cat.ContentFeatures = map[string]interface{}{
-		"$590": []interface{}{
+		"features": []interface{}{
 			map[string]interface{}{
-				"$586": "com.amazon.yjconversion",
-				"$492": "yj.illustrated_layout",
-				"$589": map[string]interface{}{
+				"namespace": "com.amazon.yjconversion",
+				"key": "yj.illustrated_layout",
+				"version_info": map[string]interface{}{
 					"version": map[string]interface{}{
-						"$587": 2,
-						"$588": 3,
+						"major_version": 2,
+						"minor_version": 3,
 					},
 				},
 			},
@@ -206,12 +206,12 @@ func TestGetFeatureValue_FormatCapabilities(t *testing.T) {
 
 	// $593 fragments stored by their fragment IDs.
 	// Python iterates fragment.value directly as a list of IonStruct.
-	// In Go, the decoded IonList is stored under "$146" key.
+	// In Go, the decoded IonList is stored under "content_list" key.
 	cat.FormatCapabilities = map[string]map[string]interface{}{
 		"fc1": {
-			"$146": []interface{}{
+			"content_list": []interface{}{
 				map[string]interface{}{
-					"$492":    "some_feat",
+					"key":    "some_feat",
 					"version": "1.2",
 				},
 			},
@@ -241,13 +241,13 @@ func TestGetFeatureValue_Default(t *testing.T) {
 func TestIsMagazine_True(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "cde_content_type",
-						"$307": "MAGZ",
+						"key": "cde_content_type",
+						"value": "MAGZ",
 					},
 				},
 			},
@@ -263,13 +263,13 @@ func TestIsMagazine_True(t *testing.T) {
 func TestIsMagazine_False(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "cde_content_type",
-						"$307": "EBOK",
+						"key": "cde_content_type",
+						"value": "EBOK",
 					},
 				},
 			},
@@ -297,13 +297,13 @@ func TestIsMagazine_Empty(t *testing.T) {
 func TestIsSample_True(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "cde_content_type",
-						"$307": "EBSP",
+						"key": "cde_content_type",
+						"value": "EBSP",
 					},
 				},
 			},
@@ -319,13 +319,13 @@ func TestIsSample_True(t *testing.T) {
 func TestIsSample_False(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "cde_content_type",
-						"$307": "EBOK",
+						"key": "cde_content_type",
+						"value": "EBOK",
 					},
 				},
 			},
@@ -345,13 +345,13 @@ func TestIsSample_False(t *testing.T) {
 func TestIsFixedLayout_WithCapability(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_capability_metadata",
-				"$258": []interface{}{
+				"category": "kindle_capability_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_fixed_layout",
-						"$307": 1,
+						"key": "yj_fixed_layout",
+						"value": 1,
 					},
 				},
 			},
@@ -387,13 +387,13 @@ func TestIsFixedLayout_False(t *testing.T) {
 func TestIsPrintReplica_FixedLayoutEquals2(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_capability_metadata",
-				"$258": []interface{}{
+				"category": "kindle_capability_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_fixed_layout",
-						"$307": 2,
+						"key": "yj_fixed_layout",
+						"value": 2,
 					},
 				},
 			},
@@ -409,17 +409,17 @@ func TestIsPrintReplica_FixedLayoutEquals2(t *testing.T) {
 func TestIsPrintReplica_TextbookAndNot3(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_capability_metadata",
-				"$258": []interface{}{
+				"category": "kindle_capability_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_textbook",
-						"$307": 1,
+						"key": "yj_textbook",
+						"value": 1,
 					},
 					map[string]interface{}{
-						"$492": "yj_fixed_layout",
-						"$307": 1,
+						"key": "yj_fixed_layout",
+						"value": 1,
 					},
 				},
 			},
@@ -435,17 +435,17 @@ func TestIsPrintReplica_TextbookAndNot3(t *testing.T) {
 func TestIsPrintReplica_TextbookAnd3_False(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_capability_metadata",
-				"$258": []interface{}{
+				"category": "kindle_capability_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_textbook",
-						"$307": 1,
+						"key": "yj_textbook",
+						"value": 1,
 					},
 					map[string]interface{}{
-						"$492": "yj_fixed_layout",
-						"$307": 3,
+						"key": "yj_fixed_layout",
+						"value": 3,
 					},
 				},
 			},
@@ -469,13 +469,13 @@ func TestIsPrintReplica_NoTextbookNoFixedLayout_False(t *testing.T) {
 func TestIsPrintReplica_TextbookAndNil(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_capability_metadata",
-				"$258": []interface{}{
+				"category": "kindle_capability_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_textbook",
-						"$307": 1,
+						"key": "yj_textbook",
+						"value": 1,
 					},
 				},
 			},
@@ -528,13 +528,13 @@ func TestIsImageBasedFixedLayout_False(t *testing.T) {
 func TestCachingPattern_CdeType(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "cde_content_type",
-						"$307": "MAGZ",
+						"key": "cde_content_type",
+						"value": "MAGZ",
 					},
 				},
 			},
@@ -556,7 +556,7 @@ func TestCachingPattern_IsKfxV1(t *testing.T) {
 	cat.Generators = map[string]map[string]interface{}{
 		"gen1": {"version": 1},
 	}
-	cat.FragmentIDsByType["$270"] = []string{"gen1"}
+	cat.FragmentIDsByType["container"] = []string{"gen1"}
 
 	ci := newCacheInfo()
 	r1 := isKfxV1(cat, ci)
@@ -575,7 +575,7 @@ func TestIsKfxV1_True(t *testing.T) {
 	cat.Generators = map[string]map[string]interface{}{
 		"gen1": {"version": 1},
 	}
-	cat.FragmentIDsByType["$270"] = []string{"gen1"}
+	cat.FragmentIDsByType["container"] = []string{"gen1"}
 	ci := newCacheInfo()
 	if !isKfxV1(cat, ci) {
 		t.Error("expected isKfxV1=true when version=1")
@@ -610,13 +610,13 @@ func TestGetCoverImageData_JPEG(t *testing.T) {
 
 	// Set cover_image metadata
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "cover_image",
-						"$307": "cover_res_1",
+						"key": "cover_image",
+						"value": "cover_res_1",
 					},
 				},
 			},
@@ -631,8 +631,8 @@ func TestGetCoverImageData_JPEG(t *testing.T) {
 	}
 	// Store the format info in the raw fragment data
 	cat.ResourceRawData["cover_res_1"] = map[string]interface{}{
-		"$161": "$285", // jpg format symbol
-		"$165": "cover_loc",
+		"format": "jpg", // jpg format symbol
+		"location": "cover_loc",
 	}
 
 	// Raw media
@@ -662,13 +662,13 @@ func TestGetCoverImageData_NoRawMedia_Nil(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "cover_image",
-						"$307": "cover_res_1",
+						"key": "cover_image",
+						"value": "cover_res_1",
 					},
 				},
 			},
@@ -680,8 +680,8 @@ func TestGetCoverImageData_NoRawMedia_Nil(t *testing.T) {
 		Location: "cover_loc",
 	}
 	cat.ResourceRawData["cover_res_1"] = map[string]interface{}{
-		"$161": "$285",
-		"$165": "cover_loc",
+		"format": "jpg",
+		"location": "cover_loc",
 	}
 	// No raw media for cover_loc
 
@@ -698,13 +698,13 @@ func TestGetCoverImageData_NoRawMedia_Nil(t *testing.T) {
 func TestGetAssetId(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "asset_id",
-						"$307": "asset_123",
+						"key": "asset_id",
+						"value": "asset_123",
 					},
 				},
 			},
@@ -731,7 +731,7 @@ func TestGetAssetId_NotFound(t *testing.T) {
 
 func TestHasMetadata_WithTitleMetadata(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
-	cat.TitleMetadata = map[string]interface{}{"$491": nil}
+	cat.TitleMetadata = map[string]interface{}{"categorised_metadata": nil}
 	if !hasMetadata(cat) {
 		t.Error("expected true when $490 exists")
 	}
@@ -739,7 +739,7 @@ func TestHasMetadata_WithTitleMetadata(t *testing.T) {
 
 func TestHasMetadata_WithReadingOrderMetadata(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
-	cat.ReadingOrderMetadata = map[string]interface{}{"$153": "test"}
+	cat.ReadingOrderMetadata = map[string]interface{}{"title": "test"}
 	if !hasMetadata(cat) {
 		t.Error("expected true when $258 exists")
 	}
@@ -768,7 +768,7 @@ func TestHasMetadata_Neither(t *testing.T) {
 func TestHasPDFResource_True(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.ResourceRawData["res1"] = map[string]interface{}{
-		"$161": "$565", // PDF format
+		"format": "pdf", // PDF format
 	}
 	ci := newCacheInfo()
 	if !hasPDFResource(cat, ci) {
@@ -779,7 +779,7 @@ func TestHasPDFResource_True(t *testing.T) {
 func TestHasPDFResource_False(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.ResourceRawData["res1"] = map[string]interface{}{
-		"$161": "$548", // JPEG-XR format
+		"format": "jxr", // JPEG-XR format
 	}
 	ci := newCacheInfo()
 	if hasPDFResource(cat, ci) {
@@ -803,13 +803,13 @@ func TestGetGenerators(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.Generators = map[string]map[string]interface{}{
 		"gen1": {
-			"$587":    "GeneratorA",
-			"$588":    "1.0",
+			"major_version":    "GeneratorA",
+			"minor_version":    "1.0",
 			"version": 1, // Python: if "version" in fragment.value
 		},
 		"gen2": {
-			"$587":    "GeneratorB",
-			"$588":    "2.0",
+			"major_version":    "GeneratorB",
+			"minor_version":    "2.0",
 			"version": 2,
 		},
 	}
@@ -846,13 +846,13 @@ func TestGetGenerators_Empty(t *testing.T) {
 func TestIsPDFBackedFixedLayout_True(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_capability_metadata",
-				"$258": []interface{}{
+				"category": "kindle_capability_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_fixed_layout",
-						"$307": 3,
+						"key": "yj_fixed_layout",
+						"value": 3,
 					},
 				},
 			},
@@ -868,13 +868,13 @@ func TestIsPDFBackedFixedLayout_True(t *testing.T) {
 func TestIsPDFBackedFixedLayout_False(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_capability_metadata",
-				"$258": []interface{}{
+				"category": "kindle_capability_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_fixed_layout",
-						"$307": 1,
+						"key": "yj_fixed_layout",
+						"value": 1,
 					},
 				},
 			},
@@ -894,14 +894,14 @@ func TestIsPDFBackedFixedLayout_False(t *testing.T) {
 func TestIsIllustratedLayout_True(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.ContentFeatures = map[string]interface{}{
-		"$590": []interface{}{
+		"features": []interface{}{
 			map[string]interface{}{
-				"$586": "com.amazon.yjconversion",
-				"$492": "yj.illustrated_layout",
-				"$589": map[string]interface{}{
+				"namespace": "com.amazon.yjconversion",
+				"key": "yj.illustrated_layout",
+				"version_info": map[string]interface{}{
 					"version": map[string]interface{}{
-						"$587": 1,
-						"$588": 0,
+						"major_version": 1,
+						"minor_version": 0,
 					},
 				},
 			},
@@ -929,13 +929,13 @@ func TestIsIllustratedLayout_False(t *testing.T) {
 func TestCdeType(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.TitleMetadata = map[string]interface{}{
-		"$491": []interface{}{
+		"categorised_metadata": []interface{}{
 			map[string]interface{}{
-				"$495": "kindle_title_metadata",
-				"$258": []interface{}{
+				"category": "kindle_title_metadata",
+				"metadata": []interface{}{
 					map[string]interface{}{
-						"$492": "cde_content_type",
-						"$307": "EBOK",
+						"key": "cde_content_type",
+						"value": "EBOK",
 					},
 				},
 			},
@@ -968,10 +968,10 @@ func TestGetPageCount(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.NavRoots = []map[string]interface{}{
 		{
-			"$392": []interface{}{
+			"nav_containers": []interface{}{
 				map[string]interface{}{
-					"$235": "$237",
-					"$247": []interface{}{"p1", "p2", "p3"},
+					"nav_type": "page_list",
+					"entries": []interface{}{"p1", "p2", "p3"},
 				},
 			},
 		},
@@ -994,7 +994,7 @@ func TestGetPageCount_NoNavRoot(t *testing.T) {
 // ---------------------------------------------------------------------------
 // FIX 1: getFeatureValue format_capabilities iterates $593 correctly
 // Python yj_metadata.py:374 iterates fragment.value directly as a list.
-// In Go, the decoded $593 fragment has its list entries under "$146" key.
+// In Go, the decoded $593 fragment has its list entries under "content_list" key.
 // ---------------------------------------------------------------------------
 
 func TestGetFeatureValue_FormatCapabilities_MultipleFeatures(t *testing.T) {
@@ -1002,13 +1002,13 @@ func TestGetFeatureValue_FormatCapabilities_MultipleFeatures(t *testing.T) {
 
 	cat.FormatCapabilities = map[string]map[string]interface{}{
 		"fc1": {
-			"$146": []interface{}{
+			"content_list": []interface{}{
 				map[string]interface{}{
-					"$492":    "feat_a",
+					"key":    "feat_a",
 					"version": "1.0",
 				},
 				map[string]interface{}{
-					"$492":    "feat_b",
+					"key":    "feat_b",
 					"version": "2.0",
 				},
 			},
@@ -1034,7 +1034,7 @@ func TestGetFeatureValue_FormatCapabilities_FallbackToItems(t *testing.T) {
 		"fc1": {
 			"items": []interface{}{
 				map[string]interface{}{
-					"$492":    "legacy_feat",
+					"key":    "legacy_feat",
 					"version": "0.9",
 				},
 			},
@@ -1052,9 +1052,9 @@ func TestGetFeatureValue_FormatCapabilities_NotFound(t *testing.T) {
 
 	cat.FormatCapabilities = map[string]map[string]interface{}{
 		"fc1": {
-			"$146": []interface{}{
+			"content_list": []interface{}{
 				map[string]interface{}{
-					"$492":    "other_feat",
+					"key":    "other_feat",
 					"version": "3.0",
 				},
 			},
@@ -1072,17 +1072,17 @@ func TestGetFeatureValue_FormatCapabilities_MultipleFragments(t *testing.T) {
 
 	cat.FormatCapabilities = map[string]map[string]interface{}{
 		"fc1": {
-			"$146": []interface{}{
+			"content_list": []interface{}{
 				map[string]interface{}{
-					"$492":    "feat_one",
+					"key":    "feat_one",
 					"version": "1.0",
 				},
 			},
 		},
 		"fc2": {
-			"$146": []interface{}{
+			"content_list": []interface{}{
 				map[string]interface{}{
-					"$492":    "feat_two",
+					"key":    "feat_two",
 					"version": "2.0",
 				},
 			},
@@ -1112,8 +1112,8 @@ func TestGetFeatureValue_FormatCapabilities_EmptyFragment(t *testing.T) {
 // ---------------------------------------------------------------------------
 // FIX 2: updateCoverSectionAndStoryline processes $157 style fragments
 // Python yj_metadata.py:813-814 recursively processes style fragments via:
-//   if "$157" in content:
-//       process_content(self.fragments.get(ftype="$157", fid=content.get("$157")).value, desc)
+//   if "style" in content:
+//       process_content(self.fragments.get(ftype="style", fid=content.get("style")).value, desc)
 // ---------------------------------------------------------------------------
 
 func TestUpdateCoverSectionAndStoryline_StyleFragmentProcessing(t *testing.T) {
@@ -1125,14 +1125,14 @@ func TestUpdateCoverSectionAndStoryline_StyleFragmentProcessing(t *testing.T) {
 		ID:   "cover_section",
 		Storyline: "story1",
 		PageTemplateValues: map[string]interface{}{
-			"$56":  800,
-			"$57":  600,
-			"$157": "style_123",
-			"$146": []interface{}{
+			"width":  800,
+			"height":  600,
+			"style": "style_123",
+			"content_list": []interface{}{
 				map[string]interface{}{
-					"$56":  800,
-					"$66":  800,
-					"$157": "style_child",
+					"width":  800,
+					"fixed_width":  800,
+					"style": "style_child",
 				},
 			},
 		},
@@ -1140,24 +1140,24 @@ func TestUpdateCoverSectionAndStoryline_StyleFragmentProcessing(t *testing.T) {
 
 	// Set up style fragments
 	cat.StyleFragments["style_123"] = map[string]interface{}{
-		"$56": 800,
-		"$57": 600,
+		"width": 800,
+		"height": 600,
 	}
 	cat.StyleFragments["style_child"] = map[string]interface{}{
-		"$66": 800,
+		"fixed_width": 800,
 	}
 
 	// Set up storyline
 	cat.Storylines["story1"] = map[string]interface{}{
-		"$146": []interface{}{
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$56":  800,
-				"$157": "style_story",
+				"width":  800,
+				"style": "style_story",
 			},
 		},
 	}
 	cat.StyleFragments["style_story"] = map[string]interface{}{
-		"$56": 800,
+		"width": 800,
 	}
 
 	// Update dimensions from 800x600 to 1024x768
@@ -1165,29 +1165,29 @@ func TestUpdateCoverSectionAndStoryline_StyleFragmentProcessing(t *testing.T) {
 
 	// Check page template dimensions were updated
 	ptv := cat.SectionFragments["cover_section"].PageTemplateValues
-	if ptv["$56"] != 1024 {
-		t.Errorf("expected page template $56=1024, got %v", ptv["$56"])
+	if ptv["width"] != 1024 {
+		t.Errorf("expected page template $56=1024, got %v", ptv["width"])
 	}
-	if ptv["$57"] != 768 {
-		t.Errorf("expected page template $57=768, got %v", ptv["$57"])
+	if ptv["height"] != 768 {
+		t.Errorf("expected page template $57=768, got %v", ptv["height"])
 	}
 
 	// Check $157 style fragment was updated
-	if cat.StyleFragments["style_123"]["$56"] != 1024 {
-		t.Errorf("expected style_123 $56=1024, got %v", cat.StyleFragments["style_123"]["$56"])
+	if cat.StyleFragments["style_123"]["width"] != 1024 {
+		t.Errorf("expected style_123 $56=1024, got %v", cat.StyleFragments["style_123"]["width"])
 	}
-	if cat.StyleFragments["style_123"]["$57"] != 768 {
-		t.Errorf("expected style_123 $57=768, got %v", cat.StyleFragments["style_123"]["$57"])
+	if cat.StyleFragments["style_123"]["height"] != 768 {
+		t.Errorf("expected style_123 $57=768, got %v", cat.StyleFragments["style_123"]["height"])
 	}
 
 	// Check child's $157 style fragment was also updated
-	if cat.StyleFragments["style_child"]["$66"] != 1024 {
-		t.Errorf("expected style_child $66=1024, got %v", cat.StyleFragments["style_child"]["$66"])
+	if cat.StyleFragments["style_child"]["fixed_width"] != 1024 {
+		t.Errorf("expected style_child $66=1024, got %v", cat.StyleFragments["style_child"]["fixed_width"])
 	}
 
 	// Check storyline child's $157 style fragment was updated
-	if cat.StyleFragments["style_story"]["$56"] != 1024 {
-		t.Errorf("expected style_story $56=1024, got %v", cat.StyleFragments["style_story"]["$56"])
+	if cat.StyleFragments["style_story"]["width"] != 1024 {
+		t.Errorf("expected style_story $56=1024, got %v", cat.StyleFragments["style_story"]["width"])
 	}
 }
 
@@ -1200,19 +1200,19 @@ func TestUpdateCoverSectionAndStoryline_NoStyleRef(t *testing.T) {
 		ID:        "cover_section",
 		Storyline: "",
 		PageTemplateValues: map[string]interface{}{
-			"$56": 800,
-			"$57": 600,
+			"width": 800,
+			"height": 600,
 		},
 	}
 
 	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
 
 	ptv := cat.SectionFragments["cover_section"].PageTemplateValues
-	if ptv["$56"] != 1024 {
-		t.Errorf("expected $56=1024, got %v", ptv["$56"])
+	if ptv["width"] != 1024 {
+		t.Errorf("expected $56=1024, got %v", ptv["width"])
 	}
-	if ptv["$57"] != 768 {
-		t.Errorf("expected $57=768, got %v", ptv["$57"])
+	if ptv["height"] != 768 {
+		t.Errorf("expected $57=768, got %v", ptv["height"])
 	}
 }
 
@@ -1231,16 +1231,16 @@ func TestUpdateCoverSectionAndStoryline_MissingStyleFragment(t *testing.T) {
 		ID:        "cover_section",
 		Storyline: "",
 		PageTemplateValues: map[string]interface{}{
-			"$56":  800,
-			"$157": "nonexistent_style",
+			"width":  800,
+			"style": "nonexistent_style",
 		},
 	}
 
 	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
 
 	ptv := cat.SectionFragments["cover_section"].PageTemplateValues
-	if ptv["$56"] != 1024 {
-		t.Errorf("expected $56=1024, got %v", ptv["$56"])
+	if ptv["width"] != 1024 {
+		t.Errorf("expected $56=1024, got %v", ptv["width"])
 	}
 }
 
@@ -1253,25 +1253,25 @@ func TestUpdateCoverSectionAndStoryline_NestedStyleFragments(t *testing.T) {
 		ID:        "cover_section",
 		Storyline: "",
 		PageTemplateValues: map[string]interface{}{
-			"$157": "style_outer",
+			"style": "style_outer",
 		},
 	}
 	cat.StyleFragments["style_outer"] = map[string]interface{}{
-		"$56":  800,
-		"$157": "style_inner",
+		"width":  800,
+		"style": "style_inner",
 	}
 	cat.StyleFragments["style_inner"] = map[string]interface{}{
-		"$57": 600,
+		"height": 600,
 	}
 
 	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
 
 	// Both style fragments should be updated recursively
-	if cat.StyleFragments["style_outer"]["$56"] != 1024 {
-		t.Errorf("expected style_outer $56=1024, got %v", cat.StyleFragments["style_outer"]["$56"])
+	if cat.StyleFragments["style_outer"]["width"] != 1024 {
+		t.Errorf("expected style_outer $56=1024, got %v", cat.StyleFragments["style_outer"]["width"])
 	}
-	if cat.StyleFragments["style_inner"]["$57"] != 768 {
-		t.Errorf("expected style_inner $57=768, got %v", cat.StyleFragments["style_inner"]["$57"])
+	if cat.StyleFragments["style_inner"]["height"] != 768 {
+		t.Errorf("expected style_inner $57=768, got %v", cat.StyleFragments["style_inner"]["height"])
 	}
 }
 
@@ -1288,18 +1288,18 @@ func TestGetGenerators_PlaceholderFiltering(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.Generators = map[string]map[string]interface{}{
 		"gen1": {
-			"$587":    "NormalGen",
-			"$588":    "1.0.0",
+			"major_version":    "NormalGen",
+			"minor_version":    "1.0.0",
 			"version": 1,
 		},
 		"gen2": {
-			"$587":    "PlaceholderGen",
-			"$588":    "kfxlib-00000000", // PACKAGE_VERSION_PLACEHOLDER
+			"major_version":    "PlaceholderGen",
+			"minor_version":    "kfxlib-00000000", // PACKAGE_VERSION_PLACEHOLDER
 			"version": 1,
 		},
 		"gen3": {
-			"$587":    "AnotherPlaceholder",
-			"$588":    "PackageVersion:YJReaderSDK-1.0.x.x GitSHA:c805492 Month-Day:04-22",
+			"major_version":    "AnotherPlaceholder",
+			"minor_version":    "PackageVersion:YJReaderSDK-1.0.x.x GitSHA:c805492 Month-Day:04-22",
 			"version": 2,
 		},
 	}
@@ -1332,8 +1332,8 @@ func TestGetGenerators_NoVersionKey_Skipped(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.Generators = map[string]map[string]interface{}{
 		"gen1": {
-			"$587": "NoVersionGen",
-			"$588": "1.0.0",
+			"major_version": "NoVersionGen",
+			"minor_version": "1.0.0",
 			// No "version" key — should be skipped
 		},
 	}
@@ -1348,7 +1348,7 @@ func TestGetGenerators_EmptyPkgVersion(t *testing.T) {
 	cat := makeTestCatalogForMetadata()
 	cat.Generators = map[string]map[string]interface{}{
 		"gen1": {
-			"$587":    "GenNoPkg",
+			"major_version":    "GenNoPkg",
 			"version": 1,
 			// No $588 key — asString returns ""
 		},
@@ -1365,7 +1365,7 @@ func TestGetGenerators_EmptyPkgVersion(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // VAL-M1-META-004: isKfxV1 checks $270 fragment version field correctly
-// Python yj_metadata.py:338-341: fragment = self.fragments.get("$270", first=True)
+// Python yj_metadata.py:338-341: fragment = self.fragments.get("container", first=True)
 //   fragment.value.get("version", 0) == 1 if fragment is not None else False
 // ---------------------------------------------------------------------------
 
@@ -1378,7 +1378,7 @@ func TestIsKfxV1_FirstFragmentOnly(t *testing.T) {
 		"gen_first": {"version": 2},
 		"gen_second": {"version": 1},
 	}
-	cat.FragmentIDsByType["$270"] = []string{"gen_first", "gen_second"}
+	cat.FragmentIDsByType["container"] = []string{"gen_first", "gen_second"}
 
 	ci := newCacheInfo()
 	// Should check only the first fragment (version=2), result should be false
@@ -1392,9 +1392,9 @@ func TestIsKfxV1_DefaultVersionZero(t *testing.T) {
 
 	// Fragment without explicit "version" key → defaults to 0
 	cat.Generators = map[string]map[string]interface{}{
-		"gen1": {"$587": "SomeGen"},
+		"gen1": {"major_version": "SomeGen"},
 	}
-	cat.FragmentIDsByType["$270"] = []string{"gen1"}
+	cat.FragmentIDsByType["container"] = []string{"gen1"}
 
 	ci := newCacheInfo()
 	// Python: fragment.value.get("version", 0) == 1 → 0 == 1 → false
@@ -1408,7 +1408,7 @@ func TestIsKfxV1_VersionOneIsTrue(t *testing.T) {
 	cat.Generators = map[string]map[string]interface{}{
 		"gen1": {"version": 1},
 	}
-	cat.FragmentIDsByType["$270"] = []string{"gen1"}
+	cat.FragmentIDsByType["container"] = []string{"gen1"}
 
 	ci := newCacheInfo()
 	if !isKfxV1(cat, ci) {
@@ -1624,32 +1624,32 @@ func TestUpdateCoverSectionAndStoryline_DeepNested157(t *testing.T) {
 		ID:        "cover_section",
 		Storyline: "",
 		PageTemplateValues: map[string]interface{}{
-			"$157": "style_l1",
+			"style": "style_l1",
 		},
 	}
 	cat.StyleFragments["style_l1"] = map[string]interface{}{
-		"$56":  800,
-		"$157": "style_l2",
+		"width":  800,
+		"style": "style_l2",
 	}
 	cat.StyleFragments["style_l2"] = map[string]interface{}{
-		"$57":  600,
-		"$157": "style_l3",
+		"height":  600,
+		"style": "style_l3",
 	}
 	cat.StyleFragments["style_l3"] = map[string]interface{}{
-		"$66": 800,
+		"fixed_width": 800,
 	}
 
 	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
 
 	// All three levels should be updated
-	if cat.StyleFragments["style_l1"]["$56"] != 1024 {
-		t.Errorf("expected style_l1 $56=1024, got %v", cat.StyleFragments["style_l1"]["$56"])
+	if cat.StyleFragments["style_l1"]["width"] != 1024 {
+		t.Errorf("expected style_l1 $56=1024, got %v", cat.StyleFragments["style_l1"]["width"])
 	}
-	if cat.StyleFragments["style_l2"]["$57"] != 768 {
-		t.Errorf("expected style_l2 $57=768, got %v", cat.StyleFragments["style_l2"]["$57"])
+	if cat.StyleFragments["style_l2"]["height"] != 768 {
+		t.Errorf("expected style_l2 $57=768, got %v", cat.StyleFragments["style_l2"]["height"])
 	}
-	if cat.StyleFragments["style_l3"]["$66"] != 1024 {
-		t.Errorf("expected style_l3 $66=1024, got %v", cat.StyleFragments["style_l3"]["$66"])
+	if cat.StyleFragments["style_l3"]["fixed_width"] != 1024 {
+		t.Errorf("expected style_l3 $66=1024, got %v", cat.StyleFragments["style_l3"]["fixed_width"])
 	}
 }
 
@@ -1662,39 +1662,39 @@ func TestUpdateCoverSectionAndStoryline_StyleFragmentWith146Children(t *testing.
 		ID:        "cover_section",
 		Storyline: "",
 		PageTemplateValues: map[string]interface{}{
-			"$157": "style_parent",
+			"style": "style_parent",
 		},
 	}
 	cat.StyleFragments["style_parent"] = map[string]interface{}{
-		"$56": 800,
-		"$146": []interface{}{
+		"width": 800,
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$57":  600,
-				"$157": "style_child_a",
+				"height":  600,
+				"style": "style_child_a",
 			},
 			map[string]interface{}{
-				"$66": 800,
-				"$157": "style_child_b",
+				"fixed_width": 800,
+				"style": "style_child_b",
 			},
 		},
 	}
 	cat.StyleFragments["style_child_a"] = map[string]interface{}{
-		"$67": 600,
+		"fixed_height": 600,
 	}
 	cat.StyleFragments["style_child_b"] = map[string]interface{}{
-		"$56": 800,
+		"width": 800,
 	}
 
 	updateCoverSectionAndStoryline(cat, 800, 600, 1024, 768)
 
-	if cat.StyleFragments["style_parent"]["$56"] != 1024 {
-		t.Errorf("expected style_parent $56=1024, got %v", cat.StyleFragments["style_parent"]["$56"])
+	if cat.StyleFragments["style_parent"]["width"] != 1024 {
+		t.Errorf("expected style_parent $56=1024, got %v", cat.StyleFragments["style_parent"]["width"])
 	}
-	if cat.StyleFragments["style_child_a"]["$67"] != 768 {
-		t.Errorf("expected style_child_a $67=768, got %v", cat.StyleFragments["style_child_a"]["$67"])
+	if cat.StyleFragments["style_child_a"]["fixed_height"] != 768 {
+		t.Errorf("expected style_child_a $67=768, got %v", cat.StyleFragments["style_child_a"]["fixed_height"])
 	}
-	if cat.StyleFragments["style_child_b"]["$56"] != 1024 {
-		t.Errorf("expected style_child_b $56=1024, got %v", cat.StyleFragments["style_child_b"]["$56"])
+	if cat.StyleFragments["style_child_b"]["width"] != 1024 {
+		t.Errorf("expected style_child_b $56=1024, got %v", cat.StyleFragments["style_child_b"]["width"])
 	}
 }
 
@@ -1707,8 +1707,8 @@ func TestUpdateCoverSectionAndStoryline_StructValueNotUpdated(t *testing.T) {
 		ID:        "cover_section",
 		Storyline: "",
 		PageTemplateValues: map[string]interface{}{
-			"$56": map[string]interface{}{"nested": true}, // IonStruct — skip
-			"$57": 600,                                    // int — update
+			"width": map[string]interface{}{"nested": true}, // IonStruct — skip
+			"height": 600,                                    // int — update
 		},
 	}
 
@@ -1716,11 +1716,11 @@ func TestUpdateCoverSectionAndStoryline_StructValueNotUpdated(t *testing.T) {
 
 	ptv := cat.SectionFragments["cover_section"].PageTemplateValues
 	// $56 should remain unchanged (it's a struct)
-	if m, ok := ptv["$56"].(map[string]interface{}); !ok || !m["nested"].(bool) {
-		t.Errorf("expected $56 to remain a struct, got %v", ptv["$56"])
+	if m, ok := ptv["width"].(map[string]interface{}); !ok || !m["nested"].(bool) {
+		t.Errorf("expected $56 to remain a struct, got %v", ptv["width"])
 	}
 	// $57 should be updated
-	if ptv["$57"] != 768 {
-		t.Errorf("expected $57=768, got %v", ptv["$57"])
+	if ptv["height"] != 768 {
+		t.Errorf("expected $57=768, got %v", ptv["height"])
 	}
 }

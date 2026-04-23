@@ -30,7 +30,7 @@ type resourceObj struct {
 	rawMedia          []byte
 	filename          string
 	extension         string
-	format            string // resource format symbol (e.g., "$285" for jpg)
+	format            string // resource format symbol (e.g., "jpg" for jpg)
 	mime              string
 	location          string
 	width             int
@@ -90,20 +90,20 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 	}
 
 	// 3. Validate internal name
-	intResourceName, _ := asString(resource["$175"])
+	intResourceName, _ := asString(resource["resource_name"])
 	if intResourceName != resource_name {
 		log.Printf("kfx: error: Name of resource %s is incorrect: %s", resource_name, intResourceName)
 	}
 
 	// 4. Extract dimensions
-	resourceFormat, _ := asString(resource["$161"])
-	fixedHeight := asIntDefault(resource["$67"], 0)
-	fixedWidth := asIntDefault(resource["$66"], 0)
-	resourceHeight := asIntDefault(resource["$423"], 0)
+	resourceFormat, _ := asString(resource["format"])
+	fixedHeight := asIntDefault(resource["fixed_height"], 0)
+	fixedWidth := asIntDefault(resource["fixed_width"], 0)
+	resourceHeight := asIntDefault(resource["resource_height"], 0)
 	if resourceHeight == 0 {
 		resourceHeight = fixedHeight
 	}
-	resourceWidth := asIntDefault(resource["$422"], 0)
+	resourceWidth := asIntDefault(resource["resource_width"], 0)
 	if resourceWidth == 0 {
 		resourceWidth = fixedWidth
 	}
@@ -112,12 +112,12 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 	var location string
 	var rawMedia []byte
 
-	if _, hasTiles := resource["$636"]; hasTiles {
+	if _, hasTiles := resource["yj.tiles"]; hasTiles {
 		// Python: yj_to_epub_resources.py:68-82 — tile reassembly path
-		yjTilesRaw := resource["$636"]
-		tileHeightVal := asIntDefault(resource["$638"], 0)
-		tileWidthVal := asIntDefault(resource["$637"], 0)
-		tilePadding := asIntDefault(resource["$797"], 0)
+		yjTilesRaw := resource["yj.tiles"]
+		tileHeightVal := asIntDefault(resource["yj.tile_height"], 0)
+		tileWidthVal := asIntDefault(resource["yj.tile_width"], 0)
+		tilePadding := asIntDefault(resource["yj.tile_padding"], 0)
 
 		yjTiles := parseTilesGrid(yjTilesRaw)
 		location = tileBaseLocation(yjTiles)
@@ -140,8 +140,8 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 		}
 	} else {
 		// Python: yj_to_epub_resources.py:83-86 — direct resource path
-		location, _ = asString(resource["$165"])
-		searchPath, _ := asString(resource["$166"])
+		location, _ = asString(resource["location"])
+		searchPath, _ := asString(resource["search_path"])
 		if searchPath == "" {
 			searchPath = location
 		}
@@ -160,7 +160,7 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 	extension := extensionForFormatSymbol(resourceFormat)
 
 	// 8. Get MIME type from fragment
-	mime, _ := asString(resource["$162"])
+	mime, _ := asString(resource["mime"])
 
 	// 9. Determine filename from location
 	locationFn := location
@@ -175,7 +175,7 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 
 	// 10. Get referred resources
 	referredResources := []string{}
-	if rr, ok := asSlice(resource["$167"]); ok {
+	if rr, ok := asSlice(resource["referred_resources"]); ok {
 		for _, v := range rr {
 			if s, ok := asString(v); ok {
 				referredResources = append(referredResources, s)
@@ -184,12 +184,12 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 	}
 
 	// 11. Process $214 external resource references (Python: yj_to_epub_resources.py:86-87)
-	if extRef, ok := asString(resource["$214"]); ok && extRef != "" {
+	if extRef, ok := asString(resource["thumbnails"]); ok && extRef != "" {
 		rp.processExternalResource(extRef, false, false, false, false, false)
 	}
 
 	// 12. JXR conversion (Python: yj_to_epub_resources.py:89-91)
-	if FIX_JPEG_XR && resourceFormat == "$548" && rawMedia != nil {
+	if FIX_JPEG_XR && resourceFormat == "jxr" && rawMedia != nil {
 		convertedData, convertedFormat := convertJXRToJpegOrPNG(rawMedia, locationFn)
 		rawMedia = convertedData
 		resourceFormat = convertedFormat
@@ -199,8 +199,8 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 
 	// 13. PDF page extraction (Python: yj_to_epub_resources.py:93-115)
 	suffix := ""
-	if resourceFormat == "$565" && rawMedia != nil {
-		if pageNumVal, ok := asInt(resource["$564"]); ok {
+	if resourceFormat == "pdf" && rawMedia != nil {
+		if pageNumVal, ok := asInt(resource["page_index"]); ok {
 			pageNum := pageNumVal + 1
 			suffix = pdfPageSuffix(pageNum)
 		} else {
@@ -209,7 +209,7 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 
 		if FIX_PDF {
 			pageNum := 1
-			if pn, ok := asInt(resource["$564"]); ok {
+			if pn, ok := asInt(resource["page_index"]); ok {
 				pageNum = pn + 1
 			}
 			imgData, imgFmt := convertPDFPageToImage(location, rawMedia, pageNum, nil, false)
@@ -240,7 +240,7 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 
 	// 15. VARIANT SELECTION — key logic (Python lines 170-179)
 	if !ignore_variants {
-		variants, _ := asSlice(resource["$635"])
+		variants, _ := asSlice(resource["yj.variants"])
 		for _, vr := range variants {
 			variantName, _ := asString(vr)
 			if variantName == "" {
@@ -419,23 +419,23 @@ func (rp *resourceProcessor) locateRawMedia(location string, report_missing bool
 // Mirrors Python's SYMBOL_FORMATS reverse lookup (resources.py).
 func extensionForFormatSymbol(format string) string {
 	switch format {
-	case "$285":
+	case "jpg":
 		return ".jpg"
-	case "$284":
+	case "png":
 		return ".png"
-	case "$548":
+	case "jxr":
 		return ".jxr"
-	case "$286":
+	case "gif":
 		return ".gif"
-	case "$565":
+	case "pdf":
 		return ".pdf"
-	case "$287":
+	case "pobject":
 		return ".pobject"
-	case "$420":
+	case "pbm":
 		return ".pbm"
-	case "$600":
+	case "tiff":
 		return ".tiff"
-	case "$612":
+	case "yj.bpg":
 		return ".bpg"
 	default:
 		return ".bin"
@@ -476,27 +476,27 @@ func splitExt(filename string) (string, string) {
 // ---------------------------------------------------------------------------
 
 func parseResourceFragment(fragmentID string, value map[string]interface{}) resourceFragment {
-	resourceID, _ := asString(value["$175"])
+	resourceID, _ := asString(value["resource_name"])
 	if resourceID == "" {
 		resourceID = fragmentID
 	}
-	location, _ := asString(value["$165"])
-	mediaType, _ := asString(value["$162"])
-	format, _ := asString(value["$161"])
+	location, _ := asString(value["location"])
+	mediaType, _ := asString(value["mime"])
+	format, _ := asString(value["format"])
 
 	// Width/height from $422/$423 (or $66/$67 fallback)
-	width, _ := asInt(value["$422"])
+	width, _ := asInt(value["resource_width"])
 	if width == 0 {
-		width, _ = asInt(value["$66"])
+		width, _ = asInt(value["fixed_width"])
 	}
-	height, _ := asInt(value["$423"])
+	height, _ := asInt(value["resource_height"])
 	if height == 0 {
-		height, _ = asInt(value["$67"])
+		height, _ = asInt(value["fixed_height"])
 	}
 
 	// $635 variant references
 	var variants []string
-	if v, ok := asSlice(value["$635"]); ok {
+	if v, ok := asSlice(value["yj.variants"]); ok {
 		for _, item := range v {
 			if name, ok := asString(item); ok && name != "" {
 				variants = append(variants, name)
@@ -516,15 +516,15 @@ func parseResourceFragment(fragmentID string, value map[string]interface{}) reso
 }
 
 func parseFontFragment(value map[string]interface{}) fontFragment {
-	location, _ := asString(value["$165"])
-	family, _ := asString(value["$11"])
+	location, _ := asString(value["location"])
+	family, _ := asString(value["font_family"])
 
 	return fontFragment{
 		Location: location,
 		Family:   family,
-		Style:    mapFontStyle(value["$12"]),
-		Weight:   mapFontWeight(value["$13"]),
-		Stretch:  mapFontStretch(value["$15"]),
+		Style:    mapFontStyle(value["font_style"]),
+		Weight:   mapFontWeight(value["font_weight"]),
+		Stretch:  mapFontStretch(value["font_stretch"]),
 	}
 }
 
@@ -816,25 +816,25 @@ func extensionForMediaType(mediaType string) string {
 // Port of Python SYMBOL_FORMATS (resources.py:61-63) which is the inverse of FORMAT_SYMBOLS.
 func formatSymbolToExtension(format string) (string, bool) {
 	switch format {
-	case "$285":
+	case "jpg":
 		return ".jpg", true
-	case "$284":
+	case "png":
 		return ".png", true
-	case "$286":
+	case "gif":
 		return ".gif", true
-	case "$548":
+	case "jxr":
 		return ".jxr", true
-	case "$599":
+	case "bmp":
 		return ".bmp", true
-	case "$565":
+	case "pdf":
 		return ".pdf", true
-	case "$420":
+	case "pbm":
 		return ".pbm", true
-	case "$600":
+	case "tiff":
 		return ".tiff", true
-	case "$287":
+	case "pobject":
 		return ".pobject", true
-	case "$612":
+	case "yj.bpg":
 		return ".bpg", true
 	default:
 		return "", false
@@ -1270,11 +1270,11 @@ func combineImageTiles(
 	}
 
 	// Determine output format
-	if resourceFormat == "$285" && COMBINE_TILES_LOSSLESS {
-		resourceFormat = "$284"
+	if resourceFormat == "jpg" && COMBINE_TILES_LOSSLESS {
+		resourceFormat = "png"
 	}
 
-	if resourceFormat == "$285" {
+	if resourceFormat == "jpg" {
 		// JPEG: optimize quality
 		desiredCombinedSize := max(int(float64(separateTilesSize)*COMBINED_TILE_SIZE_FACTOR), 1024)
 		rawMedia := optimizeJPEGImageQuality(fullImage, desiredCombinedSize)
@@ -1388,7 +1388,7 @@ func convertJXRToJpegOrPNG(imageData []byte, resourceName string) ([]byte, strin
 		// JXR decoded successfully — convert to JPEG
 		var buf bytes.Buffer
 		jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95})
-		return buf.Bytes(), "$285"
+		return buf.Bytes(), "jpg"
 	}
 
 	// Fallback: try standard image decode (for non-JXR data passed to this function)
@@ -1396,19 +1396,19 @@ func convertJXRToJpegOrPNG(imageData []byte, resourceName string) ([]byte, strin
 	if err2 != nil {
 		// Can't decode — return as-is with JPEG format (will be handled upstream)
 		log.Printf("kfx: error: Exception during conversion of JPEG-XR '%s': %v", resourceName, err)
-		return imageData, "$548"
+		return imageData, "jxr"
 	}
 
 	// Determine output format based on color mode
 	if CONVERT_JXR_LOSSLESS || hasAlpha(img2) {
 		var buf bytes.Buffer
 		png.Encode(&buf, img2)
-		return buf.Bytes(), "$284"
+		return buf.Bytes(), "png"
 	}
 
 	var buf bytes.Buffer
 	jpeg.Encode(&buf, img2, &jpeg.Options{Quality: 95})
-	return buf.Bytes(), "$285"
+	return buf.Bytes(), "jpg"
 }
 
 // convertJXRToJpegOrPNG_RGBA handles RGBA images specifically → PNG output.
@@ -1416,13 +1416,13 @@ func convertJXRToJpegOrPNG(imageData []byte, resourceName string) ([]byte, strin
 func convertJXRToJpegOrPNG_RGBA(imageData []byte, resourceName string) ([]byte, string) {
 	img, _, err := image.Decode(bytes.NewReader(imageData))
 	if err != nil {
-		return imageData, "$284"
+		return imageData, "png"
 	}
 	_ = resourceName
 
 	var buf bytes.Buffer
 	png.Encode(&buf, img)
-	return buf.Bytes(), "$284"
+	return buf.Bytes(), "png"
 }
 
 // hasAlpha returns true if the image has an alpha channel with non-opaque pixels.
@@ -1460,7 +1460,7 @@ func convertPDFPageToJPEG(location string, pdfData []byte, pageNum int) ([]byte,
 		img := image.NewGray(image.Rect(0, 0, 1, 1))
 		var buf bytes.Buffer
 		jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95})
-		return buf.Bytes(), "$285"
+		return buf.Bytes(), "jpg"
 	}
 
 	// PDF is valid — for now generate a placeholder JPEG
@@ -1469,7 +1469,7 @@ func convertPDFPageToJPEG(location string, pdfData []byte, pageNum int) ([]byte,
 	img := image.NewGray(image.Rect(0, 0, 612, 792))
 	var buf bytes.Buffer
 	jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95})
-	return buf.Bytes(), "$285"
+	return buf.Bytes(), "jpg"
 }
 
 // getPDFPageImage implements Python get_pdf_page_image (resources.py:373-400).

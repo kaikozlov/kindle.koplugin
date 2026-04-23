@@ -88,10 +88,10 @@ func TestOrganizeFragmentsCategorizesContentFragments(t *testing.T) {
 	// Simulate what organizeFragments does for $145
 	value := map[string]interface{}{
 		"name": "content1",
-		"$146": []interface{}{"sid_a", "sid_b"},
+		"content_list": []interface{}{"sid_a", "sid_b"},
 	}
 	name, _ := asString(value["name"])
-	stringsValue := toStringSlice(value["$146"])
+	stringsValue := toStringSlice(value["content_list"])
 	if name != "" && len(stringsValue) > 0 {
 		fragments.ContentFragments[name] = stringsValue
 	}
@@ -111,13 +111,13 @@ func TestOrganizeFragmentsCategorizesContentFragments(t *testing.T) {
 func TestOrganizeFragmentsRemaps270ContainerFormat(t *testing.T) {
 	// For a fragment of type $270 containing $161="fmtA" and $409="c001",
 	// the summary ID must be "fmtA:c001"
-	fragmentID := "$10"
+	fragmentID := "language"
 	value := map[string]interface{}{
-		"$161": "fmtA",
-		"$409": "c001",
+		"format": "fmtA",
+		"bcContId": "c001",
 	}
 
-	containerID := formatStringDefault(value["$161"]) + ":" + formatStringDefault(value["$409"])
+	containerID := formatStringDefault(value["format"]) + ":" + formatStringDefault(value["bcContId"])
 	summaryID := containerID
 
 	if summaryID != "fmtA:c001" {
@@ -178,9 +178,9 @@ func TestOrganizeFragmentsRemaps262FontCountSuffix(t *testing.T) {
 func TestOrganizeFragmentsRemaps387With215Suffix(t *testing.T) {
 	fragmentID := "sec1"
 	value := map[string]interface{}{
-		"$215": "extra",
+		"orientation": "extra",
 	}
-	summaryID := fragmentID + ":" + formatStringDefault(value["$215"])
+	summaryID := fragmentID + ":" + formatStringDefault(value["orientation"])
 
 	if summaryID != "sec1:extra" {
 		t.Fatalf("expected 'sec1:extra', got %q", summaryID)
@@ -199,14 +199,14 @@ func TestMergeIonReferencedStringSymbolsRecursiveWalk(t *testing.T) {
 	bookSymbols := map[string]struct{}{}
 
 	nested := map[string]interface{}{
-		"$145": []interface{}{
+		"content": []interface{}{
 			map[string]interface{}{
-				"$157": "symA",
+				"style": "symA",
 			},
 			map[string]interface{}{
-				"$146": []interface{}{
+				"content_list": []interface{}{
 					map[string]interface{}{
-						"$180": "symB",
+						"anchor_name": "symB",
 					},
 				},
 			},
@@ -228,7 +228,7 @@ func TestMergeIonReferencedStringSymbolsNonDollarKeys(t *testing.T) {
 	bookSymbols := map[string]struct{}{}
 
 	data := map[string]interface{}{
-		"$145": "symbol_from_dollar",
+		"content": "symbol_from_dollar",
 		"name":  "not_a_symbol",
 	}
 
@@ -247,8 +247,8 @@ func TestMergeIonReferencedStringSymbolsEmptyString(t *testing.T) {
 	bookSymbols := map[string]struct{}{}
 
 	data := map[string]interface{}{
-		"$145": "",
-		"$146": []interface{}{""},
+		"content": "",
+		"content_list": []interface{}{""},
 	}
 
 	mergeIonReferencedStringSymbols(data, bookSymbols)
@@ -329,9 +329,9 @@ func TestBookSymbolsAccumulatesFromMultipleContainers(t *testing.T) {
 func TestSectionOrderFrom258(t *testing.T) {
 	// $258 provides reading orders with section names
 	value := map[string]interface{}{
-		"$169": []interface{}{
+		"reading_orders": []interface{}{
 			map[string]interface{}{
-				"$170": []interface{}{"secA", "secB"},
+				"sections": []interface{}{"secA", "secB"},
 			},
 		},
 	}
@@ -344,9 +344,9 @@ func TestSectionOrderFrom258(t *testing.T) {
 func TestSectionOrderFallbackTo538(t *testing.T) {
 	// When $258 has no reading orders, $538 provides them
 	value := map[string]interface{}{
-		"$169": []interface{}{
+		"reading_orders": []interface{}{
 			map[string]interface{}{
-				"$170": []interface{}{"secX", "secY"},
+				"sections": []interface{}{"secX", "secY"},
 			},
 		},
 	}
@@ -383,23 +383,23 @@ func TestSectionOrderFallbackToSortedKeys(t *testing.T) {
 // =============================================================================
 
 func TestDuplicateFragmentIDsRecorded(t *testing.T) {
-	// Two $157 fragments with different IDs both appear in FragmentIDsByType["$157"]
+	// Two $157 fragments with different IDs both appear in FragmentIDsByType["style"]
 	idsByType := map[string][]string{}
-	fragmentType := "$157"
+	fragmentType := "style"
 
 	// First fragment
 	idsByType[fragmentType] = append(idsByType[fragmentType], "style1")
 	// Second fragment
 	idsByType[fragmentType] = append(idsByType[fragmentType], "style2")
 
-	if len(idsByType["$157"]) != 2 {
-		t.Fatalf("expected 2 IDs, got %d", len(idsByType["$157"]))
+	if len(idsByType["style"]) != 2 {
+		t.Fatalf("expected 2 IDs, got %d", len(idsByType["style"]))
 	}
-	if idsByType["$157"][0] != "style1" {
-		t.Fatalf("expected style1, got %q", idsByType["$157"][0])
+	if idsByType["style"][0] != "style1" {
+		t.Fatalf("expected style1, got %q", idsByType["style"][0])
 	}
-	if idsByType["$157"][1] != "style2" {
-		t.Fatalf("expected style2, got %q", idsByType["$157"][1])
+	if idsByType["style"][1] != "style2" {
+		t.Fatalf("expected style2, got %q", idsByType["style"][1])
 	}
 }
 
@@ -410,8 +410,8 @@ func TestDuplicateFragmentIDsRecorded(t *testing.T) {
 func TestSingletonCollapseWhenKeyEqualsCategory(t *testing.T) {
 	// When a category has 1 entry where key==category, unwrap from dict
 	categorizedData := map[string]interface{}{
-		"$538": map[string]interface{}{
-			"$538": map[string]interface{}{"$169": "data"},
+		"document_data": map[string]interface{}{
+			"document_data": map[string]interface{}{"reading_orders": "data"},
 		},
 	}
 
@@ -431,20 +431,20 @@ func TestSingletonCollapseWhenKeyEqualsCategory(t *testing.T) {
 	}
 
 	// After collapse, $538 should be the inner value directly
-	val, ok := categorizedData["$538"].(map[string]interface{})
+	val, ok := categorizedData["document_data"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected $538 to be unwrapped to map, got %T", categorizedData["$538"])
+		t.Fatalf("expected $538 to be unwrapped to map, got %T", categorizedData["document_data"])
 	}
-	if val["$169"] != "data" {
-		t.Fatalf("expected inner value $169='data', got %v", val["$169"])
+	if val["reading_orders"] != "data" {
+		t.Fatalf("expected inner value $169='data', got %v", val["reading_orders"])
 	}
 }
 
 func TestSingletonNoCollapseWhenKeyDiffersFromCategory(t *testing.T) {
 	// When a category has 1 entry but key != category, do NOT unwrap
 	categorizedData := map[string]interface{}{
-		"$538": map[string]interface{}{
-			"other_key": map[string]interface{}{"$169": "data"},
+		"document_data": map[string]interface{}{
+			"other_key": map[string]interface{}{"reading_orders": "data"},
 		},
 	}
 
@@ -462,10 +462,10 @@ func TestSingletonNoCollapseWhenKeyDiffersFromCategory(t *testing.T) {
 		}
 	}
 
-	// Should NOT be collapsed because key "other_key" != "$538"
-	inner, ok := categorizedData["$538"].(map[string]interface{})
+	// Should NOT be collapsed because key "other_key" != "document_data"
+	inner, ok := categorizedData["document_data"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected $538 to remain a map, got %T", categorizedData["$538"])
+		t.Fatalf("expected $538 to remain a map, got %T", categorizedData["document_data"])
 	}
 	if _, exists := inner["other_key"]; !exists {
 		t.Fatalf("expected 'other_key' to remain in the map")
@@ -475,9 +475,9 @@ func TestSingletonNoCollapseWhenKeyDiffersFromCategory(t *testing.T) {
 func TestNoCollapseWhenMultipleEntries(t *testing.T) {
 	// When a category has multiple entries, no collapse
 	categorizedData := map[string]interface{}{
-		"$157": map[string]interface{}{
-			"style1": map[string]interface{}{"$11": "serif"},
-			"style2": map[string]interface{}{"$11": "sans"},
+		"style": map[string]interface{}{
+			"style1": map[string]interface{}{"font_family": "serif"},
+			"style2": map[string]interface{}{"font_family": "sans"},
 		},
 	}
 
@@ -495,9 +495,9 @@ func TestNoCollapseWhenMultipleEntries(t *testing.T) {
 		}
 	}
 
-	inner, ok := categorizedData["$157"].(map[string]interface{})
+	inner, ok := categorizedData["style"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected $157 to remain a map with 2 entries, got %T", categorizedData["$157"])
+		t.Fatalf("expected $157 to remain a map with 2 entries, got %T", categorizedData["style"])
 	}
 	if len(inner) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(inner))
@@ -511,9 +511,9 @@ func TestNoCollapseWhenMultipleEntries(t *testing.T) {
 func TestNullIDErrorDetection(t *testing.T) {
 	// When a category has mixed nil and non-nil IDs, it should be detected
 	categorizedData := map[string]interface{}{
-		"$260": map[string]interface{}{
-			"":     map[string]interface{}{"$174": "section_nil"},
-			"sec1": map[string]interface{}{"$174": "section1"},
+		"section": map[string]interface{}{
+			"":     map[string]interface{}{"section_name": "section_nil"},
+			"sec1": map[string]interface{}{"section_name": "section1"},
 		},
 	}
 
@@ -543,8 +543,8 @@ func TestChooseFragmentIdentity(t *testing.T) {
 		rawValue   interface{}
 		want       string
 	}{
-		{"resolved value ID", "$10", "myID", "myID"},
-		{"value ID is placeholder, fragment also placeholder", "$10", "$99", "$99"}, // neither resolved, valueID fallback
+		{"resolved value ID", "language", "myID", "myID"},
+		{"value ID is placeholder, fragment also placeholder", "language", "draw_spanning_borders", "draw_spanning_borders"}, // neither resolved, valueID fallback
 		{"both are resolved", "fallback", "primary", "primary"},
 		{"empty value uses fragment", "frag", "", "frag"},
 		{"value ID takes priority", "frag", "better", "better"},
@@ -571,12 +571,14 @@ func TestIsResolvedIdentity(t *testing.T) {
 		want  bool
 	}{
 		{"", false},
-		{"$10", false},
-		{"$999", false},
-		{"myID", true},
-		{"section-1_0", true},
-		{"c0", true},
-		{"$", true}, // edge case: just dollar sign, not $<digits> pattern
+		{"language", false},   // shared symbol -> not resolved
+		{"content", false},    // shared symbol -> not resolved
+		{"section", false},    // shared symbol -> not resolved
+		{"$999", true},        // beyond catalog, treated as resolved
+		{"myID", true},        // local string -> resolved
+		{"section-1_0", true}, // local string -> resolved
+		{"c0", true},          // local string -> resolved
+		{"$", true},           // edge case: just dollar sign
 	}
 
 	for _, tt := range tests {
@@ -596,14 +598,14 @@ func TestIsPlaceholderSymbol(t *testing.T) {
 		value string
 		want  bool
 	}{
-		{"$10", true},
-		{"$0", true},
-		{"$999", true},
+		{"language", true},     // shared symbol -> placeholder
+		{"content", true},     // shared symbol -> placeholder
+		{"section", true},     // shared symbol -> placeholder
 		{"", false},
-		{"myID", false},
-		{"$abc", false},
-		{"$", false},
-		{"$10a", false},
+		{"myID", false},       // local string -> not placeholder
+		{"$abc", false},       // not a shared symbol
+		{"$", false},          // edge case
+		{"$999", false},       // beyond catalog, not a known shared symbol
 	}
 
 	for _, tt := range tests {

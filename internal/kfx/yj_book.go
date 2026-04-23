@@ -78,11 +78,25 @@ func mergeContentFragmentStringSymbols(frag map[string][]string, bookSymbols map
 	}
 }
 
+// resolveSharedSymbol resolves a shared symbol SID to its text name.
+// Returns the real name (e.g., "content", "section") for known SIDs,
+// or "$N" for SIDs beyond the catalog.
+func resolveSharedSymbol(sid uint32) string {
+	idx := int(sid) - 10
+	if idx >= 0 {
+		syms := sharedTable().Symbols()
+		if idx < len(syms) {
+			return syms[idx]
+		}
+	}
+	return fmt.Sprintf("$%d", sid)
+}
+
 func mergeIonReferencedStringSymbols(value interface{}, bookSymbols map[string]struct{}) {
 	switch t := value.(type) {
 	case map[string]interface{}:
 		for k, v := range t {
-			if strings.HasPrefix(k, "$") {
+			if isSharedSymbolName(k) {
 				if s, ok := v.(string); ok && s != "" {
 					bookSymbols[s] = struct{}{}
 				}
@@ -243,7 +257,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 			entityData := source.Data[start:end]
 			fragmentID := resolver.Resolve(idID)
 			bookSymbols[fragmentID] = struct{}{}
-			fragmentType := fmt.Sprintf("$%d", typeID)
+			fragmentType := resolveSharedSymbol(typeID)
 			payload, err := entityPayload(entityData)
 			if err != nil {
 				return nil, err
@@ -251,29 +265,29 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 
 			summaryID := fragmentID
 			switch fragmentType {
-			case "$270":
+			case "container":
 				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
-				containerID := fmt.Sprintf("%s:%s", asStringDefault(value["$161"]), asStringDefault(value["$409"]))
+				containerID := fmt.Sprintf("%s:%s", asStringDefault(value["format"]), asStringDefault(value["bcContId"]))
 				lastContainerID = containerID
 				summaryID = containerID
-			case "$593":
+			case "format_capabilities":
 				summaryID = lastContainerID
-			case "$262":
+			case "font":
 				summaryID = fmt.Sprintf("%s-font-%03d", fragmentID, fontCount)
 				fontCount++
-			case "$258":
+			case "metadata":
 				// Python has no special ID override for $258 (yj_to_epub.py L186: id = fragment.fid).
 				// The value is decoded later in the fragment type switch below.
 				summaryID = fragmentID
-			case "$387":
+			case "preview_images":
 				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
-				summaryID = fmt.Sprintf("%s:%s", fragmentID, asStringDefault(value["$215"]))
+				summaryID = fmt.Sprintf("%s:%s", fragmentID, asStringDefault(value["orientation"]))
 			}
 			fragments.FragmentIDsByType[fragmentType] = append(fragments.FragmentIDsByType[fragmentType], summaryID)
 
@@ -287,87 +301,87 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 			categorizedData[fragmentType][summaryID] = true
 
 			switch fragmentType {
-			case "$145", "$157", "$164", "$258", "$259", "$260", "$262", "$266", "$270", "$391", "$490", "$538", "$585", "$593", "$608", "$609", "$756":
+			case "content", "style", "external_resource", "metadata", "storyline", "section", "font", "anchor", "container", "nav_container", "book_metadata", "document_data", "content_features", "format_capabilities", "structure", "section_position_id_map", "ruby_content":
 				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
 				}
 
 				switch fragmentType {
-				case "$145":
+				case "content":
 					name, _ := asString(value["name"])
-					stringsValue := toStringSlice(value["$146"])
+					stringsValue := toStringSlice(value["content_list"])
 					if name != "" && len(stringsValue) > 0 {
 						fragments.ContentFragments[name] = stringsValue
 					}
-				case "$157":
-					id := chooseFragmentIdentity(fragmentID, value["$173"])
+				case "style":
+					id := chooseFragmentIdentity(fragmentID, value["style_name"])
 					if id != "" {
 						fragments.StyleFragments[id] = value
 					}
-				case "$164":
+				case "external_resource":
 					mergeIonReferencedStringSymbols(value, bookSymbols)
 					resource := parseResourceFragment(fragmentID, value)
 					if resource.Location != "" {
 						fragments.ResourceFragments[resource.ID] = resource
 					}
 					fragments.ResourceRawData[resource.ID] = value
-				case "$258":
+				case "metadata":
 					order := readSectionOrder(value)
 					if len(order) > 0 {
 						fragments.SectionOrder = order
 					}
-					// Store $258 for applyReadingOrderMetadata (Python process_metadata L103: book_data.pop("$258", {})).
+					// Store $258 for applyReadingOrderMetadata (Python process_metadata L103: book_data.pop("metadata", {})).
 					fragments.ReadingOrderMetadata = value
-				case "$259":
-					id := chooseFragmentIdentity(fragmentID, value["$176"])
+				case "storyline":
+					id := chooseFragmentIdentity(fragmentID, value["story_name"])
 					if id != "" {
 						fragments.Storylines[id] = value
 					}
-				case "$260":
+				case "section":
 					section := parseSectionFragment(fragmentID, value)
 					if section.ID != "" && section.Storyline != "" {
 						fragments.SectionFragments[section.ID] = section
 					}
-				case "$262":
+				case "font":
 					font := parseFontFragment(value)
 					if font.Location != "" {
 						fragments.FontFragments[font.Location] = font
 					}
-				case "$266":
+				case "anchor":
 					mergeIonReferencedStringSymbols(value, bookSymbols)
 					anchor := parseAnchorFragment(fragmentID, value)
 					if anchor.ID != "" && (anchor.PositionID != 0 || anchor.URI != "") {
 						fragments.AnchorFragments[anchor.ID] = anchor
 					}
-				case "$270":
+				case "container":
 					fragments.Generators[summaryID] = value
-				case "$391":
-					id := chooseFragmentIdentity(fragmentID, value["$239"])
+				case "nav_container":
+					id := chooseFragmentIdentity(fragmentID, value["nav_container_name"])
 					if id != "" {
 						fragments.NavContainers[id] = value
 					}
-				case "$490":
+				case "book_metadata":
 					fragments.TitleMetadata = value
-				case "$538":
+				case "document_data":
 					fragments.DocumentData = value
-				case "$585":
+				case "content_features":
 					fragments.ContentFeatures = value
-				case "$593":
+				case "format_capabilities":
 					fragments.FormatCapabilities[summaryID] = value
-				case "$608":
-					id := chooseFragmentIdentity(fragmentID, value["$758"])
+				case "structure":
+					id := chooseFragmentIdentity(fragmentID, value["ruby_id"])
 					if id == "" {
 						id = fragmentID
 					}
 					fragments.RubyContents[id] = value
-				case "$756":
-					id := chooseFragmentIdentity(fragmentID, value["$757"])
+				case "ruby_content":
+					id := chooseFragmentIdentity(fragmentID, value["ruby_name"])
 					if id == "" {
 						id = fragmentID
 					}
 					fragments.RubyGroups[id] = value
-				case "$609":
+				case "section_position_id_map":
 					sectionID := parsePositionMapSectionID(fragmentID, value)
 					for _, positionID := range readPositionMap(value) {
 						if positionID != 0 && sectionID != "" {
@@ -375,7 +389,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 						}
 					}
 				}
-			case "$389":
+			case "book_navigation":
 				value, err := decodeIonValue(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
@@ -388,7 +402,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 						}
 					}
 				}
-			case "$417", "$418":
+			case "bcRawMedia", "bcRawFont":
 				if fragmentID != "" {
 					dataCopy := append([]byte(nil), payload...)
 					fragments.RawFragments[fragmentID] = dataCopy

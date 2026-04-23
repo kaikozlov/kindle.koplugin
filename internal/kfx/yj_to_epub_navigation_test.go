@@ -363,11 +363,11 @@ func TestProcessNavigationInitializesStructures(t *testing.T) {
 
 func TestNavContainerTypeTOC(t *testing.T) {
 	container := map[string]interface{}{
-		"$235": "$212",
-		"$247": []interface{}{
+		"nav_type": "toc",
+		"entries": []interface{}{
 			map[string]interface{}{
-				"$241": map[string]interface{}{"$244": "Chapter 1"},
-				"$246": map[string]interface{}{"$155": 10, "$143": 0},
+				"representation": map[string]interface{}{"label": "Chapter 1"},
+				"target_position": map[string]interface{}{"id": 10, "offset": 0},
 			},
 		},
 	}
@@ -384,12 +384,12 @@ func TestNavContainerTypeTOC(t *testing.T) {
 
 func TestNavContainerTypeLandmarks(t *testing.T) {
 	container := map[string]interface{}{
-		"$235": "$236",
-		"$247": []interface{}{
+		"nav_type": "landmarks",
+		"entries": []interface{}{
 			map[string]interface{}{
-				"$241": map[string]interface{}{"$244": "Cover"},
-				"$238": "$233",
-				"$246": map[string]interface{}{"$155": 5, "$143": 0},
+				"representation": map[string]interface{}{"label": "Cover"},
+				"landmark_type": "cover_page",
+				"target_position": map[string]interface{}{"id": 5, "offset": 0},
 			},
 		},
 	}
@@ -409,11 +409,11 @@ func TestNavContainerTypeLandmarks(t *testing.T) {
 
 func TestNavContainerTypePageList(t *testing.T) {
 	container := map[string]interface{}{
-		"$235": "$237",
-		"$247": []interface{}{
+		"nav_type": "page_list",
+		"entries": []interface{}{
 			map[string]interface{}{
-				"$241": map[string]interface{}{"$244": "42"},
-				"$246": map[string]interface{}{"$155": 10, "$143": 0},
+				"representation": map[string]interface{}{"label": "42"},
+				"target_position": map[string]interface{}{"id": 10, "offset": 0},
 			},
 		},
 	}

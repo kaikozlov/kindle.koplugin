@@ -8,7 +8,7 @@ import (
 )
 
 func applyMetadata(book *decodedBook, value map[string]interface{}) {
-	categories, ok := asSlice(value["$491"])
+	categories, ok := asSlice(value["categorised_metadata"])
 	if !ok {
 		return
 	}
@@ -17,8 +17,8 @@ func applyMetadata(book *decodedBook, value map[string]interface{}) {
 		if !ok {
 			continue
 		}
-		name, _ := asString(categoryMap["$495"])
-		entries, ok := asSlice(categoryMap["$258"])
+		name, _ := asString(categoryMap["category"])
+		entries, ok := asSlice(categoryMap["metadata"])
 		if !ok {
 			continue
 		}
@@ -27,69 +27,69 @@ func applyMetadata(book *decodedBook, value map[string]interface{}) {
 			if !ok {
 				continue
 			}
-			key, _ := asString(entry["$492"])
+			key, _ := asString(entry["key"])
 			catKey := name + "/" + key
 			switch catKey {
 			case "kindle_title_metadata/title":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
+				if value, ok := asString(entry["value"]); ok && value != "" {
 					book.Title = strings.TrimSpace(value)
 				}
 			case "kindle_title_metadata/author":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
+				if value, ok := asString(entry["value"]); ok && value != "" {
 					// Python uses authors.insert(0, value) — prepend, so last entry becomes first.
 					book.Authors = append([]string{value}, book.Authors...)
 				}
 			case "kindle_title_metadata/author_pronunciation":
 				// Python stores in self.author_pronunciations; not needed for EPUB output.
 			case "kindle_title_metadata/language":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
+				if value, ok := asString(entry["value"]); ok && value != "" {
 					book.Language = value
 				}
 			case "kindle_title_metadata/issue_date":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
+				if value, ok := asString(entry["value"]); ok && value != "" {
 					book.Published = value
 				}
 			case "kindle_title_metadata/description":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
+				if value, ok := asString(entry["value"]); ok && value != "" {
 					book.Description = strings.TrimSpace(value)
 				}
 			case "kindle_title_metadata/cover_image":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
+				if value, ok := asString(entry["value"]); ok && value != "" {
 					book.CoverImageID = value
 				}
 			case "kindle_title_metadata/publisher":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
+				if value, ok := asString(entry["value"]); ok && value != "" {
 					book.Publisher = strings.TrimSpace(value)
 				}
 			case "kindle_title_metadata/override_kindle_font":
-				if value, ok := asBool(entry["$307"]); ok {
+				if value, ok := asBool(entry["value"]); ok {
 					book.OverrideKindleFonts = value
 				}
 			case "kindle_title_metadata/ASIN", "ASIN":
-				if value, ok := asString(entry["$307"]); ok && value != "" && book.ASIN == "" {
+				if value, ok := asString(entry["value"]); ok && value != "" && book.ASIN == "" {
 					book.ASIN = value
 				}
 			case "kindle_title_metadata/book_id":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
+				if value, ok := asString(entry["value"]); ok && value != "" {
 					book.BookID = value
 				}
 			case "kindle_title_metadata/content_id":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
+				if value, ok := asString(entry["value"]); ok && value != "" {
 					book.Identifier = value
 				}
 			case "kindle_title_metadata/cde_content_type", "cde_content_type":
 				// Python sets cde_content_type; may affect book_type (MAGZ→magazine, EBSP→sample).
 				// Not yet wired to Go book type.
 			case "kindle_ebook_metadata/book_orientation_lock":
-				if value, ok := asString(entry["$307"]); ok && value != "" {
+				if value, ok := asString(entry["value"]); ok && value != "" {
 					book.OrientationLock = value
 				}
 			case "kindle_capability_metadata/yj_fixed_layout":
-				if value, ok := asInt(entry["$307"]); ok && value > 0 {
+				if value, ok := asInt(entry["value"]); ok && value > 0 {
 					book.FixedLayout = true
 				}
 			case "kindle_capability_metadata/yj_illustrated_layout":
-				if value, ok := asBool(entry["$307"]); ok && value {
+				if value, ok := asBool(entry["value"]); ok && value {
 					book.IllustratedLayout = true
 				}
 			case "kindle_capability_metadata/yj_facing_page", "kindle_capability_metadata/yj_double_page_spread":
@@ -99,13 +99,13 @@ func applyMetadata(book *decodedBook, value map[string]interface{}) {
 			case "kindle_title_metadata/support_landscape":
 				// Python (L286): if value is False and self.orientation_lock == "none".
 				// Go uses "" as the "none" default (when $433 is absent), but applyDocumentData
-				// may have set it to "none" explicitly (when $433 == "$349"). Check both.
-				if value, ok := asBool(entry["$307"]); ok && !value && (book.OrientationLock == "" || book.OrientationLock == "none") {
+				// may have set it to "none" explicitly (when $433 == "none"). Check both.
+				if value, ok := asBool(entry["value"]); ok && !value && (book.OrientationLock == "" || book.OrientationLock == "none") {
 					book.OrientationLock = "portrait"
 				}
 			case "kindle_title_metadata/support_portrait":
 				// Python (L289): if value is False and self.orientation_lock == "none".
-				if value, ok := asBool(entry["$307"]); ok && !value && (book.OrientationLock == "" || book.OrientationLock == "none") {
+				if value, ok := asBool(entry["value"]); ok && !value && (book.OrientationLock == "" || book.OrientationLock == "none") {
 					book.OrientationLock = "landscape"
 				}
 			}
@@ -118,13 +118,13 @@ func applyDocumentData(book *decodedBook, value map[string]interface{}) {
 		return
 	}
 	// Port of Python process_document_data orientation_lock ($433 → ORIENTATIONS).
-	if raw, ok := asString(value["$433"]); ok {
+	if raw, ok := asString(value["orientation_lock"]); ok {
 		switch raw {
-		case "$385":
+		case "portrait":
 			book.OrientationLock = "portrait"
-		case "$386":
+		case "landscape":
 			book.OrientationLock = "landscape"
-		case "$349":
+		case "none":
 			book.OrientationLock = "none"
 		default:
 			fmt.Fprintf(os.Stderr, "kfx: error: unexpected orientation_lock: %s\n", raw)
@@ -154,7 +154,7 @@ func applyDocumentData(book *decodedBook, value map[string]interface{}) {
 	// We store the raw font-family value here (or fallback to "serif").
 	// The actual resolution happens in renderBookState via the font name fixer,
 	// because @font-face fonts must be registered first for proper case resolution.
-	if rawFF, ok := asString(value["$11"]); ok && rawFF != "" {
+	if rawFF, ok := asString(value["font_family"]); ok && rawFF != "" {
 		book.DefaultFontFamily = rawFF
 	} else {
 		book.DefaultFontFamily = "serif"
@@ -166,7 +166,7 @@ func applyContentFeatures(book *decodedBook, value map[string]interface{}) {
 		return
 	}
 	// Port of Python process_content_features: walk $590 feature array for known capabilities.
-	features, ok := asSlice(value["$590"])
+	features, ok := asSlice(value["features"])
 	if !ok {
 		// Fallback: generic recursive search for illustrated_layout / fixed_layout feature names.
 		if hasNamedFeature(value, "yj.illustrated_layout") {
@@ -182,8 +182,8 @@ func applyContentFeatures(book *decodedBook, value map[string]interface{}) {
 		if !ok {
 			continue
 		}
-		featureID, _ := asString(featureMap["$492"])
-		category, _ := asString(featureMap["$586"])
+		featureID, _ := asString(featureMap["key"])
+		category, _ := asString(featureMap["namespace"])
 		key := category + "/" + featureID
 		switch key {
 		case "kindle_capability_metadata/yj_fixed_layout":
@@ -218,10 +218,10 @@ func hasNamedFeature(value interface{}, name string) bool {
 }
 
 var knownSupportedFeatures = map[string]bool{
-	"$826":              true,
-	"$827":              true,
-	"$660":              true,
-	"$751":              true,
+	"audio":              true,
+	"video":              true,
+	"yj.illustrated_layout":              true,
+	"yj.large_tables":              true,
 	"$664|crop_bleed|1": true,
 }
 
@@ -240,7 +240,7 @@ func applyKFXEPUBInitMetadataAfterOrganize(book *decodedBook, f *fragmentCatalog
 	if len(f.TitleMetadata) > 0 {
 		applyMetadata(book, f.TitleMetadata)
 	}
-	// Port of Python process_metadata L103: self.book_data.pop("$258", {}).
+	// Port of Python process_metadata L103: self.book_data.pop("metadata", {}).
 	applyReadingOrderMetadata(book, f.ReadingOrderMetadata)
 }
 
@@ -266,21 +266,21 @@ func featureKey(args []interface{}) string {
 // metadataSymbolNames mirrors Python METADATA_NAMES (yj_structure.py): Ion key → metadata key name.
 // Used by applyReadingOrderMetadata to process top-level $258 entries.
 var metadataSymbolNames = map[string]string{
-	"$224": "ASIN",
-	"$466": "asset_id",
-	"$222": "author",
-	"$251": "cde_content_type",
-	"$424": "cover_image",
-	"$154": "description",
-	"$10":  "language",
-	"$215": "orientation",
-	"$232": "publisher",
-	"$169": "reading_orders",
-	"$153": "title",
+	"ASIN": "ASIN",
+	"asset_id": "asset_id",
+	"author": "author",
+	"cde_content_type": "cde_content_type",
+	"cover_image": "cover_image",
+	"description": "description",
+	"language":  "language",
+	"orientation": "orientation",
+	"publisher": "publisher",
+	"reading_orders": "reading_orders",
+	"title": "title",
 }
 
 // applyReadingOrderMetadata processes top-level $258 entries as metadata items,
-// matching Python process_metadata's book_data.pop("$258", {}) loop.
+// matching Python process_metadata's book_data.pop("metadata", {}) loop.
 func applyReadingOrderMetadata(book *decodedBook, value map[string]interface{}) {
 	if book == nil || value == nil {
 		return

@@ -18,34 +18,34 @@ import (
 // metadataSymbols mirrors Python METADATA_SYMBOLS (yj_structure.py):
 // metadata key name → YJ Ion symbol.
 var metadataSymbols = map[string]string{
-	"ASIN":              "$224",
-	"asset_id":          "$466",
-	"author":            "$222",
-	"cde_content_type":  "$251",
-	"cover_image":       "$424",
-	"description":       "$154",
-	"language":          "$10",
-	"orientation":       "$215",
-	"publisher":         "$232",
-	"reading_orders":    "$169",
-	"support_landscape": "$218",
-	"support_portrait":  "$217",
-	"title":             "$153",
+	"ASIN":              "ASIN",
+	"asset_id":          "asset_id",
+	"author":            "author",
+	"cde_content_type":  "cde_content_type",
+	"cover_image":       "cover_image",
+	"description":       "description",
+	"language":          "language",
+	"orientation":       "orientation",
+	"publisher":         "publisher",
+	"reading_orders":    "reading_orders",
+	"support_landscape": "support_landscape",
+	"support_portrait":  "support_portrait",
+	"title":             "title",
 }
 
 // symbolFormats maps format symbol → format string.
 // Port of Python SYMBOL_FORMATS (resources.py).
 var symbolFormats = map[string]string{
-	"$599": "bmp",
-	"$286": "gif",
-	"$285": "jpg",
-	"$548": "jxr",
-	"$420": "pbm",
-	"$565": "pdf",
-	"$284": "png",
-	"$287": "pobject",
-	"$600": "tiff",
-	"$612": "bpg",
+	"bmp": "bmp",
+	"gif": "gif",
+	"jpg": "jpg",
+	"jxr": "jxr",
+	"pbm": "pbm",
+	"pdf": "pdf",
+	"png": "png",
+	"pobject": "pobject",
+	"tiff": "tiff",
+	"yj.bpg": "bpg",
 }
 
 // coverImageData represents the result of getCoverImageData:
@@ -90,17 +90,17 @@ func newCacheInfo() *cacheInfo {
 func getMetadataValue(cat *fragmentCatalog, name, category string, defaultVal interface{}) interface{} {
 	// Tier 1: search $490 (TitleMetadata)
 	if cat.TitleMetadata != nil {
-		containers, ok := asSlice(cat.TitleMetadata["$491"])
+		containers, ok := asSlice(cat.TitleMetadata["categorised_metadata"])
 		if ok {
 			for _, rawCM := range containers {
 				cm, ok := asMap(rawCM)
 				if !ok {
 					continue
 				}
-				if asStringDefault(cm["$495"]) != category {
+				if asStringDefault(cm["category"]) != category {
 					continue
 				}
-				entries, ok := asSlice(cm["$258"])
+				entries, ok := asSlice(cm["metadata"])
 				if !ok {
 					continue
 				}
@@ -109,8 +109,8 @@ func getMetadataValue(cat *fragmentCatalog, name, category string, defaultVal in
 					if !ok {
 						continue
 					}
-					if asStringDefault(kv["$492"]) == name {
-						return kv["$307"]
+					if asStringDefault(kv["key"]) == name {
+						return kv["value"]
 					}
 				}
 			}
@@ -141,12 +141,12 @@ func getFeatureValue(cat *fragmentCatalog, feature, namespace string, defaultVal
 	if namespace == "format_capabilities" {
 		// Search $593 fragments (stored in FormatCapabilities map)
 		// Python iterates fragment.value directly as a list of IonStruct.
-		// In Go, $593 fragment value is decoded as a map with "$146" key containing
+		// In Go, $593 fragment value is decoded as a map with "content_list" key containing
 		// the list of capability entries, or the map itself may be a list-like value.
 		for _, fragment := range cat.FormatCapabilities {
 			// Try $146 (children list) first — most common encoding
 			var entries []interface{}
-			if children, ok := asSlice(fragment["$146"]); ok {
+			if children, ok := asSlice(fragment["content_list"]); ok {
 				entries = children
 			} else if direct, ok := asSlice(fragment["items"]); ok {
 				entries = direct
@@ -159,14 +159,14 @@ func getFeatureValue(cat *fragmentCatalog, feature, namespace string, defaultVal
 				if !ok {
 					continue
 				}
-				if asStringDefault(fc["$492"]) == feature {
+				if asStringDefault(fc["key"]) == feature {
 					return fc["version"]
 				}
 			}
 		}
 	} else {
 		// Search $585 fragment's $590 list (ContentFeatures)
-		features, ok := asSlice(cat.ContentFeatures["$590"])
+		features, ok := asSlice(cat.ContentFeatures["features"])
 		if !ok {
 			return defaultVal
 		}
@@ -175,13 +175,13 @@ func getFeatureValue(cat *fragmentCatalog, feature, namespace string, defaultVal
 			if !ok {
 				continue
 			}
-			if asStringDefault(cf["$586"]) != namespace {
+			if asStringDefault(cf["namespace"]) != namespace {
 				continue
 			}
-			if asStringDefault(cf["$492"]) != feature {
+			if asStringDefault(cf["key"]) != feature {
 				continue
 			}
-			versionInfo, _ := asMap(cf["$589"])
+			versionInfo, _ := asMap(cf["version_info"])
 			if versionInfo == nil {
 				return defaultVal
 			}
@@ -189,8 +189,8 @@ func getFeatureValue(cat *fragmentCatalog, feature, namespace string, defaultVal
 			if versionMap == nil {
 				return defaultVal
 			}
-			majorVersion := asIntDefault(versionMap["$587"], 0)
-			minorVersion := asIntDefault(versionMap["$588"], 0)
+			majorVersion := asIntDefault(versionMap["major_version"], 0)
+			minorVersion := asIntDefault(versionMap["minor_version"], 0)
 			if minorVersion == 0 {
 				return majorVersion
 			}
@@ -344,7 +344,7 @@ func isImageBasedFixedLayout(cat *fragmentCatalog, ci *cacheInfo) bool {
 // isKfxV1 — Python yj_metadata.py:338-341 (cached property)
 //
 // Checks the FIRST $270 fragment's version field == 1 (default 0).
-// Python: fragment = self.fragments.get("$270", first=True)
+// Python: fragment = self.fragments.get("container", first=True)
 //         fragment.value.get("version", 0) == 1 if fragment is not None else False
 // ---------------------------------------------------------------------------
 func isKfxV1(cat *fragmentCatalog, ci *cacheInfo) bool {
@@ -353,7 +353,7 @@ func isKfxV1(cat *fragmentCatalog, ci *cacheInfo) bool {
 	}
 	result := false
 	// Get the first $270 fragment ID (Python: first=True)
-	if ids, ok := cat.FragmentIDsByType["$270"]; ok && len(ids) > 0 {
+	if ids, ok := cat.FragmentIDsByType["container"]; ok && len(ids) > 0 {
 		firstID := ids[0]
 		if gen, exists := cat.Generators[firstID]; exists {
 			// Python: fragment.value.get("version", 0) == 1
@@ -379,7 +379,7 @@ func hasPDFResource(cat *fragmentCatalog, ci *cacheInfo) bool {
 	}
 	result := false
 	for _, rawData := range cat.ResourceRawData {
-		if formatSym, ok := asString(rawData["$161"]); ok && formatSym == "$565" {
+		if formatSym, ok := asString(rawData["format"]); ok && formatSym == "pdf" {
 			result = true
 			break
 		}
@@ -411,7 +411,7 @@ func getCoverImageData(cat *fragmentCatalog) *coverImageData {
 	}
 
 	// Get format
-	coverFmt, ok := asString(coverResourceRaw["$161"])
+	coverFmt, ok := asString(coverResourceRaw["format"])
 	if !ok {
 		return nil
 	}
@@ -421,7 +421,7 @@ func getCoverImageData(cat *fragmentCatalog) *coverImageData {
 	}
 
 	// Get location
-	coverLocation, ok := asString(coverResourceRaw["$165"])
+	coverLocation, ok := asString(coverResourceRaw["location"])
 	if !ok || coverLocation == "" {
 		return nil
 	}
@@ -606,8 +606,8 @@ func getGenerators(cat *fragmentCatalog) []generatorInfo {
 		if _, hasVersion := gen["version"]; !hasVersion {
 			continue
 		}
-		name, _ := asString(gen["$587"])
-		pkgVersion, _ := asString(gen["$588"])
+		name, _ := asString(gen["major_version"])
+		pkgVersion, _ := asString(gen["minor_version"])
 		// Python: package_version if package_version not in PACKAGE_VERSION_PLACEHOLDERS else ""
 		if PackageVersionPlaceholders[pkgVersion] {
 			pkgVersion = ""
@@ -628,7 +628,7 @@ func getGenerators(cat *fragmentCatalog) []generatorInfo {
 // ---------------------------------------------------------------------------
 func getPageCount(cat *fragmentCatalog) int {
 	for _, navRoot := range cat.NavRoots {
-		navContainers, ok := asSlice(navRoot["$392"])
+		navContainers, ok := asSlice(navRoot["nav_containers"])
 		if !ok {
 			continue
 		}
@@ -637,9 +637,9 @@ func getPageCount(cat *fragmentCatalog) int {
 			if !ok {
 				continue
 			}
-			navType, _ := asString(navContainer["$235"])
-			if navType == "$237" {
-				children, ok := asSlice(navContainer["$247"])
+			navType, _ := asString(navContainer["nav_type"])
+			if navType == "page_list" {
+				children, ok := asSlice(navContainer["entries"])
 				if ok {
 					return len(children)
 				}
@@ -692,10 +692,10 @@ func processContentDimensions(cat *fragmentCatalog, content map[string]interface
 		newVal  int
 	}
 	updates := []dimUpdate{
-		{"$56", origWidth, width},
-		{"$57", origHeight, height},
-		{"$66", origWidth, width},
-		{"$67", origHeight, height},
+		{"width", origWidth, width},
+		{"height", origHeight, height},
+		{"fixed_width", origWidth, width},
+		{"fixed_height", origHeight, height},
 	}
 
 	for _, u := range updates {
@@ -712,16 +712,16 @@ func processContentDimensions(cat *fragmentCatalog, content map[string]interface
 	}
 
 	// Python yj_metadata.py:813-814: recursively process $157 style fragments
-	//   if "$157" in content:
-	//       process_content(self.fragments.get(ftype="$157", fid=content.get("$157")).value, desc)
-	if styleRef, ok := asString(content["$157"]); ok && styleRef != "" {
+	//   if "style" in content:
+	//       process_content(self.fragments.get(ftype="style", fid=content.get("style")).value, desc)
+	if styleRef, ok := asString(content["style"]); ok && styleRef != "" {
 		if styleFragment, exists := cat.StyleFragments[styleRef]; exists {
 			processContentDimensions(cat, styleFragment, desc, origWidth, origHeight, width, height)
 		}
 	}
 
 	// Process sub-children ($146)
-	if children, ok := asSlice(content["$146"]); ok {
+	if children, ok := asSlice(content["content_list"]); ok {
 		for _, rawChild := range children {
 			child, ok := asMap(rawChild)
 			if ok {
@@ -732,7 +732,7 @@ func processContentDimensions(cat *fragmentCatalog, content map[string]interface
 }
 
 func processStorylineDimensions(cat *fragmentCatalog, storyline map[string]interface{}, desc string, origWidth, origHeight, width, height int) {
-	if children, ok := asSlice(storyline["$146"]); ok {
+	if children, ok := asSlice(storyline["content_list"]); ok {
 		for _, rawChild := range children {
 			child, ok := asMap(rawChild)
 			if ok {
@@ -750,7 +750,7 @@ func processStorylineDimensions(cat *fragmentCatalog, storyline map[string]inter
 // ---------------------------------------------------------------------------
 func reportFeaturesAndMetadata(cat *fragmentCatalog) {
 	// Report features from $585
-	features, ok := asSlice(cat.ContentFeatures["$590"])
+	features, ok := asSlice(cat.ContentFeatures["features"])
 	if ok && len(features) > 0 {
 		log.Printf("kfx: info: %d content features found", len(features))
 	}

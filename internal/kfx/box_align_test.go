@@ -30,53 +30,53 @@ func rendererForBoxAlignTests() storylineRenderer {
 			// yj_to_epub_content.py:1324 create_container(BLOCK_CONTAINER_PROPERTIES)
 			// then line 1335: box-align → text-align on wrapper
 			"sImgCenter": {
-				"$580": "$320", // -kfx-box-align: center
-				"$56":  map[string]interface{}{"$307": 50.0, "$306": "$314"}, // width: 50%
+				"box_align": "center", // -kfx-box-align: center
+				"width":  map[string]interface{}{"value": 50.0, "unit": "percent"}, // width: 50%
 			},
 			// Image with box-align:right + width:30% — exercises text-align:right
 			"sImgRight": {
-				"$580": "$61", // -kfx-box-align: right
-				"$56":  map[string]interface{}{"$307": 30.0, "$306": "$314"}, // width: 30%
+				"box_align": "right", // -kfx-box-align: right
+				"width":  map[string]interface{}{"value": 30.0, "unit": "percent"}, // width: 30%
 			},
 			// Image with box-align:center + width + float:left
 			// Exercises yj_to_epub_content.py:1328-1331:
 			// float present → move % width from image to wrapper
 			"sImgFloat": {
-				"$580": "$320", // -kfx-box-align: center
-				"$56":  map[string]interface{}{"$307": 40.0, "$306": "$314"}, // width: 40%
-				"$140": "$59", // float: left
+				"box_align": "center", // -kfx-box-align: center
+				"width":  map[string]interface{}{"value": 40.0, "unit": "percent"}, // width: 40%
+				"float": "left", // float: left
 			},
 			// Container div with box-align:center + width:100%
 			// Exercises Python path 3: yj_to_epub_content.py:1390-1404
 			// box-align → margin-left/right auto (when element has width)
 			"sDivCenter": {
-				"$580": "$320", // -kfx-box-align: center
-				"$56":  map[string]interface{}{"$307": 100.0, "$306": "$314"}, // width: 100%
+				"box_align": "center", // -kfx-box-align: center
+				"width":  map[string]interface{}{"value": 100.0, "unit": "percent"}, // width: 100%
 			},
 			// Container div with box-align:center + no width
 			// Python: box-align is popped but no margin-auto (no width condition)
 			"sDivCenterNoWidth": {
-				"$580": "$320", // -kfx-box-align: center
+				"box_align": "center", // -kfx-box-align: center
 			},
 			// Container div with box-align:right + width
 			"sDivRight": {
-				"$580": "$61", // -kfx-box-align: right
-				"$56":  map[string]interface{}{"$307": 70.0, "$306": "$314"}, // width: 70%
+				"box_align": "right", // -kfx-box-align: right
+				"width":  map[string]interface{}{"value": 70.0, "unit": "percent"}, // width: 70%
 			},
 			// Image with only width (no box-align) — baseline image partition
 			"sImgPlain": {
-				"$56": map[string]interface{}{"$307": 25.0, "$306": "$314"}, // width: 25%
+				"width": map[string]interface{}{"value": 25.0, "unit": "percent"}, // width: 25%
 			},
 			// Fitted container with box-align:center + width — exercises Python fit_width path:
 			// yj_to_epub_content.py:1360-1381: display:inline-block on inner, text-align on outer wrapper
 			"sFitCenter": {
-				"$580": "$320", // -kfx-box-align: center
-				"$56":  map[string]interface{}{"$307": 50.0, "$306": "$314"}, // width: 50%
+				"box_align": "center", // -kfx-box-align: center
+				"width":  map[string]interface{}{"value": 50.0, "unit": "percent"}, // width: 50%
 			},
 			// Fitted container with box-align:right + width
 			"sFitRight": {
-				"$580": "$61", // -kfx-box-align: right
-				"$56":  map[string]interface{}{"$307": 60.0, "$306": "$314"}, // width: 60%
+				"box_align": "right", // -kfx-box-align: right
+				"width":  map[string]interface{}{"value": 60.0, "unit": "percent"}, // width: 60%
 			},
 		},
 	}
@@ -155,7 +155,7 @@ func TestImageClassesBoxAlign(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			node := map[string]interface{}{"$157": tt.styleID}
+			node := map[string]interface{}{"style": tt.styleID}
 			wrapperClass, imageClass := r.imageClasses(node)
 
 			if len(tt.wantWrapperProps) == 0 {
@@ -207,7 +207,7 @@ func TestImageClassesBoxAlign(t *testing.T) {
 func TestImageClassesFloatWidthTransfer(t *testing.T) {
 	r := rendererForBoxAlignTests()
 
-	node := map[string]interface{}{"$157": "sImgFloat"}
+	node := map[string]interface{}{"style": "sImgFloat"}
 	wrapperClass, imageClass := r.imageClasses(node)
 
 	if wrapperClass == "" {
@@ -277,7 +277,7 @@ func TestContainerClassBoxAlign(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			node := map[string]interface{}{"$157": tt.styleID}
+			node := map[string]interface{}{"style": tt.styleID}
 			got := r.containerClass(node)
 
 			if len(tt.wantProps) == 0 {
@@ -356,7 +356,7 @@ func TestFittedContainerClassBoxAlign(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			node := map[string]interface{}{"$157": tt.styleID}
+			node := map[string]interface{}{"style": tt.styleID}
 			got := r.fittedContainerClass(node)
 
 			if got == "" {

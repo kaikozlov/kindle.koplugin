@@ -8,27 +8,27 @@ import (
 func TestYJPropertyInfoCoreKeys(t *testing.T) {
 	// Every property used in the hardcoded *StyleDeclarations functions must be in yjPropertyInfo.
 	coreKeys := []string{
-		"$11",  // font-family
-		"$16",  // font-size
-		"$12",  // font-style
-		"$13",  // font-weight
-		"$583", // font-variant
-		"$42",  // line-height
-		"$47",  // margin-top
-		"$49",  // margin-bottom
-		"$48",  // margin-left
-		"$50",  // margin-right
-		"$34",  // text-align
-		"$36",  // text-indent
-		"$41",  // text-transform
-		"$19",  // color
-		"$21",  // background-color
-		"$57",  // height
-		"$56",  // width
-		"$84",  // border-top-color
-		"$89",  // border-top-style
-		"$94",  // border-top-width
-		"$173", // -kfx-style-name
+		"font_family",  // font-family
+		"font_size",  // font-size
+		"font_style",  // font-style
+		"font_weight",  // font-weight
+		"glyph_transform", // font-variant
+		"line_height",  // line-height
+		"margin_top",  // margin-top
+		"margin_bottom",  // margin-bottom
+		"margin_left",  // margin-left
+		"margin_right",  // margin-right
+		"text_alignment",  // text-align
+		"text_indent",  // text-indent
+		"text_transform",  // text-transform
+		"text_color",  // color
+		"text_background_color",  // background-color
+		"height",  // height
+		"width",  // width
+		"border_color_top",  // border-top-color
+		"border_style_top",  // border-top-style
+		"border_weight_top",  // border-top-width
+		"style_name", // -kfx-style-name
 	}
 	for _, key := range coreKeys {
 		info, ok := yjPropertyInfo[key]
@@ -44,10 +44,10 @@ func TestYJPropertyInfoCoreKeys(t *testing.T) {
 
 func TestConvertYJPropertiesFontFamily(t *testing.T) {
 	props := map[string]interface{}{
-		"$11":  "next-reads-shift light,palatino,serif",
-		"$173": "s366",
-		"$47":  map[string]interface{}{"$307": float64(1.04167), "$306": "$310"},
-		"$580": "$320", // text-align: center
+		"font_family":  "next-reads-shift light,palatino,serif",
+		"style_name": "s366",
+		"margin_top":  map[string]interface{}{"value": float64(1.04167), "unit": "lh"},
+		"box_align": "center", // text-align: center
 	}
 	result := convertYJProperties(props, nil)
 
@@ -68,9 +68,9 @@ func TestConvertYJPropertiesFontFamily(t *testing.T) {
 
 func TestConvertYJPropertiesBorderTop(t *testing.T) {
 	props := map[string]interface{}{
-		"$84": float64(4284703587),
-		"$89": "$328",
-		"$94": map[string]interface{}{"$307": float64(0.45), "$306": "$318"},
+		"border_color_top": float64(4284703587),
+		"border_style_top": "solid",
+		"border_weight_top": map[string]interface{}{"value": float64(0.45), "unit": "pt"},
 	}
 	result := convertYJProperties(props, nil)
 
@@ -87,10 +87,10 @@ func TestConvertYJPropertiesBorderTop(t *testing.T) {
 
 func TestProcessContentPropertiesExtractsKnownKeys(t *testing.T) {
 	content := map[string]interface{}{
-		"$11":  "serif",
-		"$173": "test-style",
-		"$159": "$269",  // content type — NOT a property
-		"$156": "$323",  // layout — NOT a property
+		"font_family":  "serif",
+		"style_name": "test-style",
+		"type": "text",  // content type — NOT a property
+		"layout": "vertical",  // layout — NOT a property
 	}
 	result := processContentProperties(content, nil)
 
@@ -100,7 +100,7 @@ func TestProcessContentPropertiesExtractsKnownKeys(t *testing.T) {
 	if _, ok := result["-kfx-style-name"]; !ok {
 		t.Error("expected -kfx-style-name from $173")
 	}
-	if _, ok := result["$159"]; ok {
+	if _, ok := result["type"]; ok {
 		t.Error("$159 (content type) should not be in CSS properties")
 	}
 }
@@ -108,16 +108,16 @@ func TestProcessContentPropertiesExtractsKnownKeys(t *testing.T) {
 func TestConvertYJPropertiesNoFontFamily(t *testing.T) {
 	// s36C style fragment — has border properties but no $11
 	props := map[string]interface{}{
-		"$173": "s36C",
-		"$36":  map[string]interface{}{"$307": float64(0.0), "$306": "$314"},
-		"$42":  map[string]interface{}{"$307": float64(0.96), "$306": "$310"},
-		"$47":  map[string]interface{}{"$307": float64(1.04167), "$306": "$310"},
-		"$48":  map[string]interface{}{"$307": float64(5.0), "$306": "$314"},
-		"$50":  map[string]interface{}{"$307": float64(5.0), "$306": "$314"},
-		"$52":  map[string]interface{}{"$307": float64(1.04167), "$306": "$310"},
-		"$84":  float64(4284703587),
-		"$89":  "$328",
-		"$94":  map[string]interface{}{"$307": float64(0.45), "$306": "$318"},
+		"style_name": "s36C",
+		"text_indent":  map[string]interface{}{"value": float64(0.0), "unit": "percent"},
+		"line_height":  map[string]interface{}{"value": float64(0.96), "unit": "lh"},
+		"margin_top":  map[string]interface{}{"value": float64(1.04167), "unit": "lh"},
+		"margin_left":  map[string]interface{}{"value": float64(5.0), "unit": "percent"},
+		"margin_right":  map[string]interface{}{"value": float64(5.0), "unit": "percent"},
+		"padding_top":  map[string]interface{}{"value": float64(1.04167), "unit": "lh"},
+		"border_color_top":  float64(4284703587),
+		"border_style_top":  "solid",
+		"border_weight_top":  map[string]interface{}{"value": float64(0.45), "unit": "pt"},
 	}
 	result := convertYJProperties(props, nil)
 

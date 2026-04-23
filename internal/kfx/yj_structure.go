@@ -57,81 +57,81 @@ const (
 // FragmentIDKeys maps fragment types to the key paths used to extract fragment IDs.
 // Python: FRAGMENT_ID_KEYS (yj_structure.py:57-72)
 var FragmentIDKeys = map[string][]string{
-	"$266": {"$180"},
-	"$597": {"$174", "$598"},
-	"$418": {"$165"},
-	"$417": {"$165"},
-	"$394": {"$240"},
-	"$145": {"name"},
-	"$164": {"$175"},
-	"$391": {"$239"},
-	"$692": {"name"},
-	"$387": {"$174"},
-	"$756": {"$757"},
-	"$260": {"$174"},
-	"$267": {"$174"},
-	"$609": {"$174"},
-	"$259": {"$176"},
-	"$608": {"$598"},
-	"$157": {"$173"},
-	"$610": {"$602"},
+	"anchor": {"anchor_name"},
+	"auxiliary_data": {"section_name", "kfx_id"},
+	"bcRawFont": {"location"},
+	"bcRawMedia": {"location"},
+	"conditional_nav_group_unit": {"nav_unit_name"},
+	"content": {"name"},
+	"external_resource": {"resource_name"},
+	"nav_container": {"nav_container_name"},
+	"path_bundle": {"name"},
+	"preview_images": {"section_name"},
+	"ruby_content": {"ruby_name"},
+	"section": {"section_name"},
+	"section_metadata": {"section_name"},
+	"section_position_id_map": {"section_name"},
+	"storyline": {"story_name"},
+	"structure": {"kfx_id"},
+	"style": {"style_name"},
+	"yj.eidhash_eid_section_map": {"block"},
 }
 
 // CommonFragmentReferences maps container symbols to their fragment reference types.
 // Python: COMMON_FRAGMENT_REFERENCES (yj_structure.py:75-99)
 var CommonFragmentReferences = map[string]string{
-	"$749": "$259",
-	"$266": "$266",
-	"$597": "$597",
-	"$429": "$157",
-	"$479": "$164",
-	"$145": "$145",
-	"$146": "$608",
-	"$245": "$164",
-	"$179": "$266",
-	"$165": "$417",
-	"$392": "$391",
-	"name":  "$145",
-	"$167": "$164",
-	"$175": "$164",
-	"$757": "$756",
-	"$174": "$260",
-	"$170": "$260",
-	"$176": "$259",
-	"$157": "$157",
-	"$173": "$157",
-	"$528": "$164",
-	"$214": "$164",
-	"$636": "$417",
-	"$635": "$164",
+	"alt_content": "storyline",
+	"anchor": "anchor",
+	"auxiliary_data": "auxiliary_data",
+	"backdrop_style": "style",
+	"background_image": "external_resource",
+	"content": "content",
+	"content_list": "structure",
+	"icon": "external_resource",
+	"link_to": "anchor",
+	"location": "bcRawMedia",
+	"nav_containers": "nav_container",
+	"name":  "content",
+	"referred_resources": "external_resource",
+	"resource_name": "external_resource",
+	"ruby_name": "ruby_content",
+	"section_name": "section",
+	"sections": "section",
+	"story_name": "storyline",
+	"style": "style",
+	"style_name": "style",
+	"text_background_image": "external_resource",
+	"thumbnails": "external_resource",
+	"yj.tiles": "bcRawMedia",
+	"yj.variants": "external_resource",
 }
 
 // NestedFragmentReferences maps (parent, container) pairs to fragment reference types.
 // Python: NESTED_FRAGMENT_REFERENCES (yj_structure.py:102-107)
 var NestedFragmentReferences = map[[2]string]string{
-	{"$597", "$351"}: "$597",
-	{"$597", "$538"}: "$597",
-	{"$597", "$613"}: "$597",
-	{"$597", "$614"}: "$597",
+	{"auxiliary_data", "default"}: "auxiliary_data",
+	{"auxiliary_data", "document_data"}: "auxiliary_data",
+	{"auxiliary_data", "yj.authoring"}: "auxiliary_data",
+	{"auxiliary_data", "yj.conversion"}: "auxiliary_data",
 }
 
 // SpecialFragmentReferences maps fragment types to their type-specific container→frag_ref mappings.
 // Python: SPECIAL_FRAGMENT_REFERENCES (yj_structure.py:110-118)
 var SpecialFragmentReferences = map[string]map[string]string{
-	"$391": {
-		"$247": "$394",
+	"nav_container": {
+		"entries": "conditional_nav_group_unit",
 	},
-	"$387": {
-		"$213": "$164",
-		"$214": "$164",
-		"$212": "$164",
+	"preview_images": {
+		"scrubbers": "external_resource",
+		"thumbnails": "external_resource",
+		"toc": "external_resource",
 	},
 }
 
 // SpecialParentFragmentReferences maps fragment types to container_parent→bool mappings.
 // Python: SPECIAL_PARENT_FRAGMENT_REFERENCES (yj_structure.py:121-124)
 var SpecialParentFragmentReferences = map[string]map[string]bool{
-	"$538": {
+	"document_data": {
 		"yj.print.style": false,
 	},
 }
@@ -139,48 +139,48 @@ var SpecialParentFragmentReferences = map[string]map[string]bool{
 // SectionDataTypes lists the section data fragment types.
 // Python: SECTION_DATA_TYPES (yj_structure.py:127-132)
 var SectionDataTypes = map[string]bool{
-	"$387": true,
-	"$260": true,
-	"$267": true,
-	"$609": true,
+	"preview_images": true,
+	"section": true,
+	"section_metadata": true,
+	"section_position_id_map": true,
 }
 
 // ExpectedAnnotations lists the expected IonAnnotation triplets.
 // Python: EXPECTED_ANNOTATIONS (yj_structure.py:135-142)
 var ExpectedAnnotations = map[[3]string]bool{
-	{"$164", "$214", "$164"}: true,
-	{"$389", "$247", "$393"}: true,
-	{"$389", "$392", "$391"}: true,
-	{"$259", "$429", "$157"}: true,
-	{"$259", "$173", "$157"}: true,
+	{"external_resource", "thumbnails", "external_resource"}: true,
+	{"book_navigation", "entries", "nav_unit"}: true,
+	{"book_navigation", "nav_containers", "nav_container"}: true,
+	{"storyline", "backdrop_style", "style"}: true,
+	{"storyline", "style_name", "style"}: true,
 }
 
 // ExpectedDictionaryAnnotations lists the dictionary-specific annotations.
 // Python: EXPECTED_DICTIONARY_ANNOTATIONS (yj_structure.py:145-148)
 var ExpectedDictionaryAnnotations = map[[3]string]bool{
-	{"$260", "$141", "$608"}: true,
-	{"$259", "$146", "$608"}: true,
+	{"section", "page_templates", "structure"}: true,
+	{"storyline", "content_list", "structure"}: true,
 }
 
 // EIDReferences lists the EID reference container symbols.
 // Python: EID_REFERENCES (yj_structure.py:151-157)
 var EIDReferences = map[string]bool{
-	"$185": true,
-	"$155": true,
-	"$598": true,
-	"$754": true,
-	"$474": true,
-	"$163": true,
+	"eid": true,
+	"id": true,
+	"kfx_id": true,
+	"main_content_id": true,
+	"source": true,
+	"target": true,
 }
 
 // FixedLayoutImageFormats lists the fixed layout image format symbols.
 // Python: FIXED_LAYOUT_IMAGE_FORMATS (yj_structure.py:54)
 var FixedLayoutImageFormats = map[string]bool{
-	"$286": true,
-	"$285": true,
-	"$548": true,
-	"$565": true,
-	"$284": true,
+	"gif": true,
+	"jpg": true,
+	"jxr": true,
+	"pdf": true,
+	"png": true,
 }
 
 // ---------------------------------------------------------------------------
@@ -377,9 +377,9 @@ func walkInternal(
 		}
 
 	case ionTypeString:
-		// In Python: if container in ["$165", "$636"]: walk(IS(data), container, container_parent)
+		// In Python: if container in ["location", "yj.tiles"]: walk(IS(data), container, container_parent)
 		// This converts the string to a symbol and processes it as such.
-		if cont == "$165" || cont == "$636" {
+		if cont == "location" || cont == "yj.tiles" {
 			processSymbolReference(
 				fmt.Sprintf("%v", data), cont, cParent, fragment,
 				mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList,
@@ -397,18 +397,18 @@ func walkInternal(
 	// Handle EID defs/refs for int and symbol types (Python: data_type is IonInt or IonSymbol)
 	if dataType == ionTypeInt || dataType == ionTypeSymbol {
 		sym, _ := asString(data)
-		if (cont == "$155" || cont == "$598") && fragment.FType != "$550" &&
-			fragment.FType != "$265" && fragment.FType != "$264" &&
-			fragment.FType != "$609" && fragment.FType != "$610" &&
-			fragment.FType != "$621" && fragment.FType != "$611" {
+		if (cont == "id" || cont == "kfx_id") && fragment.FType != "location_map" &&
+			fragment.FType != "position_id_map" && fragment.FType != "position_map" &&
+			fragment.FType != "section_position_id_map" && fragment.FType != "yj.eidhash_eid_section_map" &&
+			fragment.FType != "yj.location_pid_map" && fragment.FType != "yj.section_pid_count_map" {
 			(*eidDefs)[data] = true
 			if sym != "" {
 				(*eidDefs)[sym] = true
 			}
 		} else if EIDReferences[cont] {
-			// Skip IonInt 0 in $265 fragments (Python: not (data_type is IonInt and data == 0 and fragment.ftype == "$265"))
+			// Skip IonInt 0 in $265 fragments (Python: not (data_type is IonInt and data == 0 and fragment.ftype == "position_id_map"))
 			if dataType == ionTypeInt {
-				if intVal, ok := asInt(data); ok && intVal == 0 && fragment.FType == "$265" {
+				if intVal, ok := asInt(data); ok && intVal == 0 && fragment.FType == "position_id_map" {
 					// skip
 				} else {
 					(*eidRefs)[data] = true
@@ -439,8 +439,8 @@ func processSymbolReference(
 	eidRefs *map[interface{}]bool,
 	fragmentList FragmentList,
 ) {
-	// Track EID definitions (container == "$155")
-	if container == "$155" {
+	// Track EID definitions (container == "id")
+	if container == "id" {
 		(*eidDefs)[data] = true
 	}
 
@@ -507,30 +507,30 @@ func processSymbolReference(
 	}
 
 	// Handle the reference
-	if container == "name" && (containerParent == "$249" || containerParent == "$692") {
-		(*mandatoryFragRefs)[FragmentKey{FType: "$692", FID: data}] = true
-	} else if container == "$165" && fragmentList != nil {
-		if frag := fragmentList.Get("$418", data, true); frag != nil {
-			(*mandatoryFragRefs)[FragmentKey{FType: "$418", FID: data}] = true
+	if container == "name" && (containerParent == "path" || containerParent == "path_bundle") {
+		(*mandatoryFragRefs)[FragmentKey{FType: "path_bundle", FID: data}] = true
+	} else if container == "location" && fragmentList != nil {
+		if frag := fragmentList.Get("bcRawFont", data, true); frag != nil {
+			(*mandatoryFragRefs)[FragmentKey{FType: "bcRawFont", FID: data}] = true
 		} else {
 			// Not found as $418, add as the resolved fragRef type
 			(*mandatoryFragRefs)[FragmentKey{FType: fragRef, FID: data}] = true
 		}
-	} else if container == "$635" {
+	} else if container == "yj.variants" {
 		(*optionalFragRefs)[FragmentKey{FType: fragRef, FID: data}] = true
 	} else {
 		(*mandatoryFragRefs)[FragmentKey{FType: fragRef, FID: data}] = true
 	}
 
 	// For $260 references, also check related variant fragments
-	if fragRef == "$260" {
+	if fragRef == "section" {
 		variantKeys := []FragmentKey{
-			{FType: "$609", FID: data},
-			{FType: "$609", FID: data + "-spm"},
-			{FType: "$597", FID: data + "-ad"},
-			{FType: "$597", FID: data},
-			{FType: "$267", FID: data},
-			{FType: "$387", FID: data},
+			{FType: "section_position_id_map", FID: data},
+			{FType: "section_position_id_map", FID: data + "-spm"},
+			{FType: "auxiliary_data", FID: data + "-ad"},
+			{FType: "auxiliary_data", FID: data},
+			{FType: "section_metadata", FID: data},
+			{FType: "preview_images", FID: data},
 		}
 		for _, refKey := range variantKeys {
 			if fragmentList != nil && fragmentList.Get(refKey.FType, refKey.FID, true) != nil {
@@ -699,14 +699,14 @@ func CheckFragmentUsageWithOptions(fragments FragmentList, getCoverFID func() st
 
 	unreferencedFragmentTypes := make(map[string]bool)
 	for k := range RootFragmentTypes {
-		if k != "$419" {
+		if k != "container_entity_map" {
 			unreferencedFragmentTypes[k] = true
 		}
 	}
 
 	// C3-1: is_kpf_prepub adds $610 to unreferenced_fragment_types (yj_structure.py:721-724)
 	if opts.IsKpfPrepub {
-		unreferencedFragmentTypes["$610"] = true
+		unreferencedFragmentTypes["yj.eidhash_eid_section_map"] = true
 	}
 
 	// Seed with root fragment types
@@ -723,7 +723,7 @@ func CheckFragmentUsageWithOptions(fragments FragmentList, getCoverFID func() st
 	if getCoverFID != nil {
 		coverFID := getCoverFID()
 		if coverFID != "" {
-			discovered[FragmentKey{FType: "$164", FID: coverFID}] = true
+			discovered[FragmentKey{FType: "external_resource", FID: coverFID}] = true
 		}
 	}
 
@@ -782,7 +782,7 @@ func CheckFragmentUsageWithOptions(fragments FragmentList, getCoverFID func() st
 
 	// Report missing fragments
 	for key := range missing {
-		if key.FType == "$597" {
+		if key.FType == "auxiliary_data" {
 			log.Printf("kfx: warning: Referenced fragment is missing from book: %s", key)
 		} else {
 			log.Printf("kfx: error: Referenced fragment is missing from book: %s", key)
@@ -797,16 +797,16 @@ func CheckFragmentUsageWithOptions(fragments FragmentList, getCoverFID func() st
 	diffDupeFragments := false
 
 	for _, frag := range fragments {
-		if frag.FType != "$262" && frag.FType != "$387" {
+		if frag.FType != "font" && frag.FType != "preview_images" {
 			fragKey := FragmentKey{FType: frag.FType, FID: frag.FID}
 			if existing, exists := alreadyProcessed[fragKey]; exists {
-				if frag.FType == "$270" || frag.FType == "$593" {
+				if frag.FType == "container" || frag.FType == "format_capabilities" {
 					continue
 				}
 
 				if IonDataEq(frag.Value, existing.Value) {
 					// Identical duplicates
-					if frag.FType == "$597" {
+					if frag.FType == "auxiliary_data" {
 						// Python: self.log_known_error("Duplicate fragment: %s" % str(fragment))
 						log.Printf("kfx: warning: Duplicate fragment (known error): %s", fragKey)
 					} else {
@@ -828,7 +828,7 @@ func CheckFragmentUsageWithOptions(fragments FragmentList, getCoverFID func() st
 			referencedFragments = append(referencedFragments, frag)
 		} else if ContainerFragmentTypes[frag.FType] || frag.FID == frag.FType {
 			log.Printf("kfx: error: Unexpected root fragment: %s", fragKey)
-		} else if frag.FType == "$597" && (opts.IsSample || opts.IsDictionary) {
+		} else if frag.FType == "auxiliary_data" && (opts.IsSample || opts.IsDictionary) {
 			// C3-3: is_sample/is_dictionary silently accepts unreferenced $597 (yj_structure.py:795)
 		} else if !opts.IgnoreExtra {
 			unreferencedFragments = append(unreferencedFragments, frag)
@@ -839,7 +839,7 @@ func CheckFragmentUsageWithOptions(fragments FragmentList, getCoverFID func() st
 	if opts.IsKpfPrepub {
 		filtered := make(FragmentList, 0, len(unreferencedFragments))
 		prepubTypes := map[string]bool{
-			"$391": true, "$266": true, "$259": true, "$260": true, "$608": true,
+			"nav_container": true, "anchor": true, "storyline": true, "section": true, "structure": true,
 		}
 		for _, f := range unreferencedFragments {
 			if !prepubTypes[f.FType] {
@@ -984,7 +984,7 @@ func walkInternalOpts(
 		}
 
 	case ionTypeString:
-		if cont == "$165" || cont == "$636" {
+		if cont == "location" || cont == "yj.tiles" {
 			processSymbolReference(
 				fmt.Sprintf("%v", data), cont, cParent, fragment,
 				mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList,
@@ -1002,17 +1002,17 @@ func walkInternalOpts(
 	// Handle EID defs/refs
 	if dataType == ionTypeInt || dataType == ionTypeSymbol {
 		sym, _ := asString(data)
-		if (cont == "$155" || cont == "$598") && fragment.FType != "$550" &&
-			fragment.FType != "$265" && fragment.FType != "$264" &&
-			fragment.FType != "$609" && fragment.FType != "$610" &&
-			fragment.FType != "$621" && fragment.FType != "$611" {
+		if (cont == "id" || cont == "kfx_id") && fragment.FType != "location_map" &&
+			fragment.FType != "position_id_map" && fragment.FType != "position_map" &&
+			fragment.FType != "section_position_id_map" && fragment.FType != "yj.eidhash_eid_section_map" &&
+			fragment.FType != "yj.location_pid_map" && fragment.FType != "yj.section_pid_count_map" {
 			(*eidDefs)[data] = true
 			if sym != "" {
 				(*eidDefs)[sym] = true
 			}
 		} else if EIDReferences[cont] {
 			if dataType == ionTypeInt {
-				if intVal, ok := asInt(data); ok && intVal == 0 && fragment.FType == "$265" {
+				if intVal, ok := asInt(data); ok && intVal == 0 && fragment.FType == "position_id_map" {
 					// skip
 				} else {
 					(*eidRefs)[data] = true
@@ -1048,18 +1048,18 @@ func RebuildFragments(fragments FragmentList, getAssetID func() string, isDictio
 	containerIDs := map[string]bool{}
 	var kfxgenApplicationVersion, kfxgenPackageVersion, version *string
 
-	for _, frag := range fragments.GetAll("$270") {
+	for _, frag := range fragments.GetAll("container") {
 		valMap, ok := asMap(frag.Value)
 		if !ok {
 			continue
 		}
-		if containerID, ok := asString(valMap["$409"]); ok && containerID != "" {
+		if containerID, ok := asString(valMap["bcContId"]); ok && containerID != "" {
 			containerIDs[containerID] = true
 		}
-		if v, ok := asString(valMap["$587"]); ok && v != "" {
+		if v, ok := asString(valMap["major_version"]); ok && v != "" {
 			kfxgenApplicationVersion = &v
 		}
-		if v, ok := asString(valMap["$588"]); ok {
+		if v, ok := asString(valMap["minor_version"]); ok {
 			kfxgenPackageVersion = &v
 		}
 		if v, ok := asString(valMap["version"]); ok && v != "" {
@@ -1096,12 +1096,12 @@ func RebuildFragments(fragments FragmentList, getAssetID func() string, isDictio
 	}
 
 	newContainer := Fragment{
-		FType: "$270",
+		FType: "container",
 		Value: map[string]interface{}{
-			"$409":    containerID,
-			"$161":    "KFX main",
-			"$587":    appVersion,
-			"$588":    pkgVersion,
+			"bcContId":    containerID,
+			"format":    "KFX main",
+			"major_version":    appVersion,
+			"minor_version":    pkgVersion,
 			"version": versionStr,
 		},
 	}
@@ -1109,7 +1109,7 @@ func RebuildFragments(fragments FragmentList, getAssetID func() string, isDictio
 	// Remove old $270 fragments and add new one
 	var result FragmentList
 	for _, frag := range fragments {
-		if frag.FType == "$270" {
+		if frag.FType == "container" {
 			continue
 		}
 		result = append(result, frag)
@@ -1172,7 +1172,7 @@ func DetermineEntityDependencies(
 ) []EntityDependency {
 	// Step 1: Skip $387 (section) mandatory references
 	for fragKey, refs := range mandatoryReferences {
-		if fragKey.FType == "$387" {
+		if fragKey.FType == "preview_images" {
 			mandatoryReferences[fragKey] = map[FragmentKey]bool{}
 			_ = refs // clear
 		}
@@ -1189,9 +1189,9 @@ func DetermineEntityDependencies(
 		}
 
 		// Skip $164→$164 cross-references
-		if fragKey.FType == "$164" {
+		if fragKey.FType == "external_resource" {
 			for nFrag := range newRefs {
-				if nFrag.FType == "$164" {
+				if nFrag.FType == "external_resource" {
 					delete(newRefs, nFrag)
 				}
 			}
@@ -1223,8 +1223,8 @@ func DetermineEntityDependencies(
 
 	// Dependency pairs: (depends, dependant)
 	depPairs := [][2]string{
-		{"$260", "$164"},
-		{"$164", "$417"},
+		{"section", "external_resource"},
+		{"external_resource", "bcRawMedia"},
 	}
 
 	for _, fragKey := range sortedKeys {
@@ -1288,10 +1288,10 @@ func RebuildContainerEntityMap(fragments FragmentList, containerID string, entit
 	var oldEntityDeps []EntityDependency
 
 	for _, frag := range fragments {
-		if frag.FType == "$419" {
+		if frag.FType == "container_entity_map" {
 			// Extract old entity dependencies if present
 			if valMap, ok := asMap(frag.Value); ok {
-				if depsVal, ok := valMap["$253"]; ok {
+				if depsVal, ok := valMap["entity_dependencies"]; ok {
 					_ = depsVal // keep for reference
 				}
 			}
@@ -1322,21 +1322,21 @@ func RebuildContainerEntityMap(fragments FragmentList, containerID string, entit
 
 	// Build container_contents: {$155: containerID, $181: entityIDs}
 	containerContents := map[string]interface{}{
-		"$155": containerID,
-		"$181": entityIDsToInterface(entityIDs),
+		"id": containerID,
+		"contains": entityIDsToInterface(entityIDs),
 	}
 
 	containerEntityMap := map[string]interface{}{
-		"$252": []interface{}{containerContents},
+		"container_list": []interface{}{containerContents},
 	}
 
 	if len(entityDependencies) > 0 {
-		containerEntityMap["$253"] = entityDepsToInterface(entityDependencies)
+		containerEntityMap["entity_dependencies"] = entityDepsToInterface(entityDependencies)
 	}
 
 	if len(entityIDs) > 0 || len(entityDependencies) > 0 {
 		newFragments = append(newFragments, Fragment{
-			FType: "$419",
+			FType: "container_entity_map",
 			Value: containerEntityMap,
 		})
 	} else {
@@ -1358,13 +1358,13 @@ func entityDepsToInterface(deps []EntityDependency) []interface{} {
 	result := make([]interface{}, len(deps))
 	for i, dep := range deps {
 		depMap := map[string]interface{}{
-			"$155": dep.EntityID,
+			"id": dep.EntityID,
 		}
 		if len(dep.MandatoryDependencies) > 0 {
-			depMap["$254"] = stringSliceToInterface(dep.MandatoryDependencies)
+			depMap["mandatory_dependencies"] = stringSliceToInterface(dep.MandatoryDependencies)
 		}
 		if len(dep.OptionalDependencies) > 0 {
-			depMap["$255"] = stringSliceToInterface(dep.OptionalDependencies)
+			depMap["optional_dependencies"] = stringSliceToInterface(dep.OptionalDependencies)
 		}
 		result[i] = depMap
 	}
@@ -1539,12 +1539,12 @@ func allowedSymbolPrefix(symbolPrefix string) bool {
 // $258 (metadata) fragment. Returns empty list if neither exists.
 func getReadingOrders(frags fragmentCatalog) []interface{} {
 	if frags.DocumentData != nil {
-		if orders, ok := asSlice(frags.DocumentData["$169"]); ok {
+		if orders, ok := asSlice(frags.DocumentData["reading_orders"]); ok {
 			return orders
 		}
 	}
 	if frags.ReadingOrderMetadata != nil {
-		if orders, ok := asSlice(frags.ReadingOrderMetadata["$169"]); ok {
+		if orders, ok := asSlice(frags.ReadingOrderMetadata["reading_orders"]); ok {
 			return orders
 		}
 	}
@@ -1562,7 +1562,7 @@ func orderedSectionNames(frags fragmentCatalog) []string {
 		if !ok {
 			continue
 		}
-		sections, ok := asSlice(roMap["$170"])
+		sections, ok := asSlice(roMap["sections"])
 		if !ok {
 			continue
 		}
@@ -1582,9 +1582,9 @@ func orderedSectionNames(frags fragmentCatalog) []string {
 // Scans all $260 (section) fragments recursively looking for a specific conditional page template pattern:
 //   - Key $171 (condition) exists
 //   - Value is []interface{} (IonSExp) of length 3
-//   - fv[1] == "$183" (position)
-//   - fv[2] is []interface{} (IonSExp) of length 2, fv[2][0] == "$266" (anchor)
-//   - fv[0] in ["$294", "$299", "$298"] (condition operators)
+//   - fv[1] == "position" (position)
+//   - fv[2] is []interface{} (IonSExp) of length 2, fv[2][0] == "anchor" (anchor)
+//   - fv[0] in ["==", "<=", "<"] (condition operators)
 //
 // Returns true if found in any section, false otherwise.
 func hasIllustratedLayoutPageTemplateCondition(frags fragmentCatalog) bool {
@@ -1615,7 +1615,7 @@ func scanSectionForCondition(data map[string]interface{}) bool {
 		return false
 	}
 	for fk, fv := range data {
-		if fk == "$171" {
+		if fk == "condition" {
 			if matchConditionPattern(fv) {
 				return true
 			}
@@ -1643,8 +1643,8 @@ func scanSectionForConditionValue(value interface{}) bool {
 }
 
 // matchConditionPattern checks if a value matches the illustrated layout condition pattern:
-// IonSExp of length 3 where fv[0] in ["$294","$299","$298"], fv[1]=="$183",
-// fv[2] is IonSExp of length 2 with fv[2][0]=="$266".
+// IonSExp of length 3 where fv[0] in ["==","<=","<"], fv[1]=="position",
+// fv[2] is IonSExp of length 2 with fv[2][0]=="anchor".
 func matchConditionPattern(fv interface{}) bool {
 	slice, ok := asSlice(fv)
 	if !ok || len(slice) != 3 {
@@ -1652,10 +1652,10 @@ func matchConditionPattern(fv interface{}) bool {
 	}
 	fv0, _ := asString(slice[0])
 	fv1, _ := asString(slice[1])
-	if fv1 != "$183" {
+	if fv1 != "position" {
 		return false
 	}
-	if fv0 != "$294" && fv0 != "$299" && fv0 != "$298" {
+	if fv0 != "==" && fv0 != "<=" && fv0 != "<" {
 		return false
 	}
 	fv2, ok := asSlice(slice[2])
@@ -1663,7 +1663,7 @@ func matchConditionPattern(fv interface{}) bool {
 		return false
 	}
 	fv20, _ := asString(fv2[0])
-	return fv20 == "$266"
+	return fv20 == "anchor"
 }
 
 // Port of BookStructure.get_ordered_image_resources (yj_structure.py L1258-1298).

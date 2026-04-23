@@ -24,13 +24,13 @@ func TestPythonConditionOperatorSymbolCount(t *testing.T) {
 
 func TestEvaluateConditionDispatchMatchesLegacyCases(t *testing.T) {
 	e := conditionEvaluator{orientationLock: "portrait", fixedLayout: false, illustratedLayout: false}
-	if g := e.evaluate([]interface{}{"$660"}); g != true {
+	if g := e.evaluate([]interface{}{"yj.illustrated_layout"}); g != true {
 		t.Fatalf("$660 = %v", g)
 	}
-	if g := e.evaluate([]interface{}{"$293", []interface{}{"$660"}}); g != false {
+	if g := e.evaluate([]interface{}{"not", []interface{}{"yj.illustrated_layout"}}); g != false {
 		t.Fatalf("not true = %v", g)
 	}
-	if g := e.evaluate([]interface{}{"$516", 1, 2}); numericConditionValue(g) != 3 {
+	if g := e.evaluate([]interface{}{"+", 1, 2}); numericConditionValue(g) != 3 {
 		t.Fatalf("$516 1+2 = %v", g)
 	}
 }

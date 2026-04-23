@@ -10,20 +10,20 @@ import (
 
 // Keys of Python self.condition_operators after set_condition_operators (yj_to_epub_misc.py L37–66).
 var pythonConditionOperatorSymbols = map[string]struct{}{
-	"$305": {}, "$304": {}, "$300": {}, "$301": {}, "$183": {}, "$302": {}, "$303": {},
-	"$525": {}, "$526": {}, "$660": {},
-	"$293": {}, "$266": {}, "$750": {}, "$659": {},
-	"$292": {}, "$291": {}, "$294": {}, "$295": {}, "$296": {}, "$297": {}, "$298": {}, "$299": {},
-	"$516": {}, "$517": {}, "$518": {}, "$519": {},
+	"screenActualHeight": {}, "screenActualWidth": {}, "hasColor": {}, "hasVideo": {}, "position": {}, "screenPixelWidth": {}, "screenPixelHeight": {},
+	"isLandscape": {}, "isPortrait": {}, "yj.illustrated_layout": {},
+	"not": {}, "anchor": {}, "yj.layout_type": {}, "yj.supports": {},
+	"and": {}, "or": {}, "==": {}, "!=": {}, ">": {}, ">=": {}, "<": {}, "<=": {},
+	"+": {}, "-": {}, "*": {}, "/": {},
 }
 
 // conditionOperatorArity mirrors Python nargs: 0=nullary, 1=unary, 2=binary, -1=$659 (special).
 var conditionOperatorArity = map[string]int{
-	"$305": 0, "$304": 0, "$300": 0, "$301": 0, "$183": 0, "$302": 0, "$303": 0,
-	"$525": 0, "$526": 0, "$660": 0,
-	"$293": 1, "$266": 1, "$750": 1, "$659": -1,
-	"$292": 2, "$291": 2, "$294": 2, "$295": 2, "$296": 2, "$297": 2, "$298": 2, "$299": 2,
-	"$516": 2, "$517": 2, "$518": 2, "$519": 2,
+	"screenActualHeight": 0, "screenActualWidth": 0, "hasColor": 0, "hasVideo": 0, "position": 0, "screenPixelWidth": 0, "screenPixelHeight": 0,
+	"isLandscape": 0, "isPortrait": 0, "yj.illustrated_layout": 0,
+	"not": 1, "anchor": 1, "yj.layout_type": 1, "yj.supports": -1,
+	"and": 2, "or": 2, "==": 2, "!=": 2, ">": 2, ">=": 2, "<": 2, "<=": 2,
+	"+": 2, "-": 2, "*": 2, "/": 2,
 }
 
 func (e conditionEvaluator) screenSize() (int, int) {
@@ -117,75 +117,75 @@ var (
 func conditionOperatorDispatchTable() map[string]conditionOpFn {
 	conditionOperatorDispatchOnce.Do(func() {
 		conditionOperatorDispatch = map[string]conditionOpFn{
-			"$293": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"not": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return !e.evaluateBinary(firstArg(args))
 			},
-			"$266": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} {
+			"anchor": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return 0
 			},
-			"$750": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"yj.layout_type": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				arg, _ := asString(firstArg(args))
 				switch arg {
-				case "$752":
+				case "yj.in_page":
 					return true
-				case "$753":
+				case "yj.table_viewer":
 					return false
 				default:
 					return false
 				}
 			},
-			"$659": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"yj.supports": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return knownSupportedFeatures[featureKey(args)]
 			},
-			"$292": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"and": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return e.evaluateBinary(firstArg(args)) && e.evaluateBinary(secondArg(args))
 			},
-			"$291": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"or": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return e.evaluateBinary(firstArg(args)) || e.evaluateBinary(secondArg(args))
 			},
-			"$294": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"==": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) == 0
 			},
-			"$295": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"!=": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) != 0
 			},
-			"$296": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			">": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) > 0
 			},
-			"$297": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			">=": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) >= 0
 			},
-			"$298": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"<": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) < 0
 			},
-			"$299": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"<=": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return compareConditionValues(e.evaluate(firstArg(args)), e.evaluate(secondArg(args))) <= 0
 			},
-			"$516": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"+": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return numericConditionValue(e.evaluate(firstArg(args))) + numericConditionValue(e.evaluate(secondArg(args)))
 			},
-			"$517": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"-": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return numericConditionValue(e.evaluate(firstArg(args))) - numericConditionValue(e.evaluate(secondArg(args)))
 			},
-			"$518": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"*": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				return numericConditionValue(e.evaluate(firstArg(args))) * numericConditionValue(e.evaluate(secondArg(args)))
 			},
-			"$519": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
+			"/": func(e *conditionEvaluator, args []interface{}, width, height int) interface{} {
 				_, _ = width, height
 				divisor := numericConditionValue(e.evaluate(secondArg(args)))
 				if divisor == 0 {
@@ -193,28 +193,28 @@ func conditionOperatorDispatchTable() map[string]conditionOpFn {
 				}
 				return numericConditionValue(e.evaluate(firstArg(args))) / divisor
 			},
-			"$305": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { _ = width; return height },
-			"$303": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { _ = width; return height },
-			"$304": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { _ = height; return width },
-			"$302": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { _ = height; return width },
-			"$300": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} {
+			"screenActualHeight": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { _ = width; return height },
+			"screenPixelHeight": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { _ = width; return height },
+			"screenActualWidth": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { _ = height; return width },
+			"screenPixelWidth": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { _ = height; return width },
+			"hasColor": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} {
 				_ = width
 				_ = height
 				return true
 			},
-			"$301": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} {
+			"hasVideo": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} {
 				_ = width
 				_ = height
 				return true
 			},
-			"$183": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} {
+			"position": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} {
 				_ = width
 				_ = height
 				return 0
 			},
-			"$525": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { return width > height },
-			"$526": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { return width < height },
-			"$660": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} {
+			"isLandscape": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { return width > height },
+			"isPortrait": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} { return width < height },
+			"yj.illustrated_layout": func(_ *conditionEvaluator, _ []interface{}, width, height int) interface{} {
 				_ = width
 				_ = height
 				return true
@@ -279,15 +279,15 @@ func adjustPixelValue(value float64) float64 {
 }
 
 func processKVGShape(parent *htmlElement, shape map[string]interface{}, writingMode string) {
-	shapeType, _ := asString(shape["$159"])
-	delete(shape, "$159")
+	shapeType, _ := asString(shape["type"])
+	delete(shape, "type")
 
 	var elem *htmlElement
 
 	switch shapeType {
-	case "$273":
-		pathData := shape["$249"]
-		delete(shape, "$249")
+	case "shape":
+		pathData := shape["path"]
+		delete(shape, "path")
 		d := processPath(pathData)
 		elem = &htmlElement{
 			Tag:   "path",
@@ -295,9 +295,9 @@ func processKVGShape(parent *htmlElement, shape map[string]interface{}, writingM
 		}
 		parent.Children = append(parent.Children, elem)
 
-	case "$270":
-		source, _ := asString(shape["$474"])
-		delete(shape, "$474")
+	case "container":
+		source, _ := asString(shape["source"])
+		delete(shape, "source")
 		if source == "" {
 			fmt.Fprintf(os.Stderr, "kfx: error: missing KVG container content source\n")
 			return
@@ -316,16 +316,16 @@ func processKVGShape(parent *htmlElement, shape map[string]interface{}, writingM
 	}
 
 	svgAttrs := [][2]string{
-		{"$70", "fill"},
-		{"$72", "fill-opacity"},
-		{"$75", "stroke"},
-		{"$531", "stroke-dasharray"},
-		{"$532", "stroke-dashoffset"},
-		{"$77", "stroke-linecap"},
-		{"$529", "stroke-linejoin"},
-		{"$530", "stroke-miterlimit"},
-		{"$76", "stroke-width"},
-		{"$98", "transform"},
+		{"fill_color", "fill"},
+		{"fill_opacity", "fill-opacity"},
+		{"stroke_color", "stroke"},
+		{"stroke_dasharray", "stroke-dasharray"},
+		{"stroke_dashoffset", "stroke-dashoffset"},
+		{"stroke_linecap", "stroke-linecap"},
+		{"stroke_linejoin", "stroke-linejoin"},
+		{"stroke_miterlimit", "stroke-miterlimit"},
+		{"stroke_width", "stroke-width"},
+		{"transform", "transform"},
 	}
 
 	for _, attr := range svgAttrs {
@@ -361,7 +361,7 @@ func propertyValueSVG(propName string, yjValue interface{}) string {
 	case int64:
 		return propertyValueSVG(propName, float64(v))
 	case []interface{}:
-		if propName == "$98" {
+		if propName == "transform" {
 			return processTransform(v, true)
 		}
 		return propertyValue(propName, yjValue, nil)
@@ -373,7 +373,7 @@ func propertyValueSVG(propName string, yjValue interface{}) string {
 func processPath(path interface{}) string {
 	if m, ok := asMap(path); ok {
 		bundleName, _ := asString(m["name"])
-		pathIndex, _ := asInt(m["$403"])
+		pathIndex, _ := asInt(m["index"])
 		_ = bundleName
 		_ = pathIndex
 		fmt.Fprintf(os.Stderr, "kfx: error: path bundle lookup not yet implemented: %s\n", bundleName)

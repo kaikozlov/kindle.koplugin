@@ -18,36 +18,36 @@ import (
 
 // Port of LIST_STYLE_TYPES / list marker → HTML list tag (yj_to_epub_content.py top; used from storyline emit).
 var listTagByMarker = map[string]string{
-	"$346": "ol",
-	"$347": "ol",
-	"$342": "ul",
-	"$340": "ul",
-	"$271": "ul",
-	"$349": "ul",
-	"$343": "ol",
-	"$344": "ol",
-	"$345": "ol",
-	"$341": "ul",
+	"alpha_lower": "ol",
+	"alpha_upper": "ol",
+	"circle": "ul",
+	"disc": "ul",
+	"image": "ul",
+	"none": "ul",
+	"numeric": "ol",
+	"roman_lower": "ol",
+	"roman_upper": "ol",
+	"square": "ul",
 }
 
 // Port of CLASSIFICATION_EPUB_TYPE (yj_to_epub_content.py) — semantic EPUB type for aside/div from YJ classification.
 var classificationEPUBType = map[string]string{
-	"$618": "footnote",
-	"$619": "endnote",
-	"$281": "footnote",
+	"yj.chapternote": "footnote",
+	"yj.endnote": "endnote",
+	"footnote": "footnote",
 }
 
 // Port of layout-hint / element name hints from yj_to_epub_content.py (subset used by emit path).
 var layoutHintElementNames = map[string]string{
-	"$453": "caption",
-	"$282": "figure",
-	"$760": "heading",
+	"caption": "caption",
+	"figure": "figure",
+	"treat_as_title": "heading",
 }
 
 // unusedSectionKeys lists keys that process_section pops from section data before processing
 // (yj_to_epub_content.py L124-136).
 var unusedSectionKeys = map[string]bool{
-	"$702": true,
+	"reading_order_switch_map": true,
 	"yj.conversion.html_name": true,
 	"yj.semantics.book_anatomy_type": true,
 	"yj.semantics.page_type": true,
@@ -118,15 +118,15 @@ func sectionBranchString(b sectionBranch) string {
 func detectBookType(metadata map[string]interface{}, features map[string]interface{}) bookType {
 	// Check content features for comic-type capabilities
 	if features != nil {
-		featureList, ok := asSlice(features["$590"])
+		featureList, ok := asSlice(features["features"])
 		if ok {
 			for _, feature := range featureList {
 				featureMap, ok := asMap(feature)
 				if !ok {
 					continue
 				}
-				featureID, _ := asString(featureMap["$492"])
-				category, _ := asString(featureMap["$586"])
+				featureID, _ := asString(featureMap["key"])
+				category, _ := asString(featureMap["namespace"])
 				key := category + "/" + featureID
 				switch key {
 				case "kindle_capability_metadata/yj_facing_page", "kindle_capability_metadata/yj_double_page_spread", "kindle_capability_metadata/yj_publisher_panels":
@@ -138,7 +138,7 @@ func detectBookType(metadata map[string]interface{}, features map[string]interfa
 
 	// Check metadata for CDE content type
 	if metadata != nil {
-		if cdeType, ok := asString(metadata["$251"]); ok {
+		if cdeType, ok := asString(metadata["cde_content_type"]); ok {
 			if cdeType == "MAGZ" {
 				return bookTypeMagazine
 			}
@@ -170,22 +170,22 @@ func hasConditionalTemplate(templates []pageTemplateFragment) bool {
 
 // validateOverlayCondition validates the $171 condition for overlay templates.
 // Port of Python yj_to_epub_content.py:491-504.
-// In Python, when a $171 condition is found in content with a layout, the layout must be "$324"
+// In Python, when a $171 condition is found in content with a layout, the layout must be "fixed"
 // and the condition must match a specific structure: IonSExp of length 3, where
-// fv[0] in CONDITION_OPERATOR_NAMES ($294/$299/$298), fv[1]=="$183",
-// fv[2] is IonSExp of length 2 with fv[2][0]=="$266".
+// fv[0] in CONDITION_OPERATOR_NAMES ($294/$299/$298), fv[1]=="position",
+// fv[2] is IonSExp of length 2 with fv[2][0]=="anchor".
 // Returns true if the condition is valid, false and logs an error if not.
 func validateOverlayCondition(condition interface{}, layout string) bool {
 	if condition == nil {
 		return true
 	}
-	// Python L492: if layout != "$324": log.error("Conditional page template has unexpected layout")
-	if layout != "$324" {
+	// Python L492: if layout != "fixed": log.error("Conditional page template has unexpected layout")
+	if layout != "fixed" {
 		log.Printf("kfx: error: Conditional page template has unexpected layout: %s", layout)
 	}
 	// Python L500-504: validate condition structure
-	// ion_type(condition) is IonSExp and len(condition) == 3 and condition[1] == "$183" and
-	// ion_type(condition[2]) is IonSExp and len(condition[2]) == 2 and condition[2][0] == "$266" and
+	// ion_type(condition) is IonSExp and len(condition) == 3 and condition[1] == "position" and
+	// ion_type(condition[2]) is IonSExp and len(condition[2]) == 2 and condition[2][0] == "anchor" and
 	// condition[0] in self.CONDITION_OPERATOR_NAMES
 	slice, ok := asSlice(condition)
 	if !ok || len(slice) != 3 {
@@ -194,7 +194,7 @@ func validateOverlayCondition(condition interface{}, layout string) bool {
 	}
 	fv0, _ := asString(slice[0])
 	fv1, _ := asString(slice[1])
-	if fv1 != "$183" {
+	if fv1 != "position" {
 		log.Printf("kfx: error: Condition is not in expected format: %v", condition)
 		return false
 	}
@@ -204,7 +204,7 @@ func validateOverlayCondition(condition interface{}, layout string) bool {
 		return false
 	}
 	fv20, _ := asString(fv2[0])
-	if fv20 != "$266" {
+	if fv20 != "anchor" {
 		log.Printf("kfx: error: Condition is not in expected format: %v", condition)
 		return false
 	}
@@ -415,11 +415,11 @@ func renderSectionFragments(sectionID string, section sectionFragment, storyline
 	if storyline == nil {
 		return renderedStoryline{}, nil, false
 	}
-	nodes, _ := asSlice(storyline["$146"])
+	nodes, _ := asSlice(storyline["content_list"])
 	paragraphs := flattenParagraphs(nodes, contentFragments)
 	debugStorylineNodes(sectionID, nodes, 0)
 	if os.Getenv("KFX_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "render section=%s pageStyle=%s storyStyle=%s\n", sectionID, mainTemplate.PageTemplateStyle, asStringDefault(storyline["$157"]))
+		fmt.Fprintf(os.Stderr, "render section=%s pageStyle=%s storyStyle=%s\n", sectionID, mainTemplate.PageTemplateStyle, asStringDefault(storyline["style"]))
 	}
 	rendered := renderer.renderStoryline(mainTemplate.PositionID, mainTemplate.PageTemplateStyle, mainTemplate.PageTemplateValues, storyline, nodes)
 
@@ -428,12 +428,12 @@ func renderSectionFragments(sectionID string, section sectionFragment, storyline
 		if overlayStoryline == nil {
 			continue
 		}
-		overlayNodes, _ := asSlice(overlayStoryline["$146"])
+		overlayNodes, _ := asSlice(overlayStoryline["content_list"])
 		overlayParagraphs := flattenParagraphs(overlayNodes, contentFragments)
 		paragraphs = append(paragraphs, overlayParagraphs...)
 		debugStorylineNodes(sectionID, overlayNodes, 0)
 		if os.Getenv("KFX_DEBUG") != "" {
-			fmt.Fprintf(os.Stderr, "render overlay section=%s pageStyle=%s storyStyle=%s conditional=%v\n", sectionID, template.PageTemplateStyle, asStringDefault(overlayStoryline["$157"]), template.HasCondition)
+			fmt.Fprintf(os.Stderr, "render overlay section=%s pageStyle=%s storyStyle=%s conditional=%v\n", sectionID, template.PageTemplateStyle, asStringDefault(overlayStoryline["style"]), template.HasCondition)
 		}
 		overlayRendered := renderer.renderStoryline(template.PositionID, template.PageTemplateStyle, template.PageTemplateValues, overlayStoryline, overlayNodes)
 		if rendered.BodyClass == "" {
@@ -496,7 +496,7 @@ func processSectionComic(section sectionFragment, cfg pageSpreadConfig, storylin
 	}
 
 	// Python L154: self.process_page_spread_page_template(
-	//     self.get_fragment(ftype="$608", fid=page_templates[0]), section_name)
+	//     self.get_fragment(ftype="structure", fid=page_templates[0]), section_name)
 	// In Go, the page template's PageTemplateValues already holds the resolved $608 data
 	// (organized during organizeFragments). Pass it directly to processPageSpreadPageTemplate.
 	template := templates[0]
@@ -527,7 +527,7 @@ func processSectionMagazine(section sectionFragment, renderer *storylineRenderer
 	var result pageSpreadResult
 
 	for i, template := range templates {
-		// Python L162: if "$171" not in page_template or self.evaluate_binary_condition(page_template.pop("$171")):
+		// Python L162: if "condition" not in page_template or self.evaluate_binary_condition(page_template.pop("condition")):
 		condition := template.Condition
 		if condition != nil && !renderer.conditionEvaluator.evaluateBinary(condition) {
 			continue
@@ -543,20 +543,20 @@ func processSectionMagazine(section sectionFragment, renderer *storylineRenderer
 		// Make a working copy to pop from (matching Python's mutation of the template)
 		working := cloneMap(templateData)
 
-		// Python L163: if page_template["$159"] != "$270":
-		ptype, _ := asString(working["$159"])
-		if ptype != "$270" {
+		// Python L163: if page_template["type"] != "container":
+		ptype, _ := asString(working["type"])
+		if ptype != "container" {
 			log.Printf("kfx: error: section %s unexpected page_template type %s", section.ID, ptype)
 		}
 
-		// Python L167: layout = page_template["$156"]
-		layout, _ := asString(working["$156"])
+		// Python L167: layout = page_template["layout"]
+		layout, _ := asString(working["layout"])
 
-		if layout == "$325" || layout == "$323" {
+		if layout == "overflow" || layout == "vertical" {
 			// Python L169-178: inline content processing
-			// page_template.pop("$159"); page_template.pop("$156")
-			delete(working, "$159")
-			delete(working, "$156")
+			// page_template.pop("type"); page_template.pop("layout")
+			delete(working, "type")
+			delete(working, "layout")
 
 			// Python creates a book_part, adds content, links CSS, processes position.
 			// In Go, we record this as a leaf section in the result.
@@ -572,7 +572,7 @@ func processSectionMagazine(section sectionFragment, renderer *storylineRenderer
 			}
 			result.Sections = append(result.Sections, section)
 
-		} else if layout == "$437" {
+		} else if layout == "page_spread" {
 			// Python L180: self.process_page_spread_page_template(page_template, section_name)
 			spreadResult := processPageSpreadPageTemplate(working, section.ID, "", nil, true, cfg, storylines)
 			if spreadResult.Err != nil {
@@ -676,25 +676,25 @@ type pageSpreadResult struct {
 // applies based on the template's $159 (type) and $156 (layout) keys.
 // Port of Python's conditional branching at yj_to_epub_content.py:213-338.
 func determinePageSpreadBranch(pageTemplate map[string]interface{}, isSection bool) pageSpreadBranch {
-	ptype, _ := asString(pageTemplate["$159"])
-	layout, _ := asString(pageTemplate["$156"])
+	ptype, _ := asString(pageTemplate["type"])
+	layout, _ := asString(pageTemplate["layout"])
 
 	// Branch A: page-spread ($437) / facing-page ($438)
-	if ptype == "$270" && (layout == "$437" || layout == "$438") {
-		if layout == "$438" {
+	if ptype == "container" && (layout == "page_spread" || layout == "facing_page") {
+		if layout == "facing_page" {
 			return pageSpreadBranchFacing
 		}
 		return pageSpreadBranchSpread
 	}
 
 	// Branch B: PDF-backed scale_fit ($326) — only for section-level templates
-	if ptype == "$270" && layout == "$326" && isSection {
+	if ptype == "container" && layout == "scale_fit" && isSection {
 		return pageSpreadBranchScaleFit
 	}
 
 	// Branch C: connected pagination ($323/$656)
-	if ptype == "$270" && layout == "$323" {
-		if hasBool, _ := asBool(pageTemplate["$656"]); hasBool {
+	if ptype == "container" && layout == "vertical" {
+		if hasBool, _ := asBool(pageTemplate["yj.enable_connected_dps"]); hasBool {
 			return pageSpreadBranchConnected
 		}
 	}
@@ -706,10 +706,10 @@ func determinePageSpreadBranch(pageTemplate map[string]interface{}, isSection bo
 // getLocationID extracts the location ID from a template by popping $155, then $598.
 // Port of Python's get_location_id (yj_to_epub_navigation.py:372-373).
 func getLocationID(data map[string]interface{}) int {
-	if id, ok := popInt(data, "$155"); ok {
+	if id, ok := popInt(data, "id"); ok {
 		return id
 	}
-	if id, ok := popInt(data, "$598"); ok {
+	if id, ok := popInt(data, "kfx_id"); ok {
 		return id
 	}
 	return 0
@@ -768,9 +768,9 @@ func uniqueSectionName(sectionName, spreadType string) string {
 // Port of Python's LAYOUTS dict at yj_to_epub_content.py:246-249.
 func layoutSpreadBaseProperty(layout string) string {
 	switch layout {
-	case "$437":
+	case "page_spread":
 		return "page-spread"
-	case "$438":
+	case "facing_page":
 		return "facing-page"
 	default:
 		return ""
@@ -781,7 +781,7 @@ func layoutSpreadBaseProperty(layout string) string {
 // Port of Python's virtual_panel handling at yj_to_epub_content.py:219-226, 265-272, 303-310.
 // Returns true if virtual_panels should be activated.
 func processVirtualPanel(data map[string]interface{}, cfg *pageSpreadConfig, sectionName string) bool {
-	virtualPanel := popInterfaceDefault(data, "$434")
+	virtualPanel := popInterfaceDefault(data, "virtual_panel")
 	if virtualPanel == nil {
 		if cfg.BookType == bookTypeComic && !cfg.RegionMagnification {
 			log.Printf("kfx: error: section %s has missing virtual panel in comic without region magnification", sectionName)
@@ -789,7 +789,7 @@ func processVirtualPanel(data map[string]interface{}, cfg *pageSpreadConfig, sec
 		return false
 	}
 	vpStr, _ := asString(virtualPanel)
-	if vpStr == "$441" && cfg.VirtualPanelsAllowed {
+	if vpStr == "enabled" && cfg.VirtualPanelsAllowed {
 		return true
 	}
 	if vpStr != "" {
@@ -833,7 +833,7 @@ func processPageSpreadPageTemplate(
 	// Python L211-212: if ion_type(page_template) is IonSymbol → resolve to $608 fragment
 	// In Go, this resolution already happened during organizeFragments, so pageTemplate
 	// is already the resolved map. If it's a string (symbol reference), look it up.
-	if ptStr, ok := asString(pageTemplate["$159"]); !ok || ptStr == "" {
+	if ptStr, ok := asString(pageTemplate["type"]); !ok || ptStr == "" {
 		// Template might be a symbol reference — in Go's pipeline this is already resolved
 		// via pageTemplateFragment. For standalone calls, skip.
 		if len(pageTemplate) == 0 {
@@ -845,14 +845,14 @@ func processPageSpreadPageTemplate(
 	branch := determinePageSpreadBranch(pageTemplate, isSection)
 
 	// Python condition for scale_fit branch:
-	//   self.is_pdf_backed and "$67" not in page_template and "$66" not in page_template
+	//   self.is_pdf_backed and "fixed_height" not in page_template and "fixed_width" not in page_template
 	// If not PDF-backed, OR if $67/$66 are present in pageTemplate, fall to leaf branch.
 	if branch == pageSpreadBranchScaleFit {
 		if !cfg.IsPdfBacked {
 			branch = pageSpreadBranchLeaf
-		} else if _, has67 := pageTemplate["$67"]; has67 {
+		} else if _, has67 := pageTemplate["fixed_height"]; has67 {
 			branch = pageSpreadBranchLeaf
-		} else if _, has66 := pageTemplate["$66"]; has66 {
+		} else if _, has66 := pageTemplate["fixed_width"]; has66 {
 			branch = pageSpreadBranchLeaf
 		}
 	}
@@ -887,8 +887,8 @@ func processPageSpreadStoryBranch(
 	result := pageSpreadResult{}
 
 	// Pop $159 and $156
-	delete(pageTemplate, "$159")
-	layout, _ := popString(pageTemplate, "$156")
+	delete(pageTemplate, "type")
+	layout, _ := popString(pageTemplate, "layout")
 
 	// Handle virtual panel
 	if vp := processVirtualPanel(pageTemplate, &cfg, sectionName); vp {
@@ -896,11 +896,11 @@ func processPageSpreadStoryBranch(
 	}
 
 	// Pop unused keys
-	delete(pageTemplate, "$192")
-	delete(pageTemplate, "$67")
-	delete(pageTemplate, "$66")
-	delete(pageTemplate, "$140")
-	delete(pageTemplate, "$560")
+	delete(pageTemplate, "direction")
+	delete(pageTemplate, "fixed_height")
+	delete(pageTemplate, "fixed_width")
+	delete(pageTemplate, "float")
+	delete(pageTemplate, "writing_mode")
 
 	// Get location ID for parent (passed as parentTemplateID to first child only).
 	// Port of Python: parent_template_id = self.get_location_id(page_template)
@@ -908,7 +908,7 @@ func processPageSpreadStoryBranch(
 	locID := getLocationID(pageTemplate)
 
 	// Get story from storyline reference
-	storyName, _ := popString(pageTemplate, "$176")
+	storyName, _ := popString(pageTemplate, "story_name")
 	story, ok := storylines[storyName]
 	if !ok {
 		result.Err = fmt.Errorf("page spread template references missing storyline %q", storyName)
@@ -916,7 +916,7 @@ func processPageSpreadStoryBranch(
 	}
 
 	// Pop storyline name from story data
-	delete(story, "$176")
+	delete(story, "story_name")
 
 	// Determine base property and initial page property
 	baseProperty := layoutSpreadBaseProperty(layout)
@@ -931,7 +931,7 @@ func processPageSpreadStoryBranch(
 	}
 
 	// Process children from $146 (content_list)
-	children, _ := asSlice(popInterfaceDefault(story, "$146"))
+	children, _ := asSlice(popInterfaceDefault(story, "content_list"))
 	result.Children = make([]pageSpreadChild, 0, len(children))
 
 	// Port of Python: parent_template_id passed to first child, then set to None.
@@ -993,8 +993,8 @@ func processPageSpreadScaleFitBranch(
 	result := pageSpreadResult{}
 
 	// Pop $159 and $156
-	delete(pageTemplate, "$159")
-	delete(pageTemplate, "$156")
+	delete(pageTemplate, "type")
+	delete(pageTemplate, "layout")
 
 	// Handle virtual panel
 	if vp := processVirtualPanel(pageTemplate, &cfg, sectionName); vp {
@@ -1002,12 +1002,12 @@ func processPageSpreadScaleFitBranch(
 	}
 
 	// Pop unused keys
-	delete(pageTemplate, "$192")
-	delete(pageTemplate, "$140")
-	delete(pageTemplate, "$560")
+	delete(pageTemplate, "direction")
+	delete(pageTemplate, "float")
+	delete(pageTemplate, "writing_mode")
 
 	// Validate font_size == 16
-	fontSize, _ := popInt(pageTemplate, "$16")
+	fontSize, _ := popInt(pageTemplate, "font_size")
 	if fontSize != 16 {
 		log.Printf("kfx: warning: unexpected font size in PDF backed scale_fit page template: %d", fontSize)
 	}
@@ -1023,16 +1023,16 @@ func processPageSpreadScaleFitBranch(
 	}
 
 	// Get story
-	storyName, _ := popString(pageTemplate, "$176")
+	storyName, _ := popString(pageTemplate, "story_name")
 	story, ok := storylines[storyName]
 	if !ok {
 		result.Err = fmt.Errorf("scale_fit template references missing storyline %q", storyName)
 		return result
 	}
-	delete(story, "$176")
+	delete(story, "story_name")
 
 	// Process children without page_spread alternation
-	children, _ := asSlice(popInterfaceDefault(story, "$146"))
+	children, _ := asSlice(popInterfaceDefault(story, "content_list"))
 	result.Children = make([]pageSpreadChild, 0, len(children))
 
 	for _, child := range children {
@@ -1076,9 +1076,9 @@ func processPageSpreadConnectedBranch(
 	result := pageSpreadResult{}
 
 	// Pop $159, $156, $656
-	delete(pageTemplate, "$159")
-	delete(pageTemplate, "$156")
-	delete(pageTemplate, "$656")
+	delete(pageTemplate, "type")
+	delete(pageTemplate, "layout")
+	delete(pageTemplate, "yj.enable_connected_dps")
 
 	// Handle virtual panel
 	if vp := processVirtualPanel(pageTemplate, &cfg, sectionName); vp {
@@ -1086,7 +1086,7 @@ func processPageSpreadConnectedBranch(
 	}
 
 	// Validate connected_pagination == 2
-	connectedPagination, _ := popInt(pageTemplate, "$655")
+	connectedPagination, _ := popInt(pageTemplate, "yj.connected_pagination")
 	if connectedPagination != 2 {
 		log.Printf("kfx: error: unexpected connected_pagination: %d", connectedPagination)
 	}
@@ -1097,16 +1097,16 @@ func processPageSpreadConnectedBranch(
 	locID := getLocationID(pageTemplate)
 
 	// Get story
-	storyName, _ := popString(pageTemplate, "$176")
+	storyName, _ := popString(pageTemplate, "story_name")
 	story, ok := storylines[storyName]
 	if !ok {
 		result.Err = fmt.Errorf("connected pagination template references missing storyline %q", storyName)
 		return result
 	}
-	delete(story, "$176")
+	delete(story, "story_name")
 
 	// Process children with "rendition:page-spread-center"
-	children, _ := asSlice(popInterfaceDefault(story, "$146"))
+	children, _ := asSlice(popInterfaceDefault(story, "content_list"))
 	result.Children = make([]pageSpreadChild, 0, len(children))
 
 	// Port of Python: parent_template_id passed to first child, then set to None.
@@ -1230,7 +1230,7 @@ type regionMagnificationResult struct {
 	ActivateElements      []htmlElement       // <a class="app-amzn-magnify"> elements
 	LinkRegistrations     []linkRegistration  // magnify_target/magnify_source registrations
 	AutoEnabled           bool                // set when $426 found without prior region_magnification
-	HasUnknownActionError bool                // set when $428 action is not "$468"
+	HasUnknownActionError bool                // set when $428 action is not "zoom_in"
 }
 
 // processRegionMagnification handles $426 (activate) entries within container content.
@@ -1238,19 +1238,19 @@ type regionMagnificationResult struct {
 //
 // Python reference:
 //
-//	if "$426" in content:
+//	if "activate" in content:
 //	    if not self.region_magnification:
 //	        log.error("activate found without region magnification")
 //	        self.region_magnification = True
-//	    ordinal = content.pop("$427")
-//	    for activate in content.pop("$426"):
-//	        action = activate.pop("$428")
-//	        if action == "$468":
+//	    ordinal = content.pop("ordinal")
+//	    for activate in content.pop("activate"):
+//	        action = activate.pop("action")
+//	        if action == "zoom_in":
 //	            activate_elem = etree.SubElement(content_elem, "a")
 //	            activate_elem.set("class", "app-amzn-magnify")
 //	            activate_elem.set("data-app-amzn-magnify", json_serialize_compact(OD(
-//	                "targetId", self.register_link_id(activate.pop("$163"), "magnify_target"),
-//	                "sourceId", self.register_link_id(activate.pop("$474"), "magnify_source"),
+//	                "targetId", self.register_link_id(activate.pop("target"), "magnify_target"),
+//	                "sourceId", self.register_link_id(activate.pop("source"), "magnify_source"),
 //	                "ordinal", ordinal)))
 //	            self.check_empty(activate, ...)
 //	        else:
@@ -1259,7 +1259,7 @@ func processRegionMagnification(content map[string]interface{}, cfg *regionMagni
 	result := regionMagnificationResult{}
 
 	// Check if $426 (activate) is present
-	activatesRaw, hasActivates := content["$426"]
+	activatesRaw, hasActivates := content["activate"]
 	if !hasActivates {
 		return result
 	}
@@ -1273,8 +1273,8 @@ func processRegionMagnification(content map[string]interface{}, cfg *regionMagni
 	}
 
 	// Pop ordinal ($427)
-	// Python: ordinal = content.pop("$427")
-	ordinalRaw := popInterfaceDefault(content, "$427")
+	// Python: ordinal = content.pop("ordinal")
+	ordinalRaw := popInterfaceDefault(content, "ordinal")
 	ordinal := 0
 	if ordinalRaw != nil {
 		if iv, ok := asInt(ordinalRaw); ok {
@@ -1283,7 +1283,7 @@ func processRegionMagnification(content map[string]interface{}, cfg *regionMagni
 	}
 
 	// Pop activate list ($426)
-	// Python: for activate in content.pop("$426"):
+	// Python: for activate in content.pop("activate"):
 	activates, ok := asSlice(activatesRaw)
 	if !ok {
 		return result
@@ -1296,18 +1296,18 @@ func processRegionMagnification(content map[string]interface{}, cfg *regionMagni
 		}
 
 		// Pop action ($428)
-		// Python: action = activate.pop("$428")
-		actionRaw := popInterfaceDefault(activate, "$428")
+		// Python: action = activate.pop("action")
+		actionRaw := popInterfaceDefault(activate, "action")
 		action, _ := asString(actionRaw)
 
-		if action == "$468" {
+		if action == "zoom_in" {
 			// Pop target ($163) and source ($474)
 			// Python:
-			//   activate.pop("$163") → register_link_id(eid, "magnify_target")
-			//   activate.pop("$474") → register_link_id(eid, "magnify_source")
-			targetEIDRaw := popInterfaceDefault(activate, "$163")
+			//   activate.pop("target") → register_link_id(eid, "magnify_target")
+			//   activate.pop("source") → register_link_id(eid, "magnify_source")
+			targetEIDRaw := popInterfaceDefault(activate, "target")
 			targetEID, _ := asString(targetEIDRaw)
-			sourceEIDRaw := popInterfaceDefault(activate, "$474")
+			sourceEIDRaw := popInterfaceDefault(activate, "source")
 			sourceEID, _ := asString(sourceEIDRaw)
 
 			// Register link IDs (Python: register_link_id creates "magnify_target_<eid>" anchor)
@@ -1441,7 +1441,7 @@ func fixVerticalAlignProperties(contentElem *htmlElement, contentStyle map[strin
 // Port of Python process_reading_order reading order iteration (yj_to_epub_content.py L105+).
 // Python iterates all reading orders; Go merges all section lists.
 func readSectionOrder(value map[string]interface{}) []string {
-	entries, ok := asSlice(value["$169"])
+	entries, ok := asSlice(value["reading_orders"])
 	if !ok {
 		return nil
 	}
@@ -1452,7 +1452,7 @@ func readSectionOrder(value map[string]interface{}) []string {
 		if !ok {
 			continue
 		}
-		sections, ok := asSlice(entryMap["$170"])
+		sections, ok := asSlice(entryMap["sections"])
 		if !ok {
 			continue
 		}
@@ -1467,11 +1467,11 @@ func readSectionOrder(value map[string]interface{}) []string {
 }
 
 func parsePositionMapSectionID(fragmentID string, value map[string]interface{}) string {
-	return chooseFragmentIdentity(fragmentID, value["$174"])
+	return chooseFragmentIdentity(fragmentID, value["section_name"])
 }
 
 func readPositionMap(value map[string]interface{}) []int {
-	entries, ok := asSlice(value["$181"])
+	entries, ok := asSlice(value["contains"])
 	if !ok {
 		return nil
 	}
@@ -1491,7 +1491,7 @@ func readPositionMap(value map[string]interface{}) []int {
 }
 
 func sectionStorylineID(section map[string]interface{}) string {
-	containers, ok := asSlice(section["$141"])
+	containers, ok := asSlice(section["page_templates"])
 	if !ok || len(containers) == 0 {
 		return ""
 	}
@@ -1499,13 +1499,13 @@ func sectionStorylineID(section map[string]interface{}) string {
 	if !ok {
 		return ""
 	}
-	storylineID, _ := asString(first["$176"])
+	storylineID, _ := asString(first["story_name"])
 	return storylineID
 }
 
 func parseSectionFragment(fragmentID string, value map[string]interface{}) sectionFragment {
-	id := chooseFragmentIdentity(fragmentID, value["$174"])
-	containers, ok := asSlice(value["$141"])
+	id := chooseFragmentIdentity(fragmentID, value["section_name"])
+	containers, ok := asSlice(value["page_templates"])
 	if !ok || len(containers) == 0 {
 		return sectionFragment{ID: id}
 	}
@@ -1515,16 +1515,16 @@ func parseSectionFragment(fragmentID string, value map[string]interface{}) secti
 		if !ok {
 			continue
 		}
-		storylineID, _ := asString(container["$176"])
-		pageTemplateStyle, _ := asString(container["$157"])
-		positionID, _ := asInt(container["$155"])
+		storylineID, _ := asString(container["story_name"])
+		pageTemplateStyle, _ := asString(container["style"])
+		positionID, _ := asInt(container["id"])
 		templates = append(templates, pageTemplateFragment{
 			PositionID:         positionID,
 			Storyline:          storylineID,
 			PageTemplateStyle:  pageTemplateStyle,
 			PageTemplateValues: filterBodyStyleValues(container),
-			HasCondition:       container["$171"] != nil,
-			Condition:          container["$171"],
+			HasCondition:       container["condition"] != nil,
+			Condition:          container["condition"],
 		})
 	}
 	if len(templates) == 0 {
@@ -1547,20 +1547,20 @@ func collectStorylinePositions(nodes []interface{}, sectionID string, positions 
 		if !ok {
 			continue
 		}
-		if positionID, ok := asInt(node["$155"]); ok && positionID != 0 && positions[positionID] == "" {
+		if positionID, ok := asInt(node["id"]); ok && positionID != 0 && positions[positionID] == "" {
 			positions[positionID] = sectionID
 		}
-		if children, ok := asSlice(node["$146"]); ok {
+		if children, ok := asSlice(node["content_list"]); ok {
 			collectStorylinePositions(children, sectionID, positions)
 		}
-		if cols, ok := asSlice(node["$152"]); ok {
+		if cols, ok := asSlice(node["column_format"]); ok {
 			collectStorylinePositions(cols, sectionID, positions)
 		}
 	}
 }
 
 func parseAnchorFragment(fragmentID string, value map[string]interface{}) anchorFragment {
-	id := chooseFragmentIdentity(fragmentID, value["$180"])
+	id := chooseFragmentIdentity(fragmentID, value["anchor_name"])
 	if debugAnchors := os.Getenv("KFX_DEBUG_ANCHORS"); debugAnchors != "" {
 		for _, wanted := range strings.Split(debugAnchors, ",") {
 			if strings.TrimSpace(wanted) == id || strings.TrimSpace(wanted) == fragmentID {
@@ -1568,21 +1568,21 @@ func parseAnchorFragment(fragmentID string, value map[string]interface{}) anchor
 			}
 		}
 	}
-	if uri, ok := asString(value["$186"]); ok {
+	if uri, ok := asString(value["uri"]); ok {
 		if uri == "http://" || uri == "https://" {
 			uri = ""
 		}
 		return anchorFragment{ID: id, URI: uri}
 	}
 	// Port of Python yj_to_epub_navigation.py:55-63 — anchor fragments with $183
-	// reference a position. Python: register_anchor(name, get_position(anchor.pop("$183")))
+	// reference a position. Python: register_anchor(name, get_position(anchor.pop("position")))
 	// where get_position extracts (eid, offset) from $183.$155/$598 and $183.$143.
-	target, ok := asMap(value["$183"])
+	target, ok := asMap(value["position"])
 	if !ok {
 		return anchorFragment{ID: id}
 	}
-	positionID, _ := asInt(target["$155"])
-	offset, _ := asInt(target["$143"])
+	positionID, _ := asInt(target["id"])
+	offset, _ := asInt(target["offset"])
 	return anchorFragment{
 		ID:         id,
 		PositionID: positionID,
@@ -1608,19 +1608,18 @@ func isResolvedIdentity(value string) bool {
 	if value == "" {
 		return false
 	}
-	return !(strings.HasPrefix(value, "$") && len(value) > 1)
+	// A "resolved" identity is one that is NOT a shared symbol name.
+	// Shared symbols (like "section", "container") are used as fallback IDs
+	// when no specific fragment ID is available — they are not resolved identities.
+	return !isSharedSymbolName(value)
 }
 
 func isPlaceholderSymbol(value string) bool {
-	if !strings.HasPrefix(value, "$") || len(value) == 1 {
-		return false
-	}
-	for _, r := range value[1:] {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
+	// With real names, a "placeholder" is a shared symbol name.
+	// These are names like "section", "container", etc. that come from the
+	// YJ shared symbol table — they are placeholders in the sense that they
+	// identify a fragment type, not a specific fragment instance.
+	return isSharedSymbolName(value)
 }
 
 // ---------------------------------------------------------------------------
@@ -2456,20 +2455,20 @@ func filterBodyStyleValues(values map[string]interface{}) map[string]interface{}
 		return nil
 	}
 	allowed := map[string]bool{
-		"$11":  true,
-		"$12":  true,
-		"$16":  true,
-		"$36":  true,
-		"$41":  true,
-		"$42":  true,
-		"$47":  true,
-		"$48":  true,
-		"$49":  true,
-		"$50":  true,
-		"$70":  true,
-		"$72":  true,
-		"$580": true,
-		"$583": true,
+		"font_family":  true,
+		"font_style":  true,
+		"font_size":  true,
+		"text_indent":  true,
+		"text_transform":  true,
+		"line_height":  true,
+		"margin_top":  true,
+		"margin_left":  true,
+		"margin_bottom":  true,
+		"margin_right":  true,
+		"fill_color":  true,
+		"fill_opacity":  true,
+		"box_align": true,
+		"glyph_transform": true,
 	}
 	filtered := map[string]interface{}{}
 	for key, value := range values {
@@ -2645,9 +2644,9 @@ func flattenParagraphs(nodes []interface{}, contents map[string][]string) []stri
 			if !ok {
 				continue
 			}
-			if ref, ok := asMap(node["$145"]); ok {
+			if ref, ok := asMap(node["content"]); ok {
 				name, _ := asString(ref["name"])
-				index, ok := asInt(ref["$403"])
+				index, ok := asInt(ref["index"])
 				if ok {
 					if values, found := contents[name]; found && index >= 0 && index < len(values) {
 						text := strings.TrimSpace(values[index])
@@ -2657,7 +2656,7 @@ func flattenParagraphs(nodes []interface{}, contents map[string][]string) []stri
 					}
 				}
 			}
-			if children, ok := asSlice(node["$146"]); ok {
+			if children, ok := asSlice(node["content_list"]); ok {
 				walk(children)
 			}
 		}
@@ -2761,17 +2760,17 @@ func debugStorylineNodes(sectionID string, nodes []interface{}, depth int) {
 		if !ok {
 			continue
 		}
-		positionID, _ := asInt(node["$155"])
-		styleID, _ := asString(node["$157"])
+		positionID, _ := asInt(node["id"])
+		styleID, _ := asString(node["style"])
 		text := ""
-		if ref, ok := asMap(node["$145"]); ok {
+		if ref, ok := asMap(node["content"]); ok {
 			text = truncateDebugText(ref)
 		}
-		fmt.Fprintf(os.Stderr, "story %s %spos=%d type=%s style=%s text=%q keys=%v\n", sectionID, prefix, positionID, asStringDefault(node["$159"]), styleID, text, sortedMapKeys(node))
-		if cols, ok := asSlice(node["$152"]); ok {
+		fmt.Fprintf(os.Stderr, "story %s %spos=%d type=%s style=%s text=%q keys=%v\n", sectionID, prefix, positionID, asStringDefault(node["type"]), styleID, text, sortedMapKeys(node))
+		if cols, ok := asSlice(node["column_format"]); ok {
 			fmt.Fprintf(os.Stderr, "story %s %scols=%#v\n", sectionID, prefix, cols)
 		}
-		if children, ok := asSlice(node["$146"]); ok {
+		if children, ok := asSlice(node["content_list"]); ok {
 			debugStorylineNodes(sectionID, children, depth+1)
 		}
 	}
@@ -2788,7 +2787,7 @@ func sortedMapKeys(value map[string]interface{}) []string {
 
 func truncateDebugText(ref map[string]interface{}) string {
 	name, _ := asString(ref["name"])
-	index, _ := asInt(ref["$403"])
+	index, _ := asInt(ref["index"])
 	return fmt.Sprintf("%s[%d]", name, index)
 }
 
@@ -2807,7 +2806,7 @@ func intPtr(value int) *int {
 // "UYqzWVgySW_Gl4WQ-Od_xQ1.xhtml". Previously Go applied uniquePartOfLocalSymbol
 // which stripped base64/UUID prefixes, producing numeric names like "1.xhtml".
 // Port of Python: self.SECTION_TEXT_FILEPATH % section_name where section_name
-// comes from section.pop("$174") — used verbatim, no uniquePartOfLocalSymbol.
+// comes from section.pop("section_name") — used verbatim, no uniquePartOfLocalSymbol.
 func sectionFilename(sectionID string) string {
 	return sectionID + ".xhtml"
 }
@@ -2825,7 +2824,7 @@ func cloneStyleMap(style map[string]string) map[string]string {
 
 func resolveContentText(contentFragments map[string][]string, ref map[string]interface{}) string {
 	name, _ := asString(ref["name"])
-	index, ok := asInt(ref["$403"])
+	index, ok := asInt(ref["index"])
 	if !ok {
 		return ""
 	}
@@ -2843,7 +2842,7 @@ func inferBookLanguage(defaultLanguage string, contentFragments map[string][]str
 	}
 	merits := map[string]int{}
 	for _, storyline := range storylines {
-		nodes, _ := asSlice(storyline["$146"])
+		nodes, _ := asSlice(storyline["content_list"])
 		accumulateContentLanguageMerits(nodes, defaultKey, merits, contentFragments, styleFragments)
 	}
 	bestLanguage := defaultKey
@@ -2868,15 +2867,15 @@ func accumulateContentLanguageMerits(nodes []interface{}, currentLanguage string
 			continue
 		}
 		language := currentLanguage
-		styleID, _ := asString(node["$157"])
+		styleID, _ := asString(node["style"])
 		style := effectiveStyle(styleFragments[styleID], node)
-		if rawLanguage, ok := asString(style["$10"]); ok && rawLanguage != "" {
+		if rawLanguage, ok := asString(style["language"]); ok && rawLanguage != "" {
 			language = languageKey(rawLanguage)
 		}
-		if ref, ok := asMap(node["$145"]); ok && language != "" {
+		if ref, ok := asMap(node["content"]); ok && language != "" {
 			merits[language] += len([]rune(resolveContentText(contentFragments, ref)))
 		}
-		if children, ok := asSlice(node["$146"]); ok {
+		if children, ok := asSlice(node["content_list"]); ok {
 			accumulateContentLanguageMerits(children, language, merits, contentFragments, styleFragments)
 		}
 	}
@@ -2896,13 +2895,13 @@ func languageMatchesDefault(candidate string, defaultLanguage string) bool {
 func bodyPromotionPresenceStyle(bodyClass string) map[string]interface{} {
 	switch bodyClass {
 	case "class-0":
-		return map[string]interface{}{"$11": true, "$34": true}
+		return map[string]interface{}{"font_family": true, "text_alignment": true}
 	case "class-1":
-		return map[string]interface{}{"$11": true}
+		return map[string]interface{}{"font_family": true}
 	case "class-2":
-		return map[string]interface{}{"$11": true, "$34": true, "$36": true}
+		return map[string]interface{}{"font_family": true, "text_alignment": true, "text_indent": true}
 	case "class-3":
-		return map[string]interface{}{"$11": true, "$34": true}
+		return map[string]interface{}{"font_family": true, "text_alignment": true}
 	default:
 		return nil
 	}
@@ -2914,11 +2913,11 @@ func storylineUsesJustifiedBody(nodes []interface{}) bool {
 		if !ok {
 			continue
 		}
-		styleID, _ := asString(node["$157"])
+		styleID, _ := asString(node["style"])
 		if styleID == "s6E" || styleID == "s6G" {
 			return true
 		}
-		if children, ok := asSlice(node["$146"]); ok && storylineUsesJustifiedBody(children) {
+		if children, ok := asSlice(node["content_list"]); ok && storylineUsesJustifiedBody(children) {
 			return true
 		}
 	}
@@ -2945,10 +2944,10 @@ func storylineContainsParagraph(nodes []interface{}) bool {
 		if !ok {
 			continue
 		}
-		if _, ok := asMap(node["$145"]); ok && headingLevel(node) == 0 {
+		if _, ok := asMap(node["content"]); ok && headingLevel(node) == 0 {
 			return true
 		}
-		if children, ok := asSlice(node["$146"]); ok && storylineContainsParagraph(children) {
+		if children, ok := asSlice(node["content_list"]); ok && storylineContainsParagraph(children) {
 			return true
 		}
 	}
@@ -3014,7 +3013,7 @@ func (f *fontNameFixer) setDefaultFontFamily(defaultFontFamily string) {
 }
 
 // registerFontFamilies registers @font-face font names with add=true, matching Python's
-// process_fonts (yj_to_epub_resources.py) which calls fix_font_name(font["$11"], add=True).
+// process_fonts (yj_to_epub_resources.py) which calls fix_font_name(font["font_family"], add=True).
 // This registers each font with its proper case so that subsequent lookups (e.g., when
 // resolving "default" from KFX metadata) find the properly-cased name.
 // Must be called before setDefaultFontFamily to ensure proper case resolution.
@@ -3276,7 +3275,7 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 		inferredBody = true
 		if len(bodyStyleValues) == 0 {
 			bodyStyleValues = map[string]interface{}{
-				"$11": defaultInheritedBodyStyle()["$11"],
+				"font_family": defaultInheritedBodyStyle()["font_family"],
 			}
 		}
 	}
@@ -3287,7 +3286,7 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	r.firstVisibleSeen = false
 	r.lastKFXHeadingLevel = 1
 	if bodyStyleID == "" {
-		bodyStyleID, _ = asString(storyline["$157"])
+		bodyStyleID, _ = asString(storyline["style"])
 	}
 	bodyStyle := effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
 	// In Python, text-indent is NOT set on the body element during rendering. Instead,
@@ -3296,11 +3295,11 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	// in child classes (the inherited default "0" matched children's "0", so simplify
 	// stripped it). Now we keep text-indent in the body style and let simplify_styles'
 	// reverse inheritance handle it — matching Python's approach.
-	// delete(bodyStyle, "$36")
+	// delete(bodyStyle, "text_indent")
 	bodyDeclarations := cssDeclarationsFromMap(processContentProperties(bodyStyle, r.resolveResource))
 	if bodyStyleID == "" && len(bodyDeclarations) == 0 {
 		bodyStyleValues = map[string]interface{}{
-			"$11": defaultInheritedBodyStyle()["$11"],
+			"font_family": defaultInheritedBodyStyle()["font_family"],
 		}
 		bodyStyle = effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
 		bodyDeclarations = cssDeclarationsFromMap(processContentProperties(bodyStyle, r.resolveResource))
@@ -3489,52 +3488,52 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 	if !ok {
 		return nil
 	}
-	switch asStringDefault(node["$159"]) {
-	case "$276":
+	switch asStringDefault(node["type"]) {
+	case "list":
 		if list := r.renderListNode(node, depth); list != nil {
 			return r.wrapNodeLink(node, list)
 		}
-	case "$277":
+	case "listitem":
 		if item := r.renderListItemNode(node, depth); item != nil {
 			return r.wrapNodeLink(node, item)
 		}
-	case "$596":
+	case "horizontal_rule":
 		if rule := r.renderRuleNode(node); rule != nil {
 			return r.wrapNodeLink(node, rule)
 		}
-	case "$439":
+	case "zoom_target":
 		if hidden := r.renderHiddenNode(node, depth); hidden != nil {
 			return r.wrapNodeLink(node, hidden)
 		}
-	case "$278":
+	case "table":
 		if table := r.renderTableNode(node, depth); table != nil {
 			return r.wrapNodeLink(node, table)
 		}
-	case "$270":
+	case "container":
 		if container := r.renderFittedContainer(node, depth); container != nil {
 			return r.wrapNodeLink(node, container)
 		}
-	case "$272":
+	case "kvg":
 		if svg := r.renderSVGNode(node); svg != nil {
 			return r.wrapNodeLink(node, svg)
 		}
-	case "$274":
+	case "plugin":
 		if plugin := r.renderPluginNode(node); plugin != nil {
 			return r.wrapNodeLink(node, plugin)
 		}
-	case "$454":
+	case "body":
 		if tbody := r.renderStructuredContainer(node, "tbody", depth); tbody != nil {
 			return r.wrapNodeLink(node, tbody)
 		}
-	case "$151":
+	case "header":
 		if thead := r.renderStructuredContainer(node, "thead", depth); thead != nil {
 			return r.wrapNodeLink(node, thead)
 		}
-	case "$455":
+	case "footer":
 		if tfoot := r.renderStructuredContainer(node, "tfoot", depth); tfoot != nil {
 			return r.wrapNodeLink(node, tfoot)
 		}
-	case "$279":
+	case "table_row":
 		if row := r.renderTableRow(node, depth); row != nil {
 			return r.wrapNodeLink(node, row)
 		}
@@ -3548,7 +3547,7 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 		return r.wrapNodeLink(node, textNode)
 	}
 
-	children, ok := asSlice(node["$146"])
+	children, ok := asSlice(node["content_list"])
 	if !ok {
 		if hasRenderableContainer(node) {
 			element := &htmlElement{Tag: "div", Attrs: map[string]string{}}
@@ -3583,7 +3582,7 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 			// sty.pop("-kfx-heading-level", self.last_kfx_heading_level) (line 1858).
 			element.Attrs["data-kfx-heading-level"] = fmt.Sprintf("%d", hl)
 			r.applyStructuralNodeAttrs(element, node, "")
-			if positionID, _ := asInt(node["$155"]); positionID != 0 {
+			if positionID, _ := asInt(node["id"]); positionID != 0 {
 				r.applyPositionAnchors(element, positionID, false)
 			}
 			return r.wrapNodeLink(node, element)
@@ -3632,7 +3631,7 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 			delete(wrapper.Attrs, "style")
 		}
 		r.applyStructuralNodeAttrs(wrapper, node, "")
-		if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		if positionID, _ := asInt(node["id"]); positionID != 0 {
 			r.applyPositionAnchors(wrapper, positionID, false)
 		}
 		return r.wrapNodeLink(node, wrapper)
@@ -3641,7 +3640,7 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 		container.Attrs["style"] = styleAttr
 	}
 	r.applyStructuralNodeAttrs(container, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(container, positionID, false)
 	}
 	return r.wrapNodeLink(node, container)
@@ -3666,7 +3665,7 @@ func singleImageWrapperChild(container *htmlElement) *htmlElement {
 }
 
 func (r *storylineRenderer) renderListNode(node map[string]interface{}, depth int) htmlPart {
-	tag := listTagByMarker[asStringDefault(node["$100"])]
+	tag := listTagByMarker[asStringDefault(node["list_style"])]
 	if tag == "" {
 		tag = "ul"
 	}
@@ -3674,10 +3673,10 @@ func (r *storylineRenderer) renderListNode(node map[string]interface{}, depth in
 	if styleAttr := r.containerClass(node); styleAttr != "" {
 		list.Attrs["style"] = styleAttr
 	}
-	if start, ok := asInt(node["$104"]); ok && start > 0 && tag == "ol" && start != 1 {
+	if start, ok := asInt(node["list_start_offset"]); ok && start > 0 && tag == "ol" && start != 1 {
 		list.Attrs["start"] = strconv.Itoa(start)
 	}
-	children, _ := asSlice(node["$146"])
+	children, _ := asSlice(node["content_list"])
 	for _, child := range children {
 		if rendered := r.renderNode(child, depth+1); rendered != nil {
 			list.Children = append(list.Children, rendered)
@@ -3687,7 +3686,7 @@ func (r *storylineRenderer) renderListNode(node map[string]interface{}, depth in
 		return nil
 	}
 	r.applyStructuralNodeAttrs(list, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(list, positionID, false)
 	}
 	return list
@@ -3698,15 +3697,15 @@ func (r *storylineRenderer) renderListItemNode(node map[string]interface{}, dept
 	if styleAttr := r.containerClass(node); styleAttr != "" {
 		item.Attrs["style"] = styleAttr
 	}
-	if value, ok := asInt(node["$104"]); ok && value > 0 {
+	if value, ok := asInt(node["list_start_offset"]); ok && value > 0 {
 		item.Attrs["value"] = strconv.Itoa(value)
 	}
-	if ref, ok := asMap(node["$145"]); ok {
+	if ref, ok := asMap(node["content"]); ok {
 		text := r.resolveText(ref)
 		if text != "" {
 			item.Children = append(item.Children, r.applyAnnotations(text, node)...)
 		}
-	} else if children, ok := asSlice(node["$146"]); ok {
+	} else if children, ok := asSlice(node["content_list"]); ok {
 		for _, child := range children {
 			if rendered := r.renderNode(child, depth+1); rendered != nil {
 				item.Children = append(item.Children, rendered)
@@ -3721,7 +3720,7 @@ func (r *storylineRenderer) renderListItemNode(node map[string]interface{}, dept
 		return nil
 	}
 	r.applyStructuralNodeAttrs(item, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(item, positionID, false)
 	}
 	return item
@@ -3733,7 +3732,7 @@ func (r *storylineRenderer) renderRuleNode(node map[string]interface{}) htmlPart
 		rule.Attrs["style"] = styleAttr
 	}
 	r.applyStructuralNodeAttrs(rule, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(rule, positionID, false)
 	}
 	return rule
@@ -3747,7 +3746,7 @@ func (r *storylineRenderer) renderHiddenNode(node map[string]interface{}, depth 
 	if hiddenStyle := styleStringFromDeclarations("class", nil, []string{"display: none"}); hiddenStyle != "" {
 		element.Attrs["style"] = mergeStyleStrings(element.Attrs["style"], hiddenStyle)
 	}
-	if children, ok := asSlice(node["$146"]); ok {
+	if children, ok := asSlice(node["content_list"]); ok {
 		for _, child := range children {
 			if rendered := r.renderNode(child, depth+1); rendered != nil {
 				element.Children = append(element.Children, rendered)
@@ -3762,14 +3761,14 @@ func (r *storylineRenderer) renderHiddenNode(node map[string]interface{}, depth 
 		return nil
 	}
 	r.applyStructuralNodeAttrs(element, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(element, positionID, false)
 	}
 	return element
 }
 
 func (r *storylineRenderer) renderFittedContainer(node map[string]interface{}, depth int) htmlPart {
-	fitWidth, _ := asBool(node["$478"])
+	fitWidth, _ := asBool(node["fit_width"])
 	if !fitWidth {
 		return nil
 	}
@@ -3778,7 +3777,7 @@ func (r *storylineRenderer) renderFittedContainer(node map[string]interface{}, d
 		outer.Attrs["style"] = styleAttr
 	}
 	inner := &htmlElement{Tag: "div", Attrs: map[string]string{}}
-	children, _ := asSlice(node["$146"])
+	children, _ := asSlice(node["content_list"])
 	for _, child := range children {
 		rendered := r.renderNode(child, depth+1)
 		if rendered != nil {
@@ -3788,7 +3787,7 @@ func (r *storylineRenderer) renderFittedContainer(node map[string]interface{}, d
 	if len(inner.Children) == 0 {
 		return nil
 	}
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	baseName := "class"
 	if styleID != "" {
 		baseName = r.styleBaseName(styleID)
@@ -3798,14 +3797,14 @@ func (r *storylineRenderer) renderFittedContainer(node map[string]interface{}, d
 	}
 	outer.Children = []htmlPart{inner}
 	r.applyStructuralNodeAttrs(outer, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(outer, positionID, false)
 	}
 	return outer
 }
 
 func (r *storylineRenderer) renderPluginNode(node map[string]interface{}) htmlPart {
-	resourceID, _ := asString(node["$175"])
+	resourceID, _ := asString(node["resource_name"])
 	if resourceID == "" {
 		return nil
 	}
@@ -3814,7 +3813,7 @@ func (r *storylineRenderer) renderPluginNode(node map[string]interface{}) htmlPa
 		return nil
 	}
 	resource := r.resourceFragments[resourceID]
-	alt, _ := asString(node["$584"])
+	alt, _ := asString(node["alt_text"])
 	switch {
 	case resource.MediaType == "plugin/kfx-html-article" || resource.MediaType == "text/html" || resource.MediaType == "application/xhtml+xml":
 		element := &htmlElement{
@@ -3869,8 +3868,8 @@ func (r *storylineRenderer) renderPluginNode(node map[string]interface{}) htmlPa
 }
 
 func (r *storylineRenderer) renderSVGNode(node map[string]interface{}) htmlPart {
-	width, hasWidth := asInt(node["$66"])
-	height, hasHeight := asInt(node["$67"])
+	width, hasWidth := asInt(node["fixed_width"])
+	height, hasHeight := asInt(node["fixed_height"])
 	attrs := map[string]string{
 		"version":             "1.1",
 		"preserveAspectRatio": "xMidYMid meet",
@@ -3883,7 +3882,7 @@ func (r *storylineRenderer) renderSVGNode(node map[string]interface{}) htmlPart 
 		Attrs: attrs,
 	}
 	r.applyStructuralNodeAttrs(element, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(element, positionID, false)
 	}
 	return element
@@ -3894,7 +3893,7 @@ func (r *storylineRenderer) renderTableNode(node map[string]interface{}, depth i
 	if styleAttr := r.tableClass(node); styleAttr != "" {
 		table.Attrs["style"] = styleAttr
 	}
-	if cols, ok := asSlice(node["$152"]); ok && len(cols) > 0 {
+	if cols, ok := asSlice(node["column_format"]); ok && len(cols) > 0 {
 		colgroup := &htmlElement{Tag: "colgroup", Attrs: map[string]string{}}
 		for _, raw := range cols {
 			colMap, ok := asMap(raw)
@@ -3902,7 +3901,7 @@ func (r *storylineRenderer) renderTableNode(node map[string]interface{}, depth i
 				continue
 			}
 			col := &htmlElement{Tag: "col", Attrs: map[string]string{}}
-			if span, ok := asInt(colMap["$118"]); ok && span > 1 {
+			if span, ok := asInt(colMap["column_span"]); ok && span > 1 {
 				col.Attrs["span"] = strconv.Itoa(span)
 			}
 			if styleAttr := r.tableColumnClass(colMap); styleAttr != "" {
@@ -3914,7 +3913,7 @@ func (r *storylineRenderer) renderTableNode(node map[string]interface{}, depth i
 			table.Children = append(table.Children, colgroup)
 		}
 	}
-	if children, ok := asSlice(node["$146"]); ok {
+	if children, ok := asSlice(node["content_list"]); ok {
 		for _, child := range children {
 			rendered := r.renderNode(child, depth+1)
 			if rendered != nil {
@@ -3929,7 +3928,7 @@ func (r *storylineRenderer) renderTableNode(node map[string]interface{}, depth i
 		return nil
 	}
 	r.applyStructuralNodeAttrs(table, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(table, positionID, false)
 	}
 	return table
@@ -3940,7 +3939,7 @@ func (r *storylineRenderer) renderStructuredContainer(node map[string]interface{
 	if styleAttr := r.structuredContainerClass(node); styleAttr != "" {
 		element.Attrs["style"] = styleAttr
 	}
-	if children, ok := asSlice(node["$146"]); ok {
+	if children, ok := asSlice(node["content_list"]); ok {
 		for _, child := range children {
 			rendered := r.renderNode(child, depth+1)
 			if rendered != nil {
@@ -3952,7 +3951,7 @@ func (r *storylineRenderer) renderStructuredContainer(node map[string]interface{
 		return nil
 	}
 	r.applyStructuralNodeAttrs(element, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(element, positionID, false)
 	}
 	return element
@@ -3960,12 +3959,12 @@ func (r *storylineRenderer) renderStructuredContainer(node map[string]interface{
 
 func (r *storylineRenderer) renderTableRow(node map[string]interface{}, depth int) htmlPart {
 	row := &htmlElement{Tag: "tr", Attrs: map[string]string{}}
-	if styleID, _ := asString(node["$157"]); styleID != "" {
+	if styleID, _ := asString(node["style"]); styleID != "" {
 		if styleAttr := r.structuredContainerClass(node); styleAttr != "" {
 			row.Attrs["style"] = styleAttr
 		}
 	}
-	children, _ := asSlice(node["$146"])
+	children, _ := asSlice(node["content_list"])
 	for _, child := range children {
 		cellNode, ok := asMap(child)
 		if !ok {
@@ -3980,7 +3979,7 @@ func (r *storylineRenderer) renderTableRow(node map[string]interface{}, depth in
 		return nil
 	}
 	r.applyStructuralNodeAttrs(row, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(row, positionID, false)
 	}
 	return row
@@ -3997,16 +3996,16 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 	// from the style fragment here.
 	colspanSet := false
 	rowspanSet := false
-	if colspan, ok := asInt(node["$148"]); ok && colspan > 1 {
+	if colspan, ok := asInt(node["table_column_span"]); ok && colspan > 1 {
 		cell.Attrs["colspan"] = strconv.Itoa(colspan)
 		colspanSet = true
 	}
-	if rowspan, ok := asInt(node["$149"]); ok && rowspan > 1 {
+	if rowspan, ok := asInt(node["table_row_span"]); ok && rowspan > 1 {
 		cell.Attrs["rowspan"] = strconv.Itoa(rowspan)
 		rowspanSet = true
 	}
 	if !colspanSet || !rowspanSet {
-		if styleID, _ := asString(node["$157"]); styleID != "" {
+		if styleID, _ := asString(node["style"]); styleID != "" {
 			effective := effectiveStyle(r.styleFragments[styleID], node)
 			cssMap := processContentProperties(effective, r.resolveResource)
 			if !colspanSet {
@@ -4036,12 +4035,12 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 	if styleAttr := r.tableCellClass(node); styleAttr != "" {
 		cell.Attrs["style"] = styleAttr
 	}
-	if ref, ok := asMap(node["$145"]); ok {
+	if ref, ok := asMap(node["content"]); ok {
 		text := r.resolveText(ref)
 		if text != "" {
 			cell.Children = append(cell.Children, r.applyAnnotations(text, node)...)
 		}
-	} else if children, ok := asSlice(node["$146"]); ok {
+	} else if children, ok := asSlice(node["content_list"]); ok {
 		for _, child := range children {
 			childNode, ok := asMap(child)
 			if !ok {
@@ -4053,7 +4052,7 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 				}
 				continue
 			}
-			if ref, ok := asMap(childNode["$145"]); ok && merged {
+			if ref, ok := asMap(childNode["content"]); ok && merged {
 				// COMBINE_NESTED_DIVS merged: extract text directly into <td>.
 				// Python: merge removes inner div, leaving <span>text</span> which
 				// epub_output.py later strips, giving bare text in <td>.
@@ -4064,7 +4063,7 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 				// When the merged child has its own position ID with anchors,
 				// promote those anchors to the <td>. In Python, these anchors
 				// end up on the <td> after simplify_styles and beautify_html.
-				if childPosID, _ := asInt(childNode["$155"]); childPosID != 0 {
+				if childPosID, _ := asInt(childNode["id"]); childPosID != 0 {
 					if len(r.positionAnchors[childPosID]) > 0 {
 						r.applyPositionAnchors(cell, childPosID, false)
 					}
@@ -4080,7 +4079,7 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 		}
 	}
 	r.applyStructuralNodeAttrs(cell, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(cell, positionID, false)
 	}
 	return cell
@@ -4096,7 +4095,7 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 // the content element and wraps ranges in styled spans. This implementation handles the
 // common case where text children (from IonString $146 items) need annotation wrapping.
 func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{}, container *htmlElement) {
-	annotations, ok := asSlice(node["$142"])
+	annotations, ok := asSlice(node["style_events"])
 	if !ok || len(annotations) == 0 {
 		return
 	}
@@ -4129,16 +4128,16 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 		if !ok {
 			continue
 		}
-		eventStart, _ := asInt(annMap["$143"])
-		eventLen, _ := asInt(annMap["$144"])
+		eventStart, _ := asInt(annMap["offset"])
+		eventLen, _ := asInt(annMap["length"])
 		if eventLen <= 0 {
 			continue
 		}
-		anchorID, _ := asString(annMap["$179"])
-		styleID, _ := asString(annMap["$157"])
+		anchorID, _ := asString(annMap["link_to"])
+		styleID, _ := asString(annMap["style"])
 
 		// Phase 1: Handle non-span children (img, svg, div wrappers with img children) for $179 link wrapping.
-		// Python: if "$179" in style_event: event_elem = replace_element_with_container(event_elem, "a")
+		// Python: if "link_to" in style_event: event_elem = replace_element_with_container(event_elem, "a")
 		// Python's locate_offset traverses the element tree and can find <img> nested inside
 		// wrapper <div>s. Each img/svg counts as 1 character in the offset map.
 		if anchorID != "" {
@@ -4263,8 +4262,8 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 			}
 
 			// Handle $179 (link) wrapping for text spans.
-			// Python: if "$179" in style_event: event_elem.tag = "a"; event_elem.set("href", ...)
-			if anchorID, ok := asString(annMap["$179"]); ok && anchorID != "" {
+			// Python: if "link_to" in style_event: event_elem.tag = "a"; event_elem.set("href", ...)
+			if anchorID, ok := asString(annMap["link_to"]); ok && anchorID != "" {
 				if href := r.anchorHref(anchorID); href != "" {
 					linkAttrs := map[string]string{"href": href}
 					if epubType := epubTypeFromAnnotation(annMap); epubType != "" {
@@ -4366,14 +4365,14 @@ func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPar
 	if imageNode := r.renderImageNode(node); imageNode != nil {
 		return imageNode
 	}
-	if ref, ok := asMap(node["$145"]); ok {
+	if ref, ok := asMap(node["content"]); ok {
 		text := r.resolveText(ref)
 		if text == "" {
 			return nil
 		}
 		content := r.applyAnnotations(text, node)
-		styleID, _ := asString(node["$157"])
-		positionID, _ := asInt(node["$155"])
+		styleID, _ := asString(node["style"])
+		positionID, _ := asInt(node["id"])
 		if styleID == "" && positionID == 0 && len(content) == 1 {
 			return content[0]
 		}
@@ -4387,11 +4386,11 @@ func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPar
 		}
 		return element
 	}
-	children, ok := asSlice(node["$146"])
+	children, ok := asSlice(node["content_list"])
 	if !ok {
 		return nil
 	}
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	container := &htmlElement{Tag: "span", Attrs: map[string]string{}}
 	for _, child := range children {
 		if rendered := r.renderInlinePart(child, depth+1); rendered != nil {
@@ -4405,7 +4404,7 @@ func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPar
 		container.Attrs["style"] = styleAttr
 	}
 	r.applyStructuralNodeAttrs(container, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(container, positionID, false)
 	}
 	return container
@@ -4416,7 +4415,7 @@ func (r *storylineRenderer) renderImageNode(node map[string]interface{}) htmlPar
 	if !ok {
 		return nil
 	}
-	resourceID, _ := asString(node["$175"])
+	resourceID, _ := asString(node["resource_name"])
 	if resourceID == "" {
 		return nil
 	}
@@ -4424,7 +4423,7 @@ func (r *storylineRenderer) renderImageNode(node map[string]interface{}) htmlPar
 	if href == "" {
 		return nil
 	}
-	alt, _ := asString(node["$584"])
+	alt, _ := asString(node["alt_text"])
 	image := &htmlElement{
 		Tag:   "img",
 		Attrs: map[string]string{"src": href, "alt": alt},
@@ -4434,16 +4433,16 @@ func (r *storylineRenderer) renderImageNode(node map[string]interface{}) htmlPar
 		image.Attrs["style"] = imageClass
 	}
 	// Python process_content $283 (inline render) for <img> (yj_to_epub_content.py:1295-1298):
-	// render=="$283" adds -kfx-render:inline to style but does NOT create a container wrapper.
+	// render=="inline" adds -kfx-render:inline to style but does NOT create a container wrapper.
 	// The wrapper div is only created in the else branch (non-inline render, line 1324-1330).
 	// Without this check, inline images get a wrapper <div> which causes containsBlock=true
 	// in simplify_styles, preventing <div>→<p> promotion for containers with mixed image+text.
-	renderMode, _ := asString(node["$601"])
-	isInlineRender := renderMode == "$283"
+	renderMode, _ := asString(node["render"])
+	isInlineRender := renderMode == "inline"
 	if wrapperClass == "" || isInlineRender {
 		firstVisible := r.consumeVisibleElement()
 		r.applyStructuralNodeAttrs(image, node, "")
-		if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		if positionID, _ := asInt(node["id"]); positionID != 0 {
 			r.applyPositionAnchors(image, positionID, firstVisible)
 		}
 		return image
@@ -4455,7 +4454,7 @@ func (r *storylineRenderer) renderImageNode(node map[string]interface{}) htmlPar
 	}
 	r.applyStructuralNodeAttrs(wrapper, node, "")
 	firstVisible := r.consumeVisibleElement()
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(wrapper, positionID, firstVisible)
 	}
 	return wrapper
@@ -4468,7 +4467,7 @@ func (r *storylineRenderer) renderTextNode(node map[string]interface{}, depth in
 	if !ok {
 		return nil
 	}
-	ref, ok := asMap(node["$145"])
+	ref, ok := asMap(node["content"])
 	if !ok {
 		return nil
 	}
@@ -4476,14 +4475,14 @@ func (r *storylineRenderer) renderTextNode(node map[string]interface{}, depth in
 	if text == "" {
 		return nil
 	}
-	positionID, _ := asInt(node["$155"])
+	positionID, _ := asInt(node["id"])
 	if os.Getenv("KFX_DEBUG") != "" && (positionID == 1110 || positionID == 1111 || positionID == 1177 || positionID == 1178) {
-		fmt.Fprintf(os.Stderr, "render text pos=%d text=%q style=%s\n", positionID, text[:minInt(len(text), 32)], asStringDefault(node["$157"]))
+		fmt.Fprintf(os.Stderr, "render text pos=%d text=%q style=%s\n", positionID, text[:minInt(len(text), 32)], asStringDefault(node["style"]))
 	}
 	content := r.applyAnnotations(text, node)
 	annotationStyleID := fullParagraphAnnotationStyleID(node, text)
 
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	level := headingLevel(node)
 	if level == 0 {
 		level = r.headingLevelForPosition(positionID, 0)
@@ -4560,16 +4559,16 @@ func (r *storylineRenderer) applyFirstLineStyle(element *htmlElement, node map[s
 	if r == nil || element == nil || node == nil {
 		return
 	}
-	raw, ok := asMap(node["$622"])
+	raw, ok := asMap(node["yj.first_line_style"])
 	if !ok {
 		return
 	}
 	style := cloneMap(raw)
-	if styleID, _ := asString(style["$173"]); styleID != "" {
+	if styleID, _ := asString(style["style_name"]); styleID != "" {
 		style = effectiveStyle(r.styleFragments[styleID], style)
 	}
-	delete(style, "$173")
-	delete(style, "$625")
+	delete(style, "style_name")
+	delete(style, "yj.first_line_style_type")
 	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
 	if len(declarations) == 0 {
 		return
@@ -4586,7 +4585,7 @@ func (r *storylineRenderer) wrapNodeLink(node map[string]interface{}, part htmlP
 	if node == nil || part == nil {
 		return part
 	}
-	anchorID, _ := asString(node["$179"])
+	anchorID, _ := asString(node["link_to"])
 	if anchorID == "" {
 		return part
 	}
@@ -4618,7 +4617,7 @@ func (r *storylineRenderer) wrapNodeLink(node map[string]interface{}, part htmlP
 // epubTypeFromAnnotation extracts epub:type value from a $142 style event annotation.
 // Python: $616=$617 → -kfx-attrib-epub-type: noteref → epub:type="noteref"
 func epubTypeFromAnnotation(annMap map[string]interface{}) string {
-	raw, ok := annMap["$616"]
+	raw, ok := annMap["yj.display"]
 	if !ok {
 		return ""
 	}
@@ -4627,7 +4626,7 @@ func epubTypeFromAnnotation(annMap map[string]interface{}) string {
 		return ""
 	}
 	switch v {
-	case "$617":
+	case "yj.note":
 		return "noteref"
 	default:
 		return v
@@ -4637,14 +4636,14 @@ func epubTypeFromAnnotation(annMap map[string]interface{}) string {
 // epubTypeFromNode extracts epub:type from $616 property on a node.
 // Python: $616=$617 → -kfx-attrib-epub-type: noteref → epub:type="noteref"
 func (r *storylineRenderer) epubTypeFromNode(node map[string]interface{}) string {
-	raw, ok := node["$616"]
+	raw, ok := node["yj.display"]
 	if !ok {
 		return ""
 	}
 	// $617 → "noteref" (Python yj_to_epub_properties.py line 564)
 	if v, ok := asString(raw); ok {
 		switch v {
-		case "$617":
+		case "yj.note":
 			return "noteref"
 		default:
 			return v
@@ -4690,16 +4689,16 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 		return nil, false
 	}
 	working := cloneMap(node)
-	hadConditionalContent := working["$592"] != nil || working["$591"] != nil || working["$663"] != nil
-	if include := working["$592"]; include != nil && !r.conditionEvaluator.evaluateBinary(include) {
+	hadConditionalContent := working["include"] != nil || working["exclude"] != nil || working["yj.conditional_properties"] != nil
+	if include := working["include"]; include != nil && !r.conditionEvaluator.evaluateBinary(include) {
 		return nil, false
 	}
-	delete(working, "$592")
-	if exclude := working["$591"]; exclude != nil && r.conditionEvaluator.evaluateBinary(exclude) {
+	delete(working, "include")
+	if exclude := working["exclude"]; exclude != nil && r.conditionEvaluator.evaluateBinary(exclude) {
 		return nil, false
 	}
-	delete(working, "$591")
-	if rawConditional, ok := asSlice(working["$663"]); ok {
+	delete(working, "exclude")
+	if rawConditional, ok := asSlice(working["yj.conditional_properties"]); ok {
 		for _, raw := range rawConditional {
 			props, ok := asMap(raw)
 			if !ok {
@@ -4710,7 +4709,7 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 			}
 		}
 	}
-	delete(working, "$663")
+	delete(working, "yj.conditional_properties")
 	if hadConditionalContent {
 		working["__has_conditional_content__"] = true
 	}
@@ -4723,12 +4722,12 @@ func (r *storylineRenderer) mergeConditionalProperties(node map[string]interface
 	}
 	props := cloneMap(conditional)
 	apply := false
-	if include := props["$592"]; include != nil {
+	if include := props["include"]; include != nil {
 		apply = r.conditionEvaluator.evaluateBinary(include)
-		delete(props, "$592")
-	} else if exclude := props["$591"]; exclude != nil {
+		delete(props, "include")
+	} else if exclude := props["exclude"]; exclude != nil {
 		apply = !r.conditionEvaluator.evaluateBinary(exclude)
-		delete(props, "$591")
+		delete(props, "exclude")
 	}
 	if !apply {
 		return node
@@ -4749,9 +4748,9 @@ func (r *storylineRenderer) applyStructuralNodeAttrs(element *htmlElement, node 
 			element.Tag = "figure"
 		}
 	}
-	classification, _ := asString(node["$615"])
+	classification, _ := asString(node["yj.classification"])
 	switch {
-	case classification == "$453" && parentTag == "table" && element.Tag == "div":
+	case classification == "caption" && parentTag == "table" && element.Tag == "div":
 		element.Tag = "caption"
 	case classificationEPUBType[classification] != "" && element.Tag == "div":
 		element.Tag = "aside"
@@ -4759,11 +4758,11 @@ func (r *storylineRenderer) applyStructuralNodeAttrs(element *htmlElement, node 
 	if epubType := classificationEPUBType[classification]; epubType != "" && element.Tag == "aside" {
 		element.Attrs["epub:type"] = epubType
 	}
-	if classification == "$688" {
+	if classification == "math" {
 		element.Attrs["role"] = "math"
 	}
-	switch asStringDefault(node["$156"]) {
-	case "$324", "$325":
+	switch asStringDefault(node["layout"]) {
+	case "fixed", "overflow":
 		if styleAttr := styleStringFromDeclarations("class", nil, []string{"position: fixed"}); styleAttr != "" {
 			element.Attrs["style"] = mergeStyleStrings(element.Attrs["style"], styleAttr)
 		}
@@ -4774,9 +4773,9 @@ func (r *storylineRenderer) nodeLayoutHints(node map[string]interface{}) []strin
 	if node == nil {
 		return nil
 	}
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
-	switch typed := style["$761"].(type) {
+	switch typed := style["layout_hints"].(type) {
 	case string:
 		if typed == "" {
 			return nil
@@ -4848,24 +4847,24 @@ func (r *storylineRenderer) renderInlineParagraphContainer(node map[string]inter
 	if len(element.Children) == 0 {
 		return nil
 	}
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	if styleAttr := r.paragraphClass(styleID, ""); styleAttr != "" {
 		element.Attrs["style"] = styleAttr
 	}
 	r.applyFirstLineStyle(element, node)
 	r.applyStructuralNodeAttrs(element, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(element, positionID, false)
 	}
 	return element
 }
 
 func (r *storylineRenderer) renderInlineRenderContainer(node map[string]interface{}, children []interface{}, depth int) htmlPart {
-	renderMode, _ := asString(node["$601"])
-	if renderMode != "$283" {
+	renderMode, _ := asString(node["render"])
+	if renderMode != "inline" {
 		return nil
 	}
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	element := &htmlElement{Tag: "span", Attrs: map[string]string{}}
 	for _, child := range children {
 		if inline := r.renderInlinePart(child, depth+1); inline != nil {
@@ -4881,7 +4880,7 @@ func (r *storylineRenderer) renderInlineRenderContainer(node map[string]interfac
 		element.Attrs["style"] = styleAttr
 	}
 	r.applyStructuralNodeAttrs(element, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(element, positionID, false)
 	}
 	return element
@@ -4921,7 +4920,7 @@ func (r *storylineRenderer) renderFigureHintContainer(node map[string]interface{
 			delete(wrapper.Attrs, "style")
 		}
 		r.applyStructuralNodeAttrs(wrapper, node, "")
-		if positionID, _ := asInt(node["$155"]); positionID != 0 {
+		if positionID, _ := asInt(node["id"]); positionID != 0 {
 			r.applyPositionAnchors(wrapper, positionID, false)
 		}
 		return wrapper
@@ -4930,7 +4929,7 @@ func (r *storylineRenderer) renderFigureHintContainer(node map[string]interface{
 		element.Attrs["style"] = styleAttr
 	}
 	r.applyStructuralNodeAttrs(element, node, "")
-	if positionID, _ := asInt(node["$155"]); positionID != 0 {
+	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(element, positionID, false)
 	}
 	return element
@@ -4947,11 +4946,11 @@ func (r *storylineRenderer) shouldPromoteStructuralContainer(node map[string]int
 	if !r.shouldPromoteLayoutHints() || node == nil {
 		return false
 	}
-	if node["__has_conditional_content__"] != nil || node["$615"] != nil {
+	if node["__has_conditional_content__"] != nil || node["yj.classification"] != nil {
 		return false
 	}
-	switch asStringDefault(node["$156"]) {
-	case "$324", "$325":
+	switch asStringDefault(node["layout"]) {
+	case "fixed", "overflow":
 		return false
 	}
 	return true
@@ -4963,10 +4962,10 @@ func nodeContainsTextContent(children []interface{}) bool {
 		if !ok {
 			continue
 		}
-		if _, ok := asMap(node["$145"]); ok {
+		if _, ok := asMap(node["content"]); ok {
 			return true
 		}
-		if nested, ok := asSlice(node["$146"]); ok && nodeContainsTextContent(nested) {
+		if nested, ok := asSlice(node["content_list"]); ok && nodeContainsTextContent(nested) {
 			return true
 		}
 	}
@@ -5020,7 +5019,7 @@ func (r *storylineRenderer) bodyClass(styleID string, values map[string]interfac
 }
 
 func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
 	if len(style) == 0 {
@@ -5047,7 +5046,7 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 	}
 
 	declarations := cssDeclarationsFromMap(cssMap)
-	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
+	if mapFontStyle(style["font_style"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
 	if len(declarations) == 0 {
@@ -5061,7 +5060,7 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 }
 
 func (r *storylineRenderer) tableClass(node map[string]interface{}) string {
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	cssMap := processContentProperties(style, r.resolveResource)
 
@@ -5107,7 +5106,7 @@ func (r *storylineRenderer) tableColumnClass(node map[string]interface{}) string
 // matching Python yj_to_epub_content.py:1375-1381 where fitted (inline-block) elements get
 // a wrapper with text-align from box-align so the inline-block is horizontally positioned.
 func (r *storylineRenderer) fittedContainerClass(node map[string]interface{}) string {
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
 	if len(style) == 0 {
@@ -5130,7 +5129,7 @@ func (r *storylineRenderer) fittedContainerClass(node map[string]interface{}) st
 	}
 
 	declarations := cssDeclarationsFromMap(cssMap)
-	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
+	if mapFontStyle(style["font_style"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
 	if len(declarations) == 0 {
@@ -5144,7 +5143,7 @@ func (r *storylineRenderer) fittedContainerClass(node map[string]interface{}) st
 }
 
 func (r *storylineRenderer) structuredContainerClass(node map[string]interface{}) string {
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
 	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
@@ -5162,7 +5161,7 @@ func (r *storylineRenderer) structuredContainerClass(node map[string]interface{}
 // (yj_to_epub_content.py:1408-1448) would merge the cell $269 with its single child $269.
 // This happens when the parent and child CSS properties don't overlap (excluding -kfx-style-name).
 func (r *storylineRenderer) tableCellCombineNestedDivs(node map[string]interface{}) bool {
-	children, ok := asSlice(node["$146"])
+	children, ok := asSlice(node["content_list"])
 	if !ok || len(children) != 1 {
 		return false
 	}
@@ -5170,15 +5169,15 @@ func (r *storylineRenderer) tableCellCombineNestedDivs(node map[string]interface
 	if !ok {
 		return false
 	}
-	childContentType, _ := asString(child["$159"])
-	if childContentType != "$269" {
+	childContentType, _ := asString(child["type"])
+	if childContentType != "text" {
 		return false
 	}
-	if _, has145 := asMap(child["$145"]); !has145 {
+	if _, has145 := asMap(child["content"]); !has145 {
 		return false // child doesn't have text content to merge
 	}
-	styleID, _ := asString(node["$157"])
-	childStyleID, _ := asString(child["$157"])
+	styleID, _ := asString(node["style"])
+	childStyleID, _ := asString(child["style"])
 	if styleID == "" || childStyleID == "" {
 		return true // no style conflict
 	}
@@ -5198,7 +5197,7 @@ func (r *storylineRenderer) tableCellCombineNestedDivs(node map[string]interface
 }
 
 func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	style = mergeStyleValues(style, r.inferPromotedStyleValues(node))
 
@@ -5209,9 +5208,9 @@ func (r *storylineRenderer) tableCellClass(node map[string]interface{}) string {
 	// content_style.update(child_sty, replace=False) adds child-only properties.
 	// We check overlap against the parent's own CSS properties (before inference),
 	// since inferred properties are reverse-inherited from children.
-	if children, ok := asSlice(node["$146"]); ok && len(children) == 1 {
+	if children, ok := asSlice(node["content_list"]); ok && len(children) == 1 {
 		if child, ok := asMap(children[0]); ok {
-			childStyleID, _ := asString(child["$157"])
+			childStyleID, _ := asString(child["style"])
 			if childStyleID != "" {
 				ownStyle := effectiveStyle(r.styleFragments[styleID], node)
 				parentCSS := processContentProperties(ownStyle, r.resolveResource)
@@ -5312,7 +5311,7 @@ func isBlockContainerProperty(prop string) bool {
 }
 
 func (r *storylineRenderer) imageClasses(node map[string]interface{}) (string, string) {
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	style := effectiveStyle(r.styleFragments[styleID], node)
 	style = r.adjustRenderableStyle(style, node)
 	if len(style) == 0 {
@@ -5377,10 +5376,10 @@ func (r *storylineRenderer) adjustRenderableStyle(style map[string]interface{}, 
 	if len(style) == 0 {
 		return style
 	}
-	if fitTight, _ := asBool(node["$784"]); fitTight {
-		if value := cssLengthProperty(style["$56"], "$56"); value == "100%" {
+	if fitTight, _ := asBool(node["fit_tight"]); fitTight {
+		if value := cssLengthProperty(style["width"], "width"); value == "100%" {
 			style = cloneMap(style)
-			delete(style, "$56")
+			delete(style, "width")
 		}
 	}
 	return style
@@ -5393,10 +5392,10 @@ func (r *storylineRenderer) headingClass(styleID string) string {
 	}
 	className := r.headingClassName(styleID, style)
 	declarations := cssDeclarationsFromMap(processContentProperties(style, r.resolveResource))
-	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
+	if mapFontStyle(style["font_style"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
-	if style["$36"] == nil && activeTextIndentNeedsReset(r.activeBodyDefaults) {
+	if style["text_indent"] == nil && activeTextIndentNeedsReset(r.activeBodyDefaults) {
 		declarations = append(declarations, "text-indent: 0")
 	}
 	if len(declarations) == 0 {
@@ -5416,7 +5415,7 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 	linkStyle := effectiveStyle(r.styleFragments[annotationStyleID], nil)
 	if linkStyle != nil {
 		// Merge link color properties ($576=visited-color, $577=link-color) for color resolution
-		for _, yjProp := range []string{"$576", "$577"} {
+		for _, yjProp := range []string{"link_visited_style", "link_unvisited_style"} {
 			if _, ok := style[yjProp]; !ok {
 				if val, ok := linkStyle[yjProp]; ok {
 					style[yjProp] = val
@@ -5424,7 +5423,7 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 			}
 		}
 		// Merge link font/typographic properties when paragraph doesn't have them
-		for _, yjProp := range []string{"$11", "$12", "$13", "$583", "$41"} {
+		for _, yjProp := range []string{"font_family", "font_style", "font_weight", "glyph_transform", "text_transform"} {
 			if _, ok := style[yjProp]; !ok {
 				if val, ok := linkStyle[yjProp]; ok {
 					style[yjProp] = val
@@ -5444,10 +5443,10 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 		}
 	}
 	declarations := cssDeclarationsFromMap(cssMap)
-	if mapFontStyle(style["$12"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
+	if mapFontStyle(style["font_style"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
-	if style["$36"] == nil && activeTextIndentNeedsReset(r.activeBodyDefaults) {
+	if style["text_indent"] == nil && activeTextIndentNeedsReset(r.activeBodyDefaults) {
 		declarations = append(declarations, "text-indent: 0")
 	}
 	if os.Getenv("KFX_DEBUG_PARAGRAPH_STYLE") != "" {
@@ -5518,7 +5517,7 @@ func (r *storylineRenderer) spanClass(styleID string) string {
 
 // annotationSpanClass generates the CSS class for an annotation's styled span.
 // Port of Python yj_to_epub_content.py:1142 + 1307:
-//   self.add_kfx_style(style_event, style_event.pop("$157", None))  → merges style fragment into event
+//   self.add_kfx_style(style_event, style_event.pop("style", None))  → merges style fragment into event
 //   self.add_style(event_elem, self.process_content_properties(style_event), replace=True)
 // Python merges the style fragment properties INTO the annotation map, then processes all properties.
 // Go must do the same: merge the style fragment with the annotation's own properties.
@@ -5543,10 +5542,10 @@ func (r *storylineRenderer) resolveText(ref map[string]interface{}) string {
 }
 
 func hasRenderableContainer(node map[string]interface{}) bool {
-	_, hasStyle := asString(node["$157"])
-	children, hasChildren := asSlice(node["$146"])
-	_, hasImage := asString(node["$175"])
-	_, hasText := asMap(node["$145"])
+	_, hasStyle := asString(node["style"])
+	children, hasChildren := asSlice(node["content_list"])
+	_, hasImage := asString(node["resource_name"])
+	_, hasText := asMap(node["content"])
 	return hasStyle && !hasImage && !hasText && (!hasChildren || len(children) == 0)
 }
 
@@ -5558,15 +5557,15 @@ func promotedBodyContainer(nodes []interface{}) (string, []interface{}, bool) {
 	if !ok {
 		return "", nil, false
 	}
-	styleID, _ := asString(node["$157"])
-	children, ok := asSlice(node["$146"])
+	styleID, _ := asString(node["style"])
+	children, ok := asSlice(node["content_list"])
 	if !ok || len(children) == 0 || styleID == "" {
 		return "", nil, false
 	}
-	if _, ok := asMap(node["$145"]); ok {
+	if _, ok := asMap(node["content"]); ok {
 		return "", nil, false
 	}
-	if _, ok := asString(node["$175"]); ok {
+	if _, ok := asString(node["resource_name"]); ok {
 		return "", nil, false
 	}
 	if headingLevel(node) > 0 {
@@ -5578,12 +5577,12 @@ func promotedBodyContainer(nodes []interface{}) (string, []interface{}, bool) {
 func defaultInheritedBodyStyle() map[string]interface{} {
 	zero := 0.0
 	return map[string]interface{}{
-		"$11": "default,serif",
-		"$12": "$350",
-		"$13": "$350",
-		"$36": map[string]interface{}{
-			"$306": "$308",
-			"$307": &zero,
+		"font_family": "default,serif",
+		"font_style": "normal",
+		"font_weight": "normal",
+		"text_indent": map[string]interface{}{
+			"unit": "em",
+			"value": &zero,
 		},
 	}
 }
@@ -5597,11 +5596,11 @@ func (r *storylineRenderer) inferPromotedBodyStyle(nodes []interface{}) map[stri
 }
 
 func (r *storylineRenderer) inferPromotedStyleValues(node map[string]interface{}) map[string]interface{} {
-	children, ok := asSlice(node["$146"])
+	children, ok := asSlice(node["content_list"])
 	if !ok || len(children) == 0 {
 		return nil
 	}
-	styleID, _ := asString(node["$157"])
+	styleID, _ := asString(node["style"])
 	return r.inferSharedHeritableStyle(effectiveStyle(r.styleFragments[styleID], node), children)
 }
 
@@ -5614,7 +5613,7 @@ func (r *storylineRenderer) inferSharedHeritableStyle(parentStyle map[string]int
 		raw   interface{}
 	}
 	const reverseInheritanceFraction = 0.8
-	keys := []string{"$11", "$12", "$13", "$34", "$36", "$41", "$583"}
+	keys := []string{"font_family", "font_style", "font_weight", "text_alignment", "text_indent", "text_transform", "glyph_transform"}
 	valueCounts := map[string]map[string]*valueCount{}
 	numChildren := 0
 	debugInfer := os.Getenv("KFX_DEBUG_INFER_COUNTS") != ""
@@ -5624,7 +5623,7 @@ func (r *storylineRenderer) inferSharedHeritableStyle(parentStyle map[string]int
 		if !ok {
 			continue
 		}
-		styleID, _ := asString(node["$157"])
+		styleID, _ := asString(node["style"])
 		if debugInfer {
 			debugStyleIDs = append(debugStyleIDs, styleID)
 		}
@@ -5715,7 +5714,7 @@ func (r *storylineRenderer) inferSharedHeritableStyle(parentStyle map[string]int
 }
 
 func headingLevel(node map[string]interface{}) int {
-	value, ok := node["$790"]
+	value, ok := node["yj.semantics.heading_level"]
 	if !ok {
 		return 0
 	}
@@ -5724,7 +5723,7 @@ func headingLevel(node map[string]interface{}) int {
 }
 
 func fullParagraphAnnotationStyleID(node map[string]interface{}, text string) string {
-	annotations, ok := asSlice(node["$142"])
+	annotations, ok := asSlice(node["style_events"])
 	if !ok || len(annotations) == 0 {
 		return ""
 	}
@@ -5734,7 +5733,7 @@ func fullParagraphAnnotationStyleID(node map[string]interface{}, text string) st
 		if !ok || !annotationCoversWholeText(annotationMap, runeCount) {
 			continue
 		}
-		styleID, _ := asString(annotationMap["$157"])
+		styleID, _ := asString(annotationMap["style"])
 		return styleID
 	}
 	return ""
@@ -5744,9 +5743,9 @@ func annotationCoversWholeText(annotationMap map[string]interface{}, runeCount i
 	if annotationMap == nil || runeCount == 0 {
 		return false
 	}
-	start, hasStart := asInt(annotationMap["$143"])
-	length, hasLength := asInt(annotationMap["$144"])
-	_, hasAnchor := asString(annotationMap["$179"])
+	start, hasStart := asInt(annotationMap["offset"])
+	length, hasLength := asInt(annotationMap["length"])
+	_, hasAnchor := asString(annotationMap["link_to"])
 	return hasAnchor && hasStart && hasLength && start == 0 && length >= runeCount
 }
 
@@ -5792,7 +5791,7 @@ func bodyDefaultsInclude(bodyDefaults map[string]bool, declaration string) bool 
 }
 
 func (r *storylineRenderer) applyAnnotations(text string, node map[string]interface{}) []htmlPart {
-	annotations, ok := asSlice(node["$142"])
+	annotations, ok := asSlice(node["style_events"])
 	type event struct {
 		start int
 		end   int
@@ -5809,39 +5808,39 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 	// so $125/$126 (dropcap_lines/dropcap_chars) become part of the node. Go doesn't merge —
 	// it uses effectiveStyle() to compute the combined style lazily. So we must look up
 	// $125/$126 from the effective style when not directly in the node.
-	dropcapLinesVal, hasDropcapLines := asInt(node["$125"])
+	dropcapLinesVal, hasDropcapLines := asInt(node["dropcap_lines"])
 	if !hasDropcapLines || dropcapLinesVal <= 0 {
-		if styleID, _ := asString(node["$157"]); styleID != "" {
+		if styleID, _ := asString(node["style"]); styleID != "" {
 			if frag := r.styleFragments[styleID]; frag != nil {
-				dropcapLinesVal, hasDropcapLines = asInt(frag["$125"])
+				dropcapLinesVal, hasDropcapLines = asInt(frag["dropcap_lines"])
 			}
 		}
 	}
-	dropcapCharsVal, hasDropcapChars := asInt(node["$126"])
+	dropcapCharsVal, hasDropcapChars := asInt(node["dropcap_chars"])
 	if !hasDropcapChars || dropcapCharsVal <= 0 {
-		if styleID, _ := asString(node["$157"]); styleID != "" {
+		if styleID, _ := asString(node["style"]); styleID != "" {
 			if frag := r.styleFragments[styleID]; frag != nil {
-				dropcapCharsVal, hasDropcapChars = asInt(frag["$126"])
+				dropcapCharsVal, hasDropcapChars = asInt(frag["dropcap_chars"])
 			}
 		}
 	}
 	if hasDropcapLines && dropcapLinesVal > 0 {
 		if hasDropcapChars && dropcapCharsVal > 0 {
 			dropcap := map[string]interface{}{
-				"$143": 0,
-				"$144": dropcapCharsVal,
-				"$125": dropcapLinesVal,
+				"offset": 0,
+				"length": dropcapCharsVal,
+				"dropcap_lines": dropcapLinesVal,
 			}
 			// Port of Python yj_to_epub_content.py:1129:
-			//   if "$173" in content: dropcap_style_event[IS("$173")] = content["$173"]
+			//   if "style_name" in content: dropcap_style_event[IS("style_name")] = content["style_name"]
 			// Copy $173 (kfx-style-name) from content node to dropcap event so
 			// the CSS class name uses the style fragment's base name.
-			if v := node["$173"]; v != nil {
-				dropcap["$173"] = v
-			} else if styleID, _ := asString(node["$157"]); styleID != "" {
+			if v := node["style_name"]; v != nil {
+				dropcap["style_name"] = v
+			} else if styleID, _ := asString(node["style"]); styleID != "" {
 				if frag := r.styleFragments[styleID]; frag != nil {
-					if v := frag["$173"]; v != nil {
-						dropcap["$173"] = v
+					if v := frag["style_name"]; v != nil {
+						dropcap["style_name"] = v
 					}
 				}
 			}
@@ -5856,8 +5855,8 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 			if !ok {
 				continue
 			}
-			start, hasStart := asInt(annotationMap["$143"])
-			length, hasLength := asInt(annotationMap["$144"])
+			start, hasStart := asInt(annotationMap["offset"])
+			length, hasLength := asInt(annotationMap["length"])
 			if !hasStart || !hasLength || length <= 0 || start < 0 || start >= len(runes) {
 				continue
 			}
@@ -5865,11 +5864,11 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 			if end > len(runes) {
 				end = len(runes)
 			}
-			anchorID, _ := asString(annotationMap["$179"])
-			styleID, _ := asString(annotationMap["$157"])
+			anchorID, _ := asString(annotationMap["link_to"])
+			styleID, _ := asString(annotationMap["style"])
 			dropcapClass := ""
 			dropcapLines := 0
-			if l, ok := asInt(annotationMap["$125"]); ok && l > 0 {
+			if l, ok := asInt(annotationMap["dropcap_lines"]); ok && l > 0 {
 				dropcapLines = l
 				dropcapClass = r.dropcapClass(l)
 			}
@@ -5881,7 +5880,7 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 				}
 			}
 			href := r.anchorHref(anchorID)
-			rubyName, hasRubyName := asString(annotationMap["$757"])
+			rubyName, hasRubyName := asString(annotationMap["ruby_name"])
 			if hasRubyName && rubyName != "" {
 				rubyIDs := r.rubyAnnotationIDs(annotationMap, end-start)
 				var rubyElement *htmlElement
@@ -5973,7 +5972,7 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 				// is set from the parent node's $157 style fragment.
 				// Since the synthetic dropcap event has no $157, we use the parent
 				// node's styleID to compute the correct base name for CSS class naming.
-				nodeStyleID, _ := asString(node["$157"])
+				nodeStyleID, _ := asString(node["style"])
 				dropcapBaseName := "class"
 				if nodeStyleID != "" {
 					dropcapBaseName = r.styleBaseName(nodeStyleID)
@@ -6083,10 +6082,10 @@ func (r *storylineRenderer) rubyAnnotationIDs(annotationMap map[string]interface
 	if annotationMap == nil {
 		return nil
 	}
-	if rubyID, ok := asInt(annotationMap["$758"]); ok {
+	if rubyID, ok := asInt(annotationMap["ruby_id"]); ok {
 		return []int{rubyID}
 	}
-	rawIDs, ok := asSlice(annotationMap["$759"])
+	rawIDs, ok := asSlice(annotationMap["ruby_id_list"])
 	if !ok {
 		return nil
 	}
@@ -6096,7 +6095,7 @@ func (r *storylineRenderer) rubyAnnotationIDs(annotationMap map[string]interface
 		if !ok {
 			continue
 		}
-		if rubyID, ok := asInt(entry["$758"]); ok {
+		if rubyID, ok := asInt(entry["ruby_id"]); ok {
 			ids = append(ids, rubyID)
 		}
 	}
@@ -6108,12 +6107,12 @@ func (r *storylineRenderer) rubyContentParts(rubyName string, rubyID int) []html
 	if content == nil {
 		return nil
 	}
-	if ref, ok := asMap(content["$145"]); ok {
+	if ref, ok := asMap(content["content"]); ok {
 		if text := r.resolveText(ref); text != "" {
 			return splitTextHTMLParts(text)
 		}
 	}
-	if children, ok := asSlice(content["$146"]); ok {
+	if children, ok := asSlice(content["content_list"]); ok {
 		parts := make([]htmlPart, 0, len(children))
 		for _, child := range children {
 			if rendered := r.renderInlinePart(child, 0); rendered != nil {
@@ -6130,12 +6129,12 @@ func (r *storylineRenderer) getRubyContent(rubyName string, rubyID int) map[stri
 	if group == nil {
 		return nil
 	}
-	children, _ := asSlice(group["$146"])
+	children, _ := asSlice(group["content_list"])
 	for _, raw := range children {
 		switch typed := raw.(type) {
 		case string:
 			if content := r.rubyContents[typed]; content != nil {
-				if id, ok := asInt(content["$758"]); ok && id == rubyID {
+				if id, ok := asInt(content["ruby_id"]); ok && id == rubyID {
 					return cloneMap(content)
 				}
 			}
@@ -6144,7 +6143,7 @@ func (r *storylineRenderer) getRubyContent(rubyName string, rubyID int) map[stri
 			if !ok {
 				continue
 			}
-			if id, ok := asInt(entry["$758"]); ok && id == rubyID {
+			if id, ok := asInt(entry["ruby_id"]); ok && id == rubyID {
 				return cloneMap(entry)
 			}
 		}

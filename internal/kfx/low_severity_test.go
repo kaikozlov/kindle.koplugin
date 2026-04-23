@@ -54,7 +54,7 @@ func TestIonTypeParity(t *testing.T) {
 		// conversion output.
 		//
 		// Verify: processing a list doesn't panic
-		listData := []interface{}{"$294", "$183", []interface{}{"$266", "anchor1"}}
+		listData := []interface{}{"==", "position", []interface{}{"anchor", "anchor1"}}
 		result := testProcessIonValue(listData)
 		if result == nil {
 			t.Fatal("testProcessIonValue should handle list data")
@@ -68,8 +68,8 @@ func TestIonTypeParity(t *testing.T) {
 		//
 		// Verify: struct data can be processed without issues
 		data := map[string]interface{}{
-			"$155": 42,
-			"$143": 7,
+			"id": 42,
+			"offset": 7,
 		}
 		result := testProcessIonValue(data)
 		if result == nil {
@@ -211,25 +211,25 @@ func TestConnectedPaginationDefault(t *testing.T) {
 		// Python uses pop() to remove keys from IonStruct.
 		// Go uses delete() on map. Both remove the key.
 		// Verify: delete from map works correctly
-		m := map[string]interface{}{"$159": "$270", "$156": "$323"}
-		delete(m, "$159")
-		if _, exists := m["$159"]; exists {
+		m := map[string]interface{}{"type": "container", "layout": "vertical"}
+		delete(m, "type")
+		if _, exists := m["type"]; exists {
 			t.Error("$159 should be deleted from map")
 		}
-		if v, exists := m["$156"]; !exists || v != "$323" {
+		if v, exists := m["layout"]; !exists || v != "vertical" {
 			t.Error("$156 should still exist in map")
 		}
 	})
 
 	t.Run("A4-8_ConnectedPaginationDefault", func(t *testing.T) {
-		// Python: connected_pagination = page_template.pop("$655", 0)
+		// Python: connected_pagination = page_template.pop("yj.connected_pagination", 0)
 		// The default is 0 when $655 is absent.
 		// In our Go code, popInt returns 0 for missing keys — same behavior.
 		// The validation check `if connected_pagination != 2` matches Python.
 		//
 		// Verify: popInt on empty map returns 0
 		m := map[string]interface{}{}
-		val, ok := popInt(m, "$655")
+		val, ok := popInt(m, "yj.connected_pagination")
 		if ok {
 			t.Error("popInt should return false for missing key")
 		}
@@ -421,10 +421,10 @@ func TestMapBoxAlign(t *testing.T) {
 		input    interface{}
 		expected string
 	}{
-		{"$320", "center"},
-		{"$59", "left"},
-		{"$61", "right"},
-		{"$321", "justify"}, // C2-2: the justify case
+		{"center", "center"},
+		{"left", "left"},
+		{"right", "right"},
+		{"justify", "justify"}, // C2-2: the justify case
 		{"$999", ""},        // unknown
 		{nil, ""},           // nil
 		{42, ""},            // non-string
@@ -459,7 +459,7 @@ func TestRebuildCallsAllSteps(t *testing.T) {
 		// Should have generated a $270 container
 		hasContainer := false
 		for _, frag := range result {
-			if frag.FType == "$270" {
+			if frag.FType == "container" {
 				hasContainer = true
 				break
 			}
@@ -490,14 +490,14 @@ func TestRebuildCallsAllSteps(t *testing.T) {
 		// Python uses a list. Go uses a map for O(1) lookup.
 		// Both contain the same fragment types.
 		// Verify: all expected container fragment types are present
-		expected := []string{"$270", "$593", "$ion_symbol_table", "$419"}
+		expected := []string{"container", "format_capabilities", "$ion_symbol_table", "container_entity_map"}
 		for _, ft := range expected {
 			if !ContainerFragmentTypes[ft] {
 				t.Errorf("ContainerFragmentTypes missing %q", ft)
 			}
 		}
 		// Verify: non-container types are not present
-		if ContainerFragmentTypes["$260"] {
+		if ContainerFragmentTypes["section"] {
 			t.Error("$260 should not be in ContainerFragmentTypes")
 		}
 	})

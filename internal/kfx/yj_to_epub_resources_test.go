@@ -74,19 +74,19 @@ func newTestResourceProcessor() *resourceProcessor {
 // addTestResource adds a synthetic $164 resource fragment to the processor.
 func (rp *resourceProcessor) addTestResource(name string, location string, format string, mediaType string, width, height int, variantNames []string) {
 	frag := map[string]interface{}{
-		"$175": name,   // internal resource name
-		"$165": location,
-		"$161": format, // resource format (e.g., "$285" for jpg)
-		"$162": mediaType,
-		"$422": width,
-		"$423": height,
+		"resource_name": name,   // internal resource name
+		"location": location,
+		"format": format, // resource format (e.g., "jpg" for jpg)
+		"mime": mediaType,
+		"resource_width": width,
+		"resource_height": height,
 	}
 	if len(variantNames) > 0 {
 		variants := make([]interface{}, len(variantNames))
 		for i, v := range variantNames {
 			variants[i] = v
 		}
-		frag["$635"] = variants
+		frag["yj.variants"] = variants
 	}
 	rp.fragments["$164:"+name] = frag
 }
@@ -105,12 +105,12 @@ func TestResourceVariantHigherResolutionReplacesBase(t *testing.T) {
 
 	// Base resource: 800×600
 	baseData := []byte("base-image-data-800x600")
-	rp.addTestResource("base_img", "loc_base", "$285", "image/jpeg", 800, 600, []string{"variant_img"})
+	rp.addTestResource("base_img", "loc_base", "jpg", "image/jpeg", 800, 600, []string{"variant_img"})
 	rp.addTestRawMedia("loc_base", baseData)
 
 	// Variant: 1024×768 (strictly larger in both dimensions)
 	variantData := []byte("variant-image-data-1024x768")
-	rp.addTestResource("variant_img", "loc_variant", "$285", "image/jpeg", 1024, 768, nil)
+	rp.addTestResource("variant_img", "loc_variant", "jpg", "image/jpeg", 1024, 768, nil)
 	rp.addTestRawMedia("loc_variant", variantData)
 
 	// USE_HIGHEST_RESOLUTION_IMAGE_VARIANT is true by default
@@ -131,12 +131,12 @@ func TestResourceVariantNotSelectedWhenOnlyOneDimensionLarger(t *testing.T) {
 
 	// Base resource: 800×600
 	baseData := []byte("base-image-data-800x600")
-	rp.addTestResource("base_img", "loc_base", "$285", "image/jpeg", 800, 600, []string{"variant_img"})
+	rp.addTestResource("base_img", "loc_base", "jpg", "image/jpeg", 800, 600, []string{"variant_img"})
 	rp.addTestRawMedia("loc_base", baseData)
 
 	// Variant: 1024×500 (width larger but height smaller) — must NOT be selected
 	variantData := []byte("variant-image-data-1024x500")
-	rp.addTestResource("variant_img", "loc_variant", "$285", "image/jpeg", 1024, 500, nil)
+	rp.addTestResource("variant_img", "loc_variant", "jpg", "image/jpeg", 1024, 500, nil)
 	rp.addTestRawMedia("loc_variant", variantData)
 
 	result := rp.getExternalResource("base_img", false)
@@ -160,11 +160,11 @@ func TestResourceVariantIgnoredWhenFlagSet(t *testing.T) {
 
 	// Base resource: 800×600 with a higher-res variant
 	baseData := []byte("base-image-data")
-	rp.addTestResource("base_img", "loc_base", "$285", "image/jpeg", 800, 600, []string{"variant_img"})
+	rp.addTestResource("base_img", "loc_base", "jpg", "image/jpeg", 800, 600, []string{"variant_img"})
 	rp.addTestRawMedia("loc_base", baseData)
 
 	variantData := []byte("variant-image-data-1024x768")
-	rp.addTestResource("variant_img", "loc_variant", "$285", "image/jpeg", 1024, 768, nil)
+	rp.addTestResource("variant_img", "loc_variant", "jpg", "image/jpeg", 1024, 768, nil)
 	rp.addTestRawMedia("loc_variant", variantData)
 
 	result := rp.getExternalResource("base_img", true) // ignore_variants=true
@@ -186,7 +186,7 @@ func TestResourceDeduplicationByBinaryData(t *testing.T) {
 	sameData := []byte("identical-image-data")
 
 	// First resource
-	rp.addTestResource("img_a", "myimage", "$285", "image/jpeg", 100, 100, nil)
+	rp.addTestResource("img_a", "myimage", "jpg", "image/jpeg", 100, 100, nil)
 	rp.addTestRawMedia("myimage", sameData)
 
 	// Process first resource
@@ -198,7 +198,7 @@ func TestResourceDeduplicationByBinaryData(t *testing.T) {
 	// In the Python flow, two different resources pointing to the same location
 	// would produce the same filename via resource_location_filename.
 	// We manually set up the same filename to test the dedup logic.
-	rp.addTestResource("img_b", "myimage", "$285", "image/jpeg", 100, 100, nil)
+	rp.addTestResource("img_b", "myimage", "jpg", "image/jpeg", 100, 100, nil)
 	obj2 := rp.getExternalResource("img_b", false)
 	// Ensure they have the same filename (same location → same filename)
 	if obj2.filename != firstFilename {
@@ -234,10 +234,10 @@ func TestResourceDeduplicationGeneratesUniqueFilename(t *testing.T) {
 	dataB := []byte("image-data-B")
 
 	// Two resources with same location name pattern but different data
-	rp.addTestResource("img_a", "myimage", "$285", "image/jpeg", 100, 100, nil)
+	rp.addTestResource("img_a", "myimage", "jpg", "image/jpeg", 100, 100, nil)
 	rp.addTestRawMedia("myimage", dataA)
 
-	rp.addTestResource("img_b", "myimage2", "$285", "image/jpeg", 100, 100, nil)
+	rp.addTestResource("img_b", "myimage2", "jpg", "image/jpeg", 100, 100, nil)
 	rp.addTestRawMedia("myimage2", dataB)
 
 	// Process both
@@ -265,7 +265,7 @@ func TestResourceCachePreventsReFetching(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	data := []byte("image-data")
-	rp.addTestResource("cached_img", "loc_cached", "$285", "image/jpeg", 100, 100, nil)
+	rp.addTestResource("cached_img", "loc_cached", "jpg", "image/jpeg", 100, 100, nil)
 	rp.addTestRawMedia("loc_cached", data)
 
 	// First call
@@ -336,7 +336,7 @@ func TestProcessExternalResourceReferredUsesRootFilename(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	data := []byte("referred-image-data")
-	rp.addTestResource("referred_img", "path/to/image", "$285", "image/jpeg", 100, 100, nil)
+	rp.addTestResource("referred_img", "path/to/image", "jpg", "image/jpeg", 100, 100, nil)
 	rp.addTestRawMedia("path/to/image", data)
 
 	rp.processExternalResource("referred_img", true, false, false, false, true) // is_referred=true
@@ -369,7 +369,7 @@ func TestProcessExternalResourceManifestMimetypeOnlyForReferred(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	data := []byte("image-data-with-mime")
-	rp.addTestResource("mime_test", "loc_mime", "$285", "image/jpeg", 100, 100, nil)
+	rp.addTestResource("mime_test", "loc_mime", "jpg", "image/jpeg", 100, 100, nil)
 	rp.addTestRawMedia("loc_mime", data)
 
 	// Process as non-referred
@@ -387,7 +387,7 @@ func TestProcessExternalResourceManifestMimetypeOnlyForReferred(t *testing.T) {
 
 	// Now test with is_referred=true
 	rp2 := newTestResourceProcessor()
-	rp2.addTestResource("mime_test2", "loc_mime2", "$285", "image/jpeg", 100, 100, nil)
+	rp2.addTestResource("mime_test2", "loc_mime2", "jpg", "image/jpeg", 100, 100, nil)
 	rp2.addTestRawMedia("loc_mime2", data)
 
 	rp2.processExternalResource("mime_test2", true, false, false, false, true) // is_referred=true

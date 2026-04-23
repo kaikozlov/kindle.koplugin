@@ -124,7 +124,7 @@ func TestProcessSectionScribePriorityOverComic(t *testing.T) {
 // =============================================================================
 
 func TestProcessSectionMagazineWithConditionalTemplate(t *testing.T) {
-	condition := []interface{}{"$294", "$183", "$266"}
+	condition := []interface{}{"==", "position", "anchor"}
 	section := makeTestSection([]pageTemplateFragment{
 		makeTestTemplate("story1", condition),
 	}, nil)
@@ -136,7 +136,7 @@ func TestProcessSectionMagazineWithConditionalTemplate(t *testing.T) {
 }
 
 func TestProcessSectionPrintReplicaWithConditionalTemplate(t *testing.T) {
-	condition := []interface{}{"$294", "$183", "$266"}
+	condition := []interface{}{"==", "position", "anchor"}
 	section := makeTestSection([]pageTemplateFragment{
 		makeTestTemplate("story1", condition),
 	}, nil)
@@ -219,7 +219,7 @@ func TestPageTemplatesHaveConditionsNilCondition(t *testing.T) {
 }
 
 func TestPageTemplatesHaveConditionsNonNilCondition(t *testing.T) {
-	condition := []interface{}{"$294", "$183", "$266"}
+	condition := []interface{}{"==", "position", "anchor"}
 	templates := []pageTemplateFragment{
 		{Storyline: "s1", Condition: condition},
 	}
@@ -234,14 +234,14 @@ func TestPageTemplatesHaveConditionsNonNilCondition(t *testing.T) {
 
 func TestStripUnusedKeys(t *testing.T) {
 	data := map[string]interface{}{
-		"$174":   "section-name",
-		"$702":   "some-value",
+		"section_name":   "section-name",
+		"reading_order_switch_map":   "some-value",
 		"yj.conversion.html_name":                   "test",
 		"yj.semantics.book_anatomy_type":            "chapter",
 		"yj.semantics.page_type":                    "body",
 		"yj.authoring.auto_panel_settings_opacity":  "0.5",
 		"yj.authoring.auto_panel_settings_padding_top": "10",
-		"$141":   []interface{}{},
+		"page_templates":   []interface{}{},
 		"keep-me": "important",
 	}
 
@@ -249,7 +249,7 @@ func TestStripUnusedKeys(t *testing.T) {
 
 	// These should have been removed
 	for _, key := range []string{
-		"$702",
+		"reading_order_switch_map",
 		"yj.conversion.html_name",
 		"yj.semantics.book_anatomy_type",
 		"yj.semantics.page_type",
@@ -262,7 +262,7 @@ func TestStripUnusedKeys(t *testing.T) {
 	}
 
 	// These should remain
-	for _, key := range []string{"$174", "$141", "keep-me"} {
+	for _, key := range []string{"section_name", "page_templates", "keep-me"} {
 		if _, exists := data[key]; !exists {
 			t.Errorf("expected key %q to remain, but it was removed", key)
 		}
@@ -272,7 +272,7 @@ func TestStripUnusedKeys(t *testing.T) {
 func TestStripUnusedKeysPreservesUnknownKeys(t *testing.T) {
 	data := map[string]interface{}{
 		"nmdl.canvas_width": 800,
-		"$174":              "section-name",
+		"section_name":              "section-name",
 	}
 
 	stripUnusedSectionKeys(data)
@@ -293,11 +293,11 @@ func TestProcessReadingOrderDeduplicatesSections(t *testing.T) {
 		"section-b": {ID: "section-b", Storyline: "story-b"},
 	}
 	storylines := map[string]map[string]interface{}{
-		"story-a": {"$146": []interface{}{
-			map[string]interface{}{"$145": map[string]interface{}{"name": "content-a", "$403": 0}},
+		"story-a": {"content_list": []interface{}{
+			map[string]interface{}{"content": map[string]interface{}{"name": "content-a", "index": 0}},
 		}},
-		"story-b": {"$146": []interface{}{
-			map[string]interface{}{"$145": map[string]interface{}{"name": "content-b", "$403": 0}},
+		"story-b": {"content_list": []interface{}{
+			map[string]interface{}{"content": map[string]interface{}{"name": "content-b", "index": 0}},
 		}},
 	}
 	contentFragments := map[string][]string{
@@ -359,10 +359,10 @@ func TestDetectBookTypeFromFeatures(t *testing.T) {
 		{
 			name: "facing page → comic",
 			features: map[string]interface{}{
-				"$590": []interface{}{
+				"features": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_facing_page",
-						"$586": "kindle_capability_metadata",
+						"key": "yj_facing_page",
+						"namespace": "kindle_capability_metadata",
 					},
 				},
 			},
@@ -371,10 +371,10 @@ func TestDetectBookTypeFromFeatures(t *testing.T) {
 		{
 			name: "double page spread → comic",
 			features: map[string]interface{}{
-				"$590": []interface{}{
+				"features": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_double_page_spread",
-						"$586": "kindle_capability_metadata",
+						"key": "yj_double_page_spread",
+						"namespace": "kindle_capability_metadata",
 					},
 				},
 			},
@@ -383,10 +383,10 @@ func TestDetectBookTypeFromFeatures(t *testing.T) {
 		{
 			name: "publisher panels → comic",
 			features: map[string]interface{}{
-				"$590": []interface{}{
+				"features": []interface{}{
 					map[string]interface{}{
-						"$492": "yj_publisher_panels",
-						"$586": "kindle_capability_metadata",
+						"key": "yj_publisher_panels",
+						"namespace": "kindle_capability_metadata",
 					},
 				},
 			},
@@ -423,14 +423,14 @@ func TestDetectBookTypeFromCDEContentType(t *testing.T) {
 		{
 			name: "MAGZ → magazine",
 			metadata: map[string]interface{}{
-				"$251": "MAGZ",
+				"cde_content_type": "MAGZ",
 			},
 			expected: bookTypeMagazine,
 		},
 		{
 			name: "EBSP → not magazine",
 			metadata: map[string]interface{}{
-				"$251": "EBSP",
+				"cde_content_type": "EBSP",
 			},
 			expected: bookTypeNone,
 		},
@@ -455,8 +455,8 @@ func TestProcessSectionComicWithOneTemplate(t *testing.T) {
 	template := makeTestTemplate("story1", nil)
 	section := makeTestSection([]pageTemplateFragment{template}, nil)
 	storylines := map[string]map[string]interface{}{
-		"story1": {"$146": []interface{}{
-			map[string]interface{}{"$145": map[string]interface{}{"name": "c1", "$403": 0}},
+		"story1": {"content_list": []interface{}{
+			map[string]interface{}{"content": map[string]interface{}{"name": "c1", "index": 0}},
 		}},
 	}
 	contentFragments := map[string][]string{
@@ -482,20 +482,20 @@ func TestProcessSectionComicWithOneTemplate(t *testing.T) {
 func TestProcessSectionReflowableWithMultipleTemplates(t *testing.T) {
 	// Reflowable with 3 templates: last is main, first two are conditional overlays
 	templates := []pageTemplateFragment{
-		makeTestTemplate("story1", []interface{}{"$294"}),
-		makeTestTemplate("story2", []interface{}{"$294"}),
+		makeTestTemplate("story1", []interface{}{"=="}),
+		makeTestTemplate("story2", []interface{}{"=="}),
 		makeTestTemplate("story3", nil),
 	}
 	section := makeTestSection(templates, nil)
 	storylines := map[string]map[string]interface{}{
-		"story1": {"$146": []interface{}{
-			map[string]interface{}{"$145": map[string]interface{}{"name": "c1", "$403": 0}},
+		"story1": {"content_list": []interface{}{
+			map[string]interface{}{"content": map[string]interface{}{"name": "c1", "index": 0}},
 		}},
-		"story2": {"$146": []interface{}{
-			map[string]interface{}{"$145": map[string]interface{}{"name": "c2", "$403": 0}},
+		"story2": {"content_list": []interface{}{
+			map[string]interface{}{"content": map[string]interface{}{"name": "c2", "index": 0}},
 		}},
-		"story3": {"$146": []interface{}{
-			map[string]interface{}{"$145": map[string]interface{}{"name": "c3", "$403": 0}},
+		"story3": {"content_list": []interface{}{
+			map[string]interface{}{"content": map[string]interface{}{"name": "c3", "index": 0}},
 		}},
 	}
 	contentFragments := map[string][]string{
@@ -526,8 +526,8 @@ func TestProcessSectionWithNoTemplatesCreatesDefault(t *testing.T) {
 		Storyline: "story1",
 	}
 	storylines := map[string]map[string]interface{}{
-		"story1": {"$146": []interface{}{
-			map[string]interface{}{"$145": map[string]interface{}{"name": "c1", "$403": 0}},
+		"story1": {"content_list": []interface{}{
+			map[string]interface{}{"content": map[string]interface{}{"name": "c1", "index": 0}},
 		}},
 	}
 	contentFragments := map[string][]string{
@@ -575,7 +575,7 @@ func TestIsUnusedSectionKey(t *testing.T) {
 		key      string
 		expected bool
 	}{
-		{"$702", true},
+		{"reading_order_switch_map", true},
 		{"yj.conversion.html_name", true},
 		{"yj.semantics.book_anatomy_type", true},
 		{"yj.semantics.page_type", true},
@@ -586,8 +586,8 @@ func TestIsUnusedSectionKey(t *testing.T) {
 		{"yj.authoring.auto_panel_settings_padding_left", true},
 		{"yj.authoring.auto_panel_settings_padding_right", true},
 		{"yj.authoring.auto_panel_settings_padding_top", true},
-		{"$174", false},
-		{"$141", false},
+		{"section_name", false},
+		{"page_templates", false},
 		{"nmdl.canvas_width", false},
 		{"keep-me", false},
 		{"yj.other.thing", false},
@@ -606,7 +606,7 @@ func TestIsUnusedSectionKey(t *testing.T) {
 
 func TestFilterConditionalTemplatesTrue(t *testing.T) {
 	templates := []pageTemplateFragment{
-		{Storyline: "s1", Condition: []interface{}{"$294", "$183", "$266"}, HasCondition: true},
+		{Storyline: "s1", Condition: []interface{}{"==", "position", "anchor"}, HasCondition: true},
 		{Storyline: "s2", Condition: nil, HasCondition: false},
 	}
 	// In non-fixed-layout, conditions are not evaluated
@@ -633,8 +633,8 @@ func TestFilterConditionalTemplatesInFixedLayoutWithBinaryCondition(t *testing.T
 	// Use $300 (always true) which is a nullary operator returning true
 	templates := []pageTemplateFragment{
 		{Storyline: "s1", Condition: nil, HasCondition: false},
-		{Storyline: "s2", Condition: []interface{}{"$300"}, HasCondition: true},
-		{Storyline: "s3", Condition: []interface{}{"$293", []interface{}{"$300"}}, HasCondition: true}, // NOT true = false
+		{Storyline: "s2", Condition: []interface{}{"hasColor"}, HasCondition: true},
+		{Storyline: "s3", Condition: []interface{}{"not", []interface{}{"hasColor"}}, HasCondition: true}, // NOT true = false
 	}
 	evaluator := conditionEvaluator{fixedLayout: true}
 	filtered := filterActiveTemplates(templates, evaluator)
@@ -711,7 +711,7 @@ func TestSectionHasNmdlKeyAbsent(t *testing.T) {
 
 func TestHasConditionalTemplateWithCondition(t *testing.T) {
 	templates := []pageTemplateFragment{
-		{Storyline: "s1", HasCondition: true, Condition: []interface{}{"$294"}},
+		{Storyline: "s1", HasCondition: true, Condition: []interface{}{"=="}},
 	}
 	if !hasConditionalTemplate(templates) {
 		t.Error("expected hasConditionalTemplate=true when template has $171 condition")
@@ -758,7 +758,7 @@ func TestBranchPriorityOrder(t *testing.T) {
 
 	// Magazine with conditions takes magazine branch
 	condSection := makeTestSection([]pageTemplateFragment{
-		makeTestTemplate("s1", []interface{}{"$294"}),
+		makeTestTemplate("s1", []interface{}{"=="}),
 	}, nil)
 	if determineSectionBranch(condSection, bookTypeMagazine) != branchMagazine {
 		t.Error("magazine with conditional template should select magazine branch")
@@ -819,12 +819,12 @@ func makePDFSpreadConfig() pageSpreadConfig {
 	}
 }
 
-// makeLeafTemplateData creates a leaf content template with $159="$270", $156="$325"
+// makeLeafTemplateData creates a leaf content template with $159="container", $156="overflow"
 // and some content fields.
 func makeLeafTemplateData() map[string]interface{} {
 	return map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 }
 
@@ -832,44 +832,44 @@ func makeLeafTemplateData() map[string]interface{} {
 // with a storyline reference pointing to a story with child templates.
 func makePageSpreadTemplateData(storyName string, childTemplates []interface{}) map[string]interface{} {
 	return map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": storyName,
-		"$434": "$441",
-		"$192": nil,
-		"$67":  nil,
-		"$66":  nil,
-		"$140": nil,
-		"$560": nil,
-		"$155": 42, // location ID
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"direction": nil,
+		"fixed_height":  nil,
+		"fixed_width":  nil,
+		"float": nil,
+		"writing_mode": nil,
+		"id": 42, // location ID
 	}
 }
 
 // makeScaleFitTemplateData creates a PDF-backed scale_fit template ($326).
 func makeScaleFitTemplateData(storyName string) map[string]interface{} {
 	return map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
-		"$176": storyName,
-		"$434": "$441",
-		"$192": nil,
-		"$140": nil,
-		"$560": nil,
-		"$155": 55,
-		"$16":  16, // font_size = 16
+		"type": "container",
+		"layout": "scale_fit",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"direction": nil,
+		"float": nil,
+		"writing_mode": nil,
+		"id": 55,
+		"font_size":  16, // font_size = 16
 	}
 }
 
 // makeConnectedPaginationTemplateData creates a connected pagination template ($323/$656).
 func makeConnectedPaginationTemplateData(storyName string) map[string]interface{} {
 	return map[string]interface{}{
-		"$159": "$270",
-		"$156": "$323",
-		"$656": true,
-		"$176": storyName,
-		"$434": "$441",
-		"$155": 77,
-		"$655": 2, // connected_pagination = 2
+		"type": "container",
+		"layout": "vertical",
+		"yj.enable_connected_dps": true,
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": 77,
+		"yj.connected_pagination": 2, // connected_pagination = 2
 	}
 }
 
@@ -879,8 +879,8 @@ func makeConnectedPaginationTemplateData(storyName string) map[string]interface{
 
 func TestPageSpreadBranchDetection(t *testing.T) {
 	data := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
+		"type": "container",
+		"layout": "page_spread",
 	}
 	branch := determinePageSpreadBranch(data, true)
 	if branch != pageSpreadBranchSpread {
@@ -890,8 +890,8 @@ func TestPageSpreadBranchDetection(t *testing.T) {
 
 func TestFacingPageBranchDetection(t *testing.T) {
 	data := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$438",
+		"type": "container",
+		"layout": "facing_page",
 	}
 	branch := determinePageSpreadBranch(data, true)
 	if branch != pageSpreadBranchFacing {
@@ -901,8 +901,8 @@ func TestFacingPageBranchDetection(t *testing.T) {
 
 func TestScaleFitBranchDetection(t *testing.T) {
 	data := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
+		"type": "container",
+		"layout": "scale_fit",
 	}
 	branch := determinePageSpreadBranch(data, true)
 	if branch != pageSpreadBranchScaleFit {
@@ -912,9 +912,9 @@ func TestScaleFitBranchDetection(t *testing.T) {
 
 func TestConnectedPaginationBranchDetection(t *testing.T) {
 	data := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$323",
-		"$656": true,
+		"type": "container",
+		"layout": "vertical",
+		"yj.enable_connected_dps": true,
 	}
 	branch := determinePageSpreadBranch(data, true)
 	if branch != pageSpreadBranchConnected {
@@ -924,8 +924,8 @@ func TestConnectedPaginationBranchDetection(t *testing.T) {
 
 func TestLeafBranchDetection(t *testing.T) {
 	data := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 	branch := determinePageSpreadBranch(data, true)
 	if branch != pageSpreadBranchLeaf {
@@ -953,8 +953,8 @@ func TestVirtualPanelNoneAllowed(t *testing.T) {
 	// should log an error (handled inside processPageSpreadPageTemplate)
 	result := processPageSpreadPageTemplate(
 		map[string]interface{}{
-			"$159": "$270",
-			"$156": "$325",
+			"type": "container",
+			"layout": "overflow",
 		},
 		"test-section",
 		"",
@@ -975,16 +975,16 @@ func TestVirtualPanelSymbol441Allowed(t *testing.T) {
 
 	storyName := "story-vp"
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": storyName,
-		"$434": "$441",
-		"$155": 42,
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": 42,
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{},
+			"story_name": storyName,
+			"content_list": []interface{}{},
 		},
 	}
 
@@ -1003,16 +1003,16 @@ func TestVirtualPanelUnexpectedValue(t *testing.T) {
 
 	storyName := "story-vp-unexpected"
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": storyName,
-		"$434": "$999", // unexpected virtual panel value
-		"$155": 42,
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": storyName,
+		"virtual_panel": "$999", // unexpected virtual panel value
+		"id": 42,
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{},
+			"story_name": storyName,
+			"content_list": []interface{}{},
 		},
 	}
 
@@ -1036,25 +1036,25 @@ func TestPageSpreadLTRAlternation(t *testing.T) {
 
 	storyName := "story-ltr"
 	child1 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 	child2 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": storyName,
-		"$434": "$441",
-		"$155": 42,
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": 42,
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{child1, child2},
+			"story_name": storyName,
+			"content_list": []interface{}{child1, child2},
 		},
 	}
 
@@ -1081,25 +1081,25 @@ func TestPageSpreadRTLAlternation(t *testing.T) {
 
 	storyName := "story-rtl"
 	child1 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 	child2 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": storyName,
-		"$434": "$441",
-		"$155": 42,
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": 42,
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{child1, child2},
+			"story_name": storyName,
+			"content_list": []interface{}{child1, child2},
 		},
 	}
 
@@ -1129,25 +1129,25 @@ func TestScaleFitBranchProcesses(t *testing.T) {
 
 	storyName := "story-sf"
 	child1 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
-		"$176": storyName,
-		"$434": "$441",
-		"$192": nil,
-		"$140": nil,
-		"$560": nil,
-		"$155": 55,
-		"$16":  16,
+		"type": "container",
+		"layout": "scale_fit",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"direction": nil,
+		"float": nil,
+		"writing_mode": nil,
+		"id": 55,
+		"font_size":  16,
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{child1},
+			"story_name": storyName,
+			"content_list": []interface{}{child1},
 		},
 	}
 
@@ -1169,8 +1169,8 @@ func TestScaleFitBranchNotPdfBacked(t *testing.T) {
 	cfg := makeSpreadConfig() // not PDF-backed
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
+		"type": "container",
+		"layout": "scale_fit",
 	}
 
 	// determinePageSpreadBranch only checks data; the PDF-backed check happens in
@@ -1194,8 +1194,8 @@ func TestScaleFitBranchNotPdfBacked(t *testing.T) {
 
 func TestScaleFitBranchNotSection(t *testing.T) {
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
+		"type": "container",
+		"layout": "scale_fit",
 	}
 
 	// Not a section → should fall to leaf
@@ -1214,27 +1214,27 @@ func TestConnectedPaginationBranchProcesses(t *testing.T) {
 
 	storyName := "story-cp"
 	child1 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 	child2 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$323",
-		"$656": true,
-		"$176": storyName,
-		"$434": "$441",
-		"$155": 77,
-		"$655": 2,
+		"type": "container",
+		"layout": "vertical",
+		"yj.enable_connected_dps": true,
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": 77,
+		"yj.connected_pagination": 2,
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{child1, child2},
+			"story_name": storyName,
+			"content_list": []interface{}{child1, child2},
 		},
 	}
 
@@ -1262,8 +1262,8 @@ func TestLeafBranchCreatesSectionNameWithSpreadSuffix(t *testing.T) {
 	cfg := makeSpreadConfig()
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	result := processPageSpreadPageTemplate(
@@ -1297,8 +1297,8 @@ func TestLeafBranchCreatesSectionNameWithoutSpread(t *testing.T) {
 	cfg := makeSpreadConfig()
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	result := processPageSpreadPageTemplate(
@@ -1337,23 +1337,23 @@ func TestRecursivePageSpreadProcessing(t *testing.T) {
 	outerStoryName := "outer-story"
 
 	innerChild := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	// Outer template is $437 page-spread
 	outerTemplate := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": outerStoryName,
-		"$434": "$441",
-		"$155": 10,
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": outerStoryName,
+		"virtual_panel": "enabled",
+		"id": 10,
 	}
 
 	storylines := map[string]map[string]interface{}{
 		outerStoryName: {
-			"$176": outerStoryName,
-			"$146": []interface{}{
+			"story_name": outerStoryName,
+			"content_list": []interface{}{
 				innerChild,
 			},
 		},
@@ -1378,22 +1378,22 @@ func TestRecursivePageSpreadProcessing(t *testing.T) {
 func TestLocationIDFromTemplate(t *testing.T) {
 	// getLocationID pops $155 first, then $598
 	data := map[string]interface{}{
-		"$155": 42,
-		"$598": 99,
+		"id": 42,
+		"kfx_id": 99,
 	}
 	id := getLocationID(data)
 	if id != 42 {
 		t.Errorf("expected location ID 42 from $155, got %v", id)
 	}
 	// $155 should have been consumed
-	if _, exists := data["$155"]; exists {
+	if _, exists := data["id"]; exists {
 		t.Error("expected $155 to be consumed by getLocationID")
 	}
 }
 
 func TestLocationIDFromTemplateFallback(t *testing.T) {
 	data := map[string]interface{}{
-		"$598": 99,
+		"kfx_id": 99,
 	}
 	id := getLocationID(data)
 	if id != 99 {
@@ -1417,11 +1417,11 @@ func TestProcessSectionComicDispatchesToPageSpreadTemplate(t *testing.T) {
 	// Build a complete comic section with a page-spread template
 	storyName := "comic-story"
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": storyName,
-		"$434": "$441",
-		"$155": 10,
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": 10,
 	}
 
 	section := sectionFragment{
@@ -1502,8 +1502,8 @@ func TestLayoutSpreadBaseProperty(t *testing.T) {
 		layout    string
 		expected  string
 	}{
-		{"$437", "page-spread"},
-		{"$438", "facing-page"},
+		{"page_spread", "page-spread"},
+		{"facing_page", "facing-page"},
 	}
 	for _, test := range tests {
 		got := layoutSpreadBaseProperty(test.layout)
@@ -1522,18 +1522,18 @@ func TestConnectedPaginationValidation(t *testing.T) {
 
 	storyName := "story-cp-bad"
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$323",
-		"$656": true,
-		"$176": storyName,
-		"$434": "$441",
-		"$155": 77,
-		"$655": 3, // wrong value — should be 2
+		"type": "container",
+		"layout": "vertical",
+		"yj.enable_connected_dps": true,
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": 77,
+		"yj.connected_pagination": 3, // wrong value — should be 2
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{},
+			"story_name": storyName,
+			"content_list": []interface{}{},
 		},
 	}
 
@@ -1552,11 +1552,11 @@ func TestPageSpreadWithMissingStoryline(t *testing.T) {
 	cfg := makeSpreadConfig()
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": "missing-story",
-		"$434": "$441",
-		"$155": 42,
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": "missing-story",
+		"virtual_panel": "enabled",
+		"id": 42,
 	}
 	storylines := map[string]map[string]interface{}{
 		// "missing-story" intentionally not present
@@ -1573,16 +1573,16 @@ func TestPageSpreadWithEmptyChildList(t *testing.T) {
 
 	storyName := "story-empty"
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": storyName,
-		"$434": "$441",
-		"$155": 42,
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": 42,
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{}, // empty children
+			"story_name": storyName,
+			"content_list": []interface{}{}, // empty children
 		},
 	}
 
@@ -1599,8 +1599,8 @@ func TestLeafBranchWithParentTemplateID(t *testing.T) {
 	cfg := makeSpreadConfig()
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	parentID := 42
@@ -1644,29 +1644,29 @@ func TestStoryBranchParentTemplateIDFirstChildOnly(t *testing.T) {
 
 	// Two leaf children in the story
 	child1 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 	child2 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 	child3 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": storyName,
-		"$434": "$441",
-		"$155": locID,
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": locID,
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{child1, child2, child3},
+			"story_name": storyName,
+			"content_list": []interface{}{child1, child2, child3},
 		},
 	}
 
@@ -1701,21 +1701,21 @@ func TestStoryBranchParentTemplateIDZeroWhenNoLocationID(t *testing.T) {
 
 	storyName := "story-no-ptid"
 	child1 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": storyName,
-		"$434": "$441",
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
 		// No $155 key → location ID = 0 → no parentTemplateID
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{child1},
+			"story_name": storyName,
+			"content_list": []interface{}{child1},
 		},
 	}
 
@@ -1744,27 +1744,27 @@ func TestConnectedBranchParentTemplateIDFirstChildOnly(t *testing.T) {
 	locID := 77
 
 	child1 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 	child2 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$323",
-		"$656": true,
-		"$176": storyName,
-		"$434": "$441",
-		"$155": locID,
-		"$655": 2,
+		"type": "container",
+		"layout": "vertical",
+		"yj.enable_connected_dps": true,
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": locID,
+		"yj.connected_pagination": 2,
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{child1, child2},
+			"story_name": storyName,
+			"content_list": []interface{}{child1, child2},
 		},
 	}
 
@@ -1799,29 +1799,29 @@ func TestScaleFitBranchParentTemplateIDAllChildren(t *testing.T) {
 	locID := 55
 
 	child1 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 	child2 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
-		"$176": storyName,
-		"$434": "$441",
-		"$192": nil,
-		"$140": nil,
-		"$560": nil,
-		"$155": locID,
-		"$16":  16,
+		"type": "container",
+		"layout": "scale_fit",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"direction": nil,
+		"float": nil,
+		"writing_mode": nil,
+		"id": locID,
+		"font_size":  16,
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{child1, child2},
+			"story_name": storyName,
+			"content_list": []interface{}{child1, child2},
 		},
 	}
 
@@ -1853,9 +1853,9 @@ func TestScaleFitFallsToLeafWhenDollar67Present(t *testing.T) {
 	cfg := makePDFSpreadConfig() // PDF-backed = true
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
-		"$67":  "has-sixty-seven", // $67 present → should NOT enter scale_fit
+		"type": "container",
+		"layout": "scale_fit",
+		"fixed_height":  "has-sixty-seven", // $67 present → should NOT enter scale_fit
 	}
 
 	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, map[string]map[string]interface{}{})
@@ -1876,9 +1876,9 @@ func TestScaleFitFallsToLeafWhenDollar66Present(t *testing.T) {
 	cfg := makePDFSpreadConfig() // PDF-backed = true
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
-		"$66":  "has-sixty-six", // $66 present → should NOT enter scale_fit
+		"type": "container",
+		"layout": "scale_fit",
+		"fixed_width":  "has-sixty-six", // $66 present → should NOT enter scale_fit
 	}
 
 	result := processPageSpreadPageTemplate(templateData, "test-section", "", nil, true, cfg, map[string]map[string]interface{}{})
@@ -1899,26 +1899,26 @@ func TestScaleFitProcessesWhenPdfBackedNoDollar67Dollar66(t *testing.T) {
 
 	storyName := "story-sf-happy"
 	child1 := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 
 	templateData := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
-		"$176": storyName,
-		"$434": "$441",
-		"$192": nil,
-		"$140": nil,
-		"$560": nil,
-		"$155": 55,
-		"$16":  16,
+		"type": "container",
+		"layout": "scale_fit",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"direction": nil,
+		"float": nil,
+		"writing_mode": nil,
+		"id": 55,
+		"font_size":  16,
 		// No $67, no $66 → scale_fit branch should activate
 	}
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{child1},
+			"story_name": storyName,
+			"content_list": []interface{}{child1},
 		},
 	}
 
@@ -1952,9 +1952,9 @@ func TestDetectBookTypeWired(t *testing.T) {
 	// Comic book type → branchComic path
 	comicSection := makeTestSection([]pageTemplateFragment{
 		{PositionID: 100, Storyline: "story1", PageTemplateValues: map[string]interface{}{
-			"$159": "$270",
-			"$156": "$325",
-			"$155": 42,
+			"type": "container",
+			"layout": "overflow",
+			"id": 42,
 		}},
 	}, nil)
 
@@ -1965,7 +1965,7 @@ func TestDetectBookTypeWired(t *testing.T) {
 
 	// Magazine with conditional template → branchMagazine
 	condSection := makeTestSection([]pageTemplateFragment{
-		{PositionID: 100, Storyline: "story1", HasCondition: true, Condition: []interface{}{"$300"}},
+		{PositionID: 100, Storyline: "story1", HasCondition: true, Condition: []interface{}{"hasColor"}},
 	}, nil)
 
 	branch = determineSectionBranch(condSection, bookTypeMagazine)
@@ -1999,23 +1999,23 @@ func TestProcessSectionMagazine(t *testing.T) {
 		PageProgressionDirection: "ltr",
 	}
 
-	// Template with $156="$325" (standard layout) and $171 condition (true via $300)
+	// Template with $156="overflow" (standard layout) and $171 condition (true via $300)
 	template1Values := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
-		"$171": []interface{}{"$300"}, // $300 is always true
+		"type": "container",
+		"layout": "overflow",
+		"condition": []interface{}{"hasColor"}, // $300 is always true
 	}
 
 	// Template with false condition
 	template2Values := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
-		"$171": []interface{}{"$293", []interface{}{"$300"}}, // NOT true = false
+		"type": "container",
+		"layout": "overflow",
+		"condition": []interface{}{"not", []interface{}{"hasColor"}}, // NOT true = false
 	}
 
 	templates := []pageTemplateFragment{
-		{PositionID: 200, Storyline: "s1", PageTemplateValues: template1Values, HasCondition: true, Condition: []interface{}{"$300"}},
-		{PositionID: 300, Storyline: "s2", PageTemplateValues: template2Values, HasCondition: true, Condition: []interface{}{"$293", []interface{}{"$300"}}},
+		{PositionID: 200, Storyline: "s1", PageTemplateValues: template1Values, HasCondition: true, Condition: []interface{}{"hasColor"}},
+		{PositionID: 300, Storyline: "s2", PageTemplateValues: template2Values, HasCondition: true, Condition: []interface{}{"not", []interface{}{"hasColor"}}},
 	}
 
 	section := sectionFragment{
@@ -2057,18 +2057,18 @@ func TestMagazineLayout437(t *testing.T) {
 	}
 
 	storyName := "story-437"
-	// Template with $156="$437" layout
+	// Template with $156="page_spread" layout
 	templateValues := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$171": []interface{}{"$300"}, // true condition
-		"$176": storyName,
-		"$434": "$441",
-		"$155": 42,
+		"type": "container",
+		"layout": "page_spread",
+		"condition": []interface{}{"hasColor"}, // true condition
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": 42,
 	}
 
 	templates := []pageTemplateFragment{
-		{PositionID: 200, Storyline: storyName, PageTemplateValues: templateValues, HasCondition: true, Condition: []interface{}{"$300"}},
+		{PositionID: 200, Storyline: storyName, PageTemplateValues: templateValues, HasCondition: true, Condition: []interface{}{"hasColor"}},
 	}
 
 	section := sectionFragment{
@@ -2080,11 +2080,11 @@ func TestMagazineLayout437(t *testing.T) {
 
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{
+			"story_name": storyName,
+			"content_list": []interface{}{
 				map[string]interface{}{
-					"$159": "$270",
-					"$156": "$325",
+					"type": "container",
+					"layout": "overflow",
 				},
 			},
 		},
@@ -2122,11 +2122,11 @@ func TestComicCallsPageSpread(t *testing.T) {
 
 	storyName := "comic-story"
 	templateValues := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$437",
-		"$176": storyName,
-		"$434": "$441",
-		"$155": 42,
+		"type": "container",
+		"layout": "page_spread",
+		"story_name": storyName,
+		"virtual_panel": "enabled",
+		"id": 42,
 	}
 
 	templates := []pageTemplateFragment{
@@ -2142,11 +2142,11 @@ func TestComicCallsPageSpread(t *testing.T) {
 
 	storylines := map[string]map[string]interface{}{
 		storyName: {
-			"$176": storyName,
-			"$146": []interface{}{
+			"story_name": storyName,
+			"content_list": []interface{}{
 				map[string]interface{}{
-					"$159": "$270",
-					"$156": "$325",
+					"type": "container",
+					"layout": "overflow",
 				},
 			},
 		},
@@ -2193,12 +2193,12 @@ func TestComicTemplateCountValidation(t *testing.T) {
 
 	// Section with 2 templates → error logged but still processes first template
 	template1Values := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 	template2Values := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 	}
 	section2 := sectionFragment{
 		ID:         "comic-multi",

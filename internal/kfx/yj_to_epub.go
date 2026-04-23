@@ -86,7 +86,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 			if storyline == nil {
 				continue
 			}
-			nodes, _ := asSlice(storyline["$146"])
+			nodes, _ := asSlice(storyline["content_list"])
 			collectStorylinePositions(nodes, sectionID, positionToSectionID)
 		}
 	}

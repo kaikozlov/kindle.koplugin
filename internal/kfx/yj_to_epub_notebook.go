@@ -453,7 +453,7 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 		fid, _ := content.(string)
 		var fragment map[string]interface{}
 		if nc.getFragment != nil {
-			fragment = nc.getFragment("$608", fid)
+			fragment = nc.getFragment("structure", fid)
 		}
 		if fragment != nil {
 			processNotebookContent(nc, fragment, parent)
@@ -471,9 +471,9 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 
 	// Pop $159 (content type) and get location_id
 	var contentType interface{}
-	if v, ok := contentMap["$159"]; ok {
+	if v, ok := contentMap["type"]; ok {
 		contentType = v
-		delete(contentMap, "$159")
+		delete(contentMap, "type")
 	}
 
 	locationID := getLocationIDString(contentMap)
@@ -481,31 +481,31 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 	ctx.push(fmt.Sprintf("%v %s", contentType, locationID))
 	nc.contentContext = ctx.current()
 
-	if contentType == "$270" {
+	if contentType == "container" {
 		var layout interface{}
-		if v, ok := contentMap["$156"]; ok {
+		if v, ok := contentMap["layout"]; ok {
 			layout = v
-			delete(contentMap, "$156")
+			delete(contentMap, "layout")
 		}
 
-		if listContent, ok := contentMap["$146"]; ok {
+		if listContent, ok := contentMap["content_list"]; ok {
 			// $146 list: iterate children
-			delete(contentMap, "$146")
+			delete(contentMap, "content_list")
 			list, ok := listContent.([]interface{})
 			if ok {
 				for _, child := range list {
 					processNotebookContent(nc, child, parent)
 				}
 			}
-		} else if _, ok := contentMap["$176"]; ok {
+		} else if _, ok := contentMap["story_name"]; ok {
 			// $176 story: look up named fragment via $259
 			var story map[string]interface{}
 			if nc.getNamedFragment != nil {
-				story = nc.getNamedFragment(contentMap, "$259", "$176")
+				story = nc.getNamedFragment(contentMap, "storyline", "story_name")
 			}
 			if story != nil {
-				storyName := story["$176"]
-				delete(story, "$176")
+				storyName := story["story_name"]
+				delete(story, "story_name")
 				if nc.debug {
 					log.Printf("kfx: debug: Processing story %v", storyName)
 				}
@@ -513,8 +513,8 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 				ctx.push(fmt.Sprintf("story %v", storyName))
 				nc.contentContext = ctx.current()
 
-				if storyContent, ok := story["$146"]; ok {
-					delete(story, "$146")
+				if storyContent, ok := story["content_list"]; ok {
+					delete(story, "content_list")
 					list, ok := storyContent.([]interface{})
 					if ok {
 						for _, child := range list {
@@ -532,7 +532,7 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 			if _, hasNmdlType := contentMap["nmdl.type"]; hasNmdlType {
 				scribeNotebookStroke(nc, contentMap, parent, locationID)
 			}
-		} else if layout != "$323" {
+		} else if layout != "vertical" {
 			log.Printf("kfx: error: %s has unknown $270 layout: %v", nc.contentContext, layout)
 		}
 	} else {
@@ -552,12 +552,12 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 func getLocationIDString(content map[string]interface{}) string {
 	// In Python, get_location_id reads $183 and resolves the location.
 	// For notebook processing, it's used primarily as an SVG element id attribute.
-	if loc, ok := content["$183"]; ok {
+	if loc, ok := content["position"]; ok {
 		switch v := loc.(type) {
 		case string:
 			return v
 		case map[string]interface{}:
-			if id, ok := v["$155"]; ok {
+			if id, ok := v["id"]; ok {
 				return fmt.Sprintf("%v", id)
 			}
 		}
@@ -610,9 +610,9 @@ func scribeNotebookStrokeGroup(nc *notebookContext, content map[string]interface
 		groupElem.setAttrib("id", locationID)
 	}
 
-	annotations, ok := content["$683"].([]interface{})
+	annotations, ok := content["annotations"].([]interface{})
 	if ok {
-		delete(content, "$683")
+		delete(content, "annotations")
 		for _, annotation := range annotations {
 			annotationMap, ok := annotation.(map[string]interface{})
 			if ok {
@@ -901,8 +901,8 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 	}
 
 	// Handle transform
-	if v, ok := content["$98"]; ok {
-		delete(content, "$98")
+	if v, ok := content["transform"]; ok {
+		delete(content, "transform")
 		if vals, ok := v.([]interface{}); ok {
 			transform := processTransform(vals, true)
 			groupElem.setAttrib("transform", transform)
@@ -1185,24 +1185,24 @@ func writePNGImage(groupElem *svgElement, img image.Image, bounds [4]int, boundW
 // scribeNotebookAnnotation processes annotation content within stroke groups.
 // Port of Python KFX_EPUB_Notebook.scribe_notebook_annotation (yj_to_epub_notebook.py:517-555).
 func scribeNotebookAnnotation(nc *notebookContext, annotation map[string]interface{}, elem *svgElement) {
-	annotationType := annotation["$687"]
-	delete(annotation, "$687")
+	annotationType := annotation["annotation_type"]
+	delete(annotation, "annotation_type")
 
 	if annotationType == "nmdl.hwr" {
 		var story map[string]interface{}
 		if nc.getNamedFragment != nil {
-			story = nc.getNamedFragment(annotation, "$259", "$749")
+			story = nc.getNamedFragment(annotation, "storyline", "alt_content")
 		}
 
 		if story != nil {
-			storyName := story["$176"]
-			delete(story, "$176")
+			storyName := story["story_name"]
+			delete(story, "story_name")
 			nc.pushContext(fmt.Sprintf("story %v", storyName))
 
 			_ = getLocationIDString(story)
 
-			if content, ok := story["$146"]; ok {
-				delete(story, "$146")
+			if content, ok := story["content_list"]; ok {
+				delete(story, "content_list")
 				list, ok := content.([]interface{})
 				if ok {
 					for _, child := range list {
@@ -1233,7 +1233,7 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 	if dataType == ionTypeSymbol {
 		// IonSymbol: resolve to fragment via $608 lookup
 		fid, _ := content.(string)
-		fragment := nc.getFragment("$608", fid)
+		fragment := nc.getFragment("structure", fid)
 		if fragment != nil {
 			// Python calls self.process_content() here, which is a different pipeline.
 			// For notebook context, this is typically a no-op or placeholder.
@@ -1251,31 +1251,31 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 	locationID := getLocationIDString(contentMap)
 	nc.pushContext(locationID)
 
-	contentType := contentMap["$159"]
-	delete(contentMap, "$159")
+	contentType := contentMap["type"]
+	delete(contentMap, "type")
 
-	if contentType == "$269" {
-		wordIterType := contentMap["$605"]
-		delete(contentMap, "$605")
+	if contentType == "text" {
+		wordIterType := contentMap["word_iteration_type"]
+		delete(contentMap, "word_iteration_type")
 		if wordIterType != nil && wordIterType != "model" {
 			log.Printf("kfx: warning: %s has text word_iteration_type=%v", nc.contentContext, wordIterType)
 		}
 
 		var top, left float64
-		if v, ok := contentMap["$58"]; ok {
-			delete(contentMap, "$58")
+		if v, ok := contentMap["top"]; ok {
+			delete(contentMap, "top")
 			top = toFloat64(v)
 		}
-		if v, ok := contentMap["$59"]; ok {
-			delete(contentMap, "$59")
+		if v, ok := contentMap["left"]; ok {
+			delete(contentMap, "left")
 			left = toFloat64(v)
 		}
-		delete(contentMap, "$57")
-		delete(contentMap, "$56")
+		delete(contentMap, "height")
+		delete(contentMap, "width")
 
 		text := ""
-		if v, ok := contentMap["$145"]; ok {
-			delete(contentMap, "$145")
+		if v, ok := contentMap["content"]; ok {
+			delete(contentMap, "content")
 			text, _ = v.(string)
 		}
 
@@ -1293,8 +1293,8 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 		})
 
 		// Process style events ($142)
-		if styleEvents, ok := contentMap["$142"]; ok {
-			delete(contentMap, "$142")
+		if styleEvents, ok := contentMap["style_events"]; ok {
+			delete(contentMap, "style_events")
 			events, ok := styleEvents.([]interface{})
 			if ok {
 				for _, event := range events {
@@ -1303,8 +1303,8 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 						continue
 					}
 
-					model := eventMap["$604"]
-					delete(eventMap, "$604")
+					model := eventMap["model"]
+					delete(eventMap, "model")
 					if model != nil && model != "word" {
 						log.Printf("kfx: warning: %s has text model=%v", nc.contentContext, model)
 					}
@@ -1312,31 +1312,31 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 					var offset, length int
 					var wordTop, wordLeft, wordHeight, wordWidth float64
 
-					if v, ok := eventMap["$143"]; ok {
-						delete(eventMap, "$143")
+					if v, ok := eventMap["offset"]; ok {
+						delete(eventMap, "offset")
 						offset = toInt(v)
 					}
-					if v, ok := eventMap["$144"]; ok {
-						delete(eventMap, "$144")
+					if v, ok := eventMap["length"]; ok {
+						delete(eventMap, "length")
 						length = toInt(v)
 					}
-					if v, ok := eventMap["$58"]; ok {
-						delete(eventMap, "$58")
+					if v, ok := eventMap["top"]; ok {
+						delete(eventMap, "top")
 						wordTop = toFloat64(v)
 					}
-					if v, ok := eventMap["$59"]; ok {
-						delete(eventMap, "$59")
+					if v, ok := eventMap["left"]; ok {
+						delete(eventMap, "left")
 						wordLeft = toFloat64(v)
 					}
-					if v, ok := eventMap["$57"]; ok {
-						delete(eventMap, "$57")
+					if v, ok := eventMap["height"]; ok {
+						delete(eventMap, "height")
 						wordHeight = toFloat64(v)
 					}
-					if v, ok := eventMap["$56"]; ok {
-						delete(eventMap, "$56")
+					if v, ok := eventMap["width"]; ok {
+						delete(eventMap, "width")
 						wordWidth = toFloat64(v)
 					}
-					delete(eventMap, "$749")
+					delete(eventMap, "alt_content")
 
 					word := ""
 					if offset >= 0 && offset+length <= len(text) {

@@ -692,7 +692,7 @@ func TestProcessNotebookContent_DispatchesDollar270(t *testing.T) {
 		},
 		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
 			// Look up the story reference
-			if ref, ok := content["$259"]; ok {
+			if ref, ok := content["storyline"]; ok {
 				if fid, ok := ref.(string); ok {
 					return fragmentStore["$259:"+fid]
 				}
@@ -705,10 +705,10 @@ func TestProcessNotebookContent_DispatchesDollar270(t *testing.T) {
 	parent := &svgElement{Tag: "svg"}
 
 	content := map[string]interface{}{
-		"$159": "$270",
-		"$146": []interface{}{
+		"type": "container",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$159": "$270",
+				"type": "container",
 			},
 		},
 	}
@@ -716,11 +716,11 @@ func TestProcessNotebookContent_DispatchesDollar270(t *testing.T) {
 	processNotebookContent(nc, content, parent)
 
 	// After processing, $159 should have been popped
-	if _, ok := content["$159"]; ok {
+	if _, ok := content["type"]; ok {
 		t.Error("$159 should have been popped from content")
 	}
 	// $146 should have been popped
-	if _, ok := content["$146"]; ok {
+	if _, ok := content["content_list"]; ok {
 		t.Error("$146 should have been popped from content")
 	}
 }
@@ -729,7 +729,7 @@ func TestProcessNotebookContent_SymbolLookup(t *testing.T) {
 	// Verify that IonSymbol content triggers $608 fragment lookup.
 	fragmentStore := map[string]map[string]interface{}{
 		"$608:sym1": {
-			"$159": "$270",
+			"type": "container",
 		},
 	}
 
@@ -767,7 +767,7 @@ func TestProcessNotebookContent_UnknownContentType(t *testing.T) {
 	parent := &svgElement{Tag: "svg"}
 
 	content := map[string]interface{}{
-		"$159": "$999", // unknown content type
+		"type": "$999", // unknown content type
 	}
 
 	processNotebookContent(nc, content, parent)
@@ -777,10 +777,10 @@ func TestProcessNotebookContent_UnknownContentType(t *testing.T) {
 func TestProcessNotebookContent_RecursesDollar176(t *testing.T) {
 	// Verify that $176 story content is looked up and processed.
 	storyFragment := map[string]interface{}{
-		"$176": "my_story",
-		"$146": []interface{}{
+		"story_name": "my_story",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$159": "$270",
+				"type": "container",
 			},
 		},
 	}
@@ -794,7 +794,7 @@ func TestProcessNotebookContent_RecursesDollar176(t *testing.T) {
 			return fragmentStore[ftype+":"+fid]
 		},
 		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
-			if ref, ok := content["$259"]; ok {
+			if ref, ok := content["storyline"]; ok {
 				if fid, ok := ref.(string); ok {
 					return fragmentStore["$259:"+fid]
 				}
@@ -807,15 +807,15 @@ func TestProcessNotebookContent_RecursesDollar176(t *testing.T) {
 	parent := &svgElement{Tag: "svg"}
 
 	content := map[string]interface{}{
-		"$159": "$270",
-		"$176": "story_name",
-		"$259": "story_ref",
+		"type": "container",
+		"story_name": "story_name",
+		"storyline": "story_ref",
 	}
 
 	processNotebookContent(nc, content, parent)
 
 	// $176 should have been consumed in the content
-	if _, ok := content["$176"]; !ok {
+	if _, ok := content["story_name"]; !ok {
 		t.Error("$176 should still be in content (it's consumed by getNamedFragment)")
 	}
 }
@@ -835,7 +835,7 @@ func TestProcessNotebookContent_DispatchesStrokeWhenNoLayout(t *testing.T) {
 	parent := &svgElement{Tag: "svg"}
 
 	content := map[string]interface{}{
-		"$159":      "$270",
+		"type":      "container",
 		"nmdl.type": "nmdl.stroke_group",
 		"nmdl.chunked": true,
 		"nmdl.chunk_threshold": 50,
@@ -873,9 +873,9 @@ func TestScribeNotebookStrokeGroup(t *testing.T) {
 		"nmdl.type":            "nmdl.stroke_group",
 		"nmdl.chunked":         true,
 		"nmdl.chunk_threshold": 50,
-		"$683": []interface{}{
+		"annotations": []interface{}{
 			map[string]interface{}{
-				"$687": "nmdl.hwr",
+				"annotation_type": "nmdl.hwr",
 			},
 		},
 	}
@@ -1110,33 +1110,33 @@ func TestSVGPathGeneration_IncludePriorLineSegment(t *testing.T) {
 func TestScribeNotebookAnnotation_HWR(t *testing.T) {
 	// Verify that nmdl.hwr annotation creates <text>/<tspan> elements.
 	storyFragment := map[string]interface{}{
-		"$176": "hwr_story",
-		"$146": []interface{}{
+		"story_name": "hwr_story",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$159": "$269",
-				"$58":  float64(100),
-				"$59":  float64(50),
-				"$57":  float64(20),
-				"$56":  float64(80),
-				"$145": "Hello World",
-				"$142": []interface{}{
+				"type": "text",
+				"top":  float64(100),
+				"left":  float64(50),
+				"height":  float64(20),
+				"width":  float64(80),
+				"content": "Hello World",
+				"style_events": []interface{}{
 					map[string]interface{}{
-						"$604": "word",
-						"$143": 0,
-						"$144": 5,
-						"$58":  float64(100),
-						"$59":  float64(50),
-						"$57":  float64(20),
-						"$56":  float64(40),
+						"model": "word",
+						"offset": 0,
+						"length": 5,
+						"top":  float64(100),
+						"left":  float64(50),
+						"height":  float64(20),
+						"width":  float64(40),
 					},
 					map[string]interface{}{
-						"$604": "word",
-						"$143": 6,
-						"$144": 5,
-						"$58":  float64(100),
-						"$59":  float64(90),
-						"$57":  float64(20),
-						"$56":  float64(40),
+						"model": "word",
+						"offset": 6,
+						"length": 5,
+						"top":  float64(100),
+						"left":  float64(90),
+						"height":  float64(20),
+						"width":  float64(40),
 					},
 				},
 			},
@@ -1149,7 +1149,7 @@ func TestScribeNotebookAnnotation_HWR(t *testing.T) {
 		},
 		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
 			// Return the story fragment for any $259 lookup
-			if ftype == "$259" {
+			if ftype == "storyline" {
 				return storyFragment
 			}
 			return nil
@@ -1160,8 +1160,8 @@ func TestScribeNotebookAnnotation_HWR(t *testing.T) {
 	parent := &svgElement{Tag: "g"}
 
 	annotation := map[string]interface{}{
-		"$687": "nmdl.hwr",
-		"$259": "story_ref",
+		"annotation_type": "nmdl.hwr",
+		"storyline": "story_ref",
 	}
 
 	scribeNotebookAnnotation(nc, annotation, parent)
@@ -1221,7 +1221,7 @@ func TestScribeNotebookAnnotation_UnexpectedType(t *testing.T) {
 	parent := &svgElement{Tag: "g"}
 
 	annotation := map[string]interface{}{
-		"$687": "nmdl.unknown_type",
+		"annotation_type": "nmdl.unknown_type",
 	}
 
 	scribeNotebookAnnotation(nc, annotation, parent)

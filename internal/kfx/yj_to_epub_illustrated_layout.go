@@ -15,9 +15,9 @@ import (
 // conditionOperatorNames maps YJ condition operator symbols to their CSS names.
 // Port of CONDITION_OPERATOR_NAMES (yj_to_epub_illustrated_layout.py L20-24).
 var conditionOperatorNames = map[string]string{
-	"$294": "anchor-id",
-	"$299": "range-id.le",
-	"$298": "range-id.lt",
+	"==": "anchor-id",
+	"<=": "range-id.le",
+	"<": "range-id.lt",
 }
 
 // EMIT_PAGE_TEMPLATES controls whether to emit CSS @-amzn-page-element rules

@@ -358,12 +358,12 @@ func TestKnownSupportedFeatures(t *testing.T) {
 	}
 
 	// Check first entry (single-element)
-	if KnownSupportedFeatures[0].Symbol != "$826" {
+	if KnownSupportedFeatures[0].Symbol != "audio" {
 		t.Errorf("KNOWN_SUPPORTED_FEATURES[0].Symbol = %q, want $826", KnownSupportedFeatures[0].Symbol)
 	}
 	// Check last entry (3-element tuple)
 	last := KnownSupportedFeatures[4]
-	if last.Symbol != "$664" || last.Key != "crop_bleed" || last.Version != 1 || !last.HasTuple {
+	if last.Symbol != "yj.sdl_version" || last.Key != "crop_bleed" || last.Version != 1 || !last.HasTuple {
 		t.Errorf("KNOWN_SUPPORTED_FEATURES[4] = %+v, want {$664 crop_bleed 1 true}", last)
 	}
 }

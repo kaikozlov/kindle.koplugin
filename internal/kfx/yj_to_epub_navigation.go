@@ -28,7 +28,7 @@ func resolveNavigationUnit(value interface{}) map[string]interface{} {
 func collectNavigationContainers(navRoots []map[string]interface{}, navContainers map[string]map[string]interface{}) []map[string]interface{} {
 	var containers []map[string]interface{}
 	for _, root := range navRoots {
-		entries, ok := asSlice(root["$392"])
+		entries, ok := asSlice(root["nav_containers"])
 		if !ok {
 			continue
 		}
@@ -42,7 +42,7 @@ func collectNavigationContainers(navRoots []map[string]interface{}, navContainer
 }
 
 func navigationType(value map[string]interface{}) string {
-	navType, _ := asString(value["$235"])
+	navType, _ := asString(value["nav_type"])
 	return navType
 }
 
@@ -50,16 +50,16 @@ func navigationType(value map[string]interface{}) string {
 // Port of Python get_representation (yj_to_epub_navigation.py L247-271).
 // Python extracts: $245→icon+label, $146→description (content list → text), $244→label.
 func parseNavRepresentation(entry map[string]interface{}) (label string, icon string, description string) {
-	representation, ok := asMap(entry["$241"])
+	representation, ok := asMap(entry["representation"])
 	if !ok {
 		return "", "", ""
 	}
 
-	// Python: if "$245" in representation: icon = representation.pop("$245"); label = str(icon)
-	if iconRaw, ok := asMap(representation["$245"]); ok {
+	// Python: if "icon" in representation: icon = representation.pop("icon"); label = str(icon)
+	if iconRaw, ok := asMap(representation["icon"]); ok {
 		// Icon is a resource reference; the label is str(icon).
 		// For now, we extract the resource ID for later resolution.
-		if resourceID, ok := asString(iconRaw["$175"]); ok {
+		if resourceID, ok := asString(iconRaw["resource_name"]); ok {
 			icon = resourceID
 		}
 		if icon != "" {
@@ -67,8 +67,8 @@ func parseNavRepresentation(entry map[string]interface{}) (label string, icon st
 		}
 	}
 
-	// Python: if "$146" in representation: process content list → text → description
-	if descRaw, ok := asSlice(representation["$146"]); ok && len(descRaw) > 0 {
+	// Python: if "content_list" in representation: process content list → text → description
+	if descRaw, ok := asSlice(representation["content_list"]); ok && len(descRaw) > 0 {
 		// Python builds a div element, processes content list, then extracts text.
 		// Simplified: just extract text content from the representation.
 		// In practice, navigation descriptions are simple text strings.
@@ -83,8 +83,8 @@ func parseNavRepresentation(entry map[string]interface{}) (label string, icon st
 		}
 	}
 
-	// Python: if "$244" in representation: label = representation.pop("$244")
-	if textLabel, ok := asString(representation["$244"]); ok {
+	// Python: if "label" in representation: label = representation.pop("label")
+	if textLabel, ok := asString(representation["label"]); ok {
 		label = textLabel
 	}
 
@@ -104,15 +104,15 @@ func parseNavTitle(value map[string]interface{}) string {
 }
 
 func parseNavTarget(value map[string]interface{}) navTarget {
-	target, ok := asMap(value["$246"])
+	target, ok := asMap(value["target_position"])
 	if !ok {
 		return navTarget{}
 	}
-	positionID, _ := asInt(target["$155"])
+	positionID, _ := asInt(target["id"])
 	if positionID == 0 {
-		positionID, _ = asInt(target["$598"])
+		positionID, _ = asInt(target["kfx_id"])
 	}
-	offset, _ := asInt(target["$143"])
+	offset, _ := asInt(target["offset"])
 	return navTarget{PositionID: positionID, Offset: offset}
 }
 
@@ -199,7 +199,7 @@ func processNavigation(navRoots []map[string]interface{}, navContainers map[stri
 	containers := collectNavigationContainers(navRoots, navContainers)
 	hasNavHeadings := false
 	for _, container := range containers {
-		if navigationType(container) == "$798" {
+		if navigationType(container) == "headings" {
 			hasNavHeadings = true
 			break
 		}
@@ -219,7 +219,7 @@ func (p *navProcessor) processContainer(container map[string]interface{}, hasNav
 			}
 		}
 	}
-	entries, ok := asSlice(container["$247"])
+	entries, ok := asSlice(container["entries"])
 	if !ok {
 		return
 	}
@@ -229,11 +229,11 @@ func (p *navProcessor) processContainer(container map[string]interface{}, hasNav
 			continue
 		}
 		switch navType {
-		case "$212", "$213", "$214", "$798":
-			p.processNavUnit(navType, entry, &p.toc, navType == "$212" && !hasNavHeadings, nil)
-		case "$236":
+		case "toc", "scrubbers", "thumbnails", "headings":
+			p.processNavUnit(navType, entry, &p.toc, navType == "toc" && !hasNavHeadings, nil)
+		case "landmarks":
 			p.processGuideUnit(entry)
-		case "$237":
+		case "page_list":
 			p.processPageUnit(entry)
 		}
 	}
@@ -245,11 +245,11 @@ func (p *navProcessor) processGuideUnit(entry map[string]interface{}) {
 	if target.PositionID == 0 {
 		return
 	}
-	navUnitName, _ := asString(entry["$240"])
+	navUnitName, _ := asString(entry["nav_unit_name"])
 	if navUnitName == "" {
 		navUnitName = label
 	}
-	guideType := guideTypeForLandmark(asStringDefault(entry["$238"]))
+	guideType := guideTypeForLandmark(asStringDefault(entry["landmark_type"]))
 	anchorName := p.uniqueAnchorName(navUnitName)
 	if anchorName == "" {
 		anchorName = p.uniqueAnchorName(guideType)
@@ -293,18 +293,18 @@ func (p *navProcessor) processNavUnit(navType string, entry map[string]interface
 		label = strings.TrimSpace(label)
 	}
 
-	// Python: desc = nav_unit.pop("$154", None); if desc: description = desc.strip()
-	if desc, ok := asString(entry["$154"]); ok && desc != "" {
+	// Python: desc = nav_unit.pop("description", None); if desc: description = desc.strip()
+	if desc, ok := asString(entry["description"]); ok && desc != "" {
 		description = strings.TrimSpace(desc)
 	}
 
-	navUnitName, _ := asString(entry["$240"])
+	navUnitName, _ := asString(entry["nav_unit_name"])
 	if navUnitName == "" {
 		navUnitName = label
 	}
 	nextHeading := (*int)(nil)
-	if navType == "$798" {
-		if level, ok := headingLevelForLandmark(asStringDefault(entry["$238"])); ok {
+	if navType == "headings" {
+		if level, ok := headingLevelForLandmark(asStringDefault(entry["landmark_type"])); ok {
 			headingLevel = intPtr(level)
 			nextHeading = intPtr(level)
 		}
@@ -324,7 +324,7 @@ func (p *navProcessor) processNavUnit(navType string, entry map[string]interface
 	}
 
 	// Process child nav units from $247
-	childrenRaw, _ := asSlice(entry["$247"])
+	childrenRaw, _ := asSlice(entry["entries"])
 	children := make([]navPoint, 0, len(childrenRaw))
 	for _, raw := range childrenRaw {
 		child := resolveNavigationUnit(raw)
@@ -338,14 +338,14 @@ func (p *navProcessor) processNavUnit(navType string, entry map[string]interface
 	// Each entry_set contains $247 children and an $215 orientation filter.
 	// Orientation $386 = portrait-only (clear if not landscape lock)
 	// Orientation $385 = landscape-only (clear if landscape lock)
-	entrySets, _ := asSlice(entry["$248"])
+	entrySets, _ := asSlice(entry["entry_set"])
 	for _, esRaw := range entrySets {
 		entrySet, ok := asMap(esRaw)
 		if !ok {
 			continue
 		}
 		// Process children within entry set
-		esChildren, _ := asSlice(entrySet["$247"])
+		esChildren, _ := asSlice(entrySet["entries"])
 		for _, raw := range esChildren {
 			child := resolveNavigationUnit(raw)
 			if child == nil {
@@ -355,15 +355,15 @@ func (p *navProcessor) processNavUnit(navType string, entry map[string]interface
 		}
 
 		// Orientation filtering (Python L218-224)
-		orientation, _ := asString(entrySet["$215"])
+		orientation, _ := asString(entrySet["orientation"])
 		switch orientation {
-		case "$386":
+		case "landscape":
 			// Portrait: clear children unless locked to landscape
 			// Python: if self.orientation_lock != "landscape": nested_toc = []
 			if p.orientationLock != "landscape" {
 				children = nil
 			}
-		case "$385":
+		case "portrait":
 			// Landscape: clear children when locked to landscape
 			// Python: if self.orientation_lock == "landscape": nested_toc = []
 			if p.orientationLock == "landscape" {
@@ -383,7 +383,7 @@ func (p *navProcessor) processNavUnit(navType string, entry map[string]interface
 		p.tocEntryCount++
 		p.registerAnchor(anchorName, target, headingLevel)
 	}
-	if navType == "$798" {
+	if navType == "headings" {
 		return
 	}
 	if label == "" && !hasTarget {
@@ -439,11 +439,11 @@ func (p *navProcessor) registerAnchor(name string, target navTarget, headingLeve
 
 func guideTypeForLandmark(value string) string {
 	switch value {
-	case "$233":
+	case "cover_page":
 		return "cover"
-	case "$396", "$269":
+	case "srl", "text":
 		return "text"
-	case "$212":
+	case "toc":
 		return "toc"
 	default:
 		return value
@@ -452,17 +452,17 @@ func guideTypeForLandmark(value string) string {
 
 func headingLevelForLandmark(value string) (int, bool) {
 	switch value {
-	case "$799":
+	case "h1":
 		return 1, true
-	case "$800":
+	case "h2":
 		return 2, true
-	case "$801":
+	case "h3":
 		return 3, true
-	case "$802":
+	case "h4":
 		return 4, true
-	case "$803":
+	case "h5":
 		return 5, true
-	case "$804":
+	case "h6":
 		return 6, true
 	default:
 		return 0, false

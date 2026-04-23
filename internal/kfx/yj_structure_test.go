@@ -44,7 +44,7 @@ func TestModuleControlConstants(t *testing.T) {
 
 func TestFixedLayoutImageFormats(t *testing.T) {
 	expected := map[string]bool{
-		"$286": true, "$285": true, "$548": true, "$565": true, "$284": true,
+		"gif": true, "jpg": true, "jxr": true, "pdf": true, "png": true,
 	}
 	if len(FixedLayoutImageFormats) != len(expected) {
 		t.Errorf("FixedLayoutImageFormats has %d entries, want %d", len(FixedLayoutImageFormats), len(expected))
@@ -117,25 +117,25 @@ func TestNumstr(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestExtractFragmentIDFromValue(t *testing.T) {
-	// Test with $260 which has key ["$174"]
-	result := ExtractFragmentIDFromValue("$260", map[string]interface{}{
-		"$174": "my_section_id",
+	// Test with $260 which has key ["section_name"]
+	result := ExtractFragmentIDFromValue("section", map[string]interface{}{
+		"section_name": "my_section_id",
 	})
 	if result != "my_section_id" {
 		t.Errorf("ExtractFragmentIDFromValue($260) = %q, want %q", result, "my_section_id")
 	}
 
-	// Test with $597 which has keys ["$174", "$598"]
-	result = ExtractFragmentIDFromValue("$597", map[string]interface{}{
-		"$174": "abc",
+	// Test with $597 which has keys ["section_name", "kfx_id"]
+	result = ExtractFragmentIDFromValue("auxiliary_data", map[string]interface{}{
+		"section_name": "abc",
 	})
 	if result != "abc" {
 		t.Errorf("ExtractFragmentIDFromValue($597 with $174) = %q, want %q", result, "abc")
 	}
 
-	// Test with $164 which has key ["$175"]
-	result = ExtractFragmentIDFromValue("$164", map[string]interface{}{
-		"$175": "resource_id",
+	// Test with $164 which has key ["resource_name"]
+	result = ExtractFragmentIDFromValue("external_resource", map[string]interface{}{
+		"resource_name": "resource_id",
 	})
 	if result != "resource_id" {
 		t.Errorf("ExtractFragmentIDFromValue($164) = %q, want %q", result, "resource_id")
@@ -143,29 +143,29 @@ func TestExtractFragmentIDFromValue(t *testing.T) {
 
 	// Test with unknown fragment type
 	result = ExtractFragmentIDFromValue("$999", map[string]interface{}{
-		"$174": "some_id",
+		"section_name": "some_id",
 	})
 	if result != "$999" {
 		t.Errorf("ExtractFragmentIDFromValue($999) = %q, want %q", result, "$999")
 	}
 
 	// Test with non-map value
-	result = ExtractFragmentIDFromValue("$260", "not a map")
-	if result != "$260" {
-		t.Errorf("ExtractFragmentIDFromValue($260, string) = %q, want %q", result, "$260")
+	result = ExtractFragmentIDFromValue("section", "not a map")
+	if result != "section" {
+		t.Errorf("ExtractFragmentIDFromValue($260, string) = %q, want %q", result, "section")
 	}
 
-	// Test with $157 which has key ["$173"]
-	result = ExtractFragmentIDFromValue("$157", map[string]interface{}{
-		"$173": "style_id",
+	// Test with $157 which has key ["style_name"]
+	result = ExtractFragmentIDFromValue("style", map[string]interface{}{
+		"style_name": "style_id",
 	})
 	if result != "style_id" {
 		t.Errorf("ExtractFragmentIDFromValue($157) = %q, want %q", result, "style_id")
 	}
 
-	// Test with $391 which has key ["$239"]
-	result = ExtractFragmentIDFromValue("$391", map[string]interface{}{
-		"$239": "nav_id",
+	// Test with $391 which has key ["nav_container_name"]
+	result = ExtractFragmentIDFromValue("nav_container", map[string]interface{}{
+		"nav_container_name": "nav_id",
 	})
 	if result != "nav_id" {
 		t.Errorf("ExtractFragmentIDFromValue($391) = %q, want %q", result, "nav_id")
@@ -178,11 +178,11 @@ func TestExtractFragmentIDFromValue(t *testing.T) {
 
 func TestWalkFragmentStruct(t *testing.T) {
 	fragment := Fragment{
-		FType: "$260",
+		FType: "section",
 		FID:   "section1",
 		Value: map[string]interface{}{
-			"$174": "section1",
-			"$176": "storyline1",
+			"section_name": "section1",
+			"story_name": "storyline1",
 		},
 	}
 
@@ -194,12 +194,12 @@ func TestWalkFragmentStruct(t *testing.T) {
 	WalkFragment(fragment, &mandatoryRefs, &optionalRefs, &eidDefs, &eidRefs, nil)
 
 	// $174 → $260 (via CommonFragmentReferences), $176 → $259
-	// But $174 is in FragmentIDKeys["$260"] and containerParent == fragment.FType == "$260",
+	// But $174 is in FragmentIDKeys["section"] and containerParent == fragment.FType == "section",
 	// so it should be skipped (isIDKey == true).
 	// $176 → $259 via CommonFragmentReferences
 	foundStoryline := false
 	for k := range mandatoryRefs {
-		if k.FType == "$259" && k.FID == "storyline1" {
+		if k.FType == "storyline" && k.FID == "storyline1" {
 			foundStoryline = true
 		}
 	}
@@ -214,10 +214,10 @@ func TestWalkFragmentStruct(t *testing.T) {
 
 func TestWalkFragmentList(t *testing.T) {
 	fragment := Fragment{
-		FType: "$259",
+		FType: "storyline",
 		FID:   "storyline1",
 		Value: map[string]interface{}{
-			"$429": []interface{}{
+			"backdrop_style": []interface{}{
 				"style1",
 				"style2",
 			},
@@ -235,10 +235,10 @@ func TestWalkFragmentList(t *testing.T) {
 	found1 := false
 	found2 := false
 	for k := range mandatoryRefs {
-		if k.FType == "$157" && k.FID == "style1" {
+		if k.FType == "style" && k.FID == "style1" {
 			found1 = true
 		}
-		if k.FType == "$157" && k.FID == "style2" {
+		if k.FType == "style" && k.FID == "style2" {
 			found2 = true
 		}
 	}
@@ -253,11 +253,11 @@ func TestWalkFragmentList(t *testing.T) {
 
 func TestWalkFragmentEIDTracking(t *testing.T) {
 	fragment := Fragment{
-		FType: "$260",
+		FType: "section",
 		FID:   "section1",
 		Value: map[string]interface{}{
-			"$155": "entity1",
-			"$185": "entity2",
+			"id": "entity1",
+			"eid": "entity2",
 		},
 	}
 
@@ -282,10 +282,10 @@ func TestWalkFragmentEIDTracking(t *testing.T) {
 
 func TestWalkFragmentSpecialRefs(t *testing.T) {
 	fragment := Fragment{
-		FType: "$391",
+		FType: "nav_container",
 		FID:   "nav1",
 		Value: map[string]interface{}{
-			"$247": "data1",
+			"entries": "data1",
 		},
 	}
 
@@ -299,7 +299,7 @@ func TestWalkFragmentSpecialRefs(t *testing.T) {
 	// $247 in $391 → $394 via SpecialFragmentReferences
 	found := false
 	for k := range mandatoryRefs {
-		if k.FType == "$394" && k.FID == "data1" {
+		if k.FType == "conditional_nav_group_unit" && k.FID == "data1" {
 			found = true
 		}
 	}
@@ -317,18 +317,18 @@ func TestCheckFragmentUsageBFS(t *testing.T) {
 	// $538 (document_data, a root type) references $260 via $170 (section list)
 	// $260 references $164 via $479 (image), $259 via $176 (storyline)
 	fragments := FragmentList{
-		{FType: "$538", FID: "$538", Value: map[string]interface{}{
-			"$170": []interface{}{"section1"},
+		{FType: "document_data", FID: "document_data", Value: map[string]interface{}{
+			"sections": []interface{}{"section1"},
 		}},
-		{FType: "$260", FID: "section1", Value: map[string]interface{}{
-			"$174": "section1",
-			"$176": "storyline1",
-			"$479": "resource1",
+		{FType: "section", FID: "section1", Value: map[string]interface{}{
+			"section_name": "section1",
+			"story_name": "storyline1",
+			"background_image": "resource1",
 		}},
-		{FType: "$164", FID: "resource1", Value: map[string]interface{}{
-			"$175": "resource1",
+		{FType: "external_resource", FID: "resource1", Value: map[string]interface{}{
+			"resource_name": "resource1",
 		}},
-		{FType: "$259", FID: "storyline1", Value: map[string]interface{}{}},
+		{FType: "storyline", FID: "storyline1", Value: map[string]interface{}{}},
 	}
 
 	result := CheckFragmentUsage(fragments, nil)
@@ -339,14 +339,14 @@ func TestCheckFragmentUsageBFS(t *testing.T) {
 		referencedTypes[f.FType+"::"+f.FID] = true
 	}
 
-	if !referencedTypes["$260::section1"] {
-		t.Error("check_fragment_usage: $260/section1 should be referenced")
+	if !referencedTypes["section::section1"] {
+		t.Error("check_fragment_usage: section/section1 should be referenced")
 	}
-	if !referencedTypes["$164::resource1"] {
-		t.Error("check_fragment_usage: $164/resource1 should be referenced")
+	if !referencedTypes["external_resource::resource1"] {
+		t.Error("check_fragment_usage: external_resource/resource1 should be referenced")
 	}
-	if !referencedTypes["$259::storyline1"] {
-		t.Error("check_fragment_usage: $259/storyline1 should be referenced")
+	if !referencedTypes["storyline::storyline1"] {
+		t.Error("check_fragment_usage: storyline/storyline1 should be referenced")
 	}
 }
 
@@ -358,12 +358,12 @@ func TestCheckFragmentUsageMissingFragments(t *testing.T) {
 	// $538 (root type) references $260 via $170
 	// $260 references $259 via $176, but "nonexistent_storyline" doesn't exist as a fragment
 	fragments := FragmentList{
-		{FType: "$538", FID: "$538", Value: map[string]interface{}{
-			"$170": []interface{}{"section1"},
+		{FType: "document_data", FID: "document_data", Value: map[string]interface{}{
+			"sections": []interface{}{"section1"},
 		}},
-		{FType: "$260", FID: "section1", Value: map[string]interface{}{
-			"$174": "section1",
-			"$176": "nonexistent_storyline",
+		{FType: "section", FID: "section1", Value: map[string]interface{}{
+			"section_name": "section1",
+			"story_name": "nonexistent_storyline",
 		}},
 	}
 
@@ -375,7 +375,7 @@ func TestCheckFragmentUsageMissingFragments(t *testing.T) {
 
 	foundMissing := false
 	for k := range result.Missing {
-		if k.FType == "$259" && k.FID == "nonexistent_storyline" {
+		if k.FType == "storyline" && k.FID == "nonexistent_storyline" {
 			foundMissing = true
 		}
 	}
@@ -390,9 +390,9 @@ func TestCheckFragmentUsageMissingFragments(t *testing.T) {
 
 func TestCheckFragmentUsageUnreferencedFragments(t *testing.T) {
 	fragments := FragmentList{
-		{FType: "$270", FID: "container1", Value: map[string]interface{}{}},
-		{FType: "$164", FID: "orphan_resource", Value: map[string]interface{}{
-			"$175": "orphan_resource",
+		{FType: "container", FID: "container1", Value: map[string]interface{}{}},
+		{FType: "external_resource", FID: "orphan_resource", Value: map[string]interface{}{
+			"resource_name": "orphan_resource",
 		}},
 	}
 
@@ -400,7 +400,7 @@ func TestCheckFragmentUsageUnreferencedFragments(t *testing.T) {
 
 	found := false
 	for _, f := range result.Unreferenced {
-		if f.FType == "$164" && f.FID == "orphan_resource" {
+		if f.FType == "external_resource" && f.FID == "orphan_resource" {
 			found = true
 		}
 	}
@@ -416,11 +416,11 @@ func TestCheckFragmentUsageUnreferencedFragments(t *testing.T) {
 func TestDetermineEntityDependenciesTransitive(t *testing.T) {
 	// Create chain: A($260) → B($164) → C($417)
 	mandatoryRefs := map[FragmentKey]map[FragmentKey]bool{
-		{FType: "$260", FID: "section1"}: {
-			{FType: "$164", FID: "resource1"}: true,
+		{FType: "section", FID: "section1"}: {
+			{FType: "external_resource", FID: "resource1"}: true,
 		},
-		{FType: "$164", FID: "resource1"}: {
-			{FType: "$417", FID: "blob1"}: true,
+		{FType: "external_resource", FID: "resource1"}: {
+			{FType: "bcRawMedia", FID: "blob1"}: true,
 		},
 	}
 	optionalRefs := map[FragmentKey]map[FragmentKey]bool{}
@@ -450,8 +450,8 @@ func TestDetermineEntityDependenciesTransitive(t *testing.T) {
 
 func TestDetermineEntityDependenciesSkipsSections(t *testing.T) {
 	mandatoryRefs := map[FragmentKey]map[FragmentKey]bool{
-		{FType: "$387", FID: "sec1"}: {
-			{FType: "$164", FID: "resource1"}: true,
+		{FType: "preview_images", FID: "sec1"}: {
+			{FType: "external_resource", FID: "resource1"}: true,
 		},
 	}
 	optionalRefs := map[FragmentKey]map[FragmentKey]bool{}
@@ -472,8 +472,8 @@ func TestDetermineEntityDependenciesSkipsSections(t *testing.T) {
 
 func TestDetermineEntityDependenciesSkipsCrossResource(t *testing.T) {
 	mandatoryRefs := map[FragmentKey]map[FragmentKey]bool{
-		{FType: "$164", FID: "resource1"}: {
-			{FType: "$164", FID: "resource2"}: true,
+		{FType: "external_resource", FID: "resource1"}: {
+			{FType: "external_resource", FID: "resource2"}: true,
 		},
 	}
 	optionalRefs := map[FragmentKey]map[FragmentKey]bool{}
@@ -496,9 +496,9 @@ func TestDetermineEntityDependenciesSkipsCrossResource(t *testing.T) {
 
 func TestRebuildContainerEntityMap(t *testing.T) {
 	fragments := FragmentList{
-		{FType: "$270", FID: "container1", Value: map[string]interface{}{}},
-		{FType: "$260", FID: "section1", Value: map[string]interface{}{}},
-		{FType: "$164", FID: "resource1", Value: map[string]interface{}{}},
+		{FType: "container", FID: "container1", Value: map[string]interface{}{}},
+		{FType: "section", FID: "section1", Value: map[string]interface{}{}},
+		{FType: "external_resource", FID: "resource1", Value: map[string]interface{}{}},
 	}
 
 	entityDeps := []EntityDependency{
@@ -514,7 +514,7 @@ func TestRebuildContainerEntityMap(t *testing.T) {
 	// Find $419 fragment
 	var found419 *Fragment
 	for i := range result {
-		if result[i].FType == "$419" {
+		if result[i].FType == "container_entity_map" {
 			found419 = &result[i]
 			break
 		}
@@ -530,12 +530,12 @@ func TestRebuildContainerEntityMap(t *testing.T) {
 	}
 
 	// Check $252 exists
-	if _, ok := valMap["$252"]; !ok {
+	if _, ok := valMap["container_list"]; !ok {
 		t.Error("rebuild_container_entity_map: $419 missing $252")
 	}
 
 	// Check $253 exists (entity dependencies)
-	if _, ok := valMap["$253"]; !ok {
+	if _, ok := valMap["entity_dependencies"]; !ok {
 		t.Error("rebuild_container_entity_map: $419 missing $253")
 	}
 }
@@ -546,9 +546,9 @@ func TestRebuildContainerEntityMap(t *testing.T) {
 
 func TestRebuildContainerEntityMapExcludesRoots(t *testing.T) {
 	fragments := FragmentList{
-		{FType: "$270", FID: "container1", Value: map[string]interface{}{}},
-		{FType: "$419", FID: "$419", Value: map[string]interface{}{}}, // old container map
-		{FType: "$260", FID: "section1", Value: map[string]interface{}{}},
+		{FType: "container", FID: "container1", Value: map[string]interface{}{}},
+		{FType: "container_entity_map", FID: "container_entity_map", Value: map[string]interface{}{}}, // old container map
+		{FType: "section", FID: "section1", Value: map[string]interface{}{}},
 	}
 
 	result := RebuildContainerEntityMap(fragments, "CR!TEST", nil)
@@ -556,7 +556,7 @@ func TestRebuildContainerEntityMapExcludesRoots(t *testing.T) {
 	// Find $419 fragment
 	var found419 *Fragment
 	for i := range result {
-		if result[i].FType == "$419" {
+		if result[i].FType == "container_entity_map" {
 			found419 = &result[i]
 			break
 		}
@@ -572,7 +572,7 @@ func TestRebuildContainerEntityMapExcludesRoots(t *testing.T) {
 	}
 
 	// Check $252 container_contents
-	contentsSlice, ok := asSlice(valMap["$252"])
+	contentsSlice, ok := asSlice(valMap["container_list"])
 	if !ok || len(contentsSlice) == 0 {
 		t.Fatal("rebuild_container_entity_map: $252 missing or empty")
 	}
@@ -583,7 +583,7 @@ func TestRebuildContainerEntityMapExcludesRoots(t *testing.T) {
 	}
 
 	// Get entity IDs list
-	entityIDsSlice, ok := asSlice(contentsMap["$181"])
+	entityIDsSlice, ok := asSlice(contentsMap["contains"])
 	if !ok {
 		t.Fatal("rebuild_container_entity_map: $181 missing")
 	}
@@ -591,7 +591,7 @@ func TestRebuildContainerEntityMapExcludesRoots(t *testing.T) {
 	// Should only contain section1 (not $270, not $419)
 	for _, id := range entityIDsSlice {
 		idStr, _ := asString(id)
-		if idStr == "container1" || idStr == "$419" {
+		if idStr == "container1" || idStr == "container_entity_map" {
 			t.Errorf("rebuild_container_entity_map: container/root %q should not be in entity_ids", idStr)
 		}
 	}
@@ -608,10 +608,10 @@ func TestFragmentIDKeys(t *testing.T) {
 	}
 
 	// Spot-check a few entries
-	if keys, ok := FragmentIDKeys["$260"]; !ok || len(keys) != 1 || keys[0] != "$174" {
+	if keys, ok := FragmentIDKeys["section"]; !ok || len(keys) != 1 || keys[0] != "section_name" {
 		t.Errorf("FragmentIDKeys[$260] = %v, want [$174]", keys)
 	}
-	if keys, ok := FragmentIDKeys["$597"]; !ok || len(keys) != 2 || keys[0] != "$174" || keys[1] != "$598" {
+	if keys, ok := FragmentIDKeys["auxiliary_data"]; !ok || len(keys) != 2 || keys[0] != "section_name" || keys[1] != "kfx_id" {
 		t.Errorf("FragmentIDKeys[$597] = %v, want [$174 $598]", keys)
 	}
 }
@@ -624,13 +624,13 @@ func TestCommonFragmentReferences(t *testing.T) {
 	}
 
 	// Spot-check mappings
-	if ref, ok := CommonFragmentReferences["$174"]; !ok || ref != "$260" {
+	if ref, ok := CommonFragmentReferences["section_name"]; !ok || ref != "section" {
 		t.Errorf("CommonFragmentReferences[$174] = %q, want $260", ref)
 	}
-	if ref, ok := CommonFragmentReferences["$176"]; !ok || ref != "$259" {
+	if ref, ok := CommonFragmentReferences["story_name"]; !ok || ref != "storyline" {
 		t.Errorf("CommonFragmentReferences[$176] = %q, want $259", ref)
 	}
-	if ref, ok := CommonFragmentReferences["$165"]; !ok || ref != "$417" {
+	if ref, ok := CommonFragmentReferences["location"]; !ok || ref != "bcRawMedia" {
 		t.Errorf("CommonFragmentReferences[$165] = %q, want $417", ref)
 	}
 }
@@ -639,7 +639,7 @@ func TestNestedFragmentReferences(t *testing.T) {
 	if len(NestedFragmentReferences) != 4 {
 		t.Errorf("NestedFragmentReferences has %d entries, want 4", len(NestedFragmentReferences))
 	}
-	if ref, ok := NestedFragmentReferences[[2]string{"$597", "$351"}]; !ok || ref != "$597" {
+	if ref, ok := NestedFragmentReferences[[2]string{"auxiliary_data", "default"}]; !ok || ref != "auxiliary_data" {
 		t.Errorf("NestedFragmentReferences[($597,$351)] = %q, want $597", ref)
 	}
 }
@@ -648,16 +648,16 @@ func TestSpecialFragmentReferences(t *testing.T) {
 	if len(SpecialFragmentReferences) != 2 {
 		t.Errorf("SpecialFragmentReferences has %d entries, want 2", len(SpecialFragmentReferences))
 	}
-	if ref, ok := SpecialFragmentReferences["$391"]["$247"]; !ok || ref != "$394" {
+	if ref, ok := SpecialFragmentReferences["nav_container"]["entries"]; !ok || ref != "conditional_nav_group_unit" {
 		t.Errorf("SpecialFragmentReferences[$391][$247] = %q, want $394", ref)
 	}
-	if ref, ok := SpecialFragmentReferences["$387"]["$213"]; !ok || ref != "$164" {
+	if ref, ok := SpecialFragmentReferences["preview_images"]["scrubbers"]; !ok || ref != "external_resource" {
 		t.Errorf("SpecialFragmentReferences[$387][$213] = %q, want $164", ref)
 	}
 }
 
 func TestSectionDataTypes(t *testing.T) {
-	expected := []string{"$387", "$260", "$267", "$609"}
+	expected := []string{"preview_images", "section", "section_metadata", "section_position_id_map"}
 	for _, e := range expected {
 		if !SectionDataTypes[e] {
 			t.Errorf("SectionDataTypes missing %q", e)
@@ -666,7 +666,7 @@ func TestSectionDataTypes(t *testing.T) {
 }
 
 func TestEIDReferences(t *testing.T) {
-	expected := []string{"$185", "$155", "$598", "$754", "$474", "$163"}
+	expected := []string{"eid", "id", "kfx_id", "main_content_id", "source", "target"}
 	for _, e := range expected {
 		if !EIDReferences[e] {
 			t.Errorf("EIDReferences missing %q", e)
@@ -678,7 +678,7 @@ func TestExpectedAnnotations(t *testing.T) {
 	if len(ExpectedAnnotations) != 5 {
 		t.Errorf("ExpectedAnnotations has %d entries, want 5", len(ExpectedAnnotations))
 	}
-	if !ExpectedAnnotations[[3]string{"$164", "$214", "$164"}] {
+	if !ExpectedAnnotations[[3]string{"external_resource", "thumbnails", "external_resource"}] {
 		t.Error("ExpectedAnnotations missing ($164, $214, $164)")
 	}
 }
@@ -689,19 +689,19 @@ func TestExpectedAnnotations(t *testing.T) {
 
 func TestFragmentListGet(t *testing.T) {
 	fl := FragmentList{
-		{FType: "$260", FID: "section1", Value: nil},
-		{FType: "$260", FID: "section2", Value: nil},
-		{FType: "$164", FID: "resource1", Value: nil},
+		{FType: "section", FID: "section1", Value: nil},
+		{FType: "section", FID: "section2", Value: nil},
+		{FType: "external_resource", FID: "resource1", Value: nil},
 	}
 
 	// Get first matching type
-	frag := fl.Get("$260", "", true)
+	frag := fl.Get("section", "", true)
 	if frag == nil || frag.FID != "section1" {
 		t.Errorf("Get($260, empty, first) = %v, want section1", frag)
 	}
 
 	// Get by type and ID
-	frag = fl.Get("$260", "section2", true)
+	frag = fl.Get("section", "section2", true)
 	if frag == nil || frag.FID != "section2" {
 		t.Errorf("Get($260, section2, first) = %v, want section2", frag)
 	}
@@ -720,10 +720,10 @@ func TestFragmentListGet(t *testing.T) {
 func TestWalkFragmentSExp(t *testing.T) {
 	// IonSExp is represented as []interface{} with first element as operator
 	fragment := Fragment{
-		FType: "$260",
+		FType: "section",
 		FID:   "section1",
 		Value: map[string]interface{}{
-			"$171": []interface{}{"$294", "$183", "some_value"},
+			"condition": []interface{}{"==", "position", "some_value"},
 		},
 	}
 
@@ -745,10 +745,10 @@ func TestWalkFragmentSExp(t *testing.T) {
 
 func TestWalkFragmentStringToSymbol(t *testing.T) {
 	fragment := Fragment{
-		FType: "$164",
+		FType: "external_resource",
 		FID:   "resource1",
 		Value: map[string]interface{}{
-			"$165": "blob_location",
+			"location": "blob_location",
 		},
 	}
 
@@ -760,12 +760,12 @@ func TestWalkFragmentStringToSymbol(t *testing.T) {
 	WalkFragment(fragment, &mandatoryRefs, &optionalRefs, &eidDefs, &eidRefs, nil)
 
 	// $165 → $417 via CommonFragmentReferences
-	// But $175 is in FragmentIDKeys["$164"] and containerParent == "$164" (the fragment type),
-	// and $165 is NOT in FragmentIDKeys["$164"], so it should NOT be skipped.
+	// But $175 is in FragmentIDKeys["external_resource"] and containerParent == "external_resource" (the fragment type),
+	// and $165 is NOT in FragmentIDKeys["external_resource"], so it should NOT be skipped.
 	// Actually $175 is the ID key for $164, not $165. So $165 should generate a ref.
 	found := false
 	for k := range mandatoryRefs {
-		if k.FType == "$417" && k.FID == "blob_location" {
+		if k.FType == "bcRawMedia" && k.FID == "blob_location" {
 			found = true
 		}
 	}
@@ -780,10 +780,10 @@ func TestWalkFragmentStringToSymbol(t *testing.T) {
 
 func TestWalkFragmentOptionalRef(t *testing.T) {
 	fragment := Fragment{
-		FType: "$164",
+		FType: "external_resource",
 		FID:   "resource1",
 		Value: map[string]interface{}{
-			"$635": "variant1",
+			"yj.variants": "variant1",
 		},
 	}
 
@@ -797,7 +797,7 @@ func TestWalkFragmentOptionalRef(t *testing.T) {
 	// $635 → $164 via CommonFragmentReferences, but $635 is optional
 	found := false
 	for k := range optionalRefs {
-		if k.FType == "$164" && k.FID == "variant1" {
+		if k.FType == "external_resource" && k.FID == "variant1" {
 			found = true
 		}
 	}
@@ -807,7 +807,7 @@ func TestWalkFragmentOptionalRef(t *testing.T) {
 
 	// Should NOT be in mandatory
 	for k := range mandatoryRefs {
-		if k.FType == "$164" && k.FID == "variant1" {
+		if k.FType == "external_resource" && k.FID == "variant1" {
 			t.Error("walk_fragment($635): variant1 should be optional, not mandatory")
 		}
 	}
@@ -819,19 +819,19 @@ func TestWalkFragmentOptionalRef(t *testing.T) {
 
 func TestWalkFragmentSectionVariants(t *testing.T) {
 	fragments := FragmentList{
-		{FType: "$260", FID: "section1", Value: map[string]interface{}{
-			"$174": "section1",
+		{FType: "section", FID: "section1", Value: map[string]interface{}{
+			"section_name": "section1",
 		}},
-		{FType: "$609", FID: "section1", Value: map[string]interface{}{}},
-		{FType: "$597", FID: "section1", Value: map[string]interface{}{}},
+		{FType: "section_position_id_map", FID: "section1", Value: map[string]interface{}{}},
+		{FType: "auxiliary_data", FID: "section1", Value: map[string]interface{}{}},
 	}
 
 	// Walk a fragment that references $260 to trigger variant expansion
 	fragment := Fragment{
-		FType: "$538",
-		FID:   "$538",
+		FType: "document_data",
+		FID:   "document_data",
 		Value: map[string]interface{}{
-			"$174": "section1", // $174 → $260 via CommonFragmentReferences
+			"section_name": "section1", // $174 → $260 via CommonFragmentReferences
 		},
 	}
 
@@ -846,10 +846,10 @@ func TestWalkFragmentSectionVariants(t *testing.T) {
 	found609 := false
 	found597 := false
 	for k := range mandatoryRefs {
-		if k.FType == "$609" && k.FID == "section1" {
+		if k.FType == "section_position_id_map" && k.FID == "section1" {
 			found609 = true
 		}
-		if k.FType == "$597" && k.FID == "section1" {
+		if k.FType == "auxiliary_data" && k.FID == "section1" {
 			found597 = true
 		}
 	}
@@ -890,16 +890,16 @@ func TestNumstrEdgeCases(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFragmentKeyString(t *testing.T) {
-	fk := FragmentKey{FType: "$260", FID: "section1"}
+	fk := FragmentKey{FType: "section", FID: "section1"}
 	s := fk.String()
-	if s != "($260, section1)" {
-		t.Errorf("FragmentKey.String() = %q, want %q", s, "($260, section1)")
+	if s != "(section, section1)" {
+		t.Errorf("FragmentKey.String() = %q, want %q", s, "(section, section1)")
 	}
 
-	fk = FragmentKey{FType: "$270"}
+	fk = FragmentKey{FType: "container"}
 	s = fk.String()
-	if s != "($270)" {
-		t.Errorf("FragmentKey.String() = %q, want %q", s, "($270)")
+	if s != "(container)" {
+		t.Errorf("FragmentKey.String() = %q, want %q", s, "(container)")
 	}
 }
 
@@ -910,15 +910,15 @@ func TestFragmentKeyString(t *testing.T) {
 func TestWalkFragmentNestedRefs(t *testing.T) {
 	// NESTED_FRAGMENT_REFERENCES: ($597, $351) → $597
 	// This means when walking a $597 fragment, and we encounter container $351
-	// with containerParent being the sexp operator (e.g. "$597"),
+	// with containerParent being the sexp operator (e.g. "auxiliary_data"),
 	// it should resolve to $597.
 
 	// Create a $597 fragment with nested reference through sexp
 	fragment := Fragment{
-		FType: "$597",
+		FType: "auxiliary_data",
 		FID:   "page1",
 		Value: map[string]interface{}{
-			"$351": "ref_data",
+			"default": "ref_data",
 		},
 	}
 
@@ -930,13 +930,13 @@ func TestWalkFragmentNestedRefs(t *testing.T) {
 	WalkFragment(fragment, &mandatoryRefs, &optionalRefs, &eidDefs, &eidRefs, nil)
 
 	// $351 with parent $597 should resolve via NestedFragmentReferences
-	// But the containerParent comes from the struct key's parent, which is fragment.FType = "$597"
-	// Actually in the struct walk: walk(fv, fk, cont) where fk=$351, cont="$597" (fragment.FType)
-	// So container=$351, containerParent="$597"
-	// NestedFragmentReferences[("$597", "$351")] = "$597"
+	// But the containerParent comes from the struct key's parent, which is fragment.FType = "auxiliary_data"
+	// Actually in the struct walk: walk(fv, fk, cont) where fk=$351, cont="auxiliary_data" (fragment.FType)
+	// So container=$351, containerParent="auxiliary_data"
+	// NestedFragmentReferences[("auxiliary_data", "default")] = "auxiliary_data"
 	found := false
 	for k := range mandatoryRefs {
-		if k.FType == "$597" && k.FID == "ref_data" {
+		if k.FType == "auxiliary_data" && k.FID == "ref_data" {
 			found = true
 		}
 	}
@@ -966,14 +966,14 @@ func TestDetermineEntityDependenciesEmpty(t *testing.T) {
 func TestRebuildContainerEntityMapEmpty(t *testing.T) {
 	// Only container fragments — no entity IDs to collect
 	fragments := FragmentList{
-		{FType: "$270", FID: "container1", Value: map[string]interface{}{}},
+		{FType: "container", FID: "container1", Value: map[string]interface{}{}},
 	}
 
 	result := RebuildContainerEntityMap(fragments, "CR!TEST", nil)
 
 	// No $419 should be generated
 	for _, f := range result {
-		if f.FType == "$419" {
+		if f.FType == "container_entity_map" {
 			t.Error("rebuild_container_entity_map: $419 should not be generated when there are no entities")
 		}
 	}
@@ -987,9 +987,9 @@ func TestSpecialParentFragmentReferences(t *testing.T) {
 	if len(SpecialParentFragmentReferences) != 1 {
 		t.Errorf("SpecialParentFragmentReferences has %d entries, want 1", len(SpecialParentFragmentReferences))
 	}
-	if SpecialParentFragmentReferences["$538"] == nil {
+	if SpecialParentFragmentReferences["document_data"] == nil {
 		t.Error("SpecialParentFragmentReferences missing $538 entry")
-	} else if SpecialParentFragmentReferences["$538"]["yj.print.style"] != false {
+	} else if SpecialParentFragmentReferences["document_data"]["yj.print.style"] != false {
 		t.Error("SpecialParentFragmentReferences[$538][yj.print.style] should be false")
 	}
 }
@@ -1007,10 +1007,10 @@ func TestRootAndContainerFragmentTypes(t *testing.T) {
 	}
 
 	// Verify key entries
-	if !RootFragmentTypes["$270"] {
+	if !RootFragmentTypes["container"] {
 		t.Error("RootFragmentTypes missing $270")
 	}
-	if !ContainerFragmentTypes["$419"] {
+	if !ContainerFragmentTypes["container_entity_map"] {
 		t.Error("ContainerFragmentTypes missing $419")
 	}
 }
@@ -1022,8 +1022,8 @@ func TestRootAndContainerFragmentTypes(t *testing.T) {
 func TestKnownFragmentTypes(t *testing.T) {
 	// Verify some known types
 	knownTypes := []string{
-		"$270", "$490", "$389", "$419", "$538", "$266", "$597",
-		"$418", "$417", "$164", "$260", "$259", "$157", "$608",
+		"container", "book_metadata", "book_navigation", "container_entity_map", "document_data", "anchor", "auxiliary_data",
+		"bcRawFont", "bcRawMedia", "external_resource", "section", "storyline", "style", "structure",
 	}
 	for _, ft := range knownTypes {
 		if !KnownFragmentTypes[ft] {
@@ -1038,31 +1038,31 @@ func TestKnownFragmentTypes(t *testing.T) {
 
 func TestSortedFragmentKeys(t *testing.T) {
 	m := map[FragmentKey]map[FragmentKey]bool{
-		{FType: "$164", FID: "z"}: {},
-		{FType: "$164", FID: "a"}: {},
-		{FType: "$260", FID: "b"}: {},
+		{FType: "external_resource", FID: "z"}: {},
+		{FType: "external_resource", FID: "a"}: {},
+		{FType: "section", FID: "b"}: {},
 	}
 	keys := sortedFragmentKeys(m)
 	if len(keys) != 3 {
 		t.Fatalf("sortedFragmentKeys returned %d keys, want 3", len(keys))
 	}
 	// Should be sorted: ($164,a), ($164,z), ($260,b)
-	if keys[0].FType != "$164" || keys[0].FID != "a" {
+	if keys[0].FType != "external_resource" || keys[0].FID != "a" {
 		t.Errorf("keys[0] = %v, want ($164,a)", keys[0])
 	}
-	if keys[1].FType != "$164" || keys[1].FID != "z" {
+	if keys[1].FType != "external_resource" || keys[1].FID != "z" {
 		t.Errorf("keys[1] = %v, want ($164,z)", keys[1])
 	}
-	if keys[2].FType != "$260" || keys[2].FID != "b" {
+	if keys[2].FType != "section" || keys[2].FID != "b" {
 		t.Errorf("keys[2] = %v, want ($260,b)", keys[2])
 	}
 }
 
 func TestSortedFragmentKeysFromSet(t *testing.T) {
 	m := map[FragmentKey]bool{
-		{FType: "$164", FID: "z"}: true,
-		{FType: "$164", FID: "a"}: true,
-		{FType: "$260", FID: "b"}: true,
+		{FType: "external_resource", FID: "z"}: true,
+		{FType: "external_resource", FID: "a"}: true,
+		{FType: "section", FID: "b"}: true,
 	}
 	keys := sortedFragmentKeysFromSet(m)
 
@@ -1102,10 +1102,10 @@ func TestEntityDepsToInterface(t *testing.T) {
 	if !ok {
 		t.Fatal("first dep is not a map")
 	}
-	if id, _ := asString(first["$155"]); id != "section1" {
+	if id, _ := asString(first["id"]); id != "section1" {
 		t.Errorf("first dep $155 = %q, want section1", id)
 	}
-	mandatorySlice, ok := asSlice(first["$254"])
+	mandatorySlice, ok := asSlice(first["mandatory_dependencies"])
 	if !ok || len(mandatorySlice) != 2 {
 		t.Errorf("first dep $254 = %v, want 2 elements", mandatorySlice)
 	}
@@ -1115,7 +1115,7 @@ func TestEntityDepsToInterface(t *testing.T) {
 	if !ok {
 		t.Fatal("second dep is not a map")
 	}
-	optionalSlice, ok := asSlice(second["$255"])
+	optionalSlice, ok := asSlice(second["optional_dependencies"])
 	if !ok || len(optionalSlice) != 1 {
 		t.Errorf("second dep $255 = %v, want 1 element", optionalSlice)
 	}
@@ -1127,16 +1127,16 @@ func TestEntityDepsToInterface(t *testing.T) {
 
 func TestRebuildContainerEntityMapEntityOrder(t *testing.T) {
 	fragments := FragmentList{
-		{FType: "$260", FID: "section_b", Value: map[string]interface{}{}},
-		{FType: "$260", FID: "section_a", Value: map[string]interface{}{}},
-		{FType: "$164", FID: "resource1", Value: map[string]interface{}{}},
+		{FType: "section", FID: "section_b", Value: map[string]interface{}{}},
+		{FType: "section", FID: "section_a", Value: map[string]interface{}{}},
+		{FType: "external_resource", FID: "resource1", Value: map[string]interface{}{}},
 	}
 
 	result := RebuildContainerEntityMap(fragments, "CR!TEST", nil)
 
 	var found419 *Fragment
 	for i := range result {
-		if result[i].FType == "$419" {
+		if result[i].FType == "container_entity_map" {
 			found419 = &result[i]
 			break
 		}
@@ -1150,7 +1150,7 @@ func TestRebuildContainerEntityMapEntityOrder(t *testing.T) {
 		t.Fatal("$419 value is not a map")
 	}
 
-	contentsSlice, ok := asSlice(valMap["$252"])
+	contentsSlice, ok := asSlice(valMap["container_list"])
 	if !ok || len(contentsSlice) == 0 {
 		t.Fatal("$252 missing or empty")
 	}
@@ -1160,7 +1160,7 @@ func TestRebuildContainerEntityMapEntityOrder(t *testing.T) {
 		t.Fatal("$252[0] is not a map")
 	}
 
-	entityIDsSlice, ok := asSlice(contentsMap["$181"])
+	entityIDsSlice, ok := asSlice(contentsMap["contains"])
 	if !ok {
 		t.Fatal("$181 missing")
 	}
@@ -1182,7 +1182,7 @@ func TestRebuildContainerEntityMapEntityOrder(t *testing.T) {
 	}
 
 	// Verify container ID
-	containerID, _ := asString(contentsMap["$155"])
+	containerID, _ := asString(contentsMap["id"])
 	if containerID != "CR!TEST" {
 		t.Errorf("container ID = %q, want CR!TEST", containerID)
 	}

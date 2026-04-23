@@ -1,41 +1,41 @@
 #!/usr/bin/env python3
-"""Export yj_symbol_catalog.py YJ_SYMBOLS to canonical JSON.
+"""Export YJ symbol catalog to canonical JSON for Go golden tests.
 
-Source: REFERENCE/Calibre_KFX_Input/kfxlib/yj_symbol_catalog.py
+Sources:
+  - REFERENCE/kfx_symbol_catalog.ion (real names, 842 symbols)
+  - REFERENCE/Calibre_KFX_Input/kfxlib/yj_symbol_catalog.py (Python $N placeholders)
+
+The golden compares Go's sharedTable() output against the real symbol names
+from the ION catalog. Go resolves SID 10 to "language", SID 145 to "content", etc.
 
 Usage:
     python3 scripts/export_yj_symbol_catalog.py > internal/kfx/testdata/yj_symbols_golden.json
 
-The output contains:
-  - name:          shared table name (e.g. "YJ_symbols")
-  - version:       shared table version (e.g. 10)
-  - symbol_count:  number of symbols in the list
-  - symbols_raw:        list as-is from Python (includes "?" suffixes)
-  - symbols_normalized: list with "?" stripped (what add_symbol stores)
+Regenerate golden:
+    python3 scripts/export_yj_symbol_catalog.py > internal/kfx/testdata/yj_symbols_golden.json
 """
 
 import json
+import re
 import sys
 import os
 
-# Add the kfxlib directory to sys.path so we can import the module.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-KFXLIB_DIR = os.path.join(PROJECT_ROOT, "REFERENCE", "Calibre_KFX_Input", "kfxlib")
 
-sys.path.insert(0, KFXLIB_DIR)
+# Read the real symbol catalog (ION text format)
+catalog_path = os.path.join(PROJECT_ROOT, "REFERENCE", "kfx_symbol_catalog.ion")
+with open(catalog_path) as f:
+    text = f.read()
 
-from yj_symbol_catalog import YJ_SYMBOLS
-
-symbols_raw = list(YJ_SYMBOLS.symbols)
-symbols_normalized = [s.rstrip("?") for s in symbols_raw]
+# Extract symbol names from the ION text
+symbols = re.findall(r'"([^"]+)"', text.split('symbols:')[1])
 
 data = {
-    "name": YJ_SYMBOLS.name,
-    "version": YJ_SYMBOLS.version,
-    "symbol_count": len(symbols_raw),
-    "symbols_raw": symbols_raw,
-    "symbols_normalized": symbols_normalized,
+    "name": "YJ_symbols",
+    "version": 10,
+    "symbol_count": len(symbols),
+    "symbols": symbols,
 }
 
 json.dump(data, sys.stdout, indent=2)

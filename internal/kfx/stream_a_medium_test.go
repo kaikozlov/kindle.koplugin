@@ -18,17 +18,17 @@ func TestMetadataProcessing258NoOverride(t *testing.T) {
 	// without ID manipulation.
 	cat := &fragmentCatalog{
 		TitleMetadata: map[string]interface{}{
-			"$491": []interface{}{
+			"categorised_metadata": []interface{}{
 				map[string]interface{}{
-					"$495": "kindle_title_metadata",
-					"$258": []interface{}{
+					"category": "kindle_title_metadata",
+					"metadata": []interface{}{
 						map[string]interface{}{
-							"$492": "author",
-							"$307": "Test Author",
+							"key": "author",
+							"value": "Test Author",
 						},
 						map[string]interface{}{
-							"$492": "title",
-							"$307": "Test Title",
+							"key": "title",
+							"value": "Test Title",
 						},
 					},
 				},
@@ -58,8 +58,8 @@ func TestMetadataProcessing258ReadingOrder(t *testing.T) {
 	// Verify $258 reading order metadata (tier 2) is read directly by symbol key.
 	cat := &fragmentCatalog{
 		ReadingOrderMetadata: map[string]interface{}{
-			"$222": "Author Name",
-			"$153": "Book Title",
+			"author": "Author Name",
+			"title": "Book Title",
 		},
 	}
 
@@ -156,7 +156,7 @@ func TestCheckSymbolTableMissingSymbols(t *testing.T) {
 
 	frags := fragmentCatalog{
 		StyleFragments: map[string]map[string]interface{}{
-			"style1": {"$11": "serif", "$12": "bold", "unknown_symbol": "value"},
+			"style1": {"font_family": "serif", "font_style": "bold", "unknown_symbol": "value"},
 		},
 		Storylines:        map[string]map[string]interface{}{},
 		NavContainers:     map[string]map[string]interface{}{},
@@ -174,7 +174,7 @@ func TestCheckSymbolTableMissingSymbols(t *testing.T) {
 
 	r := &symbolResolver{localStart: 100, locals: []string{}}
 	cfg := checkSymbolTableConfig{
-		OriginalSyms: []string{"$11", "$12"}, // "unknown_symbol" is NOT in original
+		OriginalSyms: []string{"font_family", "font_style"}, // "unknown_symbol" is NOT in original
 	}
 	checkSymbolTableWithConfig(frags, r, false, false, cfg)
 
@@ -358,20 +358,20 @@ func TestCheckSymbolTableSampleSuffixAd(t *testing.T) {
 func TestHasIllustratedLayoutConditionFromParsedTemplate(t *testing.T) {
 	// When condition is stored in pt.Condition (parsed from $141 containers),
 	// it should still be detected.
-	condition := []interface{}{"$294", "$183", []interface{}{"$266", "anchor_name"}}
+	condition := []interface{}{"==", "position", []interface{}{"anchor", "anchor_name"}}
 	frags := fragmentCatalog{
 		SectionFragments: map[string]sectionFragment{
 			"sec1": {
 				ID: "sec1",
 				PageTemplateValues: map[string]interface{}{
-					"$11": "serif",
+					"font_family": "serif",
 				},
 				PageTemplates: []pageTemplateFragment{
 					{
 						PositionID:         1,
 						Storyline:          "story1",
 						PageTemplateStyle:  "",
-						PageTemplateValues: map[string]interface{}{"$11": "serif"},
+						PageTemplateValues: map[string]interface{}{"font_family": "serif"},
 						HasCondition:       true,
 						Condition:          condition,
 					},
@@ -386,7 +386,7 @@ func TestHasIllustratedLayoutConditionFromParsedTemplate(t *testing.T) {
 
 func TestHasIllustratedLayoutConditionInvalidOperator(t *testing.T) {
 	// Condition with operator not in [$294, $299, $298] should not match.
-	condition := []interface{}{"$999", "$183", []interface{}{"$266", "anchor_name"}}
+	condition := []interface{}{"$999", "position", []interface{}{"anchor", "anchor_name"}}
 	frags := fragmentCatalog{
 		SectionFragments: map[string]sectionFragment{
 			"sec1": {
@@ -407,7 +407,7 @@ func TestHasIllustratedLayoutConditionInvalidOperator(t *testing.T) {
 
 func TestHasIllustratedLayoutConditionWrongStructure(t *testing.T) {
 	// Condition with wrong structure should not match.
-	condition := []interface{}{"$294", "$183"} // missing third element
+	condition := []interface{}{"==", "position"} // missing third element
 	frags := fragmentCatalog{
 		SectionFragments: map[string]sectionFragment{
 			"sec1": {
@@ -448,8 +448,8 @@ func TestHasIllustratedLayoutConditionNoCondition(t *testing.T) {
 
 func TestHasIllustratedLayoutConditionAllOperators(t *testing.T) {
 	// All three valid operators should match: $294, $299, $298
-	for _, op := range []string{"$294", "$299", "$298"} {
-		condition := []interface{}{op, "$183", []interface{}{"$266", "anchor"}}
+	for _, op := range []string{"==", "<=", "<"} {
+		condition := []interface{}{op, "position", []interface{}{"anchor", "anchor"}}
 		frags := fragmentCatalog{
 			SectionFragments: map[string]sectionFragment{
 				"sec1": {
@@ -473,8 +473,8 @@ func TestHasIllustratedLayoutConditionAllOperators(t *testing.T) {
 
 func TestOverlayTemplate171ValidationValid(t *testing.T) {
 	// Valid condition should return true
-	condition := []interface{}{"$294", "$183", []interface{}{"$266", "anchor_name"}}
-	if !validateOverlayCondition(condition, "$324") {
+	condition := []interface{}{"==", "position", []interface{}{"anchor", "anchor_name"}}
+	if !validateOverlayCondition(condition, "fixed") {
 		t.Fatal("expected valid condition to return true")
 	}
 }
@@ -485,9 +485,9 @@ func TestOverlayTemplate171ValidationInvalidLayout(t *testing.T) {
 	log.SetOutput(&buf)
 	defer log.SetOutput(os.Stderr)
 
-	condition := []interface{}{"$294", "$183", []interface{}{"$266", "anchor_name"}}
+	condition := []interface{}{"==", "position", []interface{}{"anchor", "anchor_name"}}
 	// The function still returns true for valid structure even with wrong layout
-	validateOverlayCondition(condition, "$437")
+	validateOverlayCondition(condition, "page_spread")
 	output := buf.String()
 	if !strings.Contains(output, "unexpected layout") {
 		t.Fatalf("expected layout error, got: %s", output)
@@ -501,8 +501,8 @@ func TestOverlayTemplate171ValidationInvalidStructure(t *testing.T) {
 	defer log.SetOutput(os.Stderr)
 
 	// Wrong number of elements
-	condition := []interface{}{"$294", "$183"}
-	if validateOverlayCondition(condition, "$324") {
+	condition := []interface{}{"==", "position"}
+	if validateOverlayCondition(condition, "fixed") {
 		t.Fatal("expected invalid condition to return false")
 	}
 	output := buf.String()
@@ -512,13 +512,13 @@ func TestOverlayTemplate171ValidationInvalidStructure(t *testing.T) {
 }
 
 func TestOverlayTemplate171ValidationWrongFv1(t *testing.T) {
-	// fv[1] != "$183" should return false
+	// fv[1] != "position" should return false
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
 	defer log.SetOutput(os.Stderr)
 
-	condition := []interface{}{"$294", "$999", []interface{}{"$266", "anchor"}}
-	if validateOverlayCondition(condition, "$324") {
+	condition := []interface{}{"==", "$999", []interface{}{"anchor", "anchor"}}
+	if validateOverlayCondition(condition, "fixed") {
 		t.Fatal("expected false for wrong fv[1]")
 	}
 }
@@ -529,20 +529,20 @@ func TestOverlayTemplate171ValidationWrongFv2(t *testing.T) {
 	log.SetOutput(&buf)
 	defer log.SetOutput(os.Stderr)
 
-	condition := []interface{}{"$294", "$183", "not_a_list"}
-	if validateOverlayCondition(condition, "$324") {
+	condition := []interface{}{"==", "position", "not_a_list"}
+	if validateOverlayCondition(condition, "fixed") {
 		t.Fatal("expected false for non-list fv[2]")
 	}
 }
 
 func TestOverlayTemplate171ValidationWrongFv20(t *testing.T) {
-	// fv[2][0] != "$266"
+	// fv[2][0] != "anchor"
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
 	defer log.SetOutput(os.Stderr)
 
-	condition := []interface{}{"$294", "$183", []interface{}{"$999", "anchor"}}
-	if validateOverlayCondition(condition, "$324") {
+	condition := []interface{}{"==", "position", []interface{}{"$999", "anchor"}}
+	if validateOverlayCondition(condition, "fixed") {
 		t.Fatal("expected false for wrong fv[2][0]")
 	}
 }
@@ -553,15 +553,15 @@ func TestOverlayTemplate171ValidationWrongOperator(t *testing.T) {
 	log.SetOutput(&buf)
 	defer log.SetOutput(os.Stderr)
 
-	condition := []interface{}{"$999", "$183", []interface{}{"$266", "anchor"}}
-	if validateOverlayCondition(condition, "$324") {
+	condition := []interface{}{"$999", "position", []interface{}{"anchor", "anchor"}}
+	if validateOverlayCondition(condition, "fixed") {
 		t.Fatal("expected false for unknown operator")
 	}
 }
 
 func TestOverlayTemplate171ValidationNilCondition(t *testing.T) {
 	// nil condition should return true (no condition to validate)
-	if !validateOverlayCondition(nil, "$324") {
+	if !validateOverlayCondition(nil, "fixed") {
 		t.Fatal("expected true for nil condition")
 	}
 }

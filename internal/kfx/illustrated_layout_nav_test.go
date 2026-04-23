@@ -10,20 +10,20 @@ import (
 // VAL-M3-ILLUST-001: Region magnification activate handler produces correct XHTML
 // Python: yj_to_epub_content.py:674-694
 //
-// process_content handles "$426" (activate) entries within container content ($270).
-// For each activate entry with action "$468", it creates an <a class="app-amzn-magnify">
+// process_content handles "activate" (activate) entries within container content ($270).
+// For each activate entry with action "zoom_in", it creates an <a class="app-amzn-magnify">
 // element with a data-app-amzn-magnify JSON attribute containing targetId, sourceId, ordinal.
 // =============================================================================
 
 func TestRegionMagnification(t *testing.T) {
 	// Set up content with a $426 activate entry
 	content := map[string]interface{}{
-		"$427": 1, // ordinal
-		"$426": []interface{}{
+		"ordinal": 1, // ordinal
+		"activate": []interface{}{
 			map[string]interface{}{
-				"$428": "$468", // action = magnify
-				"$163": "target-eid-123",
-				"$474": "source-eid-456",
+				"action": "zoom_in", // action = magnify
+				"target": "target-eid-123",
+				"source": "source-eid-456",
 			},
 		},
 	}
@@ -87,12 +87,12 @@ func TestRegionMagnification(t *testing.T) {
 
 func TestRegionMagnification_AutoEnable(t *testing.T) {
 	content := map[string]interface{}{
-		"$427": 1,
-		"$426": []interface{}{
+		"ordinal": 1,
+		"activate": []interface{}{
 			map[string]interface{}{
-				"$428": "$468",
-				"$163": "target-eid",
-				"$474": "source-eid",
+				"action": "zoom_in",
+				"target": "target-eid",
+				"source": "source-eid",
 			},
 		},
 	}
@@ -116,8 +116,8 @@ func TestRegionMagnification_AutoEnable(t *testing.T) {
 // VAL-M3-ILLUST-003: Region magnification registers link IDs for target and source
 // Python: yj_to_epub_content.py:686-688
 //
-// register_link_id(activate.pop("$163"), "magnify_target")
-// register_link_id(activate.pop("$474"), "magnify_source")
+// register_link_id(activate.pop("target"), "magnify_target")
+// register_link_id(activate.pop("source"), "magnify_source")
 //
 // The register_link_id function creates an anchor name like "magnify_target_<eid>"
 // and registers it with the position (eid, 0).
@@ -125,12 +125,12 @@ func TestRegionMagnification_AutoEnable(t *testing.T) {
 
 func TestRegionMagnification_LinkIDs(t *testing.T) {
 	content := map[string]interface{}{
-		"$427": 3,
-		"$426": []interface{}{
+		"ordinal": 3,
+		"activate": []interface{}{
 			map[string]interface{}{
-				"$428": "$468",
-				"$163": "target-eid-789",
-				"$474": "source-eid-012",
+				"action": "zoom_in",
+				"target": "target-eid-789",
+				"source": "source-eid-012",
 			},
 		},
 	}
@@ -166,12 +166,12 @@ func TestRegionMagnification_LinkIDs(t *testing.T) {
 // Test that unknown activate action logs error and doesn't create element
 func TestRegionMagnification_UnknownAction(t *testing.T) {
 	content := map[string]interface{}{
-		"$427": 1,
-		"$426": []interface{}{
+		"ordinal": 1,
+		"activate": []interface{}{
 			map[string]interface{}{
-				"$428": "$999", // unknown action
-				"$163": "target",
-				"$474": "source",
+				"action": "$999", // unknown action
+				"target": "target",
+				"source": "source",
 			},
 		},
 	}
@@ -192,7 +192,7 @@ func TestRegionMagnification_UnknownAction(t *testing.T) {
 // Test that no $426 key means no activate elements
 func TestRegionMagnification_NoActivate(t *testing.T) {
 	content := map[string]interface{}{
-		"$427": 1,
+		"ordinal": 1,
 	}
 	cfg := &regionMagnificationConfig{
 		RegionMagnification: true,
@@ -211,17 +211,17 @@ func TestRegionMagnification_NoActivate(t *testing.T) {
 // Test multiple activate entries
 func TestRegionMagnification_MultipleActivates(t *testing.T) {
 	content := map[string]interface{}{
-		"$427": 2,
-		"$426": []interface{}{
+		"ordinal": 2,
+		"activate": []interface{}{
 			map[string]interface{}{
-				"$428": "$468",
-				"$163": "target1",
-				"$474": "source1",
+				"action": "zoom_in",
+				"target": "target1",
+				"source": "source1",
 			},
 			map[string]interface{}{
-				"$428": "$468",
-				"$163": "target2",
-				"$474": "source2",
+				"action": "zoom_in",
+				"target": "target2",
+				"source": "source2",
 			},
 		},
 	}
@@ -329,8 +329,8 @@ func TestVirtualPanelValidation_ComicWithoutMagnification(t *testing.T) {
 	}
 
 	data := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 		// $434 is absent → virtual_panel is nil
 	}
 
@@ -351,8 +351,8 @@ func TestVirtualPanelValidation_ComicWithMagnification(t *testing.T) {
 	}
 
 	data := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 		// $434 is absent → virtual_panel is nil
 		// But region_magnification is true, so no error should be logged
 	}
@@ -372,8 +372,8 @@ func TestVirtualPanelValidation_NonComicWithoutMagnification(t *testing.T) {
 	}
 
 	data := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$325",
+		"type": "container",
+		"layout": "overflow",
 		// $434 is absent → virtual_panel is nil
 		// Not comic, so no error
 	}
@@ -411,7 +411,7 @@ func TestVirtualPanelValidation_DirectValidation(t *testing.T) {
 
 			data := map[string]interface{}{}
 			if tc.has434 {
-				data["$434"] = "$441"
+				data["virtual_panel"] = "enabled"
 			}
 
 			// processVirtualPanel returns whether virtual panels were activated,

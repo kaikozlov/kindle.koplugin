@@ -80,14 +80,14 @@ func TestRewriteAmznConditionCrossFileNotRewritten(t *testing.T) {
 
 func TestConditionOperatorNames(t *testing.T) {
 	// Must map $294 → "anchor-id", $299 → "range-id.le", $298 → "range-id.lt"
-	if conditionOperatorNames["$294"] != "anchor-id" {
-		t.Errorf(`$294: got %q, want "anchor-id"`, conditionOperatorNames["$294"])
+	if conditionOperatorNames["=="] != "anchor-id" {
+		t.Errorf(`$294: got %q, want "anchor-id"`, conditionOperatorNames["=="])
 	}
-	if conditionOperatorNames["$299"] != "range-id.le" {
-		t.Errorf(`$299: got %q, want "range-id.le"`, conditionOperatorNames["$299"])
+	if conditionOperatorNames["<="] != "range-id.le" {
+		t.Errorf(`$299: got %q, want "range-id.le"`, conditionOperatorNames["<="])
 	}
-	if conditionOperatorNames["$298"] != "range-id.lt" {
-		t.Errorf(`$298: got %q, want "range-id.lt"`, conditionOperatorNames["$298"])
+	if conditionOperatorNames["<"] != "range-id.lt" {
+		t.Errorf(`$298: got %q, want "range-id.lt"`, conditionOperatorNames["<"])
 	}
 	if len(conditionOperatorNames) != 3 {
 		t.Errorf("expected 3 condition operators, got %d", len(conditionOperatorNames))

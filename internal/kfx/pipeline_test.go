@@ -27,19 +27,19 @@ func TestBuildBookStateFragmentSummaryMatchesReference(t *testing.T) {
 	got := state.fragmentSnapshot()
 	want := referenceFragmentSnapshot(t, input)
 	compareIDs := map[string]bool{
-		"$145": true,
-		"$157": true,
-		"$164": true,
-		"$259": true,
-		"$260": true,
-		"$266": true,
-		"$391": true,
-		"$609": true,
+		"content": true,
+		"style": true,
+		"external_resource": true,
+		"storyline": true,
+		"section": true,
+		"anchor": true,
+		"nav_container": true,
+		"section_position_id_map": true,
 	}
 
 	for _, fragmentType := range []string{
-		"$145", "$157", "$164", "$258", "$259", "$260", "$262",
-		"$266", "$389", "$391", "$417", "$490", "$538", "$585", "$609",
+		"content", "style", "external_resource", "metadata", "storyline", "section", "font",
+		"anchor", "book_navigation", "nav_container", "bcRawMedia", "book_metadata", "document_data", "content_features", "section_position_id_map",
 	} {
 		gotType, gotOK := got.Types[fragmentType]
 		wantType, wantOK := want.Types[fragmentType]
@@ -60,18 +60,18 @@ func TestBuildBookStateFragmentSummaryMatchesReference(t *testing.T) {
 
 func TestParseSectionFragmentKeepsAllPageTemplatesAndUsesLastAsPrimary(t *testing.T) {
 	section := parseSectionFragment("ignored", map[string]interface{}{
-		"$174": "cX",
-		"$141": []interface{}{
+		"section_name": "cX",
+		"page_templates": []interface{}{
 			map[string]interface{}{
-				"$155": 101,
-				"$157": "s-first",
-				"$176": "story-first",
+				"id": 101,
+				"style": "s-first",
+				"story_name": "story-first",
 			},
 			map[string]interface{}{
-				"$155": 202,
-				"$157": "s-main",
-				"$176": "story-main",
-				"$171": []interface{}{"$659", "$826"},
+				"id": 202,
+				"style": "s-main",
+				"story_name": "story-main",
+				"condition": []interface{}{"yj.supports", "audio"},
 			},
 		},
 	})
@@ -109,13 +109,13 @@ func TestRenderSectionFragmentsUsesLastTemplateAsMainAndPrependsOverlaysAfterMai
 	}
 	storylines := map[string]map[string]interface{}{
 		"story-overlay": {
-			"$146": []interface{}{
-				map[string]interface{}{"$145": map[string]interface{}{"name": "content", "$403": 0}},
+			"content_list": []interface{}{
+				map[string]interface{}{"content": map[string]interface{}{"name": "content", "index": 0}},
 			},
 		},
 		"story-main": {
-			"$146": []interface{}{
-				map[string]interface{}{"$145": map[string]interface{}{"name": "content", "$403": 1}},
+			"content_list": []interface{}{
+				map[string]interface{}{"content": map[string]interface{}{"name": "content", "index": 1}},
 			},
 		},
 	}
@@ -153,19 +153,19 @@ func TestRenderSectionFragmentsSelectsActiveConditionalTemplateForFixedLayout(t 
 	section := sectionFragment{
 		ID: "cX",
 		PageTemplates: []pageTemplateFragment{
-			{PositionID: 11, Storyline: "story-inactive", Condition: []interface{}{"$750", "$753"}},
-			{PositionID: 22, Storyline: "story-active", Condition: []interface{}{"$750", "$752"}},
+			{PositionID: 11, Storyline: "story-inactive", Condition: []interface{}{"yj.layout_type", "yj.table_viewer"}},
+			{PositionID: 22, Storyline: "story-active", Condition: []interface{}{"yj.layout_type", "yj.in_page"}},
 		},
 	}
 	storylines := map[string]map[string]interface{}{
 		"story-inactive": {
-			"$146": []interface{}{
-				map[string]interface{}{"$145": map[string]interface{}{"name": "content", "$403": 0}},
+			"content_list": []interface{}{
+				map[string]interface{}{"content": map[string]interface{}{"name": "content", "index": 0}},
 			},
 		},
 		"story-active": {
-			"$146": []interface{}{
-				map[string]interface{}{"$145": map[string]interface{}{"name": "content", "$403": 1}},
+			"content_list": []interface{}{
+				map[string]interface{}{"content": map[string]interface{}{"name": "content", "index": 1}},
 			},
 		},
 	}
@@ -216,17 +216,17 @@ func TestRenderNodeSupportsListsAndRules(t *testing.T) {
 	}
 
 	list := renderer.renderNode(map[string]interface{}{
-		"$159": "$276",
-		"$100": "$346",
-		"$104": 3,
-		"$146": []interface{}{
+		"type": "list",
+		"list_style": "alpha_lower",
+		"list_start_offset": 3,
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$159": "$277",
-				"$145": map[string]interface{}{"name": "content", "$403": 0},
+				"type": "listitem",
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 			map[string]interface{}{
-				"$159": "$277",
-				"$145": map[string]interface{}{"name": "content", "$403": 1},
+				"type": "listitem",
+				"content": map[string]interface{}{"name": "content", "index": 1},
 			},
 		},
 	}, 0)
@@ -235,7 +235,7 @@ func TestRenderNodeSupportsListsAndRules(t *testing.T) {
 		t.Fatalf("listHTML = %q", listHTML)
 	}
 
-	rule := renderer.renderNode(map[string]interface{}{"$159": "$596"}, 0)
+	rule := renderer.renderNode(map[string]interface{}{"type": "horizontal_rule"}, 0)
 	ruleHTML := renderHTMLPart(rule)
 	if !strings.HasPrefix(ruleHTML, "<hr") {
 		t.Fatalf("ruleHTML = %q", ruleHTML)
@@ -256,10 +256,10 @@ func TestRenderNodeSupportsHiddenContent(t *testing.T) {
 	}
 
 	hidden := renderer.renderNode(map[string]interface{}{
-		"$159": "$439",
-		"$146": []interface{}{
+		"type": "zoom_target",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$145": map[string]interface{}{"name": "content", "$403": 0},
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 		},
 	}, 0)
@@ -341,18 +341,18 @@ func TestRenderTableNodePreservesColumnAndCellSpanAttributes(t *testing.T) {
 	}
 
 	table := renderer.renderNode(map[string]interface{}{
-		"$159": "$278",
-		"$152": []interface{}{
-			map[string]interface{}{"$118": 2},
+		"type": "table",
+		"column_format": []interface{}{
+			map[string]interface{}{"column_span": 2},
 		},
-		"$146": []interface{}{
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$159": "$279",
-				"$146": []interface{}{
+				"type": "table_row",
+				"content_list": []interface{}{
 					map[string]interface{}{
-						"$148": 2,
-						"$149": 3,
-						"$145": map[string]interface{}{"name": "content", "$403": 0},
+						"table_column_span": 2,
+						"table_row_span": 3,
+						"content": map[string]interface{}{"name": "content", "index": 0},
 					},
 				},
 			},
@@ -384,10 +384,10 @@ func TestRenderNodePromotesClassifiedContainersToAside(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$615": "$618",
-		"$146": []interface{}{
+		"yj.classification": "yj.chapternote",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$145": map[string]interface{}{"name": "content", "$403": 0},
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 		},
 	}, 0)
@@ -414,13 +414,13 @@ func TestRenderTableNodePromotesCaptionClassification(t *testing.T) {
 	}
 
 	table := renderer.renderNode(map[string]interface{}{
-		"$159": "$278",
-		"$146": []interface{}{
+		"type": "table",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$615": "$453",
-				"$146": []interface{}{
+				"yj.classification": "caption",
+				"content_list": []interface{}{
 					map[string]interface{}{
-						"$145": map[string]interface{}{"name": "content", "$403": 0},
+						"content": map[string]interface{}{"name": "content", "index": 0},
 					},
 				},
 			},
@@ -447,10 +447,10 @@ func TestRenderNodeAddsFixedLayoutClassForFixedContainers(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$156": "$324",
-		"$146": []interface{}{
+		"layout": "fixed",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$145": map[string]interface{}{"name": "content", "$403": 0},
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 		},
 	}, 0)
@@ -479,9 +479,9 @@ func TestRenderTextNodeSupportsDropCaps(t *testing.T) {
 	}
 
 	node := renderer.renderTextNode(map[string]interface{}{
-		"$145": map[string]interface{}{"name": "content", "$403": 0},
-		"$125": 2,
-		"$126": 1,
+		"content": map[string]interface{}{"name": "content", "index": 0},
+		"dropcap_lines": 2,
+		"dropcap_chars": 1,
 	}, 0)
 	got := renderHTMLPart(node)
 	renderer.styles.markReferenced(got)
@@ -513,16 +513,16 @@ func TestRenderNodePromotesFigureLayoutHints(t *testing.T) {
 		positionAnchorID:  map[int]map[int]string{},
 		emittedAnchorIDs:  map[string]bool{},
 		styleFragments: map[string]map[string]interface{}{
-			"sFigure": {"$761": "figure"},
+			"sFigure": {"layout_hints": "figure"},
 		},
 		styles: newStyleCatalog(),
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$157": "sFigure",
-		"$146": []interface{}{
+		"style": "sFigure",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$175": "img1",
+				"resource_name": "img1",
 			},
 		},
 	}, 0)
@@ -545,17 +545,17 @@ func TestRenderNodePromotesHeadingLayoutHints(t *testing.T) {
 		positionAnchorID:  map[int]map[int]string{},
 		emittedAnchorIDs:  map[string]bool{},
 		styleFragments: map[string]map[string]interface{}{
-			"sHeading": {"$761": "heading"},
+			"sHeading": {"layout_hints": "heading"},
 		},
 		styles: newStyleCatalog(),
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$157": "sHeading",
-		"$790": 3,
-		"$146": []interface{}{
+		"style": "sHeading",
+		"yj.semantics.heading_level": 3,
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$145": map[string]interface{}{"name": "content", "$403": 0},
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 		},
 	}, 0)
@@ -583,9 +583,9 @@ func TestRenderNodePromotesInlineOnlyContainersToParagraphs(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$146": []interface{}{
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$145": map[string]interface{}{"name": "content", "$403": 0},
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 		},
 	}, 0)
@@ -611,16 +611,16 @@ func TestRenderNodeDoesNotPromoteMultiParagraphContainersToParagraph(t *testing.
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$157": "s53",
-		"$146": []interface{}{
+		"style": "s53",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$157": "s1S",
-				"$790": 1,
-				"$145": map[string]interface{}{"name": "content", "$403": 0},
+				"style": "s1S",
+				"yj.semantics.heading_level": 1,
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 			map[string]interface{}{
-				"$157": "s1U",
-				"$145": map[string]interface{}{"name": "content", "$403": 1},
+				"style": "s1U",
+				"content": map[string]interface{}{"name": "content", "index": 1},
 			},
 		},
 	}, 0)
@@ -646,8 +646,8 @@ func TestRenderNodeDoesNotPromoteLayoutHintsInFixedLayout(t *testing.T) {
 		positionAnchorID:  map[int]map[int]string{},
 		emittedAnchorIDs:  map[string]bool{},
 		styleFragments: map[string]map[string]interface{}{
-			"sHeading": {"$761": "heading"},
-			"sFigure":  {"$761": "figure"},
+			"sHeading": {"layout_hints": "heading"},
+			"sFigure":  {"layout_hints": "figure"},
 		},
 		styles: newStyleCatalog(),
 		conditionEvaluator: conditionEvaluator{
@@ -656,19 +656,19 @@ func TestRenderNodeDoesNotPromoteLayoutHintsInFixedLayout(t *testing.T) {
 	}
 
 	heading := renderHTMLPart(renderer.renderNode(map[string]interface{}{
-		"$157": "sHeading",
-		"$790": 3,
-		"$146": []interface{}{
+		"style": "sHeading",
+		"yj.semantics.heading_level": 3,
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$145": map[string]interface{}{"name": "content", "$403": 0},
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 		},
 	}, 0))
 	figure := renderHTMLPart(renderer.renderNode(map[string]interface{}{
-		"$157": "sFigure",
-		"$146": []interface{}{
+		"style": "sFigure",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$175": "img1",
+				"resource_name": "img1",
 			},
 		},
 	}, 0))
@@ -695,8 +695,8 @@ func TestRenderNodeSupportsNodeLevelLinks(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$175": "img1",
-		"$179": "dest",
+		"resource_name": "img1",
+		"link_to": "dest",
 	}, 0)
 	got := renderHTMLPart(node)
 
@@ -719,10 +719,10 @@ func TestRenderNodeSupportsInlineRenderContainers(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$601": "$283",
-		"$146": []interface{}{
+		"render": "inline",
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$145": map[string]interface{}{"name": "content", "$403": 0},
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 		},
 	}, 0)
@@ -747,17 +747,17 @@ func TestRenderImageNodeFitTightDropsWidthHundredPercent(t *testing.T) {
 		emittedAnchorIDs:  map[string]bool{},
 		styleFragments: map[string]map[string]interface{}{
 			"sImg": {
-				"$56": map[string]interface{}{"$307": 100.0, "$306": "$314"},
-				"$57": map[string]interface{}{"$307": 5.0, "$306": "$308"},
+				"width": map[string]interface{}{"value": 100.0, "unit": "percent"},
+				"height": map[string]interface{}{"value": 5.0, "unit": "em"},
 			},
 		},
 		styles: newStyleCatalog(),
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$157": "sImg",
-		"$175": "img1",
-		"$784": true,
+		"style": "sImg",
+		"resource_name": "img1",
+		"fit_tight": true,
 	}, 0)
 	got := renderHTMLPart(node)
 	renderer.styles.markReferenced(got)
@@ -788,10 +788,10 @@ func TestRenderTextNodeSupportsFirstLineStyles(t *testing.T) {
 	}
 
 	node := renderer.renderTextNode(map[string]interface{}{
-		"$145": map[string]interface{}{"name": "content", "$403": 0},
-		"$622": map[string]interface{}{
-			"$16":  2.0,
-			"$625": map[string]interface{}{"$623": 1},
+		"content": map[string]interface{}{"name": "content", "index": 0},
+		"yj.first_line_style": map[string]interface{}{
+			"font_size":  2.0,
+			"yj.first_line_style_type": map[string]interface{}{"yj.number_of_lines": 1},
 		},
 	}, 0)
 	got := renderHTMLPart(node)
@@ -934,8 +934,8 @@ func TestRenderNodeAddsMathRoleForClassifiedContent(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$615": "$688",
-		"$145": map[string]interface{}{"name": "content", "$403": 0},
+		"yj.classification": "math",
+		"content": map[string]interface{}{"name": "content", "index": 0},
 	}, 0)
 	got := renderHTMLPart(node)
 
@@ -947,13 +947,13 @@ func TestRenderNodeAddsMathRoleForClassifiedContent(t *testing.T) {
 func TestConditionEvaluatorMatchesKnownSupportedFeaturesAndLogic(t *testing.T) {
 	eval := conditionEvaluator{orientationLock: "portrait"}
 
-	if !eval.evaluateBinary([]interface{}{"$659", "$826"}) {
+	if !eval.evaluateBinary([]interface{}{"yj.supports", "audio"}) {
 		t.Fatalf("expected known supported feature $826 to be true")
 	}
-	if !eval.evaluateBinary([]interface{}{"$292", []interface{}{"$659", "$826"}, []interface{}{"$293", []interface{}{"$750", "$753"}}}) {
+	if !eval.evaluateBinary([]interface{}{"and", []interface{}{"yj.supports", "audio"}, []interface{}{"not", []interface{}{"yj.layout_type", "yj.table_viewer"}}}) {
 		t.Fatalf("expected composed condition to be true")
 	}
-	if eval.evaluateBinary([]interface{}{"$294", []interface{}{"$304"}, []interface{}{"$305"}}) {
+	if eval.evaluateBinary([]interface{}{"==", []interface{}{"screenActualWidth"}, []interface{}{"screenActualHeight"}}) {
 		t.Fatalf("expected screen width == screen height to be false in portrait mode")
 	}
 }
@@ -975,16 +975,16 @@ func TestRenderNodeHonorsIncludeExcludeConditions(t *testing.T) {
 	}
 
 	included := renderer.renderNode(map[string]interface{}{
-		"$592": []interface{}{"$659", "$826"},
-		"$145": map[string]interface{}{"name": "content", "$403": 0},
+		"include": []interface{}{"yj.supports", "audio"},
+		"content": map[string]interface{}{"name": "content", "index": 0},
 	}, 0)
 	if got := renderHTMLPart(included); got != "<p>Visible</p>" {
 		t.Fatalf("included html = %q", got)
 	}
 
 	excluded := renderer.renderNode(map[string]interface{}{
-		"$591": []interface{}{"$659", "$826"},
-		"$145": map[string]interface{}{"name": "content", "$403": 0},
+		"exclude": []interface{}{"yj.supports", "audio"},
+		"content": map[string]interface{}{"name": "content", "index": 0},
 	}, 0)
 	if excluded != nil {
 		t.Fatalf("excluded node should be nil, got %q", renderHTMLPart(excluded))
@@ -1008,15 +1008,15 @@ func TestConditionalPropertiesMergeIntoRenderableNode(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$146": []interface{}{
+		"content_list": []interface{}{
 			map[string]interface{}{
-				"$145": map[string]interface{}{"name": "content", "$403": 0},
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 		},
-		"$663": []interface{}{
+		"yj.conditional_properties": []interface{}{
 			map[string]interface{}{
-				"$592": []interface{}{"$659", "$826"},
-				"$16":  2.0,
+				"include": []interface{}{"yj.supports", "audio"},
+				"font_size":  2.0,
 			},
 		},
 	}, 0)
@@ -1075,8 +1075,8 @@ func TestRenderNodeSupportsHTMLPluginResources(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$159": "$274",
-		"$175": "plug1",
+		"type": "plugin",
+		"resource_name": "plug1",
 	}, 0)
 	got := renderHTMLPart(node)
 	renderer.styles.markReferenced(got)
@@ -1113,13 +1113,13 @@ func TestRenderNodeSupportsAudioAndVideoPluginResources(t *testing.T) {
 	}
 
 	audio := renderHTMLPart(renderer.renderNode(map[string]interface{}{
-		"$159": "$274",
-		"$175": "audio1",
+		"type": "plugin",
+		"resource_name": "audio1",
 	}, 0))
 	video := renderHTMLPart(renderer.renderNode(map[string]interface{}{
-		"$159": "$274",
-		"$175": "video1",
-		"$584": "Video alt",
+		"type": "plugin",
+		"resource_name": "video1",
+		"alt_text": "Video alt",
 	}, 0))
 
 	if !strings.Contains(audio, "<audio") || !strings.Contains(audio, "src=\"resource_sound.mp3\"") || !strings.Contains(audio, "controls=\"controls\"") {
@@ -1145,9 +1145,9 @@ func TestRenderNodeSupportsBasicSVGContainers(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"$159": "$272",
-		"$66":  100,
-		"$67":  200,
+		"type": "kvg",
+		"fixed_width":  100,
+		"fixed_height":  200,
 	}, 0)
 	got := renderHTMLPart(node)
 
@@ -1194,10 +1194,10 @@ func TestRenderTextNodeSupportsRubyAnnotations(t *testing.T) {
 		contentFragments: map[string][]string{"content": {"漢字", "かんじ"}},
 		rubyGroups: map[string]map[string]interface{}{
 			"ruby-set": {
-				"$146": []interface{}{
+				"content_list": []interface{}{
 					map[string]interface{}{
-						"$758": 1,
-						"$145": map[string]interface{}{"name": "content", "$403": 1},
+						"ruby_id": 1,
+						"content": map[string]interface{}{"name": "content", "index": 1},
 					},
 				},
 			},
@@ -1214,13 +1214,13 @@ func TestRenderTextNodeSupportsRubyAnnotations(t *testing.T) {
 	}
 
 	node := renderer.renderTextNode(map[string]interface{}{
-		"$145": map[string]interface{}{"name": "content", "$403": 0},
-		"$142": []interface{}{
+		"content": map[string]interface{}{"name": "content", "index": 0},
+		"style_events": []interface{}{
 			map[string]interface{}{
-				"$143": 0,
-				"$144": 2,
-				"$757": "ruby-set",
-				"$758": 1,
+				"offset": 0,
+				"length": 2,
+				"ruby_name": "ruby-set",
+				"ruby_id": 1,
 			},
 		},
 	}, 0)

@@ -51,19 +51,19 @@ func loadContainerSourceData(path string, data []byte) (*containerSource, error)
 		return nil, err
 	}
 
-	docSymbolOffset, ok := asInt(containerInfo["$415"])
+	docSymbolOffset, ok := asInt(containerInfo["bcDocSymbolOffset"])
 	if !ok {
 		return nil, &UnsupportedError{Message: "KFX document symbol table is missing"}
 	}
-	docSymbolLength, ok := asInt(containerInfo["$416"])
+	docSymbolLength, ok := asInt(containerInfo["bcDocSymbolLength"])
 	if !ok {
 		return nil, &UnsupportedError{Message: "KFX document symbol table length is missing"}
 	}
-	indexOffset, ok := asInt(containerInfo["$413"])
+	indexOffset, ok := asInt(containerInfo["bcIndexTabOffset"])
 	if !ok {
 		return nil, &UnsupportedError{Message: "KFX index table is missing"}
 	}
-	indexLength, ok := asInt(containerInfo["$414"])
+	indexLength, ok := asInt(containerInfo["bcIndexTabLength"])
 	if !ok {
 		return nil, &UnsupportedError{Message: "KFX index table length is missing"}
 	}

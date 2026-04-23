@@ -24,22 +24,22 @@ func TestGetOrderedImagesReturnValues(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"$161": "$285",
-				"$422": 100,
-				"$423": 200,
-				"$165": "res/img1.jpg",
+				"format": "jpg",
+				"resource_width": 100,
+				"resource_height": 200,
+				"location": "res/img1.jpg",
 			},
 			"img2": {
-				"$161": "$285",
-				"$422": 100,
-				"$423": 200,
-				"$165": "res/img2.jpg",
+				"format": "jpg",
+				"resource_width": 100,
+				"resource_height": 200,
+				"location": "res/img2.jpg",
 			},
 			"img3": {
-				"$161": "$285",
-				"$422": 100,
-				"$423": 200,
-				"$165": "res/img3.jpg",
+				"format": "jpg",
+				"resource_width": 100,
+				"resource_height": 200,
+				"location": "res/img3.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -68,10 +68,10 @@ func TestGetOrderedImagesWithPids(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"$161": "$285",
-				"$422": 100,
-				"$423": 50,
-				"$165": "res/img1.jpg",
+				"format": "jpg",
+				"resource_width": 100,
+				"resource_height": 50,
+				"location": "res/img1.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -99,10 +99,10 @@ func TestGetOrderedImagesSplitLandscape(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"$161": "$285",
-				"$422": 200,
-				"$423": 100,
-				"$165": "res/img1.jpg",
+				"format": "jpg",
+				"resource_width": 200,
+				"resource_height": 100,
+				"location": "res/img1.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -138,10 +138,10 @@ func TestGetOrderedImagesSplitLandscapeRTL(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"$161": "$285",
-				"$422": 200,
-				"$423": 100,
-				"$165": "res/img1.jpg",
+				"format": "jpg",
+				"resource_width": 200,
+				"resource_height": 100,
+				"location": "res/img1.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -176,8 +176,8 @@ func TestConvertBookToCBZ(t *testing.T) {
 	imgData := createTestJPEG(t, 100, 200)
 
 	images := []ImageResource{
-		{Format: "$285", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
-		{Format: "$284", Location: "img2.png", RawMedia: createTestPNG(t, 50, 50), Width: 50, Height: 50},
+		{Format: "jpg", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
+		{Format: "png", Location: "img2.png", RawMedia: createTestPNG(t, 50, 50), Width: 50, Height: 50},
 	}
 
 	cbzData := combineImagesIntoCBZ(images, map[string]interface{}{
@@ -283,8 +283,8 @@ func TestCBZ_ConvertPDFPages(t *testing.T) {
 	imgData := createTestJPEG(t, 100, 200)
 
 	images := []ImageResource{
-		{Format: "$565", Location: "page.pdf", RawMedia: pdfData, PageNums: []int{1}},
-		{Format: "$285", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
+		{Format: "pdf", Location: "page.pdf", RawMedia: pdfData, PageNums: []int{1}},
+		{Format: "jpg", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
 	}
 
 	cbzData := combineImagesIntoCBZ(images, nil)
@@ -307,7 +307,7 @@ func TestCBZ_ConvertJXR(t *testing.T) {
 	imgData := createTestJPEG(t, 100, 200)
 
 	images := []ImageResource{
-		{Format: "$548", Location: "image.jxr", RawMedia: imgData, Width: 100, Height: 200},
+		{Format: "jxr", Location: "image.jxr", RawMedia: imgData, Width: 100, Height: 200},
 	}
 
 	cbzData := combineImagesIntoCBZ(images, nil)
@@ -334,9 +334,9 @@ func TestCombineImagesIntoPDF(t *testing.T) {
 	imgData := createTestJPEG(t, 100, 200)
 
 	images := []ImageResource{
-		{Format: "$285", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
-		{Format: "$285", Location: "img2.jpg", RawMedia: createTestJPEG(t, 200, 300), Width: 200, Height: 300},
-		{Format: "$285", Location: "img3.jpg", RawMedia: createTestJPEG(t, 300, 400), Width: 300, Height: 400},
+		{Format: "jpg", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
+		{Format: "jpg", Location: "img2.jpg", RawMedia: createTestJPEG(t, 200, 300), Width: 200, Height: 300},
+		{Format: "jpg", Location: "img3.jpg", RawMedia: createTestJPEG(t, 300, 400), Width: 300, Height: 400},
 	}
 
 	metadata := map[string]string{
@@ -377,7 +377,7 @@ func TestCombineImagesIntoPDF_RTL(t *testing.T) {
 	imgData := createTestJPEG(t, 100, 200)
 
 	images := []ImageResource{
-		{Format: "$285", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
+		{Format: "jpg", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
 	}
 
 	pdfData := combineImagesIntoPDF(images, nil, true, nil)
@@ -451,16 +451,16 @@ func TestGetResourceImageTiles(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"tiled-img": {
-				"$161": "$284",
-				"$422": 200,
-				"$423": 200,
-				"$636": []interface{}{
+				"format": "png",
+				"resource_width": 200,
+				"resource_height": 200,
+				"yj.tiles": []interface{}{
 					[]interface{}{"loc-tile-0-0", "loc-tile-0-1"},
 					[]interface{}{"loc-tile-1-0", "loc-tile-1-1"},
 				},
-				"$637": tileW,
-				"$638": tileH,
-				"$797": 0,
+				"yj.tile_width": tileW,
+				"yj.tile_height": tileH,
+				"yj.tile_padding": 0,
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -503,16 +503,16 @@ func TestGetResourceImageTilesWithPadding(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"tiled-img": {
-				"$161": "$284",
-				"$422": 200,
-				"$423": 200,
-				"$636": []interface{}{
+				"format": "png",
+				"resource_width": 200,
+				"resource_height": 200,
+				"yj.tiles": []interface{}{
 					[]interface{}{"tile-0-0", "tile-0-1"},
 					[]interface{}{"tile-1-0", "tile-1-1"},
 				},
-				"$637": tileW,
-				"$638": tileH,
-				"$797": padding,
+				"yj.tile_width": tileW,
+				"yj.tile_height": tileH,
+				"yj.tile_padding": padding,
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -546,10 +546,10 @@ func TestGetResourceImageNoTiles(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"$161": "$285",
-				"$422": 100,
-				"$423": 200,
-				"$165": "res/img1.jpg",
+				"format": "jpg",
+				"resource_width": 100,
+				"resource_height": 200,
+				"location": "res/img1.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -563,7 +563,7 @@ func TestGetResourceImageNoTiles(t *testing.T) {
 	if imgRes == nil {
 		t.Fatal("expected non-nil image resource")
 	}
-	if imgRes.Format != "$285" {
+	if imgRes.Format != "jpg" {
 		t.Errorf("expected format $285, got %s", imgRes.Format)
 	}
 	if imgRes.Width != 100 || imgRes.Height != 200 {
@@ -578,17 +578,17 @@ func TestGetResourceImageVariantSelection(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"$161": "$285",
-				"$422": 100,
-				"$423": 200,
-				"$165": "res/img1.jpg",
-				"$635": []interface{}{"img1-hd"},
+				"format": "jpg",
+				"resource_width": 100,
+				"resource_height": 200,
+				"location": "res/img1.jpg",
+				"yj.variants": []interface{}{"img1-hd"},
 			},
 			"img1-hd": {
-				"$161": "$285",
-				"$422": 200,
-				"$423": 400,
-				"$165": "res/img1-hd.jpg",
+				"format": "jpg",
+				"resource_width": 200,
+				"resource_height": 400,
+				"location": "res/img1-hd.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -629,9 +629,9 @@ func TestGetResourceImagePDFResource(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"pdf1": {
-				"$161": "$565",
-				"$165": "res/doc.pdf",
-				"$564": 2, // page_index = 2, page_nums = [3]
+				"format": "pdf",
+				"location": "res/doc.pdf",
+				"page_index": 2, // page_index = 2, page_nums = [3]
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -645,7 +645,7 @@ func TestGetResourceImagePDFResource(t *testing.T) {
 	if imgRes == nil {
 		t.Fatal("expected non-nil PDF resource")
 	}
-	if imgRes.Format != "$565" {
+	if imgRes.Format != "pdf" {
 		t.Errorf("expected format $565, got %s", imgRes.Format)
 	}
 	// Python: page_nums = [page_index + 1] — page_index 2 → page_nums [3]

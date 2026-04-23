@@ -3,7 +3,6 @@ package kfx
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 
 	"github.com/amazon-ion/ion-go/ion"
 )
@@ -82,23 +81,13 @@ func (r *symbolResolver) isLocalSID(sid uint32) bool {
 	return sid >= r.localStart && int(offset) < len(r.locals)
 }
 
-// isSharedSymbolText mirrors symtab.is_shared_symbol for text form "$<sid>" (yj_structure.py / Ion locals).
+// isSharedSymbolText checks whether a name is a shared YJ symbol.
+// With real names from the catalog, shared symbols have names like "content",
+// "font_family", etc. Local symbols are strings from the document's own
+// symbol table.
 func (r *symbolResolver) isSharedSymbolText(name string) bool {
-	if r == nil || name == "" || name[0] != '$' {
+	if r == nil || name == "" {
 		return false
 	}
-	for _, ch := range name[1:] {
-		if ch < '0' || ch > '9' {
-			return false
-		}
-	}
-	sid64, err := strconv.ParseUint(name[1:], 10, 32)
-	if err != nil || sid64 == 0 {
-		return false
-	}
-	sid := uint32(sid64)
-	if r.isLocalSID(sid) {
-		return false
-	}
-	return sid < r.localStart
+	return isSharedSymbolName(name)
 }

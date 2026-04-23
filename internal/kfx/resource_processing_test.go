@@ -43,12 +43,12 @@ func TestCombineImageTiles_2x2Grid(t *testing.T) {
 	}
 
 	rawMedia, resourceFormat := combineImageTiles(
-		"test_resource", 100, 100, "$284",
+		"test_resource", 100, 100, "png",
 		tileHeight, tileWidth, 0,
 		yjTiles, tiles, false,
 	)
 
-	if resourceFormat != "$284" {
+	if resourceFormat != "png" {
 		t.Fatalf("expected format $284 (PNG), got %s", resourceFormat)
 	}
 	if rawMedia == nil {
@@ -80,7 +80,7 @@ func TestCombineImageTiles_MissingTile(t *testing.T) {
 	tiles := [][]byte{buf.Bytes(), nil} // second tile missing
 
 	rawMedia, _ := combineImageTiles(
-		"test_resource", 50, 100, "$284",
+		"test_resource", 50, 100, "png",
 		tileHeight, tileWidth, 0,
 		yjTiles, tiles, true,
 	)
@@ -106,7 +106,7 @@ func TestCombineImageTiles_MissingTileNotIgnored(t *testing.T) {
 
 	// ignore_variants=false → should still produce output (with blank tile)
 	rawMedia, _ := combineImageTiles(
-		"test_resource", 50, 100, "$284",
+		"test_resource", 50, 100, "png",
 		tileHeight, tileWidth, 0,
 		yjTiles, tiles, false,
 	)
@@ -131,7 +131,7 @@ func TestCombineImageTiles_WrongDimensions(t *testing.T) {
 
 	// Should not panic, should log error but still produce output
 	rawMedia, _ := combineImageTiles(
-		"test_resource", 50, 50, "$284",
+		"test_resource", 50, 50, "png",
 		tileHeight, tileWidth, 0,
 		yjTiles, tiles, false,
 	)
@@ -154,7 +154,7 @@ func TestCombineImageTiles_JpegLossless(t *testing.T) {
 
 	// With JPEG format ($285) and COMBINE_TILES_LOSSLESS=true, format should change to PNG ($284)
 	rawMedia, resourceFormat := combineImageTiles(
-		"test_resource", 50, 50, "$285",
+		"test_resource", 50, 50, "jpg",
 		tileHeight, tileWidth, 0,
 		yjTiles, tiles, false,
 	)
@@ -162,7 +162,7 @@ func TestCombineImageTiles_JpegLossless(t *testing.T) {
 	if rawMedia == nil {
 		t.Fatal("expected non-nil raw media")
 	}
-	if resourceFormat != "$284" {
+	if resourceFormat != "png" {
 		t.Fatalf("expected format $284 (PNG for lossless), got %s", resourceFormat)
 	}
 }
@@ -180,7 +180,7 @@ func TestCombineImageTiles_PngDirect(t *testing.T) {
 
 	// PNG format should stay PNG
 	rawMedia, resourceFormat := combineImageTiles(
-		"test_resource", 50, 50, "$284",
+		"test_resource", 50, 50, "png",
 		tileHeight, tileWidth, 0,
 		yjTiles, tiles, false,
 	)
@@ -188,7 +188,7 @@ func TestCombineImageTiles_PngDirect(t *testing.T) {
 	if rawMedia == nil {
 		t.Fatal("expected non-nil raw media")
 	}
-	if resourceFormat != "$284" {
+	if resourceFormat != "png" {
 		t.Fatalf("expected format $284 (PNG), got %s", resourceFormat)
 	}
 }
@@ -215,7 +215,7 @@ func TestCombineImageTiles_WithPadding(t *testing.T) {
 	tiles := [][]byte{buf.Bytes(), buf.Bytes()}
 
 	rawMedia, _ := combineImageTiles(
-		"test_resource", 50, 100, "$284",
+		"test_resource", 50, 100, "png",
 		tileHeight, tileWidth, tilePadding,
 		yjTiles, tiles, false,
 	)
@@ -249,7 +249,7 @@ func TestConvertJXRToJpegOrPNG_GrayImage(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil result from JXR conversion")
 	}
-	if format != "$285" && format != "$284" {
+	if format != "jpg" && format != "png" {
 		t.Fatalf("expected format $285 or $284, got %s", format)
 	}
 }
@@ -271,7 +271,7 @@ func TestConvertJXR_RGBA(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil result for RGBA conversion")
 	}
-	if format != "$284" {
+	if format != "png" {
 		t.Fatalf("expected PNG ($284) for RGBA, got %s", format)
 	}
 }
@@ -300,7 +300,7 @@ func TestConvertPDFPageToImage_InvalidData(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil result (fallback) for invalid PDF data")
 	}
-	if format != "$285" {
+	if format != "jpg" {
 		t.Fatalf("expected fallback format $285 (JPEG), got %s", format)
 	}
 }
@@ -336,13 +336,13 @@ func TestResourceSearchPath_Mismatch(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	frag := map[string]interface{}{
-		"$175": "r1",
-		"$165": "loc_A",
-		"$166": "loc_B",
-		"$161": "$285",
-		"$162": "image/jpeg",
-		"$422": 100,
-		"$423": 100,
+		"resource_name": "r1",
+		"location": "loc_A",
+		"search_path": "loc_B",
+		"format": "jpg",
+		"mime": "image/jpeg",
+		"resource_width": 100,
+		"resource_height": 100,
 	}
 	rp.fragments["$164:r1"] = frag
 	rp.addTestRawMedia("loc_A", []byte("data"))
@@ -360,13 +360,13 @@ func TestResourceSearchPath_Match(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	frag := map[string]interface{}{
-		"$175": "r2",
-		"$165": "loc_same",
-		"$166": "loc_same",
-		"$161": "$285",
-		"$162": "image/jpeg",
-		"$422": 100,
-		"$423": 100,
+		"resource_name": "r2",
+		"location": "loc_same",
+		"search_path": "loc_same",
+		"format": "jpg",
+		"mime": "image/jpeg",
+		"resource_width": 100,
+		"resource_height": 100,
 	}
 	rp.fragments["$164:r2"] = frag
 	rp.addTestRawMedia("loc_same", []byte("data"))
@@ -386,18 +386,18 @@ func TestResourceExternalRef(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	extData := []byte("external-resource-data")
-	rp.addTestResource("ext_ref", "loc_ext", "$285", "image/jpeg", 100, 100, nil)
+	rp.addTestResource("ext_ref", "loc_ext", "jpg", "image/jpeg", 100, 100, nil)
 	rp.addTestRawMedia("loc_ext", extData)
 
 	mainData := []byte("main-resource-data")
 	frag := map[string]interface{}{
-		"$175": "main_res",
-		"$165": "loc_main",
-		"$161": "$285",
-		"$162": "image/jpeg",
-		"$422": 100,
-		"$423": 100,
-		"$214": "ext_ref",
+		"resource_name": "main_res",
+		"location": "loc_main",
+		"format": "jpg",
+		"mime": "image/jpeg",
+		"resource_width": 100,
+		"resource_height": 100,
+		"thumbnails": "ext_ref",
 	}
 	rp.fragments["$164:main_res"] = frag
 	rp.addTestRawMedia("loc_main", mainData)
@@ -426,11 +426,11 @@ func TestResourceVariantSelection_BothDimensionsLarger(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	baseData := []byte("base-100x200")
-	rp.addTestResource("base", "loc_base", "$285", "image/jpeg", 100, 200, []string{"variant"})
+	rp.addTestResource("base", "loc_base", "jpg", "image/jpeg", 100, 200, []string{"variant"})
 	rp.addTestRawMedia("loc_base", baseData)
 
 	variantData := []byte("variant-200x400")
-	rp.addTestResource("variant", "loc_var", "$285", "image/jpeg", 200, 400, nil)
+	rp.addTestResource("variant", "loc_var", "jpg", "image/jpeg", 200, 400, nil)
 	rp.addTestRawMedia("loc_var", variantData)
 
 	result := rp.getExternalResource("base", false)
@@ -446,11 +446,11 @@ func TestResourceVariantSelection_WidthOnlyLarger(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	baseData := []byte("base-100x200")
-	rp.addTestResource("base", "loc_base", "$285", "image/jpeg", 100, 200, []string{"variant"})
+	rp.addTestResource("base", "loc_base", "jpg", "image/jpeg", 100, 200, []string{"variant"})
 	rp.addTestRawMedia("loc_base", baseData)
 
 	variantData := []byte("variant-200x100")
-	rp.addTestResource("variant", "loc_var", "$285", "image/jpeg", 200, 100, nil)
+	rp.addTestResource("variant", "loc_var", "jpg", "image/jpeg", 200, 100, nil)
 	rp.addTestRawMedia("loc_var", variantData)
 
 	result := rp.getExternalResource("base", false)
@@ -466,11 +466,11 @@ func TestResourceVariantSelection_HeightOnlyLarger(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	baseData := []byte("base-100x200")
-	rp.addTestResource("base", "loc_base", "$285", "image/jpeg", 100, 200, []string{"variant"})
+	rp.addTestResource("base", "loc_base", "jpg", "image/jpeg", 100, 200, []string{"variant"})
 	rp.addTestRawMedia("loc_base", baseData)
 
 	variantData := []byte("variant-50x400")
-	rp.addTestResource("variant", "loc_var", "$285", "image/jpeg", 50, 400, nil)
+	rp.addTestResource("variant", "loc_var", "jpg", "image/jpeg", 50, 400, nil)
 	rp.addTestRawMedia("loc_var", variantData)
 
 	result := rp.getExternalResource("base", false)
@@ -486,11 +486,11 @@ func TestResourceVariantSelection_SameDimensions(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	baseData := []byte("base-100x200")
-	rp.addTestResource("base", "loc_base", "$285", "image/jpeg", 100, 200, []string{"variant"})
+	rp.addTestResource("base", "loc_base", "jpg", "image/jpeg", 100, 200, []string{"variant"})
 	rp.addTestRawMedia("loc_base", baseData)
 
 	variantData := []byte("variant-100x200")
-	rp.addTestResource("variant", "loc_var", "$285", "image/jpeg", 100, 200, nil)
+	rp.addTestResource("variant", "loc_var", "jpg", "image/jpeg", 100, 200, nil)
 	rp.addTestRawMedia("loc_var", variantData)
 
 	result := rp.getExternalResource("base", false)
@@ -521,17 +521,17 @@ func TestGetExternalResource_TiledImage(t *testing.T) {
 	png.Encode(&tileBuf, tileImg)
 
 	frag := map[string]interface{}{
-		"$175": "tiled_res",
-		"$161": "$284",
-		"$162": "image/png",
-		"$422": 100,
-		"$423": 50,
-		"$636": []interface{}{
+		"resource_name": "tiled_res",
+		"format": "png",
+		"mime": "image/png",
+		"resource_width": 100,
+		"resource_height": 50,
+		"yj.tiles": []interface{}{
 			[]interface{}{"tiled_res-tile-0-0", "tiled_res-tile-0-1"},
 		},
-		"$637": tileWidth,
-		"$638": tileHeight,
-		"$797": 0,
+		"yj.tile_width": tileWidth,
+		"yj.tile_height": tileHeight,
+		"yj.tile_padding": 0,
 	}
 	rp.fragments["$164:tiled_res"] = frag
 	rp.addTestRawMedia("tiled_res-tile-0-0", tileBuf.Bytes())
@@ -556,18 +556,18 @@ func TestGetExternalResource_PDFPage(t *testing.T) {
 	pdfData := createMinimalPDF(1)
 
 	frag := map[string]interface{}{
-		"$175": "pdf_res",
-		"$165": "loc_pdf",
-		"$161": "$565",
-		"$162": "application/pdf",
-		"$422": 612,
-		"$423": 792,
-		"$564": 0,
-		"$46":  0,
-		"$48":  0,
-		"$50":  0,
-		"$47":  0,
-		"$49":  0,
+		"resource_name": "pdf_res",
+		"location": "loc_pdf",
+		"format": "pdf",
+		"mime": "application/pdf",
+		"resource_width": 612,
+		"resource_height": 792,
+		"page_index": 0,
+		"margin":  0,
+		"margin_left":  0,
+		"margin_right":  0,
+		"margin_top":  0,
+		"margin_bottom":  0,
 	}
 	rp.fragments["$164:pdf_res"] = frag
 	rp.addTestRawMedia("loc_pdf", pdfData)
@@ -589,18 +589,18 @@ func TestGetExternalResource_ExternalRefProcessed(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	extData := []byte("ext-data")
-	rp.addTestResource("ext213", "loc_ext213", "$285", "image/jpeg", 50, 50, nil)
+	rp.addTestResource("ext213", "loc_ext213", "jpg", "image/jpeg", 50, 50, nil)
 	rp.addTestRawMedia("loc_ext213", extData)
 
 	mainData := []byte("main-data")
 	frag := map[string]interface{}{
-		"$175": "main214",
-		"$165": "loc_main214",
-		"$161": "$285",
-		"$162": "image/jpeg",
-		"$422": 100,
-		"$423": 100,
-		"$214": "ext213",
+		"resource_name": "main214",
+		"location": "loc_main214",
+		"format": "jpg",
+		"mime": "image/jpeg",
+		"resource_width": 100,
+		"resource_height": 100,
+		"thumbnails": "ext213",
 	}
 	rp.fragments["$164:main214"] = frag
 	rp.addTestRawMedia("loc_main214", mainData)

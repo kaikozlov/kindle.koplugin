@@ -185,7 +185,7 @@ func TestContentChunkEqualNil(t *testing.T) {
 // =============================================================================
 
 func TestConditionalTemplateRangeOpersSetStartToNil(t *testing.T) {
-	ct := NewConditionalTemplate(42, 5, "$298", nil)
+	ct := NewConditionalTemplate(42, 5, "<", nil)
 	if ct.StartEID != nil {
 		t.Errorf("expected StartEID=nil for $298, got %v", ct.StartEID)
 	}
@@ -195,7 +195,7 @@ func TestConditionalTemplateRangeOpersSetStartToNil(t *testing.T) {
 }
 
 func TestConditionalTemplateRangeOper299(t *testing.T) {
-	ct := NewConditionalTemplate(100, 10, "$299", nil)
+	ct := NewConditionalTemplate(100, 10, "<=", nil)
 	if ct.StartEID != nil {
 		t.Errorf("expected StartEID=nil for $299, got %v", ct.StartEID)
 	}
@@ -206,7 +206,7 @@ func TestConditionalTemplateRangeOper299(t *testing.T) {
 // =============================================================================
 
 func TestConditionalTemplateNonRangeOperSetStart(t *testing.T) {
-	ct := NewConditionalTemplate(42, 5, "$294", nil)
+	ct := NewConditionalTemplate(42, 5, "==", nil)
 	if ct.StartEID != 42 {
 		t.Errorf("expected StartEID=42 for $294, got %v", ct.StartEID)
 	}
@@ -216,7 +216,7 @@ func TestConditionalTemplateNonRangeOperSetStart(t *testing.T) {
 }
 
 func TestConditionalTemplateOper348(t *testing.T) {
-	ct := NewConditionalTemplate(99, 7, "$348", nil)
+	ct := NewConditionalTemplate(99, 7, "null", nil)
 	if ct.StartEID != 99 {
 		t.Errorf("expected StartEID=99 for $348, got %v", ct.StartEID)
 	}
@@ -230,7 +230,7 @@ func TestConditionalTemplateOper348(t *testing.T) {
 // =============================================================================
 
 func TestConditionalTemplateUseNextDefaultFalse(t *testing.T) {
-	ct := NewConditionalTemplate(42, 0, "$294", nil)
+	ct := NewConditionalTemplate(42, 0, "==", nil)
 	if ct.UseNext != false {
 		t.Error("expected UseNext=false by default")
 	}
@@ -241,7 +241,7 @@ func TestConditionalTemplatePosInfoSnapshot(t *testing.T) {
 		{PID: 0, EID: 1, Length: 10},
 		{PID: 10, EID: 2, Length: 20},
 	}
-	ct := NewConditionalTemplate(42, 0, "$294", posInfo)
+	ct := NewConditionalTemplate(42, 0, "==", posInfo)
 	if len(ct.PosInfo) != 2 {
 		t.Errorf("expected 2 pos_info entries, got %d", len(ct.PosInfo))
 	}
@@ -847,11 +847,11 @@ func TestDetermineApproximatePagesWhitespaceLookback(t *testing.T) {
 
 	// The second page target offset should be at a word boundary
 	secondPage := pages[1]
-	targetMap, ok := secondPage["$246"].(map[string]interface{})
+	targetMap, ok := secondPage["target_position"].(map[string]interface{})
 	if !ok {
 		t.Fatal("expected $246 in page entry")
 	}
-	offset, ok := targetMap["$143"].(int)
+	offset, ok := targetMap["offset"].(int)
 	if !ok {
 		t.Fatal("expected $143 offset in target")
 	}
@@ -1058,17 +1058,17 @@ func TestContentChunkStringNoOffset(t *testing.T) {
 // =============================================================================
 
 func TestConditionalTemplateString(t *testing.T) {
-	ct := NewConditionalTemplate(42, 5, "$294", []*ContentChunk{{EID: 1}, {EID: 2}})
+	ct := NewConditionalTemplate(42, 5, "==", []*ContentChunk{{EID: 1}, {EID: 2}})
 	s := ct.String()
-	if !contains(s, "$294") {
+	if !contains(s, "==") {
 		t.Errorf("expected repr to contain $294, got %s", s)
 	}
 }
 
 func TestConditionalTemplateStringRange(t *testing.T) {
-	ct := NewConditionalTemplate(42, 5, "$298", []*ContentChunk{{EID: 1}})
+	ct := NewConditionalTemplate(42, 5, "<", []*ContentChunk{{EID: 1}})
 	s := ct.String()
-	if !contains(s, "$298") {
+	if !contains(s, "<") {
 		t.Errorf("expected repr to contain $298, got %s", s)
 	}
 }
@@ -1115,37 +1115,37 @@ func TestCollectLocationMapInfoNoFragments(t *testing.T) {
 
 func TestFragmentStoreBasic(t *testing.T) {
 	fs := NewFragmentStore()
-	if fs.Has("$264") {
+	if fs.Has("position_map") {
 		t.Error("expected no $264 fragments initially")
 	}
-	if fs.Get("$264") != nil {
+	if fs.Get("position_map") != nil {
 		t.Error("expected nil for missing fragment")
 	}
 
-	fs.Append("$264", map[string]interface{}{"$264": "test"})
-	if !fs.Has("$264") {
+	fs.Append("position_map", map[string]interface{}{"position_map": "test"})
+	if !fs.Has("position_map") {
 		t.Error("expected $264 to exist after append")
 	}
 
-	all := fs.GetAll("$264")
+	all := fs.GetAll("position_map")
 	if len(all) != 1 {
 		t.Errorf("expected 1 fragment, got %d", len(all))
 	}
 
-	fs.RemoveAll("$264")
-	if fs.Has("$264") {
+	fs.RemoveAll("position_map")
+	if fs.Has("position_map") {
 		t.Error("expected $264 to be removed")
 	}
 }
 
 func TestFragmentStoreMultiple(t *testing.T) {
 	fs := NewFragmentStore()
-	fs.Append("$265", map[string]interface{}{"data": 1})
-	fs.Append("$265", map[string]interface{}{"data": 2})
-	if len(fs.GetAll("$265")) != 2 {
-		t.Errorf("expected 2 fragments, got %d", len(fs.GetAll("$265")))
+	fs.Append("position_id_map", map[string]interface{}{"data": 1})
+	fs.Append("position_id_map", map[string]interface{}{"data": 2})
+	if len(fs.GetAll("position_id_map")) != 2 {
+		t.Errorf("expected 2 fragments, got %d", len(fs.GetAll("position_id_map")))
 	}
-	first := fs.Get("$265")
+	first := fs.Get("position_id_map")
 	if first["data"] != 1 {
 		t.Error("expected Get to return first fragment")
 	}
@@ -1158,14 +1158,14 @@ func TestFragmentStoreMultiple(t *testing.T) {
 func TestCollectContentPositionInfoWalksSections(t *testing.T) {
 	// Build a simple book with 2 sections, each containing a container with text
 	fs := NewFragmentStore()
-	fs.Append("$260", map[string]interface{}{
-		"$260": map[string]interface{}{
-			"$174": "sec1",
-			"$141": []interface{}{
+	fs.Append("section", map[string]interface{}{
+		"section": map[string]interface{}{
+			"section_name": "sec1",
+			"page_templates": []interface{}{
 				map[string]interface{}{
-					"$155": 10,
-					"$159": "$270",
-					"$146": []interface{}{
+					"id": 10,
+					"type": "container",
+					"content_list": []interface{}{
 						"Hello World", // 11 chars
 					},
 				},
@@ -1173,15 +1173,15 @@ func TestCollectContentPositionInfoWalksSections(t *testing.T) {
 		},
 	})
 	// Override with two section data
-	fs.RemoveAll("$260")
-	fs.Append("$260", map[string]interface{}{
-		"$260": map[string]interface{}{
-			"$174": "sec1",
-			"$141": []interface{}{
+	fs.RemoveAll("section")
+	fs.Append("section", map[string]interface{}{
+		"section": map[string]interface{}{
+			"section_name": "sec1",
+			"page_templates": []interface{}{
 				map[string]interface{}{
-					"$155": 10,
-					"$159": "$270",
-					"$146": []interface{}{"Hello"},
+					"id": 10,
+					"type": "container",
+					"content_list": []interface{}{"Hello"},
 				},
 			},
 		},
@@ -1214,22 +1214,22 @@ func TestCollectContentPositionInfoWalksSections(t *testing.T) {
 func TestCollectContentPositionInfoTwoSections(t *testing.T) {
 	fs := NewFragmentStore()
 	// Section 1 with eid=10
-	fs.Append("$260", map[string]interface{}{
-		"$260": []interface{}{
+	fs.Append("section", map[string]interface{}{
+		"section": []interface{}{
 			map[string]interface{}{
-				"$155": 10,
-				"$159": "$270",
-				"$146": []interface{}{"text1"},
+				"id": 10,
+				"type": "container",
+				"content_list": []interface{}{"text1"},
 			},
 		},
 	})
 	// Section 2 with eid=20
-	fs.Append("$260", map[string]interface{}{
-		"$260": []interface{}{
+	fs.Append("section", map[string]interface{}{
+		"section": []interface{}{
 			map[string]interface{}{
-				"$155": 20,
-				"$159": "$270",
-				"$146": []interface{}{"text2"},
+				"id": 20,
+				"type": "container",
+				"content_list": []interface{}{"text2"},
 			},
 		},
 	})
@@ -1252,12 +1252,12 @@ func TestCollectContentPositionInfoTwoSections(t *testing.T) {
 
 func TestCollectPositionInfo_EidSectionMap(t *testing.T) {
 	fs := NewFragmentStore()
-	fs.Append("$260", map[string]interface{}{
-		"$260": []interface{}{
+	fs.Append("section", map[string]interface{}{
+		"section": []interface{}{
 			map[string]interface{}{
-				"$155": 100,
-				"$159": "$270",
-				"$146": []interface{}{"abc"},
+				"id": 100,
+				"type": "container",
+				"content_list": []interface{}{"abc"},
 			},
 		},
 	})
@@ -1293,12 +1293,12 @@ func TestCollectPositionInfo_EidSectionMap(t *testing.T) {
 func TestCollectPositionInfo_MergeEids(t *testing.T) {
 	fs := NewFragmentStore()
 	// Two consecutive children with same eid=42
-	fs.Append("$260", map[string]interface{}{
-		"$260": []interface{}{
+	fs.Append("section", map[string]interface{}{
+		"section": []interface{}{
 			map[string]interface{}{
-				"$155": 42,
-				"$159": "$270",
-				"$146": []interface{}{
+				"id": 42,
+				"type": "container",
+				"content_list": []interface{}{
 					"abc", // 3 chars
 					"def", // 3 chars - should merge with previous
 				},
@@ -1339,19 +1339,19 @@ func TestCollectPositionInfo_MergeEids(t *testing.T) {
 func TestCollectPositionMapInfoBasic(t *testing.T) {
 	fs := NewFragmentStore()
 	// Add a simple position_id_map ($265) as a flat list
-	fs.Append("$265", map[string]interface{}{
-		"$265": []interface{}{
+	fs.Append("position_id_map", map[string]interface{}{
+		"position_id_map": []interface{}{
 			[]interface{}{0, 10},    // pid=0, eid=10
 			[]interface{}{100, 20},  // pid=100, eid=20
 			[]interface{}{200, 0},   // terminal entry
 		},
 	})
 	// Add a position_map ($264)
-	fs.Append("$264", map[string]interface{}{
-		"$264": []interface{}{
+	fs.Append("position_map", map[string]interface{}{
+		"position_map": []interface{}{
 			map[string]interface{}{
-				"$174": "sec1",
-				"$181": []interface{}{10, 20},
+				"section_name": "sec1",
+				"contains": []interface{}{10, 20},
 			},
 		},
 	})
@@ -1380,22 +1380,22 @@ func TestCollectPositionMapInfoBasic(t *testing.T) {
 func TestCollectPositionMapInfo_SPIM(t *testing.T) {
 	fs := NewFragmentStore()
 	// SPIM format: $265 value is a map with $181 containing per-section entries
-	fs.Append("$265", map[string]interface{}{
-		"$265": map[string]interface{}{
-			"$181": []interface{}{
+	fs.Append("position_id_map", map[string]interface{}{
+		"position_id_map": map[string]interface{}{
+			"contains": []interface{}{
 				map[string]interface{}{
-					"$174": "sec1",
-					"$184": 0,
-					"$144": 100,
+					"section_name": "sec1",
+					"pid": 0,
+					"length": 100,
 				},
 			},
 		},
 	})
 	// $609 SPIM fragment for sec1
-	fs.Append("$609", map[string]interface{}{
-		"$609": map[string]interface{}{
-			"$174": "sec1",
-			"$181": []interface{}{
+	fs.Append("section_position_id_map", map[string]interface{}{
+		"section_position_id_map": map[string]interface{}{
+			"section_name": "sec1",
+			"contains": []interface{}{
 				[]interface{}{0, 10},
 				[]interface{}{100, 0},
 			},
@@ -1421,11 +1421,11 @@ func TestCollectPositionMapInfo_SPIM(t *testing.T) {
 func TestCollectPositionMapInfo_EidValidation(t *testing.T) {
 	fs := NewFragmentStore()
 	// Position map with section sec1
-	fs.Append("$264", map[string]interface{}{
-		"$264": []interface{}{
+	fs.Append("position_map", map[string]interface{}{
+		"position_map": []interface{}{
 			map[string]interface{}{
-				"$174": "sec1",
-				"$181": []interface{}{10},
+				"section_name": "sec1",
+				"contains": []interface{}{10},
 			},
 		},
 	})
@@ -1448,8 +1448,8 @@ func TestCollectPositionMapInfo_EidValidation(t *testing.T) {
 func TestCreateLocationMapRemovesOldAndBuildsNew(t *testing.T) {
 	fs := NewFragmentStore()
 	// Pre-existing $550 and $621 fragments
-	fs.Append("$550", map[string]interface{}{"$550": "old"})
-	fs.Append("$621", map[string]interface{}{"$621": "old"})
+	fs.Append("location_map", map[string]interface{}{"location_map": "old"})
+	fs.Append("yj.location_pid_map", map[string]interface{}{"yj.location_pid_map": "old"})
 
 	bpl := &BookPosLoc{
 		Store: fs,
@@ -1469,18 +1469,18 @@ func TestCreateLocationMapRemovesOldAndBuildsNew(t *testing.T) {
 	}
 
 	// Old $550 and $621 should be gone
-	if fs.Has("$621") {
+	if fs.Has("yj.location_pid_map") {
 		t.Error("expected $621 to be removed")
 	}
 
 	// New $550 should exist with 3 location entries
-	new550 := fs.Get("$550")
+	new550 := fs.Get("location_map")
 	if new550 == nil {
 		t.Fatal("expected new $550 fragment to be created")
 	}
-	locMapData, ok := new550["$550"].([]interface{})
+	locMapData, ok := new550["location_map"].([]interface{})
 	if !ok {
-		t.Fatalf("expected $550 to be []interface{}, got %T", new550["$550"])
+		t.Fatalf("expected $550 to be []interface{}, got %T", new550["location_map"])
 	}
 	if len(locMapData) != 1 {
 		t.Fatalf("expected 1 map entry in $550, got %d", len(locMapData))
@@ -1489,7 +1489,7 @@ func TestCreateLocationMapRemovesOldAndBuildsNew(t *testing.T) {
 	if !ok {
 		t.Fatal("expected map entry")
 	}
-	entries, ok := locMap["$182"].([]interface{})
+	entries, ok := locMap["locations"].([]interface{})
 	if !ok {
 		t.Fatal("expected $182 list in location map")
 	}
@@ -1505,32 +1505,32 @@ func TestCreateLocationMapRemovesOldAndBuildsNew(t *testing.T) {
 func TestCreateApproximatePageListBasic(t *testing.T) {
 	fs := NewFragmentStore()
 	// Add reading order
-	fs.Append("$389", map[string]interface{}{
-		"$389": []interface{}{
+	fs.Append("book_navigation", map[string]interface{}{
+		"book_navigation": []interface{}{
 			map[string]interface{}{
-				"$178": "default",
-				"$170": []interface{}{"sec1"},
-				"$169": []interface{}{},
+				"reading_order_name": "default",
+				"sections": []interface{}{"sec1"},
+				"reading_orders": []interface{}{},
 			},
 		},
 	})
 	// Add section fragment
-	fs.Append("$260", map[string]interface{}{
-		"$260": []interface{}{
+	fs.Append("section", map[string]interface{}{
+		"section": []interface{}{
 			map[string]interface{}{
-				"$155": 10,
-				"$159": "$270",
-				"$146": []interface{}{makeLongText(5000)},
+				"id": 10,
+				"type": "container",
+				"content_list": []interface{}{makeLongText(5000)},
 			},
 		},
 	})
 
 	frags := &fragmentCatalog{
 		DocumentData: map[string]interface{}{
-			"$169": []interface{}{
+			"reading_orders": []interface{}{
 				map[string]interface{}{
-					"$178": "default",
-					"$170": []interface{}{"sec1"},
+					"reading_order_name": "default",
+					"sections": []interface{}{"sec1"},
 				},
 			},
 		},
@@ -1598,26 +1598,26 @@ func TestCreatePositionMapStores(t *testing.T) {
 	}
 
 	// Verify $264 fragment was stored
-	frag264 := fs.Get("$264")
+	frag264 := fs.Get("position_map")
 	if frag264 == nil {
 		t.Fatal("expected $264 fragment to be stored")
 	}
-	pmSlice, ok := frag264["$264"].([]interface{})
+	pmSlice, ok := frag264["position_map"].([]interface{})
 	if !ok {
-		t.Fatalf("expected $264 to be []interface{}, got %T", frag264["$264"])
+		t.Fatalf("expected $264 to be []interface{}, got %T", frag264["position_map"])
 	}
 	if len(pmSlice) != 2 {
 		t.Errorf("expected 2 section entries in $264, got %d", len(pmSlice))
 	}
 
 	// Verify $265 fragment was stored
-	frag265 := fs.Get("$265")
+	frag265 := fs.Get("position_id_map")
 	if frag265 == nil {
 		t.Fatal("expected $265 fragment to be stored")
 	}
-	pidSlice, ok := frag265["$265"].([]interface{})
+	pidSlice, ok := frag265["position_id_map"].([]interface{})
 	if !ok {
-		t.Fatalf("expected $265 to be []interface{}, got %T", frag265["$265"])
+		t.Fatalf("expected $265 to be []interface{}, got %T", frag265["position_id_map"])
 	}
 	// Should have 3 entries + 1 terminal = 4
 	if len(pidSlice) != 4 {
@@ -1629,11 +1629,11 @@ func TestCreatePositionMapStores(t *testing.T) {
 	if !ok {
 		t.Fatal("expected terminal entry to be a map")
 	}
-	if terminal["$185"] != 0 {
-		t.Errorf("expected terminal $185=0, got %v", terminal["$185"])
+	if terminal["eid"] != 0 {
+		t.Errorf("expected terminal $185=0, got %v", terminal["eid"])
 	}
-	if terminal["$184"] != 45 { // 10+15+20=45
-		t.Errorf("expected terminal $184=45, got %v", terminal["$184"])
+	if terminal["pid"] != 45 { // 10+15+20=45
+		t.Errorf("expected terminal $184=45, got %v", terminal["pid"])
 	}
 }
 
@@ -1644,11 +1644,11 @@ func TestCreatePositionMapStores(t *testing.T) {
 func TestCreatePositionMapRemovesOld(t *testing.T) {
 	fs := NewFragmentStore()
 	// Pre-existing fragments
-	fs.Append("$264", map[string]interface{}{"$264": "old"})
-	fs.Append("$265", map[string]interface{}{"$265": "old"})
-	fs.Append("$609", map[string]interface{}{"$609": "old"})
-	fs.Append("$610", map[string]interface{}{"$610": "old"})
-	fs.Append("$611", map[string]interface{}{"$611": "old"})
+	fs.Append("position_map", map[string]interface{}{"position_map": "old"})
+	fs.Append("position_id_map", map[string]interface{}{"position_id_map": "old"})
+	fs.Append("section_position_id_map", map[string]interface{}{"section_position_id_map": "old"})
+	fs.Append("yj.eidhash_eid_section_map", map[string]interface{}{"yj.eidhash_eid_section_map": "old"})
+	fs.Append("yj.section_pid_count_map", map[string]interface{}{"yj.section_pid_count_map": "old"})
 
 	posInfo := []*ContentChunk{
 		{PID: 0, EID: 10, EIDOffset: 0, Length: 10, SectionName: "sec1"},
@@ -1663,21 +1663,21 @@ func TestCreatePositionMapRemovesOld(t *testing.T) {
 	bpl.CreatePositionMap(posInfo)
 
 	// Old $609, $610, $611 should be removed
-	if fs.Has("$609") {
+	if fs.Has("section_position_id_map") {
 		t.Error("expected $609 to be removed")
 	}
-	if fs.Has("$610") {
+	if fs.Has("yj.eidhash_eid_section_map") {
 		t.Error("expected $610 to be removed")
 	}
-	if fs.Has("$611") {
+	if fs.Has("yj.section_pid_count_map") {
 		t.Error("expected $611 to be removed")
 	}
 
 	// New $264 and $265 should exist
-	if !fs.Has("$264") {
+	if !fs.Has("position_map") {
 		t.Error("expected new $264 to exist")
 	}
-	if !fs.Has("$265") {
+	if !fs.Has("position_id_map") {
 		t.Error("expected new $265 to exist")
 	}
 }
@@ -1688,12 +1688,12 @@ func TestCreatePositionMapRemovesOld(t *testing.T) {
 
 func TestCheckPositionAndLocationMaps(t *testing.T) {
 	fs := NewFragmentStore()
-	fs.Append("$260", map[string]interface{}{
-		"$260": []interface{}{
+	fs.Append("section", map[string]interface{}{
+		"section": []interface{}{
 			map[string]interface{}{
-				"$155": 10,
-				"$159": "$270",
-				"$146": []interface{}{"text"},
+				"id": 10,
+				"type": "container",
+				"content_list": []interface{}{"text"},
 			},
 		},
 	})
@@ -1744,11 +1744,11 @@ func TestCreatePositionMapWithEIDOffset(t *testing.T) {
 	}
 
 	// Verify $265 entries include $143 offset
-	frag265 := fs.Get("$265")
-	pidSlice, _ := frag265["$265"].([]interface{})
+	frag265 := fs.Get("position_id_map")
+	pidSlice, _ := frag265["position_id_map"].([]interface{})
 	secondEntry, _ := pidSlice[1].(map[string]interface{})
-	if secondEntry["$143"] != 5 {
-		t.Errorf("expected $143=5 in second entry, got %v", secondEntry["$143"])
+	if secondEntry["offset"] != 5 {
+		t.Errorf("expected $143=5 in second entry, got %v", secondEntry["offset"])
 	}
 }
 
@@ -1758,9 +1758,9 @@ func TestCreatePositionMapWithEIDOffset(t *testing.T) {
 
 func TestCreatePositionMapDictionaryRemovesOldFragments(t *testing.T) {
 	fs := NewFragmentStore()
-	fs.Append("$264", map[string]interface{}{"$264": "old"})
-	fs.Append("$265", map[string]interface{}{"$265": "old"})
-	fs.Append("$610", map[string]interface{}{"$610": "old"})
+	fs.Append("position_map", map[string]interface{}{"position_map": "old"})
+	fs.Append("position_id_map", map[string]interface{}{"position_id_map": "old"})
+	fs.Append("yj.eidhash_eid_section_map", map[string]interface{}{"yj.eidhash_eid_section_map": "old"})
 
 	bpl := &BookPosLoc{
 		IsDictionary:    true,
@@ -1774,13 +1774,13 @@ func TestCreatePositionMapDictionaryRemovesOldFragments(t *testing.T) {
 		t.Error("dictionary should return (false, false)")
 	}
 
-	if fs.Has("$264") {
+	if fs.Has("position_map") {
 		t.Error("expected $264 to be removed for dictionary")
 	}
-	if fs.Has("$265") {
+	if fs.Has("position_id_map") {
 		t.Error("expected $265 to be removed for dictionary")
 	}
-	if fs.Has("$610") {
+	if fs.Has("yj.eidhash_eid_section_map") {
 		t.Error("expected $610 to be removed for dictionary")
 	}
 }
@@ -1877,11 +1877,11 @@ func containsHelper(s, substr string) bool {
 func TestAnchorEidOffset_OffsetFrom143(t *testing.T) {
 	fs := NewFragmentStore()
 	// $266 fragment with $183 containing $155=eid and $143=offset
-	fs.Append("$266", map[string]interface{}{
-		"$180": "my-anchor",
-		"$183": map[string]interface{}{
-			"$155": 42,
-			"$143": 7,
+	fs.Append("anchor", map[string]interface{}{
+		"anchor_name": "my-anchor",
+		"position": map[string]interface{}{
+			"id": 42,
+			"offset": 7,
 		},
 	})
 
@@ -1906,10 +1906,10 @@ func TestAnchorEidOffset_OffsetFrom143(t *testing.T) {
 func TestAnchorEidOffset_NoOffsetDefaultsZero(t *testing.T) {
 	fs := NewFragmentStore()
 	// $266 fragment with $183 containing $155 but no $143
-	fs.Append("$266", map[string]interface{}{
-		"$180": "anchor2",
-		"$183": map[string]interface{}{
-			"$155": 99,
+	fs.Append("anchor", map[string]interface{}{
+		"anchor_name": "anchor2",
+		"position": map[string]interface{}{
+			"id": 99,
 		},
 	})
 
@@ -1953,11 +1953,11 @@ func TestDetermineApproximatePages_RuneIndexing(t *testing.T) {
 	// If byte-based, "é" at rune index 3 / byte index 3 would be split incorrectly
 	// With rune indexing, the lookback should find word boundaries correctly
 	for i, page := range pages {
-		targetMap, ok := page["$246"].(map[string]interface{})
+		targetMap, ok := page["target_position"].(map[string]interface{})
 		if !ok {
 			t.Fatalf("page %d: expected $246 map", i)
 		}
-		offset, ok := targetMap["$143"].(int)
+		offset, ok := targetMap["offset"].(int)
 		if !ok {
 			t.Fatalf("page %d: expected $143 int", i)
 		}
@@ -2011,10 +2011,10 @@ func TestContentChunk_NilVsEmpty(t *testing.T) {
 		t.Fatalf("expected at least 2 pages with HasText, got %d", len(pages2))
 	}
 	// Pages should differ because lookback adjusts offset
-	t1 := pages[1]["$246"].(map[string]interface{})
-	t2 := pages2[1]["$246"].(map[string]interface{})
-	offset1 := t1["$143"].(int)
-	offset2 := t2["$143"].(int)
+	t1 := pages[1]["target_position"].(map[string]interface{})
+	t2 := pages2[1]["target_position"].(map[string]interface{})
+	offset1 := t1["offset"].(int)
+	offset2 := t2["offset"].(int)
 	if offset1 == offset2 {
 		t.Errorf("expected different offsets with/without HasText: both %d", offset1)
 	}
@@ -2026,11 +2026,11 @@ func TestContentChunk_NilVsEmpty(t *testing.T) {
 
 func TestHasNonImageRenderInline(t *testing.T) {
 	fs := NewFragmentStore()
-	// $259 fragment with a struct that has $601=="$283" and $159!="$271"
-	fs.Append("$259", map[string]interface{}{
-		"$259": map[string]interface{}{
-			"$159": "$270",
-			"$601": "$283",
+	// $259 fragment with a struct that has $601=="inline" and $159!="image"
+	fs.Append("storyline", map[string]interface{}{
+		"storyline": map[string]interface{}{
+			"type": "container",
+			"render": "inline",
 		},
 	})
 
@@ -2047,11 +2047,11 @@ func TestHasNonImageRenderInline(t *testing.T) {
 
 func TestHasNonImageRenderInline_ImageType(t *testing.T) {
 	fs := NewFragmentStore()
-	// $159=="$271" is image type, should not trigger
-	fs.Append("$259", map[string]interface{}{
-		"$259": map[string]interface{}{
-			"$159": "$271",
-			"$601": "$283",
+	// $159=="image" is image type, should not trigger
+	fs.Append("storyline", map[string]interface{}{
+		"storyline": map[string]interface{}{
+			"type": "image",
+			"render": "inline",
 		},
 	})
 
@@ -2068,11 +2068,11 @@ func TestHasNonImageRenderInline_ImageType(t *testing.T) {
 
 func TestHasNonImageRenderInline_NoRenderInline(t *testing.T) {
 	fs := NewFragmentStore()
-	// $601 is not "$283"
-	fs.Append("$259", map[string]interface{}{
-		"$259": map[string]interface{}{
-			"$159": "$270",
-			"$601": "$284",
+	// $601 is not "inline"
+	fs.Append("storyline", map[string]interface{}{
+		"storyline": map[string]interface{}{
+			"type": "container",
+			"render": "png",
 		},
 	})
 
@@ -2090,14 +2090,14 @@ func TestHasNonImageRenderInline_NoRenderInline(t *testing.T) {
 func TestHasNonImageRenderInline_Nested(t *testing.T) {
 	fs := NewFragmentStore()
 	// Nested structure with the match deep inside a list
-	fs.Append("$259", map[string]interface{}{
-		"$259": []interface{}{
+	fs.Append("storyline", map[string]interface{}{
+		"storyline": []interface{}{
 			map[string]interface{}{
-				"$159": "$270",
-				"$146": []interface{}{
+				"type": "container",
+				"content_list": []interface{}{
 					map[string]interface{}{
-						"$159": "$270",
-						"$601": "$283", // match here, nested
+						"type": "container",
+						"render": "inline", // match here, nested
 					},
 				},
 			},
@@ -2117,10 +2117,10 @@ func TestHasNonImageRenderInline_Nested(t *testing.T) {
 
 func TestHasNonImageRenderInline_Cached(t *testing.T) {
 	fs := NewFragmentStore()
-	fs.Append("$259", map[string]interface{}{
-		"$259": map[string]interface{}{
-			"$159": "$270",
-			"$601": "$283",
+	fs.Append("storyline", map[string]interface{}{
+		"storyline": map[string]interface{}{
+			"type": "container",
+			"render": "inline",
 		},
 	})
 
@@ -2147,9 +2147,9 @@ func TestHasNonImageRenderInline_Cached(t *testing.T) {
 func TestHasNonImageRenderInline_608Fragment(t *testing.T) {
 	fs := NewFragmentStore()
 	// Match in $608 fragment type
-	fs.Append("$608", map[string]interface{}{
-		"$159": "$270",
-		"$601": "$283",
+	fs.Append("structure", map[string]interface{}{
+		"type": "container",
+		"render": "inline",
 	})
 
 	bpl := &BookPosLoc{
@@ -2170,19 +2170,19 @@ func TestHasNonImageRenderInline_608Fragment(t *testing.T) {
 func TestCollectLocationMapInfo_550Validation(t *testing.T) {
 	fs := NewFragmentStore()
 	// $550 structure matches CreateLocationMap output:
-	// {"$550": [{"$182": [entries...]}]}
-	fs.Append("$550", map[string]interface{}{
-		"$550": []interface{}{
+	// {"location_map": [{"locations": [entries...]}]}
+	fs.Append("location_map", map[string]interface{}{
+		"location_map": []interface{}{
 			map[string]interface{}{
-				"$182": []interface{}{
+				"locations": []interface{}{
 					"bad-entry", // not a map
 					map[string]interface{}{
 						// missing $155
-						"$143": 5,
+						"offset": 5,
 					},
 					map[string]interface{}{
-						"$155": 10,
-						"$143": 0,
+						"id": 10,
+						"offset": 0,
 					},
 				},
 			},
@@ -2209,10 +2209,10 @@ func TestCollectLocationMapInfo_550Validation(t *testing.T) {
 func TestCollectLocationMapInfo_550Missing182List(t *testing.T) {
 	fs := NewFragmentStore()
 	// $550 with a location map entry but no $182 list
-	fs.Append("$550", map[string]interface{}{
-		"$550": []interface{}{
+	fs.Append("location_map", map[string]interface{}{
+		"location_map": []interface{}{
 			map[string]interface{}{
-				"$155": 10,
+				"id": 10,
 			},
 		},
 	})
@@ -2236,9 +2236,9 @@ func TestCollectLocationMapInfo_550Missing182List(t *testing.T) {
 func TestCollectLocationMapInfo_621Validation(t *testing.T) {
 	fs := NewFragmentStore()
 	// Malformed $621: no $182 list
-	fs.Append("$621", map[string]interface{}{
-		"$621": map[string]interface{}{
-			"$155": 10,
+	fs.Append("yj.location_pid_map", map[string]interface{}{
+		"yj.location_pid_map": map[string]interface{}{
+			"id": 10,
 		},
 	})
 
@@ -2263,18 +2263,18 @@ func TestCreateApproximatePageList_DoublePageSpread(t *testing.T) {
 	fs := NewFragmentStore()
 	frags := &fragmentCatalog{
 		DocumentData: map[string]interface{}{
-			"$169": []interface{}{
+			"reading_orders": []interface{}{
 				map[string]interface{}{
-					"$178": "default",
-					"$170": []interface{}{"sec1"},
+					"reading_order_name": "default",
+					"sections": []interface{}{"sec1"},
 				},
 			},
 		},
 		TitleMetadata: map[string]interface{}{
-			"$590": []interface{}{
+			"features": []interface{}{
 				map[string]interface{}{
-					"$591": "yj_double_page_spread",
-					"$592": "true",
+					"exclude": "yj_double_page_spread",
+					"include": "true",
 				},
 			},
 		},
@@ -2300,16 +2300,16 @@ func TestCreateApproximatePageList_DoublePageSpread(t *testing.T) {
 func TestCollectPositionInfo_StoryValidation(t *testing.T) {
 	// Test that scribe notebook with multiple stories per section doesn't error
 	fs := NewFragmentStore()
-	fs.Append("$260", map[string]interface{}{
-		"$260": []interface{}{
+	fs.Append("section", map[string]interface{}{
+		"section": []interface{}{
 			map[string]interface{}{
-				"$155": 10,
-				"$159": "$270",
-				"$146": []interface{}{
+				"id": 10,
+				"type": "container",
+				"content_list": []interface{}{
 					map[string]interface{}{
-						"$176": "story1",
-						"$155": 11,
-						"$159": "$270",
+						"story_name": "story1",
+						"id": 11,
+						"type": "container",
 					},
 				},
 			},
@@ -2334,8 +2334,8 @@ func TestCollectPositionInfo_StoryValidation(t *testing.T) {
 
 func TestProcessPageSpreadLeaf_HTML(t *testing.T) {
 	pageTemplate := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
+		"type": "container",
+		"layout": "scale_fit",
 	}
 
 	cfg := pageSpreadConfig{}
@@ -2360,8 +2360,8 @@ func TestProcessPageSpreadLeaf_HTML(t *testing.T) {
 
 func TestProcessPageSpreadLeafPosition(t *testing.T) {
 	pageTemplate := map[string]interface{}{
-		"$159": "$270",
-		"$156": "$326",
+		"type": "container",
+		"layout": "scale_fit",
 	}
 	parentID := 42
 
@@ -2383,7 +2383,7 @@ func TestProcessPageSpreadLeafPosition(t *testing.T) {
 
 func TestProcessPageSpreadLeaf_NoPositionWithoutParent(t *testing.T) {
 	pageTemplate := map[string]interface{}{
-		"$159": "$270",
+		"type": "container",
 	}
 
 	cfg := pageSpreadConfig{}

@@ -2041,61 +2041,61 @@ func normalizeFontFamily(value string) string {
 
 func containerStyleDeclarations(style map[string]interface{}) []string {
 	var declarations []string
-	if value := cssFontFamily(style["$11"]); value != "" {
+	if value := cssFontFamily(style["font_family"]); value != "" {
 		declarations = append(declarations, "font-family: "+value)
 	}
-	if value := cssLengthProperty(style["$16"], "$16"); value != "" && value != "1em" {
+	if value := cssLengthProperty(style["font_size"], "font_size"); value != "" && value != "1em" {
 		declarations = append(declarations, "font-size: "+value)
 	}
-	if value := mapFontStyle(style["$12"]); value != "" && value != "normal" {
+	if value := mapFontStyle(style["font_style"]); value != "" && value != "normal" {
 		declarations = append(declarations, "font-style: "+value)
 	}
-	if value := mapFontWeight(style["$13"]); value != "" && value != "normal" {
+	if value := mapFontWeight(style["font_weight"]); value != "" && value != "normal" {
 		declarations = append(declarations, "font-weight: "+value)
 	}
-	if value := mapFontVariant(style["$583"]); value != "" && value != "normal" {
+	if value := mapFontVariant(style["glyph_transform"]); value != "" && value != "normal" {
 		declarations = append(declarations, "font-variant: "+value)
 	}
-	if value := cssLineHeight(style["$42"]); value != "" && value != "1.2" {
+	if value := cssLineHeight(style["line_height"]); value != "" && value != "1.2" {
 		declarations = append(declarations, "line-height: "+value)
 	}
-	if value := cssLengthProperty(style["$49"], "$49"); value != "" {
+	if value := cssLengthProperty(style["margin_bottom"], "margin_bottom"); value != "" {
 		declarations = append(declarations, "margin-bottom: "+value)
 	}
-	if value := cssLengthProperty(style["$48"], "$48"); value != "" {
+	if value := cssLengthProperty(style["margin_left"], "margin_left"); value != "" {
 		declarations = append(declarations, "margin-left: "+value)
 	}
-	if value := cssLengthProperty(style["$50"], "$50"); value != "" {
+	if value := cssLengthProperty(style["margin_right"], "margin_right"); value != "" {
 		declarations = append(declarations, "margin-right: "+value)
 	}
-	if value := cssLengthProperty(style["$47"], "$47"); value != "" {
+	if value := cssLengthProperty(style["margin_top"], "margin_top"); value != "" {
 		declarations = append(declarations, "margin-top: "+value)
 	}
-	if value := cssLengthProperty(style["$52"], "$52"); value != "" {
+	if value := cssLengthProperty(style["padding_top"], "padding_top"); value != "" {
 		declarations = append(declarations, "padding-top: "+value)
 	}
-	if value := mapBoxAlign(style["$34"]); value != "" {
+	if value := mapBoxAlign(style["text_alignment"]); value != "" {
 		declarations = append(declarations, "text-align: "+value)
 	}
-	if value := cssLengthProperty(style["$36"], "$36"); value != "" {
+	if value := cssLengthProperty(style["text_indent"], "text_indent"); value != "" {
 		declarations = append(declarations, "text-indent: "+value)
 	}
-	if value := mapPageBreak(style["$135"]); value != "" {
+	if value := mapPageBreak(style["break_inside"]); value != "" {
 		declarations = append(declarations, "page-break-inside: "+value)
 	}
-	if color := cssColor(style["$84"]); color != "" {
+	if color := cssColor(style["border_color_top"]); color != "" {
 		declarations = append(declarations, "border-top-color: "+color)
 	}
-	if value := mapBorderStyle(style["$89"]); value != "" {
+	if value := mapBorderStyle(style["border_style_top"]); value != "" {
 		declarations = append(declarations, "border-top-style: "+value)
 	}
-	if value := cssLengthProperty(style["$94"], "$94"); value != "" {
+	if value := cssLengthProperty(style["border_weight_top"], "border_weight_top"); value != "" {
 		declarations = append(declarations, "border-top-width: "+value)
 	}
 	if value := fillColor(style); value != "" {
 		declarations = append(declarations, "background-color: "+value)
 	}
-	if value := mapTextTransform(style["$41"]); value != "" && value != "none" {
+	if value := mapTextTransform(style["text_transform"]); value != "" && value != "none" {
 		declarations = append(declarations, "text-transform: "+value)
 	}
 	return declarations
@@ -2103,39 +2103,39 @@ func containerStyleDeclarations(style map[string]interface{}) []string {
 
 func bodyStyleDeclarations(style map[string]interface{}) []string {
 	var declarations []string
-	if value := cssFontFamily(style["$11"]); value != "" {
+	if value := cssFontFamily(style["font_family"]); value != "" {
 		declarations = append(declarations, "font-family: "+value)
 	}
-	if value := mapFontStyle(style["$12"]); value != "" && value != "normal" {
+	if value := mapFontStyle(style["font_style"]); value != "" && value != "normal" {
 		declarations = append(declarations, "font-style: "+value)
 	}
-	if value := mapFontVariant(style["$583"]); value != "" && value != "normal" {
+	if value := mapFontVariant(style["glyph_transform"]); value != "" && value != "normal" {
 		declarations = append(declarations, "font-variant: "+value)
 	}
-	if value := cssLengthProperty(style["$16"], "$16"); value != "" && value != "1em" {
+	if value := cssLengthProperty(style["font_size"], "font_size"); value != "" && value != "1em" {
 		declarations = append(declarations, "font-size: "+value)
 	}
-	if value := cssLineHeight(style["$42"]); value != "" && value != "1.2" {
+	if value := cssLineHeight(style["line_height"]); value != "" && value != "1.2" {
 		declarations = append(declarations, "line-height: "+value)
 	}
-	if value := cssLengthProperty(style["$49"], "$49"); value != "" {
+	if value := cssLengthProperty(style["margin_bottom"], "margin_bottom"); value != "" {
 		declarations = append(declarations, "margin-bottom: "+value)
 	}
-	if value := cssLengthProperty(style["$48"], "$48"); value != "" {
+	if value := cssLengthProperty(style["margin_left"], "margin_left"); value != "" {
 		declarations = append(declarations, "margin-left: "+value)
 	}
-	if value := cssLengthProperty(style["$50"], "$50"); value != "" {
+	if value := cssLengthProperty(style["margin_right"], "margin_right"); value != "" {
 		declarations = append(declarations, "margin-right: "+value)
 	}
-	if value := cssLengthProperty(style["$47"], "$47"); value != "" {
+	if value := cssLengthProperty(style["margin_top"], "margin_top"); value != "" {
 		declarations = append(declarations, "margin-top: "+value)
 	}
-	if value := mapBoxAlign(style["$580"]); value != "" {
+	if value := mapBoxAlign(style["box_align"]); value != "" {
 		declarations = append(declarations, "text-align: "+value)
-	} else if value := mapBoxAlign(style["$34"]); value != "" {
+	} else if value := mapBoxAlign(style["text_alignment"]); value != "" {
 		declarations = append(declarations, "text-align: "+value)
 	}
-	if value := cssLengthProperty(style["$36"], "$36"); value != "" {
+	if value := cssLengthProperty(style["text_indent"], "text_indent"); value != "" {
 		if value == "0" {
 			goto skipBodyIndent
 		}
@@ -2145,7 +2145,7 @@ skipBodyIndent:
 	if value := fillColor(style); value != "" {
 		declarations = append(declarations, "background-color: "+value)
 	}
-	if value := mapTextTransform(style["$41"]); value != "" && value != "none" {
+	if value := mapTextTransform(style["text_transform"]); value != "" && value != "none" {
 		declarations = append(declarations, "text-transform: "+value)
 	}
 	return declarations
@@ -2153,28 +2153,28 @@ skipBodyIndent:
 
 func spanStyleDeclarations(style map[string]interface{}) []string {
 	var declarations []string
-	if value := cssLengthProperty(style["$16"], "$16"); value != "" && value != "1em" {
+	if value := cssLengthProperty(style["font_size"], "font_size"); value != "" && value != "1em" {
 		declarations = append(declarations, "font-size: "+value)
 	}
-	if value := cssFontFamily(style["$11"]); value != "" {
+	if value := cssFontFamily(style["font_family"]); value != "" {
 		declarations = append(declarations, "font-family: "+value)
 	}
-	if value := mapFontStyle(style["$12"]); value != "" && value != "normal" {
+	if value := mapFontStyle(style["font_style"]); value != "" && value != "normal" {
 		declarations = append(declarations, "font-style: "+value)
 	}
-	if value := mapFontWeight(style["$13"]); value != "" && value != "normal" {
+	if value := mapFontWeight(style["font_weight"]); value != "" && value != "normal" {
 		declarations = append(declarations, "font-weight: "+value)
 	}
-	if value := mapFontVariant(style["$583"]); value != "" && value != "normal" {
+	if value := mapFontVariant(style["glyph_transform"]); value != "" && value != "normal" {
 		declarations = append(declarations, "font-variant: "+value)
 	}
-	if value := cssLineHeight(style["$42"]); value != "" && value != "1.2" {
+	if value := cssLineHeight(style["line_height"]); value != "" && value != "1.2" {
 		declarations = append(declarations, "line-height: "+value)
 	}
-	if value := cssLengthProperty(style["$50"], "$50"); value != "" {
+	if value := cssLengthProperty(style["margin_right"], "margin_right"); value != "" {
 		declarations = append(declarations, "margin-right: "+value)
 	}
-	if value := mapTextTransform(style["$41"]); value != "" && value != "none" {
+	if value := mapTextTransform(style["text_transform"]); value != "" && value != "none" {
 		declarations = append(declarations, "text-transform: "+value)
 	}
 	return declarations
@@ -2189,23 +2189,23 @@ func styleClassName(prefix string, styleID string) string {
 
 func tableStyleDeclarations(style map[string]interface{}) []string {
 	var declarations []string
-	if value := cssLengthProperty(style["$47"], "$47"); value != "" {
+	if value := cssLengthProperty(style["margin_top"], "margin_top"); value != "" {
 		declarations = append(declarations, "margin-top: "+value)
 	}
-	if value := cssLengthProperty(style["$48"], "$48"); value != "" {
+	if value := cssLengthProperty(style["margin_left"], "margin_left"); value != "" {
 		declarations = append(declarations, "margin-left: "+value)
 	}
-	align := mapBoxAlign(style["$580"])
-	if value := cssLengthProperty(style["$50"], "$50"); value != "" && align != "left" {
+	align := mapBoxAlign(style["box_align"])
+	if value := cssLengthProperty(style["margin_right"], "margin_right"); value != "" && align != "left" {
 		declarations = append(declarations, "margin-right: "+value)
 	}
-	if value := cssLengthProperty(style["$65"], "$65"); value != "" {
+	if value := cssLengthProperty(style["max_width"], "max_width"); value != "" {
 		declarations = append(declarations, "max-width: "+value)
 	}
 	if align == "left" {
 		declarations = append(declarations, "margin-right: auto")
 	}
-	if color := cssColor(style["$83"]); color != "" {
+	if color := cssColor(style["border_color"]); color != "" {
 		declarations = append(declarations, "border-color: "+color)
 	}
 	return declarations
@@ -2213,7 +2213,7 @@ func tableStyleDeclarations(style map[string]interface{}) []string {
 
 func tableColumnStyleDeclarations(style map[string]interface{}) []string {
 	var declarations []string
-	if value := cssLengthProperty(style["$56"], "$56"); value != "" {
+	if value := cssLengthProperty(style["width"], "width"); value != "" {
 		declarations = append(declarations, "width: "+value)
 	}
 	return declarations
@@ -2221,7 +2221,7 @@ func tableColumnStyleDeclarations(style map[string]interface{}) []string {
 
 func structuredContainerDeclarations(style map[string]interface{}) []string {
 	var declarations []string
-	if value := mapFontWeight(style["$13"]); value != "" {
+	if value := mapFontWeight(style["font_weight"]); value != "" {
 		declarations = append(declarations, "font-weight: "+value)
 	}
 	return declarations
@@ -2229,13 +2229,13 @@ func structuredContainerDeclarations(style map[string]interface{}) []string {
 
 func tableCellStyleDeclarations(style map[string]interface{}) []string {
 	var declarations []string
-	if value := cssLengthProperty(style["$50"], "$50"); value != "" {
+	if value := cssLengthProperty(style["margin_right"], "margin_right"); value != "" {
 		declarations = append(declarations, "margin-right: "+value)
 	}
-	if value := mapBoxAlign(style["$34"]); value != "" {
+	if value := mapBoxAlign(style["text_alignment"]); value != "" {
 		declarations = append(declarations, "text-align: "+value)
 	}
-	if value := mapTableVerticalAlign(style["$633"]); value != "" {
+	if value := mapTableVerticalAlign(style["yj.vertical_align"]); value != "" {
 		declarations = append(declarations, "vertical-align: "+value)
 	}
 	return declarations
@@ -2243,61 +2243,61 @@ func tableCellStyleDeclarations(style map[string]interface{}) []string {
 
 func headingStyleDeclarations(style map[string]interface{}) []string {
 	var declarations []string
-	if value := mapHyphens(style["$127"]); value != "" {
+	if value := mapHyphens(style["hyphens"]); value != "" {
 		declarations = append(declarations, "-webkit-hyphens: "+value)
 	}
-	if value := cssFontFamily(style["$11"]); value != "" {
+	if value := cssFontFamily(style["font_family"]); value != "" {
 		declarations = append(declarations, "font-family: "+value)
 	}
-	if value := mapFontStyle(style["$12"]); value != "" && value != "normal" {
+	if value := mapFontStyle(style["font_style"]); value != "" && value != "normal" {
 		declarations = append(declarations, "font-style: "+value)
 	}
-	if value := cssLengthProperty(style["$16"], "$16"); value != "" {
+	if value := cssLengthProperty(style["font_size"], "font_size"); value != "" {
 		declarations = append(declarations, "font-size: "+value)
 	}
-	if value := mapFontWeight(style["$13"]); value != "" {
+	if value := mapFontWeight(style["font_weight"]); value != "" {
 		declarations = append(declarations, "font-weight: "+value)
 	} else {
 		declarations = append(declarations, "font-weight: normal")
 	}
-	if value := mapFontVariant(style["$583"]); value != "" {
+	if value := mapFontVariant(style["glyph_transform"]); value != "" {
 		declarations = append(declarations, "font-variant: "+value)
 	}
-	if value := mapHyphens(style["$127"]); value != "" {
+	if value := mapHyphens(style["hyphens"]); value != "" {
 		declarations = append(declarations, "hyphens: "+value)
 	}
-	if value := cssLineHeight(style["$42"]); value != "" && value != "1.2" {
+	if value := cssLineHeight(style["line_height"]); value != "" && value != "1.2" {
 		declarations = append(declarations, "line-height: "+value)
 	}
-	if value := cssLengthProperty(style["$49"], "$49"); value != "" {
+	if value := cssLengthProperty(style["margin_bottom"], "margin_bottom"); value != "" {
 		declarations = append(declarations, "margin-bottom: "+value)
 	} else {
 		declarations = append(declarations, "margin-bottom: 0")
 	}
-	if value := cssLengthProperty(style["$47"], "$47"); value != "" {
+	if value := cssLengthProperty(style["margin_top"], "margin_top"); value != "" {
 		declarations = append(declarations, "margin-top: "+value)
 	} else {
 		declarations = append(declarations, "margin-top: 0")
 	}
-	if value := mapPageBreak(style["$788"]); value != "" {
+	if value := mapPageBreak(style["yj_break_after"]); value != "" {
 		declarations = append(declarations, "page-break-after: "+value)
 	}
-	if value := mapBoxAlign(style["$34"]); value != "" {
+	if value := mapBoxAlign(style["text_alignment"]); value != "" {
 		declarations = append(declarations, "text-align: "+value)
 	}
-	if value := cssLengthProperty(style["$36"], "$36"); value != "" {
+	if value := cssLengthProperty(style["text_indent"], "text_indent"); value != "" {
 		declarations = append(declarations, "text-indent: "+value)
 	}
-	if value := cssLengthProperty(style["$48"], "$48"); value != "" {
+	if value := cssLengthProperty(style["margin_left"], "margin_left"); value != "" {
 		declarations = append(declarations, "margin-left: "+value)
 	}
-	if value := cssLengthProperty(style["$50"], "$50"); value != "" {
+	if value := cssLengthProperty(style["margin_right"], "margin_right"); value != "" {
 		declarations = append(declarations, "margin-right: "+value)
 	}
-	if value := mapTextDecoration(style["$23"]); value != "" {
+	if value := mapTextDecoration(style["underline"]); value != "" {
 		declarations = append(declarations, "text-decoration: "+value)
 	}
-	if value := mapTextTransform(style["$41"]); value != "" {
+	if value := mapTextTransform(style["text_transform"]); value != "" {
 		declarations = append(declarations, "text-transform: "+value)
 	}
 	return declarations
@@ -2361,9 +2361,9 @@ func cssLineHeight(value interface{}) string {
 		return ""
 	}
 	switch unit {
-	case "$310":
+	case "lh":
 		return formatStyleNumber(magnitude * 1.2)
-	case "$308", "$505":
+	case "em", "rem":
 		return formatStyleNumber(magnitude)
 	default:
 		return formatStyleNumber(magnitude)
@@ -2379,21 +2379,21 @@ func cssLengthProperty(value interface{}, property string) string {
 		return "0"
 	}
 	switch unit {
-	case "$310":
+	case "lh":
 		return formatStyleNumber(magnitude*1.2) + "em"
-	case "$308", "$505":
+	case "em", "rem":
 		return formatStyleNumber(magnitude) + "em"
-	case "$314":
+	case "percent":
 		return formatStyleNumber(magnitude) + "%"
-	case "$318":
+	case "pt":
 		if magnitude > 0 && int(magnitude*1000)%225 == 0 {
 			return formatStyleNumber(float64(int(magnitude*1000))/450.0) + "px"
 		}
 		return formatStyleNumber(magnitude) + "pt"
-	case "$319":
+	case "px":
 		return formatStyleNumber(magnitude) + "px"
 	default:
-		if property == "$56" || property == "$57" || property == "$47" || property == "$49" || property == "$16" {
+		if property == "width" || property == "height" || property == "margin_top" || property == "margin_bottom" || property == "font_size" {
 			return formatStyleNumber(magnitude)
 		}
 		return ""
@@ -2452,8 +2452,8 @@ func numericStyleValue(value interface{}) (float64, string, bool) {
 		}
 		return float64(*typed), "", true
 	}
-	rawMagnitude, okMagnitude := mapField(value, "$307")
-	rawUnit, okUnit := mapField(value, "$306")
+	rawMagnitude, okMagnitude := mapField(value, "value")
+	rawUnit, okUnit := mapField(value, "unit")
 	if !okMagnitude || !okUnit {
 		return 0, "", false
 	}
@@ -2541,16 +2541,16 @@ func cssColor(value interface{}) string {
 }
 
 func fillColor(style map[string]interface{}) string {
-	_, hasColor := style["$70"]
-	_, hasOpacity := style["$72"]
+	_, hasColor := style["fill_color"]
+	_, hasOpacity := style["fill_opacity"]
 	if !hasColor && !hasOpacity {
 		return ""
 	}
-	color := cssColor(style["$70"])
+	color := cssColor(style["fill_color"])
 	if color == "" {
 		color = "#ffffff"
 	}
-	opacity, _, ok := numericStyleValue(style["$72"])
+	opacity, _, ok := numericStyleValue(style["fill_opacity"])
 	if !ok {
 		return color
 	}
@@ -2573,10 +2573,10 @@ func addColorOpacity(color string, opacity float64) string {
 
 func colorDeclarations(style map[string]interface{}, linkStyle map[string]interface{}) string {
 	for _, source := range []map[string]interface{}{style, linkStyle} {
-		if value := cssColor(source["$576"]); value != "" {
+		if value := cssColor(source["link_visited_style"]); value != "" {
 			return value
 		}
-		if value := cssColor(source["$577"]); value != "" {
+		if value := cssColor(source["link_unvisited_style"]); value != "" {
 			return value
 		}
 	}
@@ -2653,7 +2653,7 @@ func colorIntValue(value interface{}) (uint32, bool) {
 		}
 		return uint32(*typed), true
 	}
-	raw, ok := mapField(value, "$19")
+	raw, ok := mapField(value, "text_color")
 	if !ok {
 		return 0, false
 	}
@@ -2721,213 +2721,213 @@ type propInfo struct {
 }
 
 // yjPropertyInfo is the Go equivalent of Python's YJ_PROPERTY_INFO dict.
-// Keys are KFX property IDs (e.g. "$11", "$47").  The table is a direct port
+// Keys are KFX property IDs (e.g. "font_family", "margin_top").  The table is a direct port
 // of the Python data at yj_to_epub_properties.py L84-626.
 var yjPropertyInfo = map[string]propInfo{
-	"$479": {"background-image", nil},
-	"$480": {"-kfx-background-positionx", nil},
-	"$481": {"-kfx-background-positiony", nil},
-	"$547": {"background-origin", map[string]string{"$378": "border-box", "$377": "content-box", "$379": "padding-box"}},
-	"$484": {"background-repeat", map[string]string{"$487": "no-repeat", "$485": "repeat-x", "$486": "repeat-y"}},
-	"$482": {"-kfx-background-sizex", nil},
-	"$483": {"-kfx-background-sizey", nil},
-	"$31":  {"-kfx-baseline-shift", nil},
-	"$44":  {"-kfx-baseline-style", map[string]string{"$60": "bottom", "$320": "middle", "$350": "baseline", "$371": "sub", "$370": "super", "$449": "text-bottom", "$447": "text-top", "$58": "top"}},
-	"$682": {"direction", map[string]string{"$376": "ltr", "$375": "rtl"}},
-	"$674": {"unicode-bidi", map[string]string{"$675": "embed", "$676": "isolate", "$678": "isolate-override", "$350": "normal", "$677": "bidi-override", "$679": "plaintext"}},
+	"background_image": {"background-image", nil},
+	"background_positionx": {"-kfx-background-positionx", nil},
+	"background_positiony": {"-kfx-background-positiony", nil},
+	"background_origin": {"background-origin", map[string]string{"border_bounds": "border-box", "content_bounds": "content-box", "padding_bounds": "padding-box"}},
+	"background_repeat": {"background-repeat", map[string]string{"no_repeat": "no-repeat", "repeat_x": "repeat-x", "repeat_y": "repeat-y"}},
+	"background_sizex": {"-kfx-background-sizex", nil},
+	"background_sizey": {"-kfx-background-sizey", nil},
+	"baseline_shift":  {"-kfx-baseline-shift", nil},
+	"baseline_style":  {"-kfx-baseline-style", map[string]string{"bottom": "bottom", "center": "middle", "normal": "baseline", "subscript": "sub", "superscript": "super", "text_bottom": "text-bottom", "text_top": "text-top", "top": "top"}},
+	"bidi_direction": {"direction", map[string]string{"ltr": "ltr", "rtl": "rtl"}},
+	"bidi_unicode": {"unicode-bidi", map[string]string{"bidi_embed": "embed", "isolate": "isolate", "isolate_override": "isolate-override", "normal": "normal", "override": "bidi-override", "plaintext": "plaintext"}},
 
-	"$83": {"border-color", nil},
-	"$86": {"border-bottom-color", nil},
-	"$85": {"border-left-color", nil},
-	"$87": {"border-right-color", nil},
-	"$84": {"border-top-color", nil},
+	"border_color": {"border-color", nil},
+	"border_color_bottom": {"border-bottom-color", nil},
+	"border_color_left": {"border-left-color", nil},
+	"border_color_right": {"border-right-color", nil},
+	"border_color_top": {"border-top-color", nil},
 
-	"$461": {"border-bottom-left-radius", nil},
-	"$462": {"border-bottom-right-radius", nil},
-	"$459": {"border-top-left-radius", nil},
-	"$460": {"border-top-right-radius", nil},
+	"border_radius_bottom_left": {"border-bottom-left-radius", nil},
+	"border_radius_bottom_right": {"border-bottom-right-radius", nil},
+	"border_radius_top_left": {"border-top-left-radius", nil},
+	"border_radius_top_right": {"border-top-right-radius", nil},
 
-	"$457": {"-webkit-border-horizontal-spacing", nil},
-	"$456": {"-webkit-border-vertical-spacing", nil},
+	"border_spacing_horizontal": {"-webkit-border-horizontal-spacing", nil},
+	"border_spacing_vertical": {"-webkit-border-vertical-spacing", nil},
 
-	"$88": {"border-style", borderStyles},
-	"$91": {"border-bottom-style", borderStyles},
-	"$90": {"border-left-style", borderStyles},
-	"$92": {"border-right-style", borderStyles},
-	"$89": {"border-top-style", borderStyles},
+	"border_style": {"border-style", borderStyles},
+	"border_style_bottom": {"border-bottom-style", borderStyles},
+	"border_style_left": {"border-left-style", borderStyles},
+	"border_style_right": {"border-right-style", borderStyles},
+	"border_style_top": {"border-top-style", borderStyles},
 
-	"$93": {"border-width", nil},
-	"$96": {"border-bottom-width", nil},
-	"$95": {"border-left-width", nil},
-	"$97": {"border-right-width", nil},
-	"$94": {"border-top-width", nil},
+	"border_weight": {"border-width", nil},
+	"border_weight_bottom": {"border-bottom-width", nil},
+	"border_weight_left": {"border-left-width", nil},
+	"border_weight_right": {"border-right-width", nil},
+	"border_weight_top": {"border-top-width", nil},
 
-	"$60":  {"bottom", nil},
-	"$580": {"-kfx-box-align", map[string]string{"$320": "center", "$59": "left", "$61": "right"}},
-	"$133": {"page-break-after", map[string]string{"$352": "always", "$383": "auto", "$353": "avoid"}},
-	"$134": {"page-break-before", map[string]string{"$352": "always", "$383": "auto", "$353": "avoid"}},
-	"$135": {"page-break-inside", map[string]string{"$383": "auto", "$353": "avoid"}},
-	"$708": {"-kfx-character-width", map[string]string{"$383": ""}}, // None in Python → empty
-	"$476": {"overflow", map[string]string{"false": "visible", "true": "hidden"}},
-	"$112": {"column-count", map[string]string{"$383": "auto"}},
-	"$116": {"column-rule-color", nil},
-	"$192": {"direction", map[string]string{"$376": "ltr", "$375": "rtl"}},
-	"$99":  {"box-decoration-break", map[string]string{"false": "slice", "true": "clone"}},
-	"$73":  {"background-clip", map[string]string{"$378": "border-box", "$377": "content-box", "$379": "padding-box"}},
-	"$70":  {"-kfx-fill-color", nil},
-	"$72":  {"-kfx-fill-opacity", nil},
-	"$140": {"float", map[string]string{"$59": "left", "$61": "right", "$786": "snap-block"}},
+	"bottom":  {"bottom", nil},
+	"box_align": {"-kfx-box-align", map[string]string{"center": "center", "left": "left", "right": "right"}},
+	"break_after": {"page-break-after", map[string]string{"always": "always", "auto": "auto", "avoid": "avoid"}},
+	"break_before": {"page-break-before", map[string]string{"always": "always", "auto": "auto", "avoid": "avoid"}},
+	"break_inside": {"page-break-inside", map[string]string{"auto": "auto", "avoid": "avoid"}},
+	"character_width": {"-kfx-character-width", map[string]string{"auto": ""}}, // None in Python → empty
+	"clip": {"overflow", map[string]string{"false": "visible", "true": "hidden"}},
+	"column_count": {"column-count", map[string]string{"auto": "auto"}},
+	"column_rule_color": {"column-rule-color", nil},
+	"direction": {"direction", map[string]string{"ltr": "ltr", "rtl": "rtl"}},
+	"draw_spanning_borders":  {"box-decoration-break", map[string]string{"false": "slice", "true": "clone"}},
+	"fill_bounds":  {"background-clip", map[string]string{"border_bounds": "border-box", "content_bounds": "content-box", "padding_bounds": "padding-box"}},
+	"fill_color":  {"-kfx-fill-color", nil},
+	"fill_opacity":  {"-kfx-fill-opacity", nil},
+	"float": {"float", map[string]string{"left": "left", "right": "right", "snap_block": "snap-block"}},
 
-	"$11":  {"font-family", nil},
-	"$16":  {"font-size", nil},
-	"$15":  {"font-stretch", map[string]string{"$365": "condensed", "$368": "expanded", "$350": "normal", "$366": "semi-condensed", "$367": "semi-expanded"}},
-	"$12":  {"font-style", map[string]string{"$382": "italic", "$350": "normal", "$381": "oblique"}},
-	"$13":  {"font-weight", map[string]string{"$361": "bold", "$363": "900", "$357": "300", "$359": "500", "$350": "normal", "$360": "600", "$355": "100", "$362": "800", "$356": "200"}},
-	"$583": {"font-variant", map[string]string{"$349": "normal", "$369": "small-caps"}},
-	"$57":  {"height", nil},
-	"$458": {"empty-cells", map[string]string{"false": "show", "true": "hide"}},
-	"$127": {"hyphens", map[string]string{"$383": "auto", "$384": "manual", "$349": "none"}},
-	"$785": {"-kfx-keep-lines-together", nil},
-	"$10":  {"-kfx-attrib-xml-lang", nil},
-	"$761": {"-kfx-layout-hints", nil},
-	"$59":  {"left", nil},
-	"$32":  {"letter-spacing", nil},
-	"$780": {"line-break", map[string]string{"$783": "anywhere", "$383": "auto", "$781": "loose", "$350": "normal", "$782": "strict"}},
-	"$42":  {"line-height", map[string]string{"$383": "normal"}},
-	"$577": {"-kfx-link-color", nil},
-	"$576": {"-kfx-visited-color", nil},
+	"font_family":  {"font-family", nil},
+	"font_size":  {"font-size", nil},
+	"font_stretch":  {"font-stretch", map[string]string{"condensed": "condensed", "expanded": "expanded", "normal": "normal", "semi_condensed": "semi-condensed", "semi_expanded": "semi-expanded"}},
+	"font_style":  {"font-style", map[string]string{"italic": "italic", "normal": "normal", "oblique": "oblique"}},
+	"font_weight":  {"font-weight", map[string]string{"bold": "bold", "heavy": "900", "light": "300", "medium": "500", "normal": "normal", "semi_bold": "600", "thin": "100", "ultra_bold": "800", "ultra_light": "200"}},
+	"glyph_transform": {"font-variant", map[string]string{"none": "normal", "small_caps": "small-caps"}},
+	"height":  {"height", nil},
+	"hide_empty_cells": {"empty-cells", map[string]string{"false": "show", "true": "hide"}},
+	"hyphens": {"hyphens", map[string]string{"auto": "auto", "manual": "manual", "none": "none"}},
+	"keep_lines_together": {"-kfx-keep-lines-together", nil},
+	"language":  {"-kfx-attrib-xml-lang", nil},
+	"layout_hints": {"-kfx-layout-hints", nil},
+	"left":  {"left", nil},
+	"letterspacing":  {"letter-spacing", nil},
+	"line_break": {"line-break", map[string]string{"anywhere": "anywhere", "auto": "auto", "loose": "loose", "normal": "normal", "strict": "strict"}},
+	"line_height":  {"line-height", map[string]string{"auto": "normal"}},
+	"link_unvisited_style": {"-kfx-link-color", nil},
+	"link_visited_style": {"-kfx-visited-color", nil},
 
-	"$100": {"list-style-type", map[string]string{
-		"$346": "lower-alpha", "$347": "upper-alpha", "$342": "circle",
-		"$737": "cjk-earthly-branch", "$738": "cjk-heavenly-stem", "$736": "cjk-ideographic",
-		"$796": "decimal-leading-zero", "$340": "disc", "$795": "georgian",
-		"$739": "hiragana", "$740": "hiragana-iroha", "$271": "",
-		"$743": "japanese-formal", "$744": "japanese-informal",
-		"$741": "katakana", "$742": "katakana-iroha",
-		"$793": "lower-armenian", "$791": "lower-greek", "$349": "none",
-		"$343": "decimal", "$344": "lower-roman", "$345": "upper-roman",
-		"$746": "simp-chinese-formal", "$745": "simp-chinese-informal",
-		"$341": "square", "$748": "trad-chinese-formal", "$747": "trad-chinese-informal",
-		"$794": "upper-armenian", "$792": "upper-greek"}},
-	"$503": {"list-style-image", nil},
-	"$551": {"list-style-position", map[string]string{"$552": "inside", "$553": "outside"}},
+	"list_style": {"list-style-type", map[string]string{
+		"alpha_lower": "lower-alpha", "alpha_upper": "upper-alpha", "circle": "circle",
+		"cjk_earthly_branch": "cjk-earthly-branch", "cjk_heavenly_stem": "cjk-heavenly-stem", "cjk_ideographic": "cjk-ideographic",
+		"decimal_leading_zero": "decimal-leading-zero", "disc": "disc", "georgian": "georgian",
+		"hiragana": "hiragana", "hiragana_iroha": "hiragana-iroha", "image": "",
+		"japanese_formal": "japanese-formal", "japanese_informal": "japanese-informal",
+		"katakana": "katakana", "katakana_iroha": "katakana-iroha",
+		"lower_armenian": "lower-armenian", "lower_greek": "lower-greek", "none": "none",
+		"numeric": "decimal", "roman_lower": "lower-roman", "roman_upper": "upper-roman",
+		"simp_chinese_formal": "simp-chinese-formal", "simp_chinese_informal": "simp-chinese-informal",
+		"square": "square", "trad_chinese_formal": "trad-chinese-formal", "trad_chinese_informal": "trad-chinese-informal",
+		"upper_armenian": "upper-armenian", "upper_greek": "upper-greek"}},
+	"list_style_image": {"list-style-image", nil},
+	"list_style_position": {"list-style-position", map[string]string{"inside": "inside", "outside": "outside"}},
 
-	"$46": {"margin", nil},
-	"$49": {"margin-bottom", nil},
-	"$48": {"margin-left", nil},
-	"$50": {"margin-right", nil},
-	"$47": {"margin-top", nil},
+	"margin": {"margin", nil},
+	"margin_bottom": {"margin-bottom", nil},
+	"margin_left": {"margin-left", nil},
+	"margin_right": {"margin-right", nil},
+	"margin_top": {"margin-top", nil},
 
-	"$64": {"max-height", nil},
-	"$65": {"max-width", nil},
-	"$62": {"min-height", nil},
-	"$63": {"min-width", nil},
+	"max_height": {"max-height", nil},
+	"max_width": {"max-width", nil},
+	"min_height": {"min-height", nil},
+	"min_width": {"min-width", nil},
 
-	"$45": {"white-space", map[string]string{"false": "normal", "true": "nowrap"}},
-	"$105": {"outline-color", nil},
-	"$106": {"outline-offset", nil},
-	"$107": {"outline-style", borderStyles},
-	"$108": {"outline-width", nil},
+	"nobreak": {"white-space", map[string]string{"false": "normal", "true": "nowrap"}},
+	"outline_color": {"outline-color", nil},
+	"outline_offset": {"outline-offset", nil},
+	"outline_style": {"outline-style", borderStyles},
+	"outline_weight": {"outline-width", nil},
 
-	"$554": {"text-decoration", map[string]string{"$330": "overline dashed", "$331": "overline dotted", "$329": "overline double", "$349": "", "$328": "overline"}},
-	"$555": {"text-decoration-color", nil},
+	"overline": {"text-decoration", map[string]string{"dashed": "overline dashed", "dotted": "overline dotted", "double": "overline double", "none": "", "solid": "overline"}},
+	"overline_color": {"text-decoration-color", nil},
 
-	"$51": {"padding", nil},
-	"$54": {"padding-bottom", nil},
-	"$53": {"padding-left", nil},
-	"$55": {"padding-right", nil},
-	"$52": {"padding-top", nil},
+	"padding": {"padding", nil},
+	"padding_bottom": {"padding-bottom", nil},
+	"padding_left": {"padding-left", nil},
+	"padding_right": {"padding-right", nil},
+	"padding_top": {"padding-top", nil},
 
-	"$183": {"position", map[string]string{"$324": "absolute", "$455": "oeb-page-foot", "$151": "oeb-page-head", "$488": "relative", "$489": "fixed"}},
-	"$61":  {"right", nil},
+	"position": {"position", map[string]string{"fixed": "absolute", "footer": "oeb-page-foot", "header": "oeb-page-head", "relative": "relative", "viewport": "fixed"}},
+	"right":  {"right", nil},
 
-	"$766": {"ruby-align", map[string]string{"$320": "center", "$773": "space-around", "$774": "space-between", "$680": "start"}},
-	"$764": {"ruby-merge", map[string]string{"$772": "collapse", "$771": "separate"}},
-	"$762": {"ruby-position", map[string]string{"$60": "under", "$58": "over"}},
-	"$763": {"ruby-position", map[string]string{"$59": "under", "$61": "over"}},
-	"$765": {"ruby-align", map[string]string{"$320": "center", "$773": "space-around", "$774": "space-between", "$680": "start"}},
+	"ruby_base_align": {"ruby-align", map[string]string{"center": "center", "space_around": "space-around", "space_between": "space-between", "start": "start"}},
+	"ruby_merge": {"ruby-merge", map[string]string{"collapse": "collapse", "separate": "separate"}},
+	"ruby_position_horizontal": {"ruby-position", map[string]string{"bottom": "under", "top": "over"}},
+	"ruby_position_vertical": {"ruby-position", map[string]string{"left": "under", "right": "over"}},
+	"ruby_text_align": {"ruby-align", map[string]string{"center": "center", "space_around": "space-around", "space_between": "space-between", "start": "start"}},
 
-	"$496": {"box-shadow", nil},
-	"$546": {"box-sizing", map[string]string{"$378": "border-box", "$377": "content-box", "$379": "padding-box"}},
+	"shadows": {"box-shadow", nil},
+	"sizing_bounds": {"box-sizing", map[string]string{"border_bounds": "border-box", "content_bounds": "content-box", "padding_bounds": "padding-box"}},
 	"src":  {"src", nil},
 
-	"$27": {"text-decoration", map[string]string{"$330": "line-through dashed", "$331": "line-through dotted", "$329": "line-through double", "$349": "", "$328": "line-through"}},
-	"$28": {"text-decoration-color", nil},
+	"strikethrough": {"text-decoration", map[string]string{"dashed": "line-through dashed", "dotted": "line-through dotted", "double": "line-through double", "none": "", "solid": "line-through"}},
+	"strikethrough_color": {"text-decoration-color", nil},
 
-	"$75": {"-webkit-text-stroke-color", nil},
+	"stroke_color": {"-webkit-text-stroke-color", nil},
 
-	"$531": {"-svg-stroke-dasharray", nil},
-	"$532": {"-svg-stroke-dashoffset", nil},
-	"$77":  {"-svg-stroke-linecap", map[string]string{"$534": "butt", "$533": "round", "$341": "square"}},
-	"$529": {"-svg-stroke-linejoin", map[string]string{"$536": "bevel", "$535": "miter", "$533": "round"}},
-	"$530": {"-svg-stroke-miterlimit", nil},
-	"$76":  {"-webkit-text-stroke-width", nil},
+	"stroke_dasharray": {"-svg-stroke-dasharray", nil},
+	"stroke_dashoffset": {"-svg-stroke-dashoffset", nil},
+	"stroke_linecap":  {"-svg-stroke-linecap", map[string]string{"butt": "butt", "round": "round", "square": "square"}},
+	"stroke_linejoin": {"-svg-stroke-linejoin", map[string]string{"bevel": "bevel", "miter": "miter", "round": "round"}},
+	"stroke_miterlimit": {"-svg-stroke-miterlimit", nil},
+	"stroke_width":  {"-webkit-text-stroke-width", nil},
 
-	"$173": {"-kfx-style-name", nil},
+	"style_name": {"-kfx-style-name", nil},
 
-	"$150": {"border-collapse", map[string]string{"false": "separate", "true": "collapse"}},
-	"$148": {"-kfx-attrib-colspan", nil},
-	"$149": {"-kfx-attrib-rowspan", nil},
+	"table_border_collapse": {"border-collapse", map[string]string{"false": "separate", "true": "collapse"}},
+	"table_column_span": {"-kfx-attrib-colspan", nil},
+	"table_row_span": {"-kfx-attrib-rowspan", nil},
 
-	"$34": {"text-align", map[string]string{"$320": "center", "$321": "justify", "$59": "left", "$61": "right"}},
-	"$35": {"text-align-last", map[string]string{"$383": "auto", "$320": "center", "$681": "end", "$321": "justify", "$59": "left", "$61": "right", "$680": "start"}},
+	"text_alignment": {"text-align", map[string]string{"center": "center", "justify": "justify", "left": "left", "right": "right"}},
+	"text_alignment_last": {"text-align-last", map[string]string{"auto": "auto", "center": "center", "end": "end", "justify": "justify", "left": "left", "right": "right", "start": "start"}},
 
-	"$21":  {"background-color", nil},
-	"$528": {"background-image", nil},
-	"$19":  {"color", nil},
+	"text_background_color":  {"background-color", nil},
+	"text_background_image": {"background-image", nil},
+	"text_color":  {"color", nil},
 
-	"$707": {"text-combine-upright", map[string]string{"$573": "all"}},
-	"$718": {"text-emphasis-color", nil},
-	"$719": {"-kfx-text-emphasis-position-horizontal", map[string]string{"$58": "over", "$60": "under"}},
-	"$720": {"-kfx-text-emphasis-position-vertical", map[string]string{"$59": "left", "$61": "right"}},
-	"$717": {"text-emphasis-style", map[string]string{
-		"$724": "filled", "$728": "filled circle", "$726": "filled dot",
-		"$730": "filled double-circle", "$734": "filled sesame", "$732": "filled triangle",
-		"$725": "open", "$729": "open circle", "$727": "open dot",
-		"$731": "open double-circle", "$735": "open sesame", "$733": "open triangle"}},
-	"$706": {"text-orientation", map[string]string{"$383": "mixed", "$778": "sideways", "$779": "upright"}},
-	"$36":  {"text-indent", nil},
-	"$41":  {"text-transform", map[string]string{"$373": "lowercase", "$349": "none", "$374": "capitalize", "$372": "uppercase"}},
-	"$497": {"text-shadow", nil},
-	"$58":  {"top", nil},
-	"$98":  {"transform", nil},
-	"$549": {"transform-origin", nil},
+	"text_combine": {"text-combine-upright", map[string]string{"all": "all"}},
+	"text_emphasis_color": {"text-emphasis-color", nil},
+	"text_emphasis_position_horizontal": {"-kfx-text-emphasis-position-horizontal", map[string]string{"top": "over", "bottom": "under"}},
+	"text_emphasis_position_vertical": {"-kfx-text-emphasis-position-vertical", map[string]string{"left": "left", "right": "right"}},
+	"text_emphasis_style": {"text-emphasis-style", map[string]string{
+		"filled": "filled", "filled_circle": "filled circle", "filled_dot": "filled dot",
+		"filled_double_circle": "filled double-circle", "filled_sesame": "filled sesame", "filled_triangle": "filled triangle",
+		"open": "open", "open_circle": "open circle", "open_dot": "open dot",
+		"open_double_circle": "open double-circle", "open_sesame": "open sesame", "open_triangle": "open triangle"}},
+	"text_orientation": {"text-orientation", map[string]string{"auto": "mixed", "sideways": "sideways", "upright": "upright"}},
+	"text_indent":  {"text-indent", nil},
+	"text_transform":  {"text-transform", map[string]string{"lowercase": "lowercase", "none": "none", "titlecase": "capitalize", "uppercase": "uppercase"}},
+	"text_shadows": {"text-shadow", nil},
+	"top":  {"top", nil},
+	"transform":  {"transform", nil},
+	"transform_origin": {"transform-origin", nil},
 
-	"$23": {"text-decoration", map[string]string{"$330": "underline dashed", "$331": "underline dotted", "$329": "underline double", "$349": "", "$328": "underline"}},
-	"$24": {"text-decoration-color", nil},
+	"underline": {"text-decoration", map[string]string{"dashed": "underline dashed", "dotted": "underline dotted", "double": "underline double", "none": "", "solid": "underline"}},
+	"underline_color": {"text-decoration-color", nil},
 
-	"$68": {"visibility", map[string]string{"false": "hidden", "true": "visible"}},
-	"$716": {"white-space", map[string]string{"$715": "nowrap"}},
-	"$56":  {"width", nil},
-	"$569": {"word-break", map[string]string{"$570": "break-all", "$350": "normal"}},
-	"$33":  {"word-spacing", nil},
-	"$560": {"writing-mode", map[string]string{"$557": "horizontal-tb", "$559": "vertical-rl", "$558": "vertical-lr"}},
+	"visibility": {"visibility", map[string]string{"false": "hidden", "true": "visible"}},
+	"white_space": {"white-space", map[string]string{"nowrap": "nowrap"}},
+	"width":  {"width", nil},
+	"word_break": {"word-break", map[string]string{"break_all": "break-all", "normal": "normal"}},
+	"wordspacing":  {"word-spacing", nil},
+	"writing_mode": {"writing-mode", map[string]string{"horizontal_tb": "horizontal-tb", "vertical_rl": "vertical-rl", "vertical_lr": "vertical-lr"}},
 
-	"$650": {"-amzn-shape-outside", nil},
-	"$646": {"-kfx-collision", nil},
-	"$616": {"-kfx-attrib-epub-type", map[string]string{"$617": "noteref"}},
-	"$658": {"yj-float-align", map[string]string{"$58": ""}},
-	"$672": {"yj-float-bias", map[string]string{"$671": ""}},
-	"$628": {"clear", map[string]string{"$59": "left", "$61": "right", "$421": "both", "$349": "none"}},
-	"$673": {"yj-float-to-block", map[string]string{"false": ""}},
-	"$644": {"-amzn-page-footer", map[string]string{"$442": "disable", "$441": "overlay"}},
-	"$643": {"-amzn-page-header", map[string]string{"$442": "disable", "$441": "overlay"}},
-	"$645": {"-amzn-max-crop-percentage", nil},
-	"$790": {"-kfx-heading-level", nil},
-	"$640": {"-kfx-user-margin-bottom-percentage", nil},
-	"$641": {"-kfx-user-margin-left-percentage", nil},
-	"$642": {"-kfx-user-margin-right-percentage", nil},
-	"$639": {"-kfx-user-margin-top-percentage", nil},
-	"$633": {"-kfx-table-vertical-align", map[string]string{"$350": "baseline", "$60": "bottom", "$320": "middle", "$58": "top"}},
-	"$649": {"-kfx-attrib-epub-type", map[string]string{"$442": "amzn:decorative", "$441": "amzn:not-decorative"}},
-	"$788": {"page-break-after", map[string]string{"$352": "always", "$383": "auto", "$353": "avoid"}},
-	"$789": {"page-break-before", map[string]string{"$352": "always", "$383": "auto", "$353": "avoid"}},
+	"yj.border_path": {"-amzn-shape-outside", nil},
+	"yj.collision": {"-kfx-collision", nil},
+	"yj.display": {"-kfx-attrib-epub-type", map[string]string{"yj.note": "noteref"}},
+	"yj.float_align": {"yj-float-align", map[string]string{"top": ""}},
+	"yj.float_bias": {"yj-float-bias", map[string]string{"yj.at": ""}},
+	"yj.float_clear": {"clear", map[string]string{"left": "left", "right": "right", "both": "both", "none": "none"}},
+	"yj.float_to_block": {"yj-float-to-block", map[string]string{"false": ""}},
+	"yj.footer_overlay": {"-amzn-page-footer", map[string]string{"disabled": "disable", "enabled": "overlay"}},
+	"yj.header_overlay": {"-amzn-page-header", map[string]string{"disabled": "disable", "enabled": "overlay"}},
+	"yj.max_crop": {"-amzn-max-crop-percentage", nil},
+	"yj.semantics.heading_level": {"-kfx-heading-level", nil},
+	"yj.user_margin_bottom_percentage": {"-kfx-user-margin-bottom-percentage", nil},
+	"yj.user_margin_left_percentage": {"-kfx-user-margin-left-percentage", nil},
+	"yj.user_margin_right_percentage": {"-kfx-user-margin-right-percentage", nil},
+	"yj.user_margin_top_percentage": {"-kfx-user-margin-top-percentage", nil},
+	"yj.vertical_align": {"-kfx-table-vertical-align", map[string]string{"normal": "baseline", "bottom": "bottom", "center": "middle", "top": "top"}},
+	"yj.viewer": {"-kfx-attrib-epub-type", map[string]string{"disabled": "amzn:decorative", "enabled": "amzn:not-decorative"}},
+	"yj_break_after": {"page-break-after", map[string]string{"always": "always", "auto": "auto", "avoid": "avoid"}},
+	"yj_break_before": {"page-break-before", map[string]string{"always": "always", "auto": "auto", "avoid": "avoid"}},
 }
 
 // borderStyles mirrors Python BORDER_STYLES.
 var borderStyles = map[string]string{
-	"$349": "none", "$328": "solid", "$331": "dotted", "$330": "dashed",
-	"$329": "double", "$335": "ridge", "$334": "groove", "$336": "inset", "$337": "outset",
+	"none": "none", "solid": "solid", "dotted": "dotted", "dashed": "dashed",
+	"double": "double", "ridge": "ridge", "groove": "groove", "inset": "inset", "outset": "outset",
 }
 
 // -----------------------------------------------------------------------
@@ -2941,11 +2941,11 @@ var borderStyles = map[string]string{
 
 func mapHyphens(value interface{}) string {
 	switch text, _ := asString(value); text {
-	case "$383":
+	case "auto":
 		return "auto"
-	case "$384":
+	case "manual":
 		return "manual"
-	case "$349":
+	case "none":
 		return "none"
 	default:
 		return ""
@@ -2954,11 +2954,11 @@ func mapHyphens(value interface{}) string {
 
 func mapPageBreak(value interface{}) string {
 	switch text, _ := asString(value); text {
-	case "$352":
+	case "always":
 		return "always"
-	case "$383":
+	case "auto":
 		return "auto"
-	case "$353":
+	case "avoid":
 		return "avoid"
 	default:
 		return ""
@@ -2967,23 +2967,23 @@ func mapPageBreak(value interface{}) string {
 
 func mapBorderStyle(value interface{}) string {
 	switch text, _ := asString(value); text {
-	case "$349":
+	case "none":
 		return "none"
-	case "$328":
+	case "solid":
 		return "solid"
-	case "$331":
+	case "dotted":
 		return "dotted"
-	case "$330":
+	case "dashed":
 		return "dashed"
-	case "$329":
+	case "double":
 		return "double"
-	case "$335":
+	case "ridge":
 		return "ridge"
-	case "$334":
+	case "groove":
 		return "groove"
-	case "$336":
+	case "inset":
 		return "inset"
-	case "$337":
+	case "outset":
 		return "outset"
 	default:
 		return ""
@@ -2992,13 +2992,13 @@ func mapBorderStyle(value interface{}) string {
 
 func mapBoxAlign(value interface{}) string {
 	switch text, _ := asString(value); text {
-	case "$320":
+	case "center":
 		return "center"
-	case "$59":
+	case "left":
 		return "left"
-	case "$61":
+	case "right":
 		return "right"
-	case "$321":
+	case "justify":
 		return "justify"
 	default:
 		return ""
@@ -3007,13 +3007,13 @@ func mapBoxAlign(value interface{}) string {
 
 func mapTableVerticalAlign(value interface{}) string {
 	switch asStringDefault(value) {
-	case "$350":
+	case "normal":
 		return "baseline"
-	case "$60":
+	case "bottom":
 		return "bottom"
-	case "$320":
+	case "center":
 		return "middle"
-	case "$58":
+	case "top":
 		return "top"
 	default:
 		return ""
@@ -3022,7 +3022,7 @@ func mapTableVerticalAlign(value interface{}) string {
 
 func mapTextDecoration(value interface{}) string {
 	switch text, _ := asString(value); text {
-	case "$328":
+	case "solid":
 		return "underline"
 	default:
 		return ""
@@ -3031,9 +3031,9 @@ func mapTextDecoration(value interface{}) string {
 
 func mapFontVariant(value interface{}) string {
 	switch text, _ := asString(value); text {
-	case "$369":
+	case "small_caps":
 		return "small-caps"
-	case "$349":
+	case "none":
 		return "normal"
 	default:
 		return ""
@@ -3042,13 +3042,13 @@ func mapFontVariant(value interface{}) string {
 
 func mapTextTransform(value interface{}) string {
 	switch text, _ := asString(value); text {
-	case "$374":
+	case "titlecase":
 		return "capitalize"
-	case "$373":
+	case "lowercase":
 		return "lowercase"
-	case "$372":
+	case "uppercase":
 		return "uppercase"
-	case "$349":
+	case "none":
 		return "none"
 	default:
 		return ""
@@ -3057,11 +3057,11 @@ func mapTextTransform(value interface{}) string {
 
 func mapFontStyle(value interface{}) string {
 	switch text, _ := asString(value); text {
-	case "$382":
+	case "italic":
 		return "italic"
-	case "$381":
+	case "oblique":
 		return "oblique"
-	case "$350":
+	case "normal":
 		return "normal"
 	default:
 		return ""
@@ -3070,23 +3070,23 @@ func mapFontStyle(value interface{}) string {
 
 func mapFontWeight(value interface{}) string {
 	switch text, _ := asString(value); text {
-	case "$361":
+	case "bold":
 		return "bold"
-	case "$363":
+	case "heavy":
 		return "900"
-	case "$357":
+	case "light":
 		return "300"
-	case "$359":
+	case "medium":
 		return "500"
-	case "$350":
+	case "normal":
 		return "normal"
-	case "$360":
+	case "semi_bold":
 		return "600"
-	case "$355":
+	case "thin":
 		return "100"
-	case "$362":
+	case "ultra_bold":
 		return "800"
-	case "$356":
+	case "ultra_light":
 		return "200"
 	default:
 		return ""
@@ -3095,15 +3095,15 @@ func mapFontWeight(value interface{}) string {
 
 func mapFontStretch(value interface{}) string {
 	switch text, _ := asString(value); text {
-	case "$365":
+	case "condensed":
 		return "condensed"
-	case "$368":
+	case "expanded":
 		return "expanded"
-	case "$350":
+	case "normal":
 		return "normal"
-	case "$366":
+	case "semi_condensed":
 		return "semi-condensed"
-	case "$367":
+	case "semi_expanded":
 		return "semi-expanded"
 	default:
 		return ""
@@ -3125,21 +3125,21 @@ func init() {
 // -----------------------------------------------------------------------
 
 var yjLengthUnits = map[string]string{
-	"$308": "em",
-	"$506": "ch",
-	"$315": "cm",
-	"$309": "ex",
-	"$317": "in",
-	"$310": "lh",
-	"$316": "mm",
-	"$314": "%",
-	"$318": "pt",
-	"$319": "px",
-	"$505": "rem",
-	"$312": "vh",
-	"$507": "vmax",
-	"$313": "vmin",
-	"$311": "vw",
+	"em": "em",
+	"ch": "ch",
+	"cm": "cm",
+	"ex": "ex",
+	"in": "in",
+	"lh": "lh",
+	"mm": "mm",
+	"percent": "%",
+	"pt": "pt",
+	"px": "px",
+	"rem": "rem",
+	"vh": "vh",
+	"vmax": "vmax",
+	"vmin": "vmin",
+	"vw": "vw",
 }
 
 // -----------------------------------------------------------------------
@@ -3147,9 +3147,9 @@ var yjLengthUnits = map[string]string{
 // -----------------------------------------------------------------------
 
 var colorYJProperties = map[string]bool{
-	"$83": true, "$86": true, "$85": true, "$87": true, "$84": true, "$116": true,
-	"$498": true, "$70": true, "$121": true, "$105": true, "$555": true, "$28": true, "$75": true,
-	"$21": true, "$19": true, "$718": true, "$24": true,
+	"border_color": true, "border_color_bottom": true, "border_color_left": true, "border_color_right": true, "border_color_top": true, "column_rule_color": true,
+	"color": true, "fill_color": true, "footnote_line_color": true, "outline_color": true, "overline_color": true, "strikethrough_color": true, "stroke_color": true,
+	"text_background_color": true, "text_color": true, "text_emphasis_color": true, "underline_color": true,
 }
 
 // -----------------------------------------------------------------------
@@ -3180,34 +3180,34 @@ func propertyValue(propName string, yjValue interface{}, resolveResource Resourc
 
 	// string — could be a raw string, an enum symbol, font-family, language, etc.
 	case string:
-		if propName == "$11" {
+		if propName == "font_family" {
 			return cssFontFamily(v)
 		}
-		if propName == "$10" {
+		if propName == "language" {
 			return v // language string, keep as-is
 		}
-		if propName == "$173" {
+		if propName == "style_name" {
 			// -kfx-style-name: pass through (Python uses unique_part_of_local_symbol here)
 			return v
 		}
 		// Python: property_value (yj_to_epub_properties.py:1272-1273):
-		//   elif yj_property_name in {"$479", "$175", "$528"}:
+		//   elif yj_property_name in {"background_image", "resource_name", "text_background_image"}:
 		//       value = self.css_url(urlrelpath(
 		//           self.process_external_resource(yj_value).filename, ref_from=self.STYLES_CSS_FILEPATH))
 		// $479 = background-image, $528 = background-image (alt), $175 = resource name
-		if (propName == "$479" || propName == "$175" || propName == "$528") && resolveResource != nil {
+		if (propName == "background_image" || propName == "resource_name" || propName == "text_background_image") && resolveResource != nil {
 			if resolved := resolveResource(v); resolved != "" {
 				return "url(" + resolved + ")"
 			}
 		}
-		// Check if this is an enum symbol ("$328" etc.) that maps through propInfo.values
+		// Check if this is an enum symbol ("solid" etc.) that maps through propInfo.values
 		if infoOK && info.values != nil {
 			if mapped, ok := info.values[v]; ok {
 				return mapped // may be "" for None-mapped values
 			}
 		}
 		// Color properties: $349 means color(0) → transparent/black
-		if colorYJProperties[propName] && v == "$349" {
+		if colorYJProperties[propName] && v == "none" {
 			return fixColorValue(0)
 		}
 		return v
@@ -3253,8 +3253,8 @@ func propertyValue(propName string, yjValue interface{}, resolveResource Resourc
 // propertyValueStruct handles struct-type KFX property values (lengths, colors, shadows, etc.).
 func propertyValueStruct(propName string, v map[string]interface{}, info propInfo, infoOK bool, resolveResource ResourceResolver) string {
 	// Length: {$307: magnitude, $306: unit}
-	if mag, ok := asFloat64(v["$307"]); ok {
-		unitSym, _ := asString(v["$306"])
+	if mag, ok := asFloat64(v["value"]); ok {
+		unitSym, _ := asString(v["unit"])
 		unit := yjLengthUnits[unitSym]
 		if unit == "" {
 			unit = unitSym
@@ -3264,7 +3264,7 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 		}
 		// FIX_PT_TO_PX: convert pt → px when magnitude is divisible by 0.225
 		// Python: property_value ~L1190
-		if unitSym == "$318" && mag > 0 {
+		if unitSym == "pt" && mag > 0 {
 			if int(mag*1000)%225 == 0 {
 				mag = float64(int(mag*1000)) / 450.0
 				unit = "px"
@@ -3274,21 +3274,21 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 	}
 
 	// Color: {$19: int}
-	if colorVal, ok := v["$19"]; ok {
+	if colorVal, ok := v["text_color"]; ok {
 		return fixColorValue(colorVal)
 	}
 
 	// Shadow: {$499/$500/$501/$502/$498, optional $336 inset}
-	if _, has499 := v["$499"]; has499 {
-		if _, has500 := v["$500"]; has500 {
+	if _, has499 := v["horizontal_offset"]; has499 {
+		if _, has500 := v["vertical_offset"]; has500 {
 			// Simplified shadow handling — full port later if needed
 			parts := []string{}
-			for _, sub := range []string{"$499", "$500", "$501", "$502", "$498"} {
+			for _, sub := range []string{"horizontal_offset", "vertical_offset", "blur", "spread", "color"} {
 				if subVal, ok := v[sub]; ok {
 					parts = append(parts, propertyValue(sub, subVal, resolveResource))
 				}
 			}
-			if _, inset := v["$336"]; inset {
+			if _, inset := v["inset"]; inset {
 				parts = append(parts, "inset")
 			}
 			return strings.Join(parts, " ")
@@ -3296,10 +3296,10 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 	}
 
 	// transform-origin: {$58/$59}
-	if _, hasTop := v["$58"]; hasTop {
-		if propName == "$549" {
+	if _, hasTop := v["top"]; hasTop {
+		if propName == "transform_origin" {
 			parts := []string{}
-			for _, sub := range []string{"$59", "$58"} {
+			for _, sub := range []string{"left", "top"} {
 				if subVal, ok := v[sub]; ok {
 					parts = append(parts, propertyValue(sub, subVal, resolveResource))
 				} else {
@@ -3310,7 +3310,7 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 		}
 		// Rect-style value: top/right/bottom/left
 		parts := []string{}
-		for _, sub := range []string{"$58", "$61", "$60", "$59"} {
+		for _, sub := range []string{"top", "right", "bottom", "left"} {
 			if subVal, ok := v[sub]; ok {
 				parts = append(parts, propertyValue(sub, subVal, resolveResource))
 			}
@@ -3319,9 +3319,9 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 	}
 
 	// keep-lines-together: {$131/$132}
-	if _, has131 := v["$131"]; has131 {
-		oVal := valueStr(v["$131"])
-		wVal := valueStr(v["$132"])
+	if _, has131 := v["first"]; has131 {
+		oVal := valueStr(v["first"])
+		wVal := valueStr(v["last"])
 		if oVal == "" || oVal == "0" {
 			oVal = "inherit"
 		}
@@ -3343,9 +3343,9 @@ func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool
 	if colorYJProperties[propName] {
 		// Ported from Python property_value (yj_to_epub_properties.py L1290-1291):
 		// When $70 (fill-color) has zero alpha bits, set alpha to fully opaque.
-		// Python: if yj_property_name == "$70" and int(yj_value) & ALPHA_MASK == 0:
+		// Python: if yj_property_name == "fill_color" and int(yj_value) & ALPHA_MASK == 0:
 		//             value = int(yj_value) | ALPHA_MASK
-		if propName == "$70" {
+		if propName == "fill_color" {
 			i := int(v)
 			if i&alphaMask == 0 {
 				v = float64(i | alphaMask)
@@ -3356,10 +3356,10 @@ func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool
 
 	// Properties that stay as raw numbers (no px suffix)
 	rawNumberProps := map[string]bool{
-		"$112": true, "$13": true, "$148": true, "$149": true,
-		"$645": true, "$647": true, "$648": true, "$790": true,
-		"$640": true, "$641": true, "$642": true, "$639": true,
-		"$72": true, "$126": true, "$125": true, "$42": true,
+		"column_count": true, "font_weight": true, "table_column_span": true, "table_row_span": true,
+		"yj.max_crop": true, "yj.min_aspect_ratio": true, "yj.max_aspect_ratio": true, "yj.semantics.heading_level": true,
+		"yj.user_margin_bottom_percentage": true, "yj.user_margin_left_percentage": true, "yj.user_margin_right_percentage": true, "yj.user_margin_top_percentage": true,
+		"fill_opacity": true, "dropcap_chars": true, "dropcap_lines": true, "line_height": true,
 	}
 
 	if rawNumberProps[propName] || v == 0 {
@@ -3372,7 +3372,7 @@ func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool
 // propertyValueList handles list-type KFX property values.
 func propertyValueList(propName string, v []interface{}, info propInfo, infoOK bool, resolveResource ResourceResolver) string {
 	switch propName {
-	case "$761": // layout hints
+	case "layout_hints": // layout hints
 		// Ported from Python property_value (yj_to_epub_properties.py L1354-1363):
 		//   for layout_hint in yj_value:
 		//       element_name = LAYOUT_HINT_ELEMENT_NAMES.get(layout_hint)
@@ -3389,7 +3389,7 @@ func propertyValueList(propName string, v []interface{}, info propInfo, infoOK b
 		}
 		return strings.Join(hints, " ")
 
-	case "$646": // collision
+	case "yj.collision": // collision
 		vals := []string{}
 		for _, item := range v {
 			if s, ok := item.(string); ok {
@@ -3403,23 +3403,23 @@ func propertyValueList(propName string, v []interface{}, info propInfo, infoOK b
 		sort.Strings(vals)
 		return strings.Join(vals, " ")
 
-	case "$98": // transform
+	case "transform": // transform
 		// Python yj_to_epub_properties.py L1345: value = self.process_transform(yj_value, svg)
 		// In propertyValue (non-SVG) context, svg=False so process_transform uses "px" and "," separator.
 		return processTransform(v, false)
 
-	case "$650": // shape-outside (-amzn-shape-outside)
+	case "yj.border_path": // shape-outside (-amzn-shape-outside)
 		// Python yj_to_epub_properties.py L1331-1332: value = self.process_polygon(yj_value)
 		return processPolygon(v)
 
-	case "$497": // text-shadow list
+	case "text_shadows": // text-shadow list
 		vals := make([]string, 0, len(v))
 		for _, item := range v {
 			vals = append(vals, propertyValue(propName, item, resolveResource))
 		}
 		return strings.Join(vals, ", ")
 
-	case "$531": // stroke-dasharray
+	case "stroke_dasharray": // stroke-dasharray
 		vals := make([]string, 0, len(v))
 		for _, item := range v {
 			vals = append(vals, propertyValue(propName, item, resolveResource))
@@ -3432,8 +3432,8 @@ func propertyValueList(propName string, v []interface{}, info propInfo, infoOK b
 
 // collisions mirrors Python COLLISIONS.
 var collisions = map[string]string{
-	"$352": "always",
-	"$652": "queue",
+	"always": "always",
+	"yj.queue": "queue",
 }
 
 // -----------------------------------------------------------------------

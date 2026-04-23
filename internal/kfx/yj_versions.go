@@ -485,11 +485,11 @@ type SupportedFeatureEntry struct {
 }
 
 var KnownSupportedFeatures = []SupportedFeatureEntry{
-	{Symbol: "$826"},
-	{Symbol: "$827"},
-	{Symbol: "$660"},
-	{Symbol: "$751"},
-	{Symbol: "$664", Key: "crop_bleed", Version: 1, HasTuple: true},
+	{Symbol: "audio"},
+	{Symbol: "video"},
+	{Symbol: "yj.illustrated_layout"},
+	{Symbol: "yj.large_tables"},
+	{Symbol: "yj.sdl_version", Key: "crop_bleed", Version: 1, HasTuple: true},
 }
 
 // ---------------------------------------------------------------------------

@@ -11,11 +11,13 @@ import (
 
 func TestClassifySymbolSharedNumeric(t *testing.T) {
 	r := &symbolResolver{localStart: 1000, locals: []string{"localSym"}}
-	if g := classifySymbolWithResolver("$50", r); g != symShared {
-		t.Fatalf("$50 with localStart=1000 = %v want shared", g)
+	if g := classifySymbolWithResolver("margin_right", r); g != symShared {
+		t.Fatalf("margin_right with localStart=1000 = %v want shared", g)
 	}
-	if g := classifySymbolWithResolver("$999", r); g != symShared {
-		t.Fatalf("$999 with localStart=1000 = %v want shared", g)
+	// $999 is beyond the catalog (842 real names, SID 10-851). It's a $N placeholder
+	// in the extended table but not recognized by name lookup → unknown.
+	if g := classifySymbolWithResolver("$999", r); g != symUnknown {
+		t.Fatalf("$999 with localStart=1000 = %v want unknown (beyond catalog)", g)
 	}
 	if g := classifySymbolWithResolver("c73", r); g != symShort {
 		t.Fatalf("c73 = %v want short", g)
@@ -282,7 +284,7 @@ func TestClassifySymbolPriorityOrder(t *testing.T) {
 	r := &symbolResolver{localStart: 1000, locals: []string{}}
 
 	// SHARED takes priority over everything
-	if g := classifySymbolWithResolver("$50", r); g != symShared {
+	if g := classifySymbolWithResolver("margin_right", r); g != symShared {
 		t.Fatalf("shared should win: got %v", g)
 	}
 
@@ -348,8 +350,8 @@ func TestGetReadingOrdersFrom538(t *testing.T) {
 	// Only $538 has $169
 	frags := fragmentCatalog{
 		DocumentData: map[string]interface{}{
-			"$169": []interface{}{
-				map[string]interface{}{"$178": "main"},
+			"reading_orders": []interface{}{
+				map[string]interface{}{"reading_order_name": "main"},
 			},
 		},
 		ReadingOrderMetadata: nil,
@@ -358,7 +360,7 @@ func TestGetReadingOrdersFrom538(t *testing.T) {
 	if len(orders) != 1 {
 		t.Fatalf("expected 1 reading order, got %d", len(orders))
 	}
-	name, _ := asString(orders[0].(map[string]interface{})["$178"])
+	name, _ := asString(orders[0].(map[string]interface{})["reading_order_name"])
 	if name != "main" {
 		t.Fatalf("expected reading order name 'main', got %q", name)
 	}
@@ -369,8 +371,8 @@ func TestGetReadingOrdersFallsBackTo258(t *testing.T) {
 	frags := fragmentCatalog{
 		DocumentData: nil,
 		ReadingOrderMetadata: map[string]interface{}{
-			"$169": []interface{}{
-				map[string]interface{}{"$178": "fallback"},
+			"reading_orders": []interface{}{
+				map[string]interface{}{"reading_order_name": "fallback"},
 			},
 		},
 	}
@@ -378,7 +380,7 @@ func TestGetReadingOrdersFallsBackTo258(t *testing.T) {
 	if len(orders) != 1 {
 		t.Fatalf("expected 1 reading order, got %d", len(orders))
 	}
-	name, _ := asString(orders[0].(map[string]interface{})["$178"])
+	name, _ := asString(orders[0].(map[string]interface{})["reading_order_name"])
 	if name != "fallback" {
 		t.Fatalf("expected reading order name 'fallback', got %q", name)
 	}
@@ -400,13 +402,13 @@ func TestGetReadingOrdersPrefers538Over258(t *testing.T) {
 	// Both have $169 — $538 should be preferred
 	frags := fragmentCatalog{
 		DocumentData: map[string]interface{}{
-			"$169": []interface{}{
-				map[string]interface{}{"$178": "from_538"},
+			"reading_orders": []interface{}{
+				map[string]interface{}{"reading_order_name": "from_538"},
 			},
 		},
 		ReadingOrderMetadata: map[string]interface{}{
-			"$169": []interface{}{
-				map[string]interface{}{"$178": "from_258"},
+			"reading_orders": []interface{}{
+				map[string]interface{}{"reading_order_name": "from_258"},
 			},
 		},
 	}
@@ -414,7 +416,7 @@ func TestGetReadingOrdersPrefers538Over258(t *testing.T) {
 	if len(orders) != 1 {
 		t.Fatalf("expected 1 reading order, got %d", len(orders))
 	}
-	name, _ := asString(orders[0].(map[string]interface{})["$178"])
+	name, _ := asString(orders[0].(map[string]interface{})["reading_order_name"])
 	if name != "from_538" {
 		t.Fatalf("expected 'from_538', got %q", name)
 	}
@@ -427,12 +429,12 @@ func TestGetReadingOrdersPrefers538Over258(t *testing.T) {
 func TestOrderedSectionNamesDeduplication(t *testing.T) {
 	frags := fragmentCatalog{
 		DocumentData: map[string]interface{}{
-			"$169": []interface{}{
+			"reading_orders": []interface{}{
 				map[string]interface{}{
-					"$170": []interface{}{"A", "B"},
+					"sections": []interface{}{"A", "B"},
 				},
 				map[string]interface{}{
-					"$170": []interface{}{"B", "C"},
+					"sections": []interface{}{"B", "C"},
 				},
 			},
 		},
@@ -460,9 +462,9 @@ func TestOrderedSectionNamesEmpty(t *testing.T) {
 func TestOrderedSectionNamesPreservesOrder(t *testing.T) {
 	frags := fragmentCatalog{
 		DocumentData: map[string]interface{}{
-			"$169": []interface{}{
+			"reading_orders": []interface{}{
 				map[string]interface{}{
-					"$170": []interface{}{"Z", "A", "M"},
+					"sections": []interface{}{"Z", "A", "M"},
 				},
 			},
 		},
@@ -481,12 +483,12 @@ func TestOrderedSectionNamesPreservesOrder(t *testing.T) {
 // =============================================================================
 
 func TestHasIllustratedLayoutPageTemplateConditionTrue(t *testing.T) {
-	// Matching condition: $171 -> SExp[0]="$294", [1]="$183", [2]=SExp["$266", ...]
-	condition := []interface{}{"$294", "$183", []interface{}{"$266", "anchor_name"}}
+	// Matching condition: $171 -> SExp[0]="==", [1]="position", [2]=SExp["anchor", ...]
+	condition := []interface{}{"==", "position", []interface{}{"anchor", "anchor_name"}}
 	section := map[string]interface{}{
-		"$141": []interface{}{
+		"page_templates": []interface{}{
 			map[string]interface{}{
-				"$171": condition,
+				"condition": condition,
 			},
 		},
 	}
@@ -501,12 +503,12 @@ func TestHasIllustratedLayoutPageTemplateConditionTrue(t *testing.T) {
 }
 
 func TestHasIllustratedLayoutPageTemplateConditionWithWrongOperator(t *testing.T) {
-	// Condition with fv[0] not in ["$294", "$299", "$298"]
-	condition := []interface{}{"$999", "$183", []interface{}{"$266", "anchor_name"}}
+	// Condition with fv[0] not in ["==", "<=", "<"]
+	condition := []interface{}{"$999", "position", []interface{}{"anchor", "anchor_name"}}
 	section := map[string]interface{}{
-		"$141": []interface{}{
+		"page_templates": []interface{}{
 			map[string]interface{}{
-				"$171": condition,
+				"condition": condition,
 			},
 		},
 	}
@@ -523,9 +525,9 @@ func TestHasIllustratedLayoutPageTemplateConditionWithWrongOperator(t *testing.T
 func TestHasIllustratedLayoutPageTemplateConditionNoCondition(t *testing.T) {
 	// Section without $171
 	section := map[string]interface{}{
-		"$141": []interface{}{
+		"page_templates": []interface{}{
 			map[string]interface{}{
-				"$157": "some_style",
+				"style": "some_style",
 			},
 		},
 	}
@@ -550,12 +552,12 @@ func TestHasIllustratedLayoutPageTemplateConditionEmpty(t *testing.T) {
 
 // Test all three valid operators
 func TestHasIllustratedLayoutPageTemplateConditionAllOperators(t *testing.T) {
-	for _, op := range []string{"$294", "$299", "$298"} {
-		condition := []interface{}{op, "$183", []interface{}{"$266", "anchor_name"}}
+	for _, op := range []string{"==", "<=", "<"} {
+		condition := []interface{}{op, "position", []interface{}{"anchor", "anchor_name"}}
 		section := map[string]interface{}{
-			"$141": []interface{}{
+			"page_templates": []interface{}{
 				map[string]interface{}{
-					"$171": condition,
+					"condition": condition,
 				},
 			},
 		}
@@ -576,19 +578,19 @@ func TestHasIllustratedLayoutPageTemplateConditionWrongStructure(t *testing.T) {
 		name      string
 		condition interface{}
 	}{
-		{"wrong length 2", []interface{}{"$294", "$183"}},
-		{"wrong length 4", []interface{}{"$294", "$183", []interface{}{"$266", "x"}, "extra"}},
-		{"fv[2] wrong type", []interface{}{"$294", "$183", "not_a_slice"}},
-		{"fv[2] wrong length", []interface{}{"$294", "$183", []interface{}{"$266"}}},
-		{"fv[2][0] wrong", []interface{}{"$294", "$183", []interface{}{"$999", "x"}}},
-		{"fv[1] wrong", []interface{}{"$294", "$999", []interface{}{"$266", "x"}}},
+		{"wrong length 2", []interface{}{"==", "position"}},
+		{"wrong length 4", []interface{}{"==", "position", []interface{}{"anchor", "x"}, "extra"}},
+		{"fv[2] wrong type", []interface{}{"==", "position", "not_a_slice"}},
+		{"fv[2] wrong length", []interface{}{"==", "position", []interface{}{"anchor"}}},
+		{"fv[2][0] wrong", []interface{}{"==", "position", []interface{}{"$999", "x"}}},
+		{"fv[1] wrong", []interface{}{"==", "$999", []interface{}{"anchor", "x"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			section := map[string]interface{}{
-				"$141": []interface{}{
+				"page_templates": []interface{}{
 					map[string]interface{}{
-						"$171": tt.condition,
+						"condition": tt.condition,
 					},
 				},
 			}
@@ -711,7 +713,7 @@ func TestCheckSymbolTableWithSymbols(t *testing.T) {
 	// Test with some known symbol data
 	frags := fragmentCatalog{
 		StyleFragments: map[string]map[string]interface{}{
-			"style1": {"$11": "serif", "$12": "bold"},
+			"style1": {"font_family": "serif", "font_style": "bold"},
 		},
 		Storylines:        map[string]map[string]interface{}{},
 		NavContainers:     map[string]map[string]interface{}{},

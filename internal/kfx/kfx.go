@@ -93,7 +93,7 @@ type resourceFragment struct {
 	ID        string
 	Location  string
 	MediaType string
-	Format    string   // $161 — resource format symbol (e.g. "$285" for JPEG)
+	Format    string   // $161 — resource format symbol (e.g. "jpg" for JPEG)
 	Width     int      // $422 (or $66)
 	Height    int      // $423 (or $67)
 	Variants  []string // $635 — list of variant resource IDs
