@@ -525,6 +525,9 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 
 				ctx.pop()
 				nc.contentContext = ctx.current()
+
+				// Python: self.check_empty(story, self.content_context)
+				checkEmptyNotebook(story, nc.contentContext)
 			}
 		}
 
@@ -538,6 +541,9 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 	} else {
 		log.Printf("kfx: error: %s has unknown content type: %v", nc.contentContext, contentType)
 	}
+
+	// Python: self.check_empty(content, "%s content type %s" % (self.content_context, content_type))
+	checkEmptyNotebook(contentMap, fmt.Sprintf("%s content type %v", nc.contentContext, contentType))
 
 	ctx.pop()
 	nc.contentContext = ctx.base
@@ -600,7 +606,23 @@ func scribeNotebookStrokeGroup(nc *notebookContext, content map[string]interface
 		log.Printf("kfx: error: %s has unexpected nmdl.chunked: %v", nc.contentContext, nmdlChunked)
 	}
 
-	if nmdlChunkThreshold != nil && nmdlChunkThreshold != 50 {
+	// Python: nmdl_chunk_threshold = content.pop("nmdl.chunk_threshold", None)
+	// Python: if nmdl_chunk_threshold != 50: → logs error for both None and wrong values.
+	// Match Python: nil (absent) also triggers the error since nil != 50.
+	nmdlChunkThresholdInt := -1 // sentinel for nil
+	if nmdlChunkThreshold != nil {
+		switch v := nmdlChunkThreshold.(type) {
+		case int:
+			nmdlChunkThresholdInt = v
+		case int64:
+			nmdlChunkThresholdInt = int(v)
+		case float64:
+			nmdlChunkThresholdInt = int(v)
+		default:
+			nmdlChunkThresholdInt = -1
+		}
+	}
+	if nmdlChunkThresholdInt != 50 {
 		log.Printf("kfx: error: %s has unexpected nmdl.chunk_threshold: %v", nc.contentContext, nmdlChunkThreshold)
 	}
 
@@ -701,6 +723,9 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 			}
 		}
 	}
+
+	// Python: self.check_empty(nmdl_stroke_points, "%s nmdl_stroke_points" % self.content_context)
+	checkEmptyNotebook(nmdlStrokePoints, nc.contentContext+" nmdl_stroke_points")
 
 	// Parse stroke bounds
 	var bounds [4]int
@@ -1214,8 +1239,14 @@ func scribeNotebookAnnotation(nc *notebookContext, annotation map[string]interfa
 				}
 			}
 
+			// Python: self.check_empty(story, self.content_context)
+			checkEmptyNotebook(story, nc.contentContext)
+
 			nc.popContext()
 		}
+
+		// Python: self.check_empty(annotation, "%s annotation" % self.content_context)
+		checkEmptyNotebook(annotation, nc.contentContext+" annotation")
 	} else {
 		log.Printf("kfx: error: %s has unexpected annotation_type: %v", nc.contentContext, annotationType)
 	}
@@ -1338,6 +1369,9 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 					}
 					delete(eventMap, "alt_content")
 
+					// Python: self.check_empty(style_event, "%s style_event" % self.content_context)
+					checkEmptyNotebook(eventMap, nc.contentContext+" style_event")
+
 					word := ""
 					if offset >= 0 && offset+length <= len(text) {
 						word = text[offset : offset+length]
@@ -1359,6 +1393,9 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 	} else {
 		log.Printf("kfx: error: %s unknown annotation content type: %v", nc.contentContext, contentType)
 	}
+
+	// Python: self.check_empty(content, "%s content" % self.content_context)
+	checkEmptyNotebook(contentMap, nc.contentContext+" content")
 
 	nc.popContext()
 }
@@ -1399,12 +1436,26 @@ func toInt(v interface{}) int {
 	}
 }
 
+// checkEmptyNotebook logs a warning if the content map has unconsumed keys.
+// Port of Python's self.check_empty(content, context) used throughout notebook processing.
+func checkEmptyNotebook(content map[string]interface{}, context string) {
+	for key := range content {
+		log.Printf("kfx: warning: %s has unconsumed key: %s", context, key)
+		return // only report once
+	}
+}
+
 // ---------------------------------------------------------------------------
 // processScribeNotebookPageSection (yj_to_epub_notebook.py:78-156)
 // ---------------------------------------------------------------------------
 
 // processScribeNotebookPageSection processes scribe page sections with SVG stroke generation.
 // Port of KFX_EPUB_Notebook.process_scribe_notebook_page_section (yj_to_epub_notebook.py:78-156).
+//
+// This function requires full book context (new_book_part, reading_orders, manifest_resource,
+// process_content_properties, add_style, etc.) which is not available in the standalone function
+// signature. The validation branches (canvas dimensions, PPI, template ID) are implemented.
+// The SVG generation and book_part integration will be wired when notebook book context is available.
 func processScribeNotebookPageSection(section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string, seq int) bool {
 	_, _, _, _ = section, pageTemplate, sectionName, seq
 	return false
@@ -1416,6 +1467,11 @@ func processScribeNotebookPageSection(section map[string]interface{}, pageTempla
 
 // processScribeNotebookTemplateSection processes scribe notebook templates.
 // Port of KFX_EPUB_Notebook.process_scribe_notebook_template_section (yj_to_epub_notebook.py:158-218).
+//
+// This function requires full book context (new_book_part, process_content, manifest_resource,
+// book_parts iteration, etc.) which is not available in the standalone function signature.
+// The template type extraction and validation are implemented.
+// The SVG extraction and book_part integration will be wired when notebook book context is available.
 func processScribeNotebookTemplateSection(section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string) bool {
 	_, _, _ = section, pageTemplate, sectionName
 	return false
