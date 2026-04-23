@@ -52,28 +52,7 @@ type fragmentSnapshot struct {
 
 
 
-func loadBookSources(path string) ([]*containerSource, error) {
-	blobs, hasDRM, err := collectContainerBlobs(path)
-	if err != nil {
-		return nil, err
-	}
-	if hasDRM {
-		return nil, &DRMError{Message: "DRM-protected KFX is not supported"}
-	}
-	if len(blobs) == 0 {
-		return nil, &UnsupportedError{Message: "file does not contain any readable CONT KFX containers"}
-	}
 
-	sources := make([]*containerSource, 0, len(blobs))
-	for _, blob := range blobs {
-		source, err := loadContainerSourceData(blob.Path, blob.Data)
-		if err != nil {
-			return nil, err
-		}
-		sources = append(sources, source)
-	}
-	return sources, nil
-}
 
 // mergeContentFragmentStringSymbols records string IDs from $145 content bundles into bookSymbols
 // (Calibre replace_ion_data walks Ion; Go content fragments are already resolved strings).

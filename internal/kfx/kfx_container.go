@@ -85,6 +85,32 @@ func loadContainerSourceData(path string, data []byte) (*containerSource, error)
 	}, nil
 }
 
+// loadBookSources loads all container sources from a KFX file path.
+// It collects container blobs (CONT + sidecar), rejects DRM-only files,
+// and parses each blob into a containerSource.
+func loadBookSources(path string) ([]*containerSource, error) {
+	blobs, hasDRM, err := collectContainerBlobs(path)
+	if err != nil {
+		return nil, err
+	}
+	if hasDRM {
+		return nil, &DRMError{Message: "DRM-protected KFX is not supported"}
+	}
+	if len(blobs) == 0 {
+		return nil, &UnsupportedError{Message: "file does not contain any readable CONT KFX containers"}
+	}
+
+	sources := make([]*containerSource, 0, len(blobs))
+	for _, blob := range blobs {
+		source, err := loadContainerSourceData(blob.Path, blob.Data)
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, source)
+	}
+	return sources, nil
+}
+
 func collectContainerBlobs(path string) ([]containerBlob, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
