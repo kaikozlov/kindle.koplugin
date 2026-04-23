@@ -145,6 +145,12 @@ func (b *KFXImageBook) getOrderedImages(splitLandscape, isComic, isRTL bool) []I
 		log.Printf("kfx: warning: Split %d landscape comic images into left/right image pairs", splitImageCount)
 	}
 
+	// Python: yj_to_image_book.py:150-153 — warn if fewer images than expected page count
+	numPages := getPageCount(&b.fragments)
+	if numPages > 0 && len(orderedImages) < numPages {
+		log.Printf("kfx: warning: Expected %d pages but found only %d page images in book", numPages, len(orderedImages))
+	}
+
 	return orderedImages
 }
 
@@ -219,6 +225,12 @@ func (b *KFXImageBook) getOrderedImagesV2(splitLandscape, isComic, isRTL bool, p
 
 	if splitImageCount > 0 {
 		log.Printf("kfx: warning: Split %d landscape comic images into left/right image pairs", splitImageCount)
+	}
+
+	// Python: yj_to_image_book.py:150-153 — warn if fewer images than expected page count
+	numPages := getPageCount(&b.fragments)
+	if numPages > 0 && len(orderedImages) < numPages {
+		log.Printf("kfx: warning: Expected %d pages but found only %d page images in book", numPages, len(orderedImages))
 	}
 
 	return orderedImages, orderedImagePids, b.contentPosInfo
@@ -508,7 +520,9 @@ func combineImagesIntoCBZ(orderedImages []ImageResource, metadata interface{}) [
 			})
 
 		default:
+			// Python: raise Exception("Unexpected image format: %s" % image_resource.format)
 			log.Printf("kfx: error: Unexpected image format: %s", imgRes.Format)
+			return nil
 		}
 	}
 

@@ -9,6 +9,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -673,6 +674,145 @@ func TestSuffixLocation(t *testing.T) {
 		if result != tc.expected {
 			t.Errorf("suffixLocation(%q, %q) = %q, want %q", tc.location, tc.suffix, result, tc.expected)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// D2-12: Page count validation — Python yj_to_image_book.py:150-153
+// ---------------------------------------------------------------------------
+
+func TestGetOrderedImagesPageCountWarning(t *testing.T) {
+	imgData := createTestJPEG(t, 100, 200)
+
+	frags := fragmentCatalog{
+		ResourceRawData: map[string]map[string]interface{}{
+			"img1": {
+				"format":         "jpg",
+				"resource_width": 100,
+				"resource_height": 200,
+				"location":       "res/img1.jpg",
+			},
+		},
+		RawFragments: map[string][]byte{
+			"res/img1.jpg": imgData,
+		},
+		// Set up NavRoots with a page-list containing 5 entries
+		// so getPageCount returns 5, but we only have 1 image
+		NavRoots: []map[string]interface{}{
+			{
+				"nav_containers": []interface{}{
+					map[string]interface{}{
+						"nav_type": "page_list",
+						"entries":  []interface{}{1, 2, 3, 4, 5},
+					},
+				},
+			},
+		},
+	}
+
+	book := NewKFXImageBook(frags, []string{"img1"})
+	images := book.getOrderedImages(false, false, false)
+
+	// Should still return the 1 image we have
+	if len(images) != 1 {
+		t.Fatalf("expected 1 image, got %d", len(images))
+	}
+	// The warning is logged but we can't easily capture log output in tests;
+	// the key assertion is that getPageCount was checked.
+	// We verify this works without panicking.
+}
+
+func TestGetOrderedImagesV2PageCountWarning(t *testing.T) {
+	imgData := createTestJPEG(t, 100, 200)
+
+	frags := fragmentCatalog{
+		ResourceRawData: map[string]map[string]interface{}{
+			"img1": {
+				"format":         "jpg",
+				"resource_width": 100,
+				"resource_height": 200,
+				"location":       "res/img1.jpg",
+			},
+		},
+		RawFragments: map[string][]byte{
+			"res/img1.jpg": imgData,
+		},
+		NavRoots: []map[string]interface{}{
+			{
+				"nav_containers": []interface{}{
+					map[string]interface{}{
+						"nav_type": "page_list",
+						"entries":  []interface{}{1, 2, 3, 4, 5},
+					},
+				},
+			},
+		},
+	}
+
+	book := NewKFXImageBook(frags, []string{"img1"})
+	images, pids, _ := book.getOrderedImagesV2(false, false, false, nil)
+
+	if len(images) != 1 {
+		t.Fatalf("expected 1 image, got %d", len(images))
+	}
+	if len(pids) != 1 {
+		t.Fatalf("expected 1 pid, got %d", len(pids))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// D2-13: CBZ unknown format returns nil (Python raises Exception)
+// Python: yj_to_image_book.py:325 — raise Exception("Unexpected image format: ...")
+// ---------------------------------------------------------------------------
+
+func TestCombineImagesIntoCBZ_UnknownFormat(t *testing.T) {
+	imgData := createTestJPEG(t, 100, 200)
+
+	images := []ImageResource{
+		{Format: "unknown_format", Location: "img1.bin", RawMedia: imgData, Width: 100, Height: 200},
+	}
+
+	// Python raises Exception for unknown formats; Go returns nil
+	result := combineImagesIntoCBZ(images, nil)
+	if result != nil {
+		t.Error("expected nil for unknown image format")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// D2-14: CBZ metadata too long — Python discards with warning
+// Python: yj_to_image_book.py:338-339
+// ---------------------------------------------------------------------------
+
+func TestCombineImagesIntoCBZ_MetadataTooLong(t *testing.T) {
+	imgData := createTestJPEG(t, 100, 200)
+
+	// Create metadata that exceeds 65535 bytes when serialized
+	bigString := strings.Repeat("x", 70000)
+	metadata := map[string]interface{}{
+		"ComicBookInfo/1.0": map[string]interface{}{
+			"title": bigString,
+		},
+	}
+
+	images := []ImageResource{
+		{Format: "jpg", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
+	}
+
+	// Should still succeed, just without metadata
+	cbzData := combineImagesIntoCBZ(images, metadata)
+	if cbzData == nil {
+		t.Fatal("expected non-nil CBZ data even with oversized metadata")
+	}
+
+	r, err := zip.NewReader(bytes.NewReader(cbzData), int64(len(cbzData)))
+	if err != nil {
+		t.Fatalf("failed to read CBZ: %v", err)
+	}
+
+	// Comment should be empty since metadata was too long
+	if len(r.Comment) > 0 {
+		t.Error("expected empty ZIP comment when metadata is too long")
 	}
 }
 
