@@ -3246,6 +3246,7 @@ type storylineRenderer struct {
 	symFmt              symType
 	conditionEvaluator  conditionEvaluator
 	resolveResource     ResourceResolver
+	storylines          map[string]map[string]interface{}
 }
 
 type conditionEvaluator struct {
@@ -3507,10 +3508,18 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 		}
 	case "table":
 		if table := r.renderTableNode(node, depth); table != nil {
+			if elem, ok := table.(*htmlElement); ok {
+				elem = r.processAnnotations(node, "table", elem)
+				return r.wrapNodeLink(node, elem)
+			}
 			return r.wrapNodeLink(node, table)
 		}
 	case "container":
 		if container := r.renderFittedContainer(node, depth); container != nil {
+			if elem, ok := container.(*htmlElement); ok {
+				elem = r.processAnnotations(node, "container", elem)
+				return r.wrapNodeLink(node, elem)
+			}
 			return r.wrapNodeLink(node, container)
 		}
 	case "kvg":
@@ -3634,6 +3643,11 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 		if positionID, _ := asInt(node["id"]); positionID != 0 {
 			r.applyPositionAnchors(wrapper, positionID, false)
 		}
+		// Port of Python $683 annotation processing for container content type ($270).
+		// Python processes annotations AFTER style events and structural attrs.
+		if contentType := asStringDefault(node["type"]); contentType == "container" {
+			wrapper = r.processAnnotations(node, contentType, wrapper)
+		}
 		return r.wrapNodeLink(node, wrapper)
 	}
 	if styleAttr := r.containerClass(node); styleAttr != "" {
@@ -3643,7 +3657,286 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(container, positionID, false)
 	}
+	// Port of Python $683 annotation processing for container content type ($270).
+	// Python processes annotations AFTER style events and structural attrs.
+	if contentType := asStringDefault(node["type"]); contentType == "container" {
+		container = r.processAnnotations(node, contentType, container)
+	}
 	return r.wrapNodeLink(node, container)
+}
+
+// processAnnotations handles $683 (annotations) processing for container and table content types.
+// Port of Python yj_to_epub_content.py L871-935: annotation processing after content type rendering.
+// Three annotation types are handled:
+//   - $690 (mathml): adds MathML desc inside SVG element (container only)
+//   - $584 (alt_text): sets aria-label on container element
+//   - $749 (alt_content): evaluates condition for table alt content replacement
+//
+// Returns the (possibly modified or replaced) element.
+func (r *storylineRenderer) processAnnotations(node map[string]interface{}, contentType string, element *htmlElement) *htmlElement {
+	if element == nil {
+		return nil
+	}
+	annotations, ok := asSlice(node["annotations"])
+	if !ok || len(annotations) == 0 {
+		return element
+	}
+	delete(node, "annotations")
+
+	for _, raw := range annotations {
+		annotation, ok := asMap(raw)
+		if !ok {
+			continue
+		}
+		annotationType, _ := asString(annotation["annotation_type"])
+		delete(annotation, "annotation_type")
+
+		switch {
+		case annotationType == "mathml" && contentType == "container":
+			element = r.processMathMLAnnotation(node, annotation, element)
+
+		case annotationType == "alt_text" && contentType == "container":
+			r.processAltTextAnnotation(annotation, element)
+
+		case annotationType == "alt_content" && contentType == "table":
+			element = r.processAltContentAnnotation(annotation, element)
+
+		default:
+			fmt.Fprintf(os.Stderr, "kfx: warning: content has unknown %s annotation type: %s\n", contentType, annotationType)
+		}
+
+		// Port of Python check_empty(annotation, "%s annotation" % self.content_context)
+		// Log any remaining keys in the annotation as unexpected.
+		for key := range annotation {
+			if key == "annotation_type" || key == "content" || key == "include" || key == "alt_content" {
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "kfx: warning: annotation has unexpected key %q\n", key)
+		}
+	}
+
+	return element
+}
+
+// processMathMLAnnotation handles $690 (mathml) annotation for container content type.
+// Port of Python yj_to_epub_content.py L875-903.
+// RESTORE_MATHML_FROM_ANNOTATION is False by default (matching Python), so we create
+// an SVG <desc> element with the MathML text instead of replacing the SVG with MathML.
+func (r *storylineRenderer) processMathMLAnnotation(node map[string]interface{}, annotation map[string]interface{}, element *htmlElement) *htmlElement {
+	// annotation.pop("$145") → get content text
+	contentRef, ok := asMap(annotation["content"])
+	if !ok {
+		return element
+	}
+	delete(annotation, "content")
+	annotationText := r.resolveText(contentRef)
+
+	// Find SVG child element: content_elem.find(".//%s" % SVG)
+	svg := findFirstSVGElement(element)
+	if svg != nil {
+		// RESTORE_MATHML_FROM_ANNOTATION is False in Python (line 23).
+		// Python creates an SVG <desc> element with cleaned MathML text.
+		// desc.text = re.sub(" amzn-src-id=\"[0-9]+\"", "", annotation_text)
+		cleanText := reAmznSrcID.ReplaceAllString(annotationText, "")
+
+		desc := &htmlElement{
+			Tag:  "desc",
+			Attrs: map[string]string{"xmlns": "http://www.w3.org/2000/svg"},
+		}
+		// desc is an SVG element with text content
+		desc.Children = []htmlPart{htmlText{Text: cleanText}}
+
+		// svg.insert(0 if svg[0].tag != "title" else 1, desc)
+		insertIdx := 0
+		if len(svg.Children) > 0 {
+			if first, ok := svg.Children[0].(*htmlElement); ok && first.Tag == "title" {
+				insertIdx = 1
+			}
+		}
+		if insertIdx <= len(svg.Children) {
+			svg.Children = append(svg.Children[:insertIdx], append([]htmlPart{desc}, svg.Children[insertIdx:]...)...)
+		} else {
+			svg.Children = append(svg.Children, desc)
+		}
+
+		// Python: if ("$56" in content and self.property_value("$56", copy.deepcopy(content["$56"])) == self.get_style(svg).get("width")):
+		//           content.pop("$56")
+		// $56 → "width". Remove width property if it matches the SVG's width style.
+		// This is an edge case for when the annotation width matches the SVG width.
+		// For now, we skip this width property check since Go doesn't have property_value/get_style
+		// at this point in the pipeline (styles are already rendered as CSS classes).
+		// TODO: Consider implementing width property removal if needed by future books.
+		_ = node
+	} else {
+		// Python: log.error("Missing svg for mathml annotation in: %s" % etree.tostring(content_elem))
+		fmt.Fprintf(os.Stderr, "kfx: error: missing svg for mathml annotation\n")
+	}
+
+	return element
+}
+
+// reAmznSrcID matches " amzn-src-id=\"<digits>\"" for cleaning MathML annotation text.
+// Port of Python: re.sub(" amzn-src-id=\"[0-9]+\"", "", annotation_text)
+var reAmznSrcID = regexp.MustCompile(` amzn-src-id="[0-9]+"`)
+
+// processAltTextAnnotation handles $584 (alt_text) annotation for container content type.
+// Port of Python yj_to_epub_content.py L905-908.
+// Sets aria-label on the container element if the text is non-empty and not the default.
+func (r *storylineRenderer) processAltTextAnnotation(annotation map[string]interface{}, element *htmlElement) {
+	// annotation.pop("$145") → get content text
+	contentRef, ok := asMap(annotation["content"])
+	if !ok {
+		return
+	}
+	delete(annotation, "content")
+	annotationText := r.resolveText(contentRef)
+
+	// Python: if annotation_text and annotation_text != "no accessible name found.":
+	if annotationText != "" && annotationText != "no accessible name found." {
+		if element.Attrs == nil {
+			element.Attrs = map[string]string{}
+		}
+		element.Attrs["aria-label"] = annotationText
+	}
+}
+
+// processAltContentAnnotation handles $749 (alt_content) annotation for table content type.
+// Port of Python yj_to_epub_content.py L910-935.
+// Evaluates a condition to determine if alternative table content should be used.
+// When condition is true, the table is replaced with the alt content.
+// When condition is false, the alt content is processed (side effects only, save_resources=False).
+func (r *storylineRenderer) processAltContentAnnotation(annotation map[string]interface{}, element *htmlElement) *htmlElement {
+	// Python: alt_content_story = self.get_named_fragment(annotation, ftype="$259", name_symbol="$749")
+	// get_named_fragment pops annotation["alt_content"] (the storyline name) and looks up in storylines.
+	altContentName, _ := asString(annotation["alt_content"])
+	delete(annotation, "alt_content")
+
+	if altContentName == "" || r.storylines == nil {
+		return element
+	}
+	altContentStory, ok := r.storylines[altContentName]
+	if !ok {
+		fmt.Fprintf(os.Stderr, "kfx: warning: alt_content annotation references missing storyline %q\n", altContentName)
+		return element
+	}
+
+	// condition = annotation.pop("$592")
+	// $592 → "include"
+	condition := annotation["include"]
+	delete(annotation, "include")
+
+	// Python validates the condition against two expected forms:
+	//   ["and", ["not", ["yj.supports", "yj.large_tables"]], ["yj.layout_type", "yj.in_page"]]
+	//   ["and", ["not", ["yj.supports", "yj.large_tables"]], ["yj.layout_type", "yj.table_viewer"]]
+	if condition != nil && !isValidAltContentCondition(condition) {
+		fmt.Fprintf(os.Stderr, "kfx: warning: alt_content contains unexpected include condition: %v\n", condition)
+	}
+
+	if r.conditionEvaluator.evaluateBinary(condition) {
+		// Condition is true: process alt content and replace the table element
+		// Python: alt_content_elem = etree.Element("div")
+		//         self.process_story(alt_content_story, alt_content_elem, book_part, writing_mode)
+		//         content_elem = alt_content_elem[0]
+		altElem := &htmlElement{Tag: "div", Attrs: map[string]string{}}
+		r.renderStoryIntoElement(altContentStory, altElem)
+		if len(altElem.Children) > 0 {
+			if first, ok := altElem.Children[0].(*htmlElement); ok {
+				fmt.Fprintf(os.Stderr, "kfx: warning: table alt_content was included\n")
+				return first
+			}
+		}
+		fmt.Fprintf(os.Stderr, "kfx: warning: table alt_content was included but produced no content\n")
+		return element
+	}
+
+	// Condition is false: process story with save_resources=False (side effects only)
+	// Python: orig_save_resources = self.save_resources
+	//         self.save_resources = False
+	//         self.process_story(alt_content_story, etree.Element("div"), book_part, writing_mode)
+	//         self.save_resources = orig_save_resources
+	// In Go, resource saving is handled differently (resources are collected during rendering).
+	// We process the story into a throwaway element to trigger any side effects.
+	discard := &htmlElement{Tag: "div", Attrs: map[string]string{}}
+	r.renderStoryIntoElement(altContentStory, discard)
+
+	return element
+}
+
+// isValidAltContentCondition checks if the condition matches one of the two expected forms
+// for $749 alt_content annotations. Port of Python's condition validation (L916-925).
+func isValidAltContentCondition(condition interface{}) bool {
+	cond, ok := condition.([]interface{})
+	if !ok || len(cond) != 3 {
+		return false
+	}
+	// First element must be "and"
+	if op, _ := asString(cond[0]); op != "and" {
+		return false
+	}
+	// Second element must be ["not", ["yj.supports", "yj.large_tables"]]
+	notArgs, ok := cond[1].([]interface{})
+	if !ok || len(notArgs) != 2 {
+		return false
+	}
+	if op, _ := asString(notArgs[0]); op != "not" {
+		return false
+	}
+	supportsArgs, ok := notArgs[1].([]interface{})
+	if !ok || len(supportsArgs) != 2 {
+		return false
+	}
+	if op, _ := asString(supportsArgs[0]); op != "yj.supports" {
+		return false
+	}
+	if feat, _ := asString(supportsArgs[1]); feat != "yj.large_tables" {
+		return false
+	}
+	// Third element must be ["yj.layout_type", "yj.in_page"] or ["yj.layout_type", "yj.table_viewer"]
+	layoutArgs, ok := cond[2].([]interface{})
+	if !ok || len(layoutArgs) != 2 {
+		return false
+	}
+	if op, _ := asString(layoutArgs[0]); op != "yj.layout_type" {
+		return false
+	}
+	feature, _ := asString(layoutArgs[1])
+	return feature == "yj.in_page" || feature == "yj.table_viewer"
+}
+
+// renderStoryIntoElement renders a storyline's content_list into a parent element.
+// Equivalent to Python's process_story which pops story_name, processes position,
+// then calls process_content_list.
+func (r *storylineRenderer) renderStoryIntoElement(storyline map[string]interface{}, parent *htmlElement) {
+	// Python: story.pop("$176") → pop story_name
+	delete(storyline, "story_name")
+
+	// Python: self.process_content_list(story.pop("$146", []), parent, ...)
+	contentList, _ := asSlice(storyline["content_list"])
+	for _, child := range contentList {
+		rendered := r.renderContentChild(child, 0)
+		if rendered != nil {
+			parent.Children = append(parent.Children, rendered)
+		}
+	}
+}
+
+// findFirstSVGElement finds the first <svg> element in the HTML tree.
+// Port of Python: content_elem.find(".//%s" % SVG) where SVG is the namespaced svg tag.
+func findFirstSVGElement(element *htmlElement) *htmlElement {
+	if element == nil {
+		return nil
+	}
+	if element.Tag == "svg" {
+		return element
+	}
+	for _, child := range element.Children {
+		if childElem, ok := child.(*htmlElement); ok {
+			if found := findFirstSVGElement(childElem); found != nil {
+				return found
+			}
+		}
+	}
+	return nil
 }
 
 func singleImageWrapperChild(container *htmlElement) *htmlElement {

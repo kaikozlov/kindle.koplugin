@@ -179,6 +179,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 			fixedLayout:       book.FixedLayout,
 			illustratedLayout: book.IllustratedLayout,
 		},
+		storylines: storylines,
 	}
 	// Create resource resolver matching Python's self.process_external_resource
 	// (yj_to_epub_properties.py:1272-1273). Resolves $479/$528 symbol values
