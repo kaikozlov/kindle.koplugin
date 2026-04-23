@@ -12,9 +12,60 @@ Usage:
 import argparse
 import difflib
 import json
+import os
 import re
 import sys
 from collections import Counter
+
+
+def load_symbol_name_map():
+    """Load $N → real name mapping from the YJ symbol catalog golden.
+
+    The ION shared symbol table assigns SIDs sequentially starting from $10
+    (after 9 ION system symbols). Each symbol in catalog.ion at index i
+    maps to $(10 + i). Go uses real names; Python uses $N placeholders.
+
+    This translation eliminates false-positive diffs when comparing Python
+    traces (which use $N keys like "$258") against Go traces (which use
+    real names like "book_metadata").
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(script_dir)
+    golden_path = os.path.join(
+        repo_root, "internal", "kfx", "testdata", "yj_symbols_golden.json"
+    )
+    if not os.path.isfile(golden_path):
+        return {}
+    with open(golden_path) as f:
+        data = json.load(f)
+    symbols = data.get("symbols", [])
+    # ION system symbols are $1-$9, shared symbol table starts at $10
+    name_map = {}
+    for i, name in enumerate(symbols):
+        name_map[f"${10 + i}"] = name
+    return name_map
+
+
+def translate_keys(obj, name_map):
+    """Recursively translate $N keys in a dict to real names using the symbol catalog."""
+    if isinstance(obj, dict):
+        result = {}
+        for key, value in obj.items():
+            translated_key = name_map.get(key, key)
+            result[translated_key] = translate_keys(value, name_map)
+        return result
+    elif isinstance(obj, list):
+        return [translate_keys(item, name_map) for item in obj]
+    else:
+        return obj
+
+
+def translate_trace(trace):
+    """Translate all $N keys in a trace to real names."""
+    name_map = load_symbol_name_map()
+    if not name_map:
+        return trace
+    return translate_keys(trace, name_map)
 
 
 class ComparisonResult:
@@ -498,6 +549,9 @@ def main():
 
     py_trace = load_trace(args.python_trace)
     go_trace = load_trace(args.go_trace)
+
+    # Translate $N keys in Python trace to real names for Go compatibility
+    py_trace = translate_trace(py_trace)
 
     result = compare_traces(py_trace, go_trace, verbose=args.verbose)
 

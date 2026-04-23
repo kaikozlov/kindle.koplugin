@@ -25,6 +25,44 @@ def configure_paths():
     sys.path.insert(0, os.path.join(ref_root, "kfxlib", "calibre-plugin-modules"))
 
 
+def load_symbol_name_map():
+    """Load $N → real name mapping from the YJ symbol catalog golden.
+
+    The ION shared symbol table assigns SIDs sequentially starting from $10
+    (after 9 ION system symbols). Each symbol in catalog.ion at index i
+    maps to $(10 + i). Go uses real names; Python uses $N placeholders.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(script_dir)
+    golden_path = os.path.join(
+        repo_root, "internal", "kfx", "testdata", "yj_symbols_golden.json"
+    )
+    if not os.path.isfile(golden_path):
+        return {}
+    with open(golden_path) as f:
+        data = json.load(f)
+    symbols = data.get("symbols", [])
+    # ION system symbols are $1-$9, shared symbol table starts at $10
+    name_map = {}
+    for i, name in enumerate(symbols):
+        name_map[f"${10 + i}"] = name
+    return name_map
+
+
+# Module-level lazy-loaded translation map
+_SYMBOL_NAME_MAP = None
+
+
+def translate_symbol_name(key, name_map=None):
+    """Translate $N symbol key to real name if a mapping exists."""
+    global _SYMBOL_NAME_MAP
+    if name_map is None:
+        if _SYMBOL_NAME_MAP is None:
+            _SYMBOL_NAME_MAP = load_symbol_name_map()
+        name_map = _SYMBOL_NAME_MAP
+    return name_map.get(key, key)
+
+
 def safe_serialize(obj, max_str=10000, max_depth=6, _depth=0):
     """Convert Python objects to JSON-serializable form, with depth/size limits."""
     if _depth > max_depth:
@@ -76,22 +114,25 @@ def safe_serialize(obj, max_str=10000, max_depth=6, _depth=0):
 
 def serialize_fragment_summary(book_data):
     """Serialize organize_fragments_by_type output."""
-    singleton_types = {"$258", "$490", "$538", "$585"}
+    # These are the real names for the singleton types (translated from $N)
+    singleton_types = {"book_metadata", "content_features", "document_data", "metadata"}
     result = {"fragment_types": {}}
 
     for ftype, value in sorted(book_data.items()):
+        # Translate $N keys to real names for Go compatibility
+        real_type = translate_symbol_name(str(ftype))
         type_info = {}
         if isinstance(value, dict):
             keys = list(value.keys())
-            type_info["count"] = 1 if ftype in singleton_types else len(keys)
-            if ftype not in singleton_types:
+            type_info["count"] = 1 if real_type in singleton_types else len(keys)
+            if real_type not in singleton_types:
                 type_info["ids"] = sorted(str(k) for k in keys)
         elif isinstance(value, list):
             type_info["count"] = len(value)
         else:
             type_info["count"] = 1
 
-        result["fragment_types"][str(ftype)] = type_info
+        result["fragment_types"][real_type] = type_info
 
     return result
 

@@ -3,7 +3,8 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 plugin_dir="$(cd "$script_dir/.." && pwd)"
-repo_root="$(cd "$plugin_dir/.." && pwd)"
+# The plugin directory IS the repo root (kindle.koplugin is the top-level project)
+repo_root="$plugin_dir"
 
 default_input="$repo_root/REFERENCE/kfx_examples/Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx"
 default_reference="$repo_root/REFERENCE/martyr_calibre.epub"
@@ -99,7 +100,7 @@ echo "Converted: $input_path"
 echo "Reference: $reference_epub"
 echo "Temp dir:  $tmpdir"
 
-python - <<'PY' "$tmpdir" "$show_text_diffs" "$ignore_modified"
+python3 - <<'PY' "$tmpdir" "$show_text_diffs" "$ignore_modified"
 from pathlib import Path
 import difflib
 import hashlib
