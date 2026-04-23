@@ -149,7 +149,7 @@ User opens book in KOReader
 │   └── main_test.go
 │
 ├── internal/
-│   ├── kfx/                   ← Core KFX→EPUB conversion engine (~40 files)
+│   ├── kfx/                   ← Core KFX→EPUB conversion engine (1:1 Python↔Go file map)
 │   ├── epub/                  ← EPUB packaging
 │   ├── jxr/                   ← JPEG XR decoding
 │   ├── jsonout/               ← JSON output types for CLI responses
@@ -172,7 +172,7 @@ User opens book in KOReader
 │       ├── pattern_utils.lua  ← Lua pattern magic char escaping
 │       └── session_flags.lua  ← Session-persistent flag files in /tmp
 │
-├── spec/                      ← Busted test suite (126 specs)
+├── spec/                      ← Busted test suite (264 specs)
 ├── patches/                   ← KOReader startup patches
 │   └── 2-kindle-virtual-library-startup.lua ← ffi/util.realpath virtual path support
 │
@@ -280,7 +280,7 @@ automatically when the user opens a book. No manual intervention needed.
 | `internal/kfx/drm.go` | `DecryptDRMION()`, `ExtractPageKey()`, `ParseVoucherIon()`, `LoadDRMKeys()`, `FindPageKey()` |
 | `internal/kfx/drmion.go` | DRMION page decryption (ION binary → encrypted sections → decrypt → concatenate to CONT KFX) |
 | `cmd/kindle-helper/main.go` | Add `drm-init` subcommand (targeted and batch modes) |
-| `internal/kfx/kfx.go` | Modify `ConvertFile` to handle DRMION with stale-key detection |
+| `internal/kfx/yj_to_epub.go` | Modify `ConvertFile` to handle DRMION with stale-key detection |
 
 ### Planned Lua Code for DRM
 
