@@ -227,10 +227,18 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	resolvedAnchorURI := resolveRenderedAnchorURIs(book.RenderedSections, &renderer)
 	fixupAnchorsAndHrefs(book.RenderedSections, resolvedAnchorURI)
 	fixupIllustratedLayoutAnchors(book, book.RenderedSections)
+	// Propagate hasConditionalContent from renderer to book before
+	// calling createConditionalPageTemplates (Python: self.has_conditional_content
+	// is set during content rendering and checked in create_conditional_page_templates).
+	book.HasConditionalContent = renderer.hasConditionalContent
 	updateDefaultFontAndLanguage(book)
 	resolvedDefaultFont := fontFixer.resolvedDefaultFontFamily()
 	fontFamilyAddedByDefaults := setHTMLDefaults(book, resolvedDefaultFont)
 	fixupStylesAndClasses(book, renderer.styles, fontFamilyAddedByDefaults, resolvedDefaultFont)
+	// Port of Python: self.create_conditional_page_templates() called after simplify_styles
+	// and add_composite_and_equivalent_styles (yj_to_epub_properties.py L1408).
+	// Processes conditional page template divs in rendered sections.
+	createConditionalPageTemplates(book, book.RenderedSections)
 	createCSSFiles(book, renderer.styles)
 	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
 

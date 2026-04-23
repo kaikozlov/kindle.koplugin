@@ -49,6 +49,7 @@ type decodedBook struct {
 	PageProgressionDirection string
 	FixedLayout              bool
 	IllustratedLayout        bool
+	HasConditionalContent    bool // set during content rendering when conditional page templates are found
 	OverrideKindleFonts      bool
 	CoverImageID             string
 	CoverImageHref           string

@@ -234,7 +234,7 @@ func TestRewriteAmznConditionBasenameNoExtension(t *testing.T) {
 // =============================================================================
 
 func TestCreateConditionalPageTemplatesSkipsWhenNoConditionalContent(t *testing.T) {
-	book := &decodedBook{IllustratedLayout: true}
+	book := &decodedBook{IllustratedLayout: true, HasConditionalContent: false}
 	sections := []renderedSection{
 		{
 			Filename: "test.xhtml",
@@ -248,11 +248,8 @@ func TestCreateConditionalPageTemplatesSkipsWhenNoConditionalContent(t *testing.
 			},
 		},
 	}
-	// When hasConditionalContent is false, the function should return early
-	result := createConditionalPageTemplates(book, sections, false)
-	if len(result) != 0 {
-		t.Errorf("expected 0 CSS files when hasConditionalContent=false, got %d", len(result))
-	}
+	// When HasConditionalContent is false, the function should return early
+	createConditionalPageTemplates(book, sections)
 }
 
 // =============================================================================
@@ -289,17 +286,19 @@ func TestCreateConditionalPageTemplatesBasicTemplate(t *testing.T) {
 		Children: []htmlPart{templateDiv, targetDiv},
 	}
 
-	book := &decodedBook{IllustratedLayout: true}
+	book := &decodedBook{IllustratedLayout: true, HasConditionalContent: true}
 	sections := []renderedSection{
 		{Filename: "test.xhtml", Root: body},
 	}
 
-	// hasConditionalContent=true should process the templates
-	result := createConditionalPageTemplates(book, sections, true)
-	// EMIT_PAGE_TEMPLATES=false: non-float img is removed, no CSS generated
-	// The template should have been processed (img removed)
-	if len(result) != 0 {
-		t.Errorf("EMIT_PAGE_TEMPLATES=false with removed img: expected 0 CSS files, got %d", len(result))
+	// HasConditionalContent=true should process the templates
+	createConditionalPageTemplates(book, sections)
+	// EMIT_PAGE_TEMPLATES=false: non-float img is removed from template
+	// The template div should have been removed from body and inserted into target
+	// Verify the img child was removed (template had 1 img child, now empty)
+	// After processing, templateDiv.Children should be empty since the img was removed
+	if len(templateDiv.Children) != 0 {
+		t.Errorf("expected template to have no children after img removal, got %d", len(templateDiv.Children))
 	}
 }
 
@@ -333,16 +332,12 @@ func TestCreateConditionalPageTemplatesFloatShapeNotRemoved(t *testing.T) {
 		Children: []htmlPart{templateDiv, targetDiv},
 	}
 
-	book := &decodedBook{IllustratedLayout: true}
+	book := &decodedBook{IllustratedLayout: true, HasConditionalContent: true}
 	sections := []renderedSection{
 		{Filename: "test.xhtml", Root: body},
 	}
 
-	result := createConditionalPageTemplates(book, sections, true)
-	if len(result) != 0 {
-		// Inline mode: no CSS files generated
-		t.Errorf("expected 0 CSS files in inline mode, got %d", len(result))
-	}
+	createConditionalPageTemplates(book, sections)
 	// The img should still exist (it has shape-outside)
 	if len(templateDiv.Children) == 0 {
 		t.Error("float shape img should not have been removed")
@@ -376,12 +371,12 @@ func TestCreateConditionalPageTemplatesDivElementRemoved(t *testing.T) {
 		Children: []htmlPart{templateDiv, targetDiv},
 	}
 
-	book := &decodedBook{IllustratedLayout: true}
+	book := &decodedBook{IllustratedLayout: true, HasConditionalContent: true}
 	sections := []renderedSection{
 		{Filename: "test.xhtml", Root: body},
 	}
 
-	createConditionalPageTemplates(book, sections, true)
+	createConditionalPageTemplates(book, sections)
 	// In inline mode, div with background-color is removed
 	if len(templateDiv.Children) != 0 {
 		t.Error("div child without shape-outside should have been removed")
@@ -420,12 +415,12 @@ func TestCreateConditionalPageTemplatesPageAlignNoneDivMoved(t *testing.T) {
 		Children: []htmlPart{templateDiv, targetDiv},
 	}
 
-	book := &decodedBook{IllustratedLayout: true}
+	book := &decodedBook{IllustratedLayout: true, HasConditionalContent: true}
 	sections := []renderedSection{
 		{Filename: "test.xhtml", Root: body},
 	}
 
-	createConditionalPageTemplates(book, sections, true)
+	createConditionalPageTemplates(book, sections)
 	// The story div should be removed from template and its id added to body start
 	// Body should have an id-only div at the start
 	if len(body.Children) < 1 {

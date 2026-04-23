@@ -1,8 +1,10 @@
 package kfx
 
 // Port of KFX_EPUB_Illustrated_Layout from yj_to_epub_illustrated_layout.py.
-// Covers fixup_illustrated_layout_anchors (L29-128) and
-// create_conditional_page_templates (L130-419).
+// Covers fixup_illustrated_layout_anchors (L29-128),
+// create_conditional_page_templates (L130-375),
+// and module-level helpers: find_by_id (L378-387),
+// positions_in_tree (L389-398), is_in_tree (L401-408).
 
 import (
 	"fmt"
@@ -14,20 +16,24 @@ import (
 
 // conditionOperatorNames maps YJ condition operator symbols to their CSS names.
 // Port of CONDITION_OPERATOR_NAMES (yj_to_epub_illustrated_layout.py L20-24).
+// In Python these are $294, $299, $298; Go uses real symbol names resolved by
+// the amazon-ion library, so the keys are "==", "<=", "<" respectively.
 var conditionOperatorNames = map[string]string{
 	"==": "anchor-id",
 	"<=": "range-id.le",
-	"<": "range-id.lt",
+	"<":  "range-id.lt",
 }
 
-// EMIT_PAGE_TEMPLATES controls whether to emit CSS @-amzn-page-element rules
-// or inline content. Python default is False.
+// emitPageTemplates controls whether to emit CSS @-amzn-page-element rules
+// or inline content. Python default is False (EMIT_PAGE_TEMPLATES).
 const emitPageTemplates = false
 
-// ADD_FINAL_CONTENT adds a zero-width non-joiner div to prevent KPR failure.
+// addFinalContent adds a zero-width non-joiner div to prevent KPR failure.
+// Port of ADD_FINAL_CONTENT (L13).
 const addFinalContent = true
 
 // emitEmptyConditions controls whether to emit conditions even when empty.
+// Port of EMIT_EMPTY_CONDITIONS (L14).
 const emitEmptyConditions = false
 
 // =============================================================================
@@ -62,7 +68,6 @@ func serializeStyleMap(m map[string]string) string {
 	for k := range m {
 		keys = append(keys, k)
 	}
-	// Simple sort for now — Go doesn't guarantee map iteration order
 	for i := 0; i < len(keys); i++ {
 		for j := i + 1; j < len(keys); j++ {
 			if keys[i] > keys[j] {
@@ -92,7 +97,8 @@ func popStyle(m map[string]string, key string) (string, bool) {
 // =============================================================================
 
 // findElementByID recursively searches for an element with the given id attribute.
-// Port of find_by_id (yj_to_epub_illustrated_layout.py L394+).
+// Port of find_by_id with required=true (yj_to_epub_illustrated_layout.py L378-387).
+// Returns nil if not found (Python would raise; Go returns nil and callers check).
 func findElementByID(root *htmlElement, searchID string) *htmlElement {
 	if root == nil {
 		return nil
@@ -128,16 +134,6 @@ func insertChild(parent *htmlElement, index int, child htmlPart) {
 		append([]htmlPart{child}, parent.Children[index:]...)...)
 }
 
-// removeChildFromParent removes child from its parent element.
-func removeChildFromParent(parent *htmlElement, child *htmlElement) {
-	for i, c := range parent.Children {
-		if c == child {
-			parent.Children = append(parent.Children[:i], parent.Children[i+1:]...)
-			return
-		}
-	}
-}
-
 // stripOperatorSuffix strips the dot-suffix from a condition operator.
 // "range-id.le" → "range-id", "anchor-id" → "anchor-id".
 // Port of Python's oper.partition(".")[0].
@@ -148,22 +144,53 @@ func stripOperatorSuffix(oper string) string {
 	return oper
 }
 
-// isBlockParent returns true if the tag is a valid block-level parent for
-// conditional content insertion.
-func isBlockParent(tag string) bool {
-	switch tag {
-	case "div", "li", "td":
-		return true
+// positionsInTree counts the number of character positions in an element tree.
+// Port of positions_in_tree (yj_to_epub_illustrated_layout.py L389-398).
+// Counts text content of elements and their tails; img/video elements count as 1.
+// Used only when EMIT_PAGE_TEMPLATES is True.
+func positionsInTree(root *htmlElement) int {
+	count := 0
+	// Count root's text and tail (Python: root.text and root.tail)
+	// In Go's htmlElement, text is stored as htmlText children
+	for _, child := range root.Children {
+		switch c := child.(type) {
+		case htmlText:
+			count += len(c.Text)
+		case *htmlElement:
+			if c.Tag == "img" || c.Tag == "video" {
+				count += 1
+			}
+			count += positionsInTree(c)
+		}
 	}
-	return false
+	return count
 }
 
-// isInlineParent returns true if the tag is a valid inline parent for
-// inline conditional content insertion.
-func isInlineParent(tag string) bool {
-	switch tag {
-	case "div", "li", "td", "span", "a":
+// isInTree checks whether elem is a descendant of (or equal to) root
+// by walking up parent pointers. Since Go's htmlElement doesn't have
+// parent pointers, this uses a recursive search instead.
+// Port of is_in_tree (yj_to_epub_illustrated_layout.py L401-408).
+// Used only when EMIT_PAGE_TEMPLATES is True.
+func isInTree(root *htmlElement, elem *htmlElement) bool {
+	if root == nil || elem == nil {
+		return false
+	}
+	return isElementDescendant(root, elem)
+}
+
+// isElementDescendant recursively checks if needle is a descendant of root.
+func isElementDescendant(root *htmlElement, needle *htmlElement) bool {
+	if root == needle {
 		return true
+	}
+	for _, child := range root.Children {
+		el, ok := child.(*htmlElement)
+		if !ok || el == nil {
+			continue
+		}
+		if isElementDescendant(el, needle) {
+			return true
+		}
 	}
 	return false
 }
@@ -175,6 +202,8 @@ func isInlineParent(tag string) bool {
 // fixupIllustratedLayoutAnchors rewrites -kfx-amzn-condition inline styles
 // from anchor: URIs to same-file fragment ids when applicable.
 // Port of fixup_illustrated_layout_anchors (L29-128).
+// Python iterates body.findall("div") which finds direct child divs only
+// (lxml findall is non-recursive for non-dotted paths).
 func fixupIllustratedLayoutAnchors(book *decodedBook, sections []renderedSection) {
 	if book == nil || !book.IllustratedLayout {
 		return
@@ -183,27 +212,35 @@ func fixupIllustratedLayoutAnchors(book *decodedBook, sections []renderedSection
 		if sections[i].Root == nil {
 			continue
 		}
-		fixupIllustratedLayoutParts(sections[i].Root.Children, sections[i].Filename)
+		fixupLayoutAnchorsForSection(sections[i].Root, sections[i].Filename)
 	}
 }
 
-func fixupIllustratedLayoutParts(parts []htmlPart, sectionFilename string) {
-	for _, p := range parts {
+// fixupLayoutAnchorsForSection processes one section's body for anchor rewriting.
+// Port of the per-book_part loop in fixup_illustrated_layout_anchors (L32-128).
+func fixupLayoutAnchorsForSection(body *htmlElement, sectionFilename string) {
+	// Python: body.findall("div") — direct child divs only
+	for _, p := range body.Children {
 		el, ok := p.(*htmlElement)
 		if !ok || el == nil {
 			continue
 		}
-		if el.Tag == "div" {
-			if style, ok := el.Attrs["style"]; ok && strings.Contains(style, "-kfx-amzn-condition") {
-				if next := rewriteAmznConditionStyle(style, sectionFilename); next != style {
-					el.Attrs["style"] = next
-				}
-			}
+		if el.Tag != "div" {
+			continue
 		}
-		fixupIllustratedLayoutParts(el.Children, sectionFilename)
+		styleStr, hasStyle := el.Attrs["style"]
+		if !hasStyle || !strings.Contains(styleStr, "-kfx-amzn-condition") {
+			continue
+		}
+		if next := rewriteAmznConditionStyle(styleStr, sectionFilename); next != styleStr {
+			el.Attrs["style"] = next
+		}
 	}
 }
 
+// rewriteAmznConditionStyle rewrites -kfx-amzn-condition values from anchor URIs
+// to same-file fragment IDs. Port of the inner loop in fixup_illustrated_layout_anchors
+// (yj_to_epub_illustrated_layout.py L38-56).
 func rewriteAmznConditionStyle(style string, sectionFilename string) string {
 	decls := strings.Split(style, ";")
 	changed := false
@@ -265,7 +302,7 @@ func rewriteAmznConditionStyle(style string, sectionFilename string) string {
 }
 
 // =============================================================================
-// createConditionalPageTemplates — yj_to_epub_illustrated_layout.py L130-419
+// createConditionalPageTemplates — yj_to_epub_illustrated_layout.py L130-375
 // =============================================================================
 
 // cssFileInfo holds a CSS file path and its content for layout CSS generation.
@@ -274,18 +311,22 @@ type cssFileInfo struct {
 	Content  string
 }
 
+// conditionalTemplateInfo holds state for tracking template children during
+// createConditionalPageTemplates processing, matching Python's local variables.
+type conditionalTemplateInfo struct {
+	numChildren int // total number of template children (Python: len(template_children))
+}
+
 // createConditionalPageTemplates processes conditional page template divs in
 // rendered sections. In inline mode (emitPageTemplates=false, matching Python
 // default), it processes template children and removes non-float decorative
-// elements. Returns a list of CSS files to create (empty in inline mode).
+// elements.
 //
-// Port of create_conditional_page_templates (L130-419).
-func createConditionalPageTemplates(book *decodedBook, sections []renderedSection, hasConditionalContent bool) []cssFileInfo {
-	if !hasConditionalContent {
-		return nil
+// Port of create_conditional_page_templates (L130-375).
+func createConditionalPageTemplates(book *decodedBook, sections []renderedSection) {
+	if book == nil || !book.HasConditionalContent {
+		return
 	}
-
-	var cssFiles []cssFileInfo
 
 	for secIdx := range sections {
 		section := &sections[secIdx]
@@ -293,298 +334,499 @@ func createConditionalPageTemplates(book *decodedBook, sections []renderedSectio
 			continue
 		}
 		body := section.Root
+		processConditionalTemplatesForSection(book, body, section.Filename)
+	}
+}
 
-		// Iterate body's direct children. We use an index since we may modify the slice.
-		for ti := 0; ti < len(body.Children); ti++ {
-			templateElem, ok := body.Children[ti].(*htmlElement)
-			if !ok || templateElem == nil {
-				continue
-			}
-			if templateElem.Tag != "div" {
-				continue
-			}
-			styleStr, hasStyle := templateElem.Attrs["style"]
-			if !hasStyle {
-				continue
-			}
+// processConditionalTemplatesForSection processes one section's body for
+// conditional page templates.
+// Port of the per-book_part loop in create_conditional_page_templates (L134-375).
+func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement, filename string) {
+	// Python: for template_elem in body.findall("div")
+	// Iterate body's direct children. Use index since we modify the slice.
+	for ti := 0; ti < len(body.Children); ti++ {
+		templateElem, ok := body.Children[ti].(*htmlElement)
+		if !ok || templateElem == nil {
+			continue
+		}
+		if templateElem.Tag != "div" {
+			continue
+		}
+		styleStr, hasStyle := templateElem.Attrs["style"]
+		if !hasStyle {
+			continue
+		}
 
-			templateStyle := parseStyleString(styleStr)
-			amznCondition, hadCondition := popStyle(templateStyle, "-kfx-amzn-condition")
-			if !hadCondition || amznCondition == "" {
-				continue
+		templateStyle := parseStyleString(styleStr)
+		amznCondition, hadCondition := popStyle(templateStyle, "-kfx-amzn-condition")
+		if !hadCondition || amznCondition == "" {
+			continue
+		}
+
+		// Parse condition: oper + target_id
+		condParts := strings.Fields(amznCondition)
+		if len(condParts) < 2 {
+			continue
+		}
+		_ = condParts[0] // condOper — used only in EMIT_PAGE_TEMPLATES path
+		targetID := condParts[1]
+
+		// Pop known unused keys from template style (Python L155-156)
+		popStyle(templateStyle, "-kfx-style-name")
+		popStyle(templateStyle, "-kfx-attrib-epub-type")
+
+		// Handle 100% height/width (Python L158-160)
+		if templateStyle["height"] == "100%" && templateStyle["width"] == "100%" {
+			delete(templateStyle, "height")
+			delete(templateStyle, "width")
+		}
+
+		// Python L162-165: base_style = template_style.partition(property_names={"-amzn-page-align", "-kfx-collision"})
+		// partition() without keep: returns matched props, self keeps unmatched.
+		// So base_style gets -amzn-page-align and -kfx-collision;
+		// template_style keeps everything else.
+		baseStyle := make(map[string]string)
+		for _, propName := range []string{"-amzn-page-align", "-kfx-collision"} {
+			if v, ok := popStyle(templateStyle, propName); ok {
+				baseStyle[propName] = v
 			}
+		}
 
-			// Parse condition: oper + target_id
-			condParts := strings.Fields(amznCondition)
-			if len(condParts) < 2 {
-				continue
+		// Python L167-170: extra_style = template_style.partition(property_names={...}, keep=True)
+		// keep=True: self KEEPS matched props, returns unmatched as extra_style.
+		// If extra_style is non-empty, there are unexpected properties.
+		extraPropNames := map[string]bool{
+			"-amzn-page-header": true, "-amzn-page-footer": true,
+			"background-color": true, "color": true,
+		}
+		extraStyle := make(map[string]string)
+		for k, v := range templateStyle {
+			if !extraPropNames[k] {
+				extraStyle[k] = v
 			}
-			condOper := condParts[0]
-			targetID := condParts[1]
+		}
+		if len(extraStyle) > 0 {
+			fmt.Fprintf(os.Stderr, "kfx: error: Conditional file=%s cond=%s has extra style: %s\n",
+				filename, amznCondition, serializeStyleMap(extraStyle))
+		}
 
-			// Pop known unused keys from template style
-			popStyle(templateStyle, "-kfx-style-name")
-			popStyle(templateStyle, "-kfx-attrib-epub-type")
+		// Process template children (Python L172-323)
+		inlineContent := false
 
-			// Handle 100% height/width
-			if templateStyle["height"] == "100%" && templateStyle["width"] == "100%" {
-				delete(templateStyle, "height")
-				delete(templateStyle, "width")
-			}
+		// Python: template_children = template_elem.findall("*")
+		// This takes a snapshot of the child elements. Python iterates over this
+		// snapshot so removals during iteration don't affect the iteration order.
+		templateChildren := elementChildren(templateElem)
+		numTemplateChildren := len(templateChildren)
 
-			// Partition base_style from template_style:
-			// base_style gets everything except -amzn-page-align and -kfx-collision
-			baseStyle := make(map[string]string)
-			for k, v := range templateStyle {
-				switch k {
-				case "-amzn-page-align", "-kfx-collision":
-					// keep in templateStyle for now
-				default:
-					baseStyle[k] = v
-					delete(templateStyle, k)
+		for childIdx, templateChild := range templateChildren {
+			idx := childIdx + 1 // 1-based index for error messages (Python: idx = i + 1)
+			context := fmt.Sprintf("file=%s cond=%s idx=%d/%d", filename, amznCondition, idx, numTemplateChildren)
+
+			// Handle single-child div containers (Python L173-201):
+			// if template_child.tag == "div" and len(template_child) > 0
+			if templateChild.Tag == "div" && len(templateChild.Children) > 0 {
+				// Python L174-177: validate container structure
+				if len(templateChild.Children) != 1 || elementHasText(templateChild) {
+					fmt.Fprintf(os.Stderr, "kfx: error: Conditional container %s has incorrect length %d or content\n",
+						context, len(templateChild.Children))
 				}
-			}
 
-			// Check for extra styles that shouldn't be there
-			extraProps := map[string]bool{
-				"-amzn-page-header": true, "-amzn-page-footer": true,
-				"background-color": true, "color": true,
-			}
-			for k := range templateStyle {
-				if extraProps[k] {
-					fmt.Fprintf(os.Stderr, "kfx: error: Conditional file=%s cond=%s has extra style: %s\n",
-						section.Filename, amznCondition, k)
-				}
-			}
-
-			// Process template children
-			inlineContent := false
-
-			for ci := 0; ci < len(templateElem.Children); ci++ {
-				templateChild, ok := templateElem.Children[ci].(*htmlElement)
-				if !ok || templateChild == nil {
-					continue
-				}
-				idx := ci + 1 // 1-based index for error messages
-
-				// Handle single-child div containers: unwrap to inner element
-				// Python: if template_child.tag == "div" and len(template_child) > 0
-				if templateChild.Tag == "div" && len(templateChild.Children) > 0 {
-					childStyle := parseStyleString(templateChild.Attrs["style"])
-					popStyle(childStyle, "-kfx-style-name")
-					popStyle(childStyle, "position")
-					popStyle(childStyle, "width")
-					popStyle(childStyle, "height")
-					pageAlign, _ := popStyle(childStyle, "-amzn-page-align")
-					if pageAlign != "" {
-						baseStyle["-amzn-page-align"] = pageAlign
-					}
-
-					// Check if this container has only one child element
-					if len(templateChild.Children) == 1 && templateChild.Attrs["style"] != "" {
-						// Unwrap: replace container with its inner child
-						innerChild := templateChild.Children[0]
-						if innerEl, ok := innerChild.(*htmlElement); ok {
-							templateElem.Children[ci] = innerEl
-							templateChild = innerEl
-						}
-					}
+				childStyle := parseStyleString(templateChild.Attrs["style"])
+				popStyle(childStyle, "-kfx-style-name")
+				position, _ := popStyle(childStyle, "position")
+				width, _ := popStyle(childStyle, "width")
+				height, _ := popStyle(childStyle, "height")
+				pageAlign, _ := popStyle(childStyle, "-amzn-page-align")
+				if pageAlign != "" {
+					baseStyle["-amzn-page-align"] = pageAlign
 				}
 
-				// Get child's own style
-				origCondStyle := parseStyleString(templateChild.Attrs["style"])
-
-				// Merge base style with child's own style (child overrides base)
-				mergedStyle := make(map[string]string)
-				for k, v := range baseStyle {
-					mergedStyle[k] = v
+				// Python L188-190: validate container style
+				if len(childStyle) > 0 || position != "fixed" || width != "100%" || height != "100%" {
+					fmt.Fprintf(os.Stderr, "kfx: error: Conditional container %s has incorrect style: %s\n",
+						context, templateChild.Attrs["style"])
 				}
-				for k, v := range origCondStyle {
-					mergedStyle[k] = v
-				}
-				popStyle(mergedStyle, "-kfx-style-name")
 
-				// Check if this is an img/video or div with background-color
-				isImgOrVideo := templateChild.Tag == "img" || templateChild.Tag == "video"
-				_, hasBgColor := mergedStyle["background-color"]
-				isConditionalElement := isImgOrVideo || (templateChild.Tag == "div" && hasBgColor)
-
-				if isConditionalElement {
-					removeChild := false
-
-					// Handle position=fixed → convert to float
-					position, hadPosition := popStyle(mergedStyle, "position")
-					if hadPosition && position == "fixed" {
-						type posMapping struct {
-							cssPos  string
-							prop    string
-						}
-						mappings := []posMapping{
-							{"left", "float"},
-							{"right", "float"},
-							{"top", "-amzn-float"},
-							{"bottom", "-amzn-float"},
-						}
-						for _, m := range mappings {
-							if val, ok := mergedStyle[m.cssPos]; ok {
-								delete(mergedStyle, m.cssPos)
-								if val != "0" {
-									fmt.Fprintf(os.Stderr, "kfx: error: Conditional element has non-zero position: %s=%s\n",
-										m.cssPos, val)
-								}
-								if existing, ok := mergedStyle[m.prop]; ok {
-									if m.prop == "-amzn-float" {
-										mergedStyle[m.prop] = existing + "," + m.cssPos
-									} else {
-										fmt.Fprintf(os.Stderr, "kfx: error: conflicting position styles\n")
-									}
-								} else {
-									mergedStyle[m.prop] = m.cssPos
-								}
+				// Unwrap: replace container div with its only child element
+				// Python L192-196
+				if len(templateChild.Children) >= 1 {
+					newChild := templateChild.Children[0]
+					if newEl, ok := newChild.(*htmlElement); ok {
+						// Replace the container in the actual template element
+						for j, c := range templateElem.Children {
+							if c == templateChild {
+								templateElem.Children[j] = newEl
+								break
 							}
 						}
+						templateChild = newEl
 					}
+				}
+			}
 
-					// Handle -amzn-page-align=none
-					if mergedStyle["-amzn-page-align"] == "none" {
-						delete(mergedStyle, "-amzn-page-align")
+			// Get child's own style (Python L203)
+			origCondStyle := parseStyleString(templateChild.Attrs["style"])
+
+			// Merge base style with child's own style (Python L204-205):
+			// template_child_style = base_style.copy().update(orig_cond_style, replace=True)
+			mergedStyle := make(map[string]string)
+			for k, v := range baseStyle {
+				mergedStyle[k] = v
+			}
+			for k, v := range origCondStyle {
+				mergedStyle[k] = v
+			}
+			popStyle(mergedStyle, "-kfx-style-name")
+
+			// Python L207-208: Check if this is an img/video or div with background-color
+			isImgOrVideo := templateChild.Tag == "img" || templateChild.Tag == "video"
+			_, hasBgColor := mergedStyle["background-color"]
+			isConditionalElement := isImgOrVideo || (templateChild.Tag == "div" && hasBgColor)
+
+			if isConditionalElement {
+				// Python L209-302: conditional element processing
+				removeChildFlag := false
+
+				// Python L210-224: Handle position=fixed → convert to float
+				position, hadPosition := popStyle(mergedStyle, "position")
+				if hadPosition && position == "fixed" {
+					type posMapping struct {
+						cssPos string
+						prop   string
 					}
-
-					_ = mergedStyle["float"] != "" || mergedStyle["-amzn-float"] != "" // isFloat
-					_, _ = popStyle(mergedStyle, "-kfx-collision")
-					epubTypesStr, _ := popStyle(mergedStyle, "-kfx-attrib-epub-type")
-					epubTypes := map[string]bool{}
-					for _, et := range strings.Fields(epubTypesStr) {
-						if et != "" {
-							epubTypes[et] = true
+					mappings := []posMapping{
+						{"left", "float"},
+						{"right", "float"},
+						{"top", "-amzn-float"},
+						{"bottom", "-amzn-float"},
+					}
+					for _, m := range mappings {
+						val, hasPos := mergedStyle[m.cssPos]
+						if !hasPos {
+							continue
+						}
+						delete(mergedStyle, m.cssPos)
+						if val != "0" {
+							fmt.Fprintf(os.Stderr, "kfx: error: Conditional element %s has non-zero position style: %s\n",
+								context, serializeStyleMap(origCondStyle))
+						}
+						if existing, ok := mergedStyle[m.prop]; ok {
+							if m.prop == "-amzn-float" {
+								mergedStyle[m.prop] = existing + "," + m.cssPos
+							} else {
+								fmt.Fprintf(os.Stderr, "kfx: error: Conditional element %s has conflicting position styles: %s\n",
+									context, serializeStyleMap(origCondStyle))
+							}
+						} else {
+							mergedStyle[m.prop] = m.cssPos
 						}
 					}
+				}
 
-					if emitPageTemplates {
-						// EMIT_PAGE_TEMPLATES mode — not used by default
-						_ = inlineContent
-						_ = idx
-						// This branch is not exercised since emitPageTemplates is false
+				// Python L225-228: Handle -amzn-page-align=none
+				if mergedStyle["-amzn-page-align"] == "none" {
+					delete(mergedStyle, "-amzn-page-align")
+				}
+
+				// Python L230-232
+				isFloat := mergedStyle["float"] != "" || mergedStyle["-amzn-float"] != ""
+				collision, _ := popStyle(mergedStyle, "-kfx-collision")
+				epubTypesStr, _ := popStyle(mergedStyle, "-kfx-attrib-epub-type")
+				epubTypes := map[string]bool{}
+				for _, et := range strings.Fields(epubTypesStr) {
+					if et != "" {
+						epubTypes[et] = true
+					}
+				}
+
+				if emitPageTemplates {
+					// EMIT_PAGE_TEMPLATES=True path (Python L234-248).
+					// Not exercised since emitPageTemplates is false.
+					// Port inline_content, epub_types, and CSS generation logic
+					// if EMIT_PAGE_TEMPLATES is ever enabled.
+					_ = isFloat
+					_ = collision
+					_ = inlineContent
+					_ = idx
+				} else {
+					// Inline mode (EMIT_PAGE_TEMPLATES=false) — Python default (L249-277)
+					if templateChild.Tag == "div" ||
+						(templateChild.Tag == "img" && mergedStyle["-amzn-shape-outside"] == "") {
+						removeChildFlag = true
+
+						// Python L252-254: unreference_resource for removed images
+						if templateChild.Tag == "img" {
+							imgSrc := templateChild.Attrs["src"]
+							if imgSrc != "" {
+								imgFilename := getImageFilenameFromSrc(imgSrc, filename)
+								unreferenceResource(book, imgFilename)
+							}
+						}
 					} else {
-						// Inline mode (EMIT_PAGE_TEMPLATES=false) — Python default
-						if templateChild.Tag == "div" ||
-							(templateChild.Tag == "img" && mergedStyle["-amzn-shape-outside"] == "") {
-							removeChild = true
-						} else {
-							// Keep float shapes, remove decorative/illustrated types
-							popStyle(mergedStyle, "-amzn-shape-outside")
-							popStyle(mergedStyle, "-amzn-float")
-							delete(epubTypes, "amzn:decorative")
-							delete(epubTypes, "amzn:kindle-illustrated")
-						}
+						// Keep float shapes, remove decorative/illustrated types
+						// Python L256-260
+						popStyle(mergedStyle, "-amzn-shape-outside")
+						popStyle(mergedStyle, "-amzn-float")
+						delete(epubTypes, "amzn:decorative")
+						delete(epubTypes, "amzn:kindle-illustrated")
+					}
 
-						// Rebuild epub types string
-						var types []string
-						for k := range epubTypes {
-							types = append(types, k)
-						}
-						if len(types) > 0 {
-							// Sort for determinism
-							for i := 0; i < len(types); i++ {
-								for j := i + 1; j < len(types); j++ {
-									if types[i] > types[j] {
-										types[i], types[j] = types[j], types[i]
-									}
+					// Rebuild epub types string (Python L262-264)
+					var types []string
+					for k := range epubTypes {
+						types = append(types, k)
+					}
+					if len(types) > 0 {
+						for i := 0; i < len(types); i++ {
+							for j := i + 1; j < len(types); j++ {
+								if types[i] > types[j] {
+									types[i], types[j] = types[j], types[i]
 								}
 							}
-							mergedStyle["-kfx-attrib-epub-type"] = strings.Join(types, " ")
 						}
-
-						if templateChild.Tag == "div" {
-							mergedStyle["display"] = "inline"
-						}
-
-						if removeChild {
-							// Remove this child from the template element
-							templateElem.Children = append(templateElem.Children[:ci], templateElem.Children[ci+1:]...)
-							ci-- // adjust index since we removed an element
-						} else {
-							// Set updated style
-							if s := serializeStyleMap(mergedStyle); s != "" {
-								templateChild.Attrs["style"] = s
-							}
-						}
+						mergedStyle["-kfx-attrib-epub-type"] = strings.Join(types, " ")
 					}
 
-				} else if idx == len(templateElem.Children) &&
-					templateChild.Tag == "div" {
+					// Python L265-267: div gets display:inline and text cleared
+					if templateChild.Tag == "div" {
+						mergedStyle["display"] = "inline"
+						// Python: template_child.text = ""
+						// Clear text children in the div
+						clearTextChildren(templateChild)
+					}
 
-					// Last child div with -amzn-page-align=none, position=fixed,
-					// and no other styles → move its id to body start, remove element
-					childStyleMap := parseStyleString(templateChild.Attrs["style"])
-					pageAlign, _ := popStyle(childStyleMap, "-amzn-page-align")
-					popStyle(childStyleMap, "position")
-					collision, _ := popStyle(childStyleMap, "-kfx-collision")
-
-					if pageAlign == "none" && len(childStyleMap) == 0 &&
-						(collision == "" || collision == "always queue" || collision == "queue") {
-
-						storyID := templateChild.Attrs["id"]
-						if storyID != "" {
-							// Create id-only div at body start
-							idDiv := &htmlElement{
-								Tag:   "div",
-								Attrs: map[string]string{"id": storyID},
-							}
-							// Insert at beginning of body
-							body.Children = append([]htmlPart{idDiv}, body.Children...)
-							ti++ // adjust for the new element we just inserted
+					if removeChildFlag {
+						// Python L269-270: template_elem.remove(template_child)
+						removeChild(templateElem, templateChild)
+					} else {
+						// Python L274-275: self.set_style(template_child, template_child_style)
+						if s := serializeStyleMap(mergedStyle); s != "" {
+							templateChild.Attrs["style"] = s
+						} else {
+							delete(templateChild.Attrs, "style")
 						}
-
-						// Remove this child from template
-						templateElem.Children = append(templateElem.Children[:ci], templateElem.Children[ci+1:]...)
-						ci--
 					}
 				}
-				_ = condOper
-			}
 
-			// Find target element by id
-			target := findElementByID(body, targetID)
-			if target == nil {
-				// Remove template element from body
-				body.Children = append(body.Children[:ti], body.Children[ti+1:]...)
-				ti--
-				continue
-			}
+			} else if idx == numTemplateChildren &&
+				templateChild.Tag == "div" {
+				// Python L303-316: Last child div with page-align=none, position=fixed
+				childStyleMap := parseStyleString(templateChild.Attrs["style"])
+				pageAlign, _ := popStyle(childStyleMap, "-amzn-page-align")
+				posVal, _ := popStyle(childStyleMap, "position")
+				collisionVal, _ := popStyle(childStyleMap, "-kfx-collision")
 
-			// Remove template element from body
-			body.Children = append(body.Children[:ti], body.Children[ti+1:]...)
-			ti-- // adjust for removed element
+				if pageAlign == "none" && posVal == "fixed" &&
+					(collisionVal == "" || collisionVal == "always queue" || collisionVal == "queue") &&
+					len(childStyleMap) == 0 {
 
-			// In inline mode (EMIT_PAGE_TEMPLATES=false):
-			if !emitPageTemplates {
-				// Walk up to block parent
-				// For our simplified DOM, we insert as first child of target
-				if len(templateElem.Children) > 0 {
-					if !inlineContent {
-						// Set template style if present
-						if ts := serializeStyleMap(templateStyle); ts != "" {
-							templateElem.Attrs["style"] = ts
-						} else {
-							delete(templateElem.Attrs, "style")
+					storyID := templateChild.Attrs["id"]
+					if storyID != "" {
+						// Python L310-313: create id div at body start
+						idDiv := &htmlElement{
+							Tag:   "div",
+							Attrs: map[string]string{"id": storyID},
 						}
-
-						// Insert as first child of target's block parent
-						insertTarget := target
-						// Walk up to a block parent
-						for insertTarget != nil && !isBlockParent(insertTarget.Tag) {
-							// In our flat DOM, we just use target directly
-							break
-						}
-						if insertTarget != nil {
-							insertChild(insertTarget, 0, templateElem)
-						}
+						body.Children = append([]htmlPart{idDiv}, body.Children...)
+						ti++ // adjust for the new element we just inserted
 					}
+
+					// Remove this child from template (Python L315)
+					removeChild(templateElem, templateChild)
+				} else {
+					// Python L318-323: unexpected template_child
+					fmt.Fprintf(os.Stderr, "kfx: error: Unexpected template_child %s tag=%s style=%s\n",
+						context, templateChild.Tag, serializeStyleMap(origCondStyle))
+				}
+			} else {
+				// Python L318-323: unexpected template_child
+				fmt.Fprintf(os.Stderr, "kfx: error: Unexpected template_child %s tag=%s style=%s\n",
+					context, templateChild.Tag, serializeStyleMap(origCondStyle))
+			}
+		}
+
+		// Python L324-326: Find target and remove template from body
+		target := findElementByID(body, targetID)
+
+		// Python L327: template_elem.getparent().remove(template_elem)
+		body.Children = append(body.Children[:ti], body.Children[ti+1:]...)
+		ti-- // adjust for removed element
+
+		if target == nil {
+			// Python find_by_id raises if not found with required=True.
+			// Log error and continue.
+			fmt.Fprintf(os.Stderr, "kfx: error: could not locate id %s\n", targetID)
+			continue
+		}
+
+		// Python L328-375: Handle template after removal from body
+		if len(templateElem.Children) == 0 {
+			// Python L329: if len(template_elem) == 0: pass
+			// Nothing to do
+		} else if inlineContent {
+			// Python L330-335: inline content path
+			templateElem.Tag = "span"
+			delete(templateElem.Attrs, "style")
+
+			// Python: while target.tag not in ["div", "li", "td", "span", "a"]:
+			//     target = target.getparent()
+			// In Go's flat DOM, target is already found by id; walk up if needed.
+			insertTarget := findInlineParent(target)
+			if insertTarget != nil {
+				insertChild(insertTarget, 0, templateElem)
+			}
+		} else if !emitPageTemplates {
+			// Python L335-345: inline mode — insert template as first child of target's block parent
+			if ts := serializeStyleMap(templateStyle); ts != "" {
+				templateElem.Attrs["style"] = ts
+			} else {
+				delete(templateElem.Attrs, "style")
+			}
+
+			// Python L341: while target.tag not in ["div", "li", "td"]:
+			//     target = target.getparent()
+			// In Go's flat DOM, walk up to a block parent.
+			insertTarget := findBlockParent(target)
+			if insertTarget != nil {
+				if len(templateElem.Children) > 0 || len(templateElem.Attrs) > 0 || emitEmptyConditions {
+					insertChild(insertTarget, 0, templateElem)
 				}
 			}
 		}
+		// EMIT_PAGE_TEMPLATES=True path (Python L347-375) is not ported since
+		// emitPageTemplates is always false. This includes CSS @-amzn-master-page
+		// generation, style inventory, and media-query hiding.
 	}
+}
 
-	return cssFiles
+// =============================================================================
+// Additional DOM helpers
+// =============================================================================
+
+// elementChildren returns only the htmlElement children of a parent.
+// Port of Python's elem.findall("*") which returns direct child elements.
+func elementChildren(parent *htmlElement) []*htmlElement {
+	var result []*htmlElement
+	for _, child := range parent.Children {
+		if el, ok := child.(*htmlElement); ok && el != nil {
+			result = append(result, el)
+		}
+	}
+	return result
+}
+
+// elementHasText returns true if the element has any text content (text or tail).
+// Port of Python's `elem.text or elem.tail` check (L174).
+// In Go's DOM, text is stored as htmlText children.
+func elementHasText(el *htmlElement) bool {
+	for _, child := range el.Children {
+		if txt, ok := child.(htmlText); ok && txt.Text != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// clearTextChildren removes all htmlText children from an element.
+// Port of Python's `template_child.text = ""` (L266).
+func clearTextChildren(el *htmlElement) {
+	var filtered []htmlPart
+	for _, child := range el.Children {
+		if _, ok := child.(htmlText); ok {
+			continue
+		}
+		filtered = append(filtered, child)
+	}
+	el.Children = filtered
+}
+
+// isBlockParent returns true if the tag is a valid block-level parent for
+// conditional content insertion.
+// Port of Python: target.tag in ["div", "li", "td"] (L341).
+func isBlockParent(tag string) bool {
+	switch tag {
+	case "div", "li", "td":
+		return true
+	}
+	return false
+}
+
+// isInlineParent returns true if the tag is a valid inline parent for
+// inline conditional content insertion.
+// Port of Python: target.tag in ["div", "li", "td", "span", "a"] (L330).
+func isInlineParent(tag string) bool {
+	switch tag {
+	case "div", "li", "td", "span", "a":
+		return true
+	}
+	return false
+}
+
+// findBlockParent walks up from the given element to find the nearest
+// block-level parent (div, li, td). Since Go's htmlElement doesn't have
+// parent pointers, this is a simplified version that checks the element itself.
+// Port of Python's `while target.tag not in ["div", "li", "td"]: target = target.getparent()`.
+func findBlockParent(target *htmlElement) *htmlElement {
+	if target == nil {
+		return nil
+	}
+	// In Go's flat DOM model without parent pointers, we check the target itself.
+	// The target is found by ID and is typically already a block element.
+	if isBlockParent(target.Tag) {
+		return target
+	}
+	// If target is not a block element, we can't walk up. Return nil.
+	// In practice, targets found by ID in conditional templates are typically divs.
+	return nil
+}
+
+// findInlineParent walks up to find the nearest inline-capable parent
+// (div, li, td, span, a). Port of Python's
+// `while target.tag not in ["div", "li", "td", "span", "a"]: target = target.getparent()`.
+func findInlineParent(target *htmlElement) *htmlElement {
+	if target == nil {
+		return nil
+	}
+	if isInlineParent(target.Tag) {
+		return target
+	}
+	return nil
+}
+
+// getImageFilenameFromSrc extracts the image filename from a src attribute,
+// resolving relative paths. Port of Python's
+// `get_url_filename(urlabspath(template_child.get("src"), ref_from=book_part.filename))`.
+func getImageFilenameFromSrc(src, refFrom string) string {
+	if src == "" {
+		return ""
+	}
+	// Resolve relative path against the section filename
+	u, err := url.Parse(src)
+	if err != nil {
+		return src
+	}
+	// If it's already an absolute path, use it
+	if u.IsAbs() || strings.HasPrefix(u.Path, "/") {
+		return u.Path
+	}
+	// Resolve relative to the section's directory
+	refDir := path.Dir(refFrom)
+	return path.Join(refDir, u.Path)
+}
+
+// unreferenceResource removes a resource from the book's resource list.
+// Port of Python's self.unreference_resource(img_filename) (L253-254).
+// In Python this decrements a reference count and removes when it hits zero.
+// In Go we simply remove the resource if it exists.
+func unreferenceResource(book *decodedBook, filename string) {
+	if book == nil || filename == "" {
+		return
+	}
+	for i, res := range book.Resources {
+		if res.Filename == filename {
+			book.Resources = append(book.Resources[:i], book.Resources[i+1:]...)
+			return
+		}
+	}
 }

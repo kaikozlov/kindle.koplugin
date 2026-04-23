@@ -3305,6 +3305,10 @@ type storylineRenderer struct {
 	// declaration is encountered during style processing (Python: self.text_combine_in_use).
 	// Port of Python yj_to_epub_properties.py L1127 and yj_to_epub_content.py L103.
 	textCombineInUse bool
+	// hasConditionalContent is set to true when any conditional page template content
+	// is encountered during rendering (Python: self.has_conditional_content).
+	// Port of Python yj_to_epub_content.py L508 and yj_to_epub_illustrated_layout.py L27.
+	hasConditionalContent bool
 }
 
 type conditionEvaluator struct {
@@ -5110,6 +5114,7 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 	delete(working, "yj.conditional_properties")
 	if hadConditionalContent {
 		working["__has_conditional_content__"] = true
+		r.hasConditionalContent = true
 	}
 	// Port of Python $696 word_boundary_list validation
 	// (yj_to_epub_content.py L940-979). Pops word_boundary_list from the node
