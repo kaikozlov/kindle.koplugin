@@ -1,0 +1,9 @@
+func mergeContentFragmentStringSymbols(frag map[string][]string, bookSymbols map[string]struct{}) {
+func resolveSharedSymbol(sid uint32) string {
+func mergeIonReferencedStringSymbols(value interface{}, bookSymbols map[string]struct{}) {
+func (s *sharedDocSymbols) update(containerDocSymbols []byte) {
+func (s *sharedDocSymbols) get() []byte {
+func (s *bookState) fragmentSnapshot() fragmentSnapshot {
+func buildBookState(path string) (*bookState, error) {
+func buildBookStateFromData(contData []byte) (*bookState, error) {
+func organizeFragments(bookPath string, sources []*containerSource) (*bookState, error) {

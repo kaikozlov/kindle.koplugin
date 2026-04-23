@@ -1,0 +1,18 @@
+class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
+    def __init__(self, file, credentials=[], is_netfs=False, symbol_catalog_filename=None):
+    def load_symbol_catalog(self):
+    def final_actions(self, do_symtab_report=True):
+    def convert_to_single_kfx(self):
+    def convert_to_epub(self, epub2_desired=False, force_cover=False, progress_fn=None):
+    def convert_to_cbz(self, split_landscape_comic_images=False, progress_fn=None):
+    def convert_to_pdf(self, split_landscape_comic_images=False, progress_fn=None):
+    def get_metadata(self):
+    def convert_to_kpf(self, conversion=None, flags=None, timeout_sec=None, cleaned_filename=None):
+    def convert_to_zip_unpack(self):
+    def convert_to_json_content(self, keep_footnote_refs=False):
+    def decode_book(self, set_metadata=None, set_approximate_pages=None, pure=False, retain_yj_locals=False):
+    def locate_book_datafiles(self):
+    def locate_files_from_dir(self, directory, match=None):
+    def check_located_file(self, name, data=None, parent=None):
+    def get_container(self, datafile, ignore_drm=False):
+    def expand_compressed_container(self, data):

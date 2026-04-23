@@ -1,0 +1,135 @@
+
+============================================================
+  Checking: Martyr
+============================================================
+  Running Python trace...
+  Running Go trace...
+  Comparing traces...
+Python trace: /tmp/parity-check.fMDb9A/Martyr_python.json
+Go trace:     /tmp/parity-check.fMDb9A/Martyr_go.json
+
+✗ STAGE: organize_fragments
+  0/0 fragment types match
+  Fragment types missing in Go: ['$145', '$157', '$164', '$259', '$260', '$264', '$265', '$270', '$395', '$417', '$419', '$550', '$593', '$597', '$609', '$621', '$ion_symbol_table']
+  Fragment types extra in Go: ['anchor', 'auxiliary_data', 'bcRawFont', 'bcRawMedia', 'book_metadata', 'book_navigation', 'container_entity_map', 'content', 'content_features', 'document_data', 'external_resource', 'font', 'location_map', 'metadata', 'nav_container', 'position_id_map', 'position_map', 'resource_path', 'section', 'section_position_id_map', 'storyline', 'style', 'yj.location_pid_map']
+
+✓ STAGE: book_symbol_format
+  Both: short
+
+✗ STAGE: content_features
+    cde_content_type: Python=PDOC, Go=N_-jZGsNRse-Q-HGKFy4hQ0
+    is_pdf_backed_fixed_layout: Python=False, Go=<missing>
+
+✗ STAGE: fonts
+    present_font_names.length: Python=4, Go=7
+    present_font_names[0]: Python=Didot LT Pro, Go=font_rsrc3R2.otf
+    present_font_names[1]: Python=FreeFontSerif, Go=font_rsrc3R4.otf
+    present_font_names[2]: Python=Shift Light, Go=font_rsrc3R6.otf
+    present_font_names[3]: Python=Trajan Pro 3, Go=font_rsrc3R8.otf
+
+✗ STAGE: document_data
+    orientation_lock: Python=none, Go=
+
+✗ STAGE: metadata
+    book_type: Python=None, Go=
+    language: Python=en, Go=en-us
+    orientation_lock: Python=none, Go=
+    writing_mode: Python=<missing>, Go=horizontal-tb
+
+✗ STAGE: navigation
+  TOC has 192 differences
+    [0].anchor: Py=$212_0_Cover, Go=<missing>
+    [0].target: Py=None, Go=c0.xhtml
+    [1].anchor: Py=$212_1_Title Page, Go=<missing>
+    [1].target: Py=None, Go=c9.xhtml
+    [2].anchor: Py=$212_2_Copyright, Go=<missing>
+  Guide has 4 differences
+  Page map: 313 entries
+
+✗ STAGE: reading_order
+  0/97 sections have matching HTML
+  Body class differences (97):
+    c0.xhtml: Python='class_s8', Go=''
+    c109.xhtml: Python='class-2', Go=''
+    c12M.xhtml: Python='class-0', Go=''
+    c12W.xhtml: Python='class-1', Go=''
+    c134.xhtml: Python='class-2', Go=''
+    c142.xhtml: Python='class-1', Go=''
+    c14V.xhtml: Python='class-1', Go=''
+    c15V.xhtml: Python='class-3', Go=''
+    c17Z.xhtml: Python='class-0', Go=''
+    c187.xhtml: Python='class-1', Go=''
+  HTML differences (97 sections):
+    c0.xhtml: length Py=456, Go=103
+    First diff at line 1 char 2
+    Python: ...<body xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/o...
+    Go:     ...<img src="image_rsrc3S0.jpg" alt="" style="-kfx-style-name: s8; font-size: 1rem; ...
+    c109.xhtml: length Py=15988, Go=29121
+    First diff at line 1 char 2
+    Python: ...<body xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/o...
+    Go:     ...<h2 style="-kfx-attrib-xml-lang: en-US; -kfx-layout-hints: heading; -kfx-style-na...
+    c12M.xhtml: length Py=322, Go=745
+    First diff at line 1 char 2
+    Python: ...<body xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/o...
+    Go:     ...<h1 style="-kfx-attrib-xml-lang: en-US; -kfx-layout-hints: heading; -kfx-style-na...
+    c12W.xhtml: length Py=577, Go=914
+    First diff at line 1 char 2
+    Python: ...<body xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/o...
+    Go:     ...<p style="-kfx-attrib-xml-lang: en-US; -kfx-style-name: sB9; font-family: FreeFon...
+    c134.xhtml: length Py=11180, Go=15581
+    First diff at line 1 char 2
+    Python: ...<body xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/o...
+    Go:     ...<h2 style="-kfx-attrib-xml-lang: en-US; -kfx-layout-hints: heading; -kfx-style-na...
+    c142.xhtml: length Py=7331, Go=11195
+    First diff at line 1 char 2
+    Python: ...<body xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/o...
+    Go:     ...<h2 style="-kfx-attrib-xml-lang: en-US; -kfx-layout-hints: heading; -kfx-style-na...
+    c14V.xhtml: length Py=1659, Go=6592
+    First diff at line 1 char 2
+    Python: ...<body xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/o...
+    Go:     ...<h1 style="-kfx-attrib-xml-lang: en-US; -kfx-layout-hints: heading; -kfx-style-na...
+    c15V.xhtml: length Py=26971, Go=38404
+    First diff at line 1 char 2
+    Python: ...<body xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/o...
+    Go:     ...<h2 style="-kfx-attrib-xml-lang: en-US; -kfx-layout-hints: heading; -kfx-style-na...
+    c17Z.xhtml: length Py=325, Go=748
+    First diff at line 1 char 2
+    Python: ...<body xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/o...
+    Go:     ...<h1 style="-kfx-attrib-xml-lang: en-US; -kfx-layout-hints: heading; -kfx-style-na...
+    c187.xhtml: length Py=863, Go=1254
+    First diff at line 1 char 2
+    Python: ...<body xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/o...
+    Go:     ...<p style="-kfx-attrib-xml-lang: en-US; -kfx-style-name: sB9; font-family: FreeFon...
+
+✗ STAGE: stylesheet
+  CSS length: Python=19775, Go=19761
+  Property differences (1 classes):
+    .class_s8: -font-family: FreeFontSerif,serif; +line-height: 1.152
+
+✗ STAGE: final_sections
+  0/97 final sections match
+  HTML differences (97 sections):
+    c0.xhtml: Py=554, Go=54 chars
+    c109.xhtml: Py=16070, Go=14815 chars
+    c12M.xhtml: Py=428, Go=119 chars
+    c12W.xhtml: Py=682, Go=360 chars
+    c134.xhtml: Py=11262, Go=10637 chars
+    c142.xhtml: Py=7425, Go=6822 chars
+    c14V.xhtml: Py=1765, Go=1229 chars
+    c15V.xhtml: Py=27023, Go=25825 chars
+    c17Z.xhtml: Py=431, Go=122 chars
+    c187.xhtml: Py=968, Go=633 chars
+
+============================================================
+SUMMARY: 1 stages match, 9 stages differ
+RESULT: FAIL — differences found
+============================================================
+  ✗ FAIL
+
+============================================================
+  PARITY CHECK SUMMARY
+============================================================
+  Passed:  0
+  Failed:  1
+  Skipped: 0
+============================================================

@@ -1,0 +1,1836 @@
+=== RUN   TestImageClassesBoxAlign
+=== RUN   TestImageClassesBoxAlign/center_aligned_image
+=== RUN   TestImageClassesBoxAlign/right_aligned_image
+=== RUN   TestImageClassesBoxAlign/plain_image_no_box-align
+--- PASS: TestImageClassesBoxAlign (0.00s)
+    --- PASS: TestImageClassesBoxAlign/center_aligned_image (0.00s)
+    --- PASS: TestImageClassesBoxAlign/right_aligned_image (0.00s)
+    --- PASS: TestImageClassesBoxAlign/plain_image_no_box-align (0.00s)
+=== RUN   TestImageClassesFloatWidthTransfer
+--- PASS: TestImageClassesFloatWidthTransfer (0.00s)
+=== RUN   TestContainerClassBoxAlign
+=== RUN   TestContainerClassBoxAlign/center_with_width_→_margin-left/right_auto
+=== RUN   TestContainerClassBoxAlign/right_with_width_→_margin-left_auto_only
+=== RUN   TestContainerClassBoxAlign/center_no_width_→_box-align_dropped,_no_margin_auto
+--- PASS: TestContainerClassBoxAlign (0.00s)
+    --- PASS: TestContainerClassBoxAlign/center_with_width_→_margin-left/right_auto (0.00s)
+    --- PASS: TestContainerClassBoxAlign/right_with_width_→_margin-left_auto_only (0.00s)
+    --- PASS: TestContainerClassBoxAlign/center_no_width_→_box-align_dropped,_no_margin_auto (0.00s)
+=== RUN   TestFittedContainerClassBoxAlign
+=== RUN   TestFittedContainerClassBoxAlign/fitted_center_→_text-align_center
+=== RUN   TestFittedContainerClassBoxAlign/fitted_right_→_text-align_right
+--- PASS: TestFittedContainerClassBoxAlign (0.00s)
+    --- PASS: TestFittedContainerClassBoxAlign/fitted_center_→_text-align_center (0.00s)
+    --- PASS: TestFittedContainerClassBoxAlign/fitted_right_→_text-align_right (0.00s)
+=== RUN   TestKfxToVoucherPath
+--- PASS: TestKfxToVoucherPath (0.00s)
+=== RUN   TestLoadDRMKeyCache_MissingFile
+--- PASS: TestLoadDRMKeyCache_MissingFile (0.00s)
+=== RUN   TestFindPageKey_WithCacheFile
+--- PASS: TestFindPageKey_WithCacheFile (0.00s)
+=== RUN   TestAES128CBCDecrypt
+--- PASS: TestAES128CBCDecrypt (0.00s)
+=== RUN   TestBytesStartsWithDRMION
+--- PASS: TestBytesStartsWithDRMION (0.00s)
+=== RUN   TestFormatCSSQuantityZero
+--- PASS: TestFormatCSSQuantityZero (0.00s)
+=== RUN   TestFormatCSSQuantityNearZero
+=== RUN   TestFormatCSSQuantityNearZero/positive_near_zero
+=== RUN   TestFormatCSSQuantityNearZero/negative_near_zero
+=== RUN   TestFormatCSSQuantityNearZero/tiny_positive
+=== RUN   TestFormatCSSQuantityNearZero/tiny_negative
+=== RUN   TestFormatCSSQuantityNearZero/negative_abs_near_zero
+--- PASS: TestFormatCSSQuantityNearZero (0.00s)
+    --- PASS: TestFormatCSSQuantityNearZero/positive_near_zero (0.00s)
+    --- PASS: TestFormatCSSQuantityNearZero/negative_near_zero (0.00s)
+    --- PASS: TestFormatCSSQuantityNearZero/tiny_positive (0.00s)
+    --- PASS: TestFormatCSSQuantityNearZero/tiny_negative (0.00s)
+    --- PASS: TestFormatCSSQuantityNearZero/negative_abs_near_zero (0.00s)
+=== RUN   TestFormatCSSQuantityPositiveIntegers
+--- PASS: TestFormatCSSQuantityPositiveIntegers (0.00s)
+=== RUN   TestFormatCSSQuantityNegativeValues
+--- PASS: TestFormatCSSQuantityNegativeValues (0.00s)
+=== RUN   TestFormatCSSQuantityFloats
+--- PASS: TestFormatCSSQuantityFloats (0.00s)
+=== RUN   TestFormatCSSQuantityScientificNotationFallback
+=== RUN   TestFormatCSSQuantityScientificNotationFallback/small_sci_pos
+=== RUN   TestFormatCSSQuantityScientificNotationFallback/small_sci_value
+=== RUN   TestFormatCSSQuantityScientificNotationFallback/small_neg_sci
+--- PASS: TestFormatCSSQuantityScientificNotationFallback (0.00s)
+    --- PASS: TestFormatCSSQuantityScientificNotationFallback/small_sci_pos (0.00s)
+    --- PASS: TestFormatCSSQuantityScientificNotationFallback/small_sci_value (0.00s)
+    --- PASS: TestFormatCSSQuantityScientificNotationFallback/small_neg_sci (0.00s)
+=== RUN   TestFormatCSSQuantityTrailingZeros
+--- PASS: TestFormatCSSQuantityTrailingZeros (0.00s)
+=== RUN   TestFormatCSSQuantityLargeValues
+--- PASS: TestFormatCSSQuantityLargeValues (0.00s)
+=== RUN   TestValueStrWithUnitNone
+--- PASS: TestValueStrWithUnitNone (0.00s)
+=== RUN   TestValueStrWithUnitZeroNoUnit
+--- PASS: TestValueStrWithUnitZeroNoUnit (0.00s)
+=== RUN   TestValueStrWithUnitZeroWithUnit
+--- PASS: TestValueStrWithUnitZeroWithUnit (0.00s)
+=== RUN   TestValueStrWithUnitNormal
+--- PASS: TestValueStrWithUnitNormal (0.00s)
+=== RUN   TestValueStrWithUnitNegative
+--- PASS: TestValueStrWithUnitNegative (0.00s)
+=== RUN   TestValueStrWithUnitNearZero
+--- PASS: TestValueStrWithUnitNearZero (0.00s)
+=== RUN   TestValueStrWithUnitNearZeroWithUnit
+--- PASS: TestValueStrWithUnitNearZeroWithUnit (0.00s)
+=== RUN   TestValueStrWithUnitInteger
+--- PASS: TestValueStrWithUnitInteger (0.00s)
+=== RUN   TestValueStrWithUnitNoUnit
+--- PASS: TestValueStrWithUnitNoUnit (0.00s)
+=== RUN   TestValueStrWithUnitNilNoUnit
+--- PASS: TestValueStrWithUnitNilNoUnit (0.00s)
+=== RUN   TestValueStr_NilInterface
+--- PASS: TestValueStr_NilInterface (0.00s)
+=== RUN   TestValueStr_NilFloat64Ptr
+--- PASS: TestValueStr_NilFloat64Ptr (0.00s)
+=== RUN   TestValueStr_Float64PtrValue
+--- PASS: TestValueStr_Float64PtrValue (0.00s)
+=== RUN   TestColorStrOpaqueBlack
+--- PASS: TestColorStrOpaqueBlack (0.00s)
+=== RUN   TestColorStrOpaqueWhite
+--- PASS: TestColorStrOpaqueWhite (0.00s)
+=== RUN   TestColorStrOpaqueNamedColor
+--- PASS: TestColorStrOpaqueNamedColor (0.00s)
+=== RUN   TestColorStrOpaqueUnnamedColor
+--- PASS: TestColorStrOpaqueUnnamedColor (0.00s)
+=== RUN   TestColorStrTranslucent
+--- PASS: TestColorStrTranslucent (0.00s)
+=== RUN   TestColorStrAlphaZero
+--- PASS: TestColorStrAlphaZero (0.00s)
+=== RUN   TestColorStrAlphaSmallValue
+--- PASS: TestColorStrAlphaSmallValue (0.00s)
+=== RUN   TestColorStrOpaqueRed
+--- PASS: TestColorStrOpaqueRed (0.00s)
+=== RUN   TestColorStrOpaqueGreen
+--- PASS: TestColorStrOpaqueGreen (0.00s)
+=== RUN   TestColorStrOpaqueGray
+--- PASS: TestColorStrOpaqueGray (0.00s)
+=== RUN   TestColorStrOpaqueLime
+--- PASS: TestColorStrOpaqueLime (0.00s)
+=== RUN   TestFixColorValueOpaqueBlack
+--- PASS: TestFixColorValueOpaqueBlack (0.00s)
+=== RUN   TestFixColorValueOpaqueWhite
+--- PASS: TestFixColorValueOpaqueWhite (0.00s)
+=== RUN   TestFixColorValueTransparent
+--- PASS: TestFixColorValueTransparent (0.00s)
+=== RUN   TestFixColorValueSemiTransparent
+--- PASS: TestFixColorValueSemiTransparent (0.00s)
+=== RUN   TestFixColorValueOpaqueNamedRed
+--- PASS: TestFixColorValueOpaqueNamedRed (0.00s)
+=== RUN   TestFixColorValueOpaqueUnnamed
+--- PASS: TestFixColorValueOpaqueUnnamed (0.00s)
+=== RUN   TestIntToAlpha
+--- PASS: TestIntToAlpha (0.00s)
+=== RUN   TestAlphaToInt
+--- PASS: TestAlphaToInt (0.00s)
+=== RUN   TestAlphaRoundTrip
+--- PASS: TestAlphaRoundTrip (0.00s)
+=== RUN   TestFloatPrecisionNumstr
+--- PASS: TestFloatPrecisionNumstr (0.00s)
+=== RUN   TestRegionMagnification
+--- PASS: TestRegionMagnification (0.00s)
+=== RUN   TestRegionMagnification_AutoEnable
+2026/04/22 23:48:14 kfx: error: activate found without region magnification
+--- PASS: TestRegionMagnification_AutoEnable (0.00s)
+=== RUN   TestRegionMagnification_LinkIDs
+--- PASS: TestRegionMagnification_LinkIDs (0.00s)
+=== RUN   TestRegionMagnification_UnknownAction
+2026/04/22 23:48:14 kfx: error: activate has unknown action: $999
+--- PASS: TestRegionMagnification_UnknownAction (0.00s)
+=== RUN   TestRegionMagnification_NoActivate
+--- PASS: TestRegionMagnification_NoActivate (0.00s)
+=== RUN   TestRegionMagnification_MultipleActivates
+--- PASS: TestRegionMagnification_MultipleActivates (0.00s)
+=== RUN   TestKFXConditionalNav_Classification
+=== RUN   TestKFXConditionalNav_Classification/KFXConditionalNavGroupUnit_550e8400-e29b-41d4-a716-446655440000
+=== RUN   TestKFXConditionalNav_Classification/KFXConditionalNavGroupUnit_00000000-0000-0000-0000-000000000000
+=== RUN   TestKFXConditionalNav_Classification/KFXConditionalNavGroupUnit_abcdef12-3456-7890-abcd-ef1234567890
+=== RUN   TestKFXConditionalNav_Classification/KFXConditionalNavGroupUnit_550e8400e29b41d4a716446655440000
+=== RUN   TestKFXConditionalNav_Classification/KFXConditionalNav_550e8400-e29b-41d4-a716-446655440000
+--- PASS: TestKFXConditionalNav_Classification (0.00s)
+    --- PASS: TestKFXConditionalNav_Classification/KFXConditionalNavGroupUnit_550e8400-e29b-41d4-a716-446655440000 (0.00s)
+    --- PASS: TestKFXConditionalNav_Classification/KFXConditionalNavGroupUnit_00000000-0000-0000-0000-000000000000 (0.00s)
+    --- PASS: TestKFXConditionalNav_Classification/KFXConditionalNavGroupUnit_abcdef12-3456-7890-abcd-ef1234567890 (0.00s)
+    --- PASS: TestKFXConditionalNav_Classification/KFXConditionalNavGroupUnit_550e8400e29b41d4a716446655440000 (0.00s)
+    --- PASS: TestKFXConditionalNav_Classification/KFXConditionalNav_550e8400-e29b-41d4-a716-446655440000 (0.00s)
+=== RUN   TestKFXConditionalNav_Preservation
+--- PASS: TestKFXConditionalNav_Preservation (0.00s)
+=== RUN   TestVirtualPanelValidation_ComicWithoutMagnification
+--- PASS: TestVirtualPanelValidation_ComicWithoutMagnification (0.00s)
+=== RUN   TestVirtualPanelValidation_ComicWithMagnification
+--- PASS: TestVirtualPanelValidation_ComicWithMagnification (0.00s)
+=== RUN   TestVirtualPanelValidation_NonComicWithoutMagnification
+--- PASS: TestVirtualPanelValidation_NonComicWithoutMagnification (0.00s)
+=== RUN   TestVirtualPanelValidation_DirectValidation
+=== RUN   TestVirtualPanelValidation_DirectValidation/comic_no_mag_no_panel
+2026/04/22 23:48:14 kfx: error: section test-section has missing virtual panel in comic without region magnification
+=== RUN   TestVirtualPanelValidation_DirectValidation/comic_with_mag_no_panel
+=== RUN   TestVirtualPanelValidation_DirectValidation/comic_with_panel
+=== RUN   TestVirtualPanelValidation_DirectValidation/noncomic_no_mag_no_panel
+=== RUN   TestVirtualPanelValidation_DirectValidation/magazine_no_mag_no_panel
+--- PASS: TestVirtualPanelValidation_DirectValidation (0.00s)
+    --- PASS: TestVirtualPanelValidation_DirectValidation/comic_no_mag_no_panel (0.00s)
+    --- PASS: TestVirtualPanelValidation_DirectValidation/comic_with_mag_no_panel (0.00s)
+    --- PASS: TestVirtualPanelValidation_DirectValidation/comic_with_panel (0.00s)
+    --- PASS: TestVirtualPanelValidation_DirectValidation/noncomic_no_mag_no_panel (0.00s)
+    --- PASS: TestVirtualPanelValidation_DirectValidation/magazine_no_mag_no_panel (0.00s)
+=== RUN   TestClassifyDRMION
+--- PASS: TestClassifyDRMION (0.00s)
+=== RUN   TestConvertFileDRMIONMissingKeys
+--- PASS: TestConvertFileDRMIONMissingKeys (0.00s)
+=== RUN   TestConvertFileCreatesReadableEPUB
+2026/04/22 23:48:14 kfx: error: Failed to locate 349 referenced positions: 1006.0, 1007.0, 1008.0, 1009.0, 1010.0, 1011.0, 1012.0, 1013.0, 1014.0, 1015.0, ... (349 total)
+--- PASS: TestConvertFileCreatesReadableEPUB (0.48s)
+=== RUN   TestClassifyRecognizesDRMFixtures
+--- PASS: TestClassifyRecognizesDRMFixtures (0.00s)
+=== RUN   TestClassifyRecognizesDecryptedKFXZipFixtures
+--- PASS: TestClassifyRecognizesDecryptedKFXZipFixtures (0.00s)
+=== RUN   TestConvertFileFromKFXZipSucceeds
+2026/04/22 23:48:14 kfx: Book symbol format is original
+2026/04/22 23:48:15 kfx: error: Failed to locate 48 referenced positions: 1.0, 1049.0, 11.0, 116.0, 12.0, 1209.0, 13.0, 1321.0, 14.0, 1430.0, ... (48 total)
+--- PASS: TestConvertFileFromKFXZipSucceeds (0.30s)
+=== RUN   TestConvertFileFromKFXZipPreservesResolvedPageAnchors
+2026/04/22 23:48:16 kfx: error: Failed to locate 995 referenced positions: 1000.0, 1001.0, 1002.0, 1003.0, 1004.0, 1005.0, 1006.0, 1007.0, 1008.0, 1009.0, ... (995 total)
+--- PASS: TestConvertFileFromKFXZipPreservesResolvedPageAnchors (1.05s)
+=== RUN   TestConvertFileFromKFXZipPreservesInlinePageMarkerAnchors
+kfx: warning: ineffective properties in span element for kfx-style s188: text-indent: 2em
+2026/04/22 23:48:16 kfx: error: Failed to locate 402 referenced positions: 1003.142, 1005.895, 1008.280, 1014.188, 1019.143, 1022.244, 1028.46, 1031.90, 1036.45, 1044.194, ... (402 total)
+--- PASS: TestConvertFileFromKFXZipPreservesInlinePageMarkerAnchors (0.36s)
+=== RUN   TestNormalizeLanguagePreservesBareEnglish
+--- PASS: TestNormalizeLanguagePreservesBareEnglish (0.00s)
+=== RUN   TestConvertFilePhase1PreservesCoverAndPackageResources
+2026/04/22 23:48:16 kfx: error: Failed to locate 349 referenced positions: 1006.0, 1007.0, 1008.0, 1009.0, 1010.0, 1011.0, 1012.0, 1013.0, 1014.0, 1015.0, ... (349 total)
+--- PASS: TestConvertFilePhase1PreservesCoverAndPackageResources (0.45s)
+=== RUN   TestConvertFilePhase2PreservesSectionIDsAndLinkedContents
+2026/04/22 23:48:17 kfx: error: Failed to locate 349 referenced positions: 1006.0, 1007.0, 1008.0, 1009.0, 1010.0, 1011.0, 1012.0, 1013.0, 1014.0, 1015.0, ... (349 total)
+--- PASS: TestConvertFilePhase2PreservesSectionIDsAndLinkedContents (0.45s)
+=== RUN   TestConvertFilePhase3UsesCanonicalSectionFilesForNavigationAndSpine
+2026/04/22 23:48:17 kfx: error: Failed to locate 349 referenced positions: 1006.0, 1007.0, 1008.0, 1009.0, 1010.0, 1011.0, 1012.0, 1013.0, 1014.0, 1015.0, ... (349 total)
+--- PASS: TestConvertFilePhase3UsesCanonicalSectionFilesForNavigationAndSpine (0.45s)
+=== RUN   TestConvertFilePhase4EmitsStyleClassesForTitleAndChapterPages
+2026/04/22 23:48:18 kfx: error: Failed to locate 349 referenced positions: 1006.0, 1007.0, 1008.0, 1009.0, 1010.0, 1011.0, 1012.0, 1013.0, 1014.0, 1015.0, ... (349 total)
+--- PASS: TestConvertFilePhase4EmitsStyleClassesForTitleAndChapterPages (0.45s)
+=== RUN   TestConvertFilePhase5ConvertsJPEGXRResourcesToJPEG
+2026/04/22 23:48:18 kfx: error: Failed to locate 349 referenced positions: 1006.0, 1007.0, 1008.0, 1009.0, 1010.0, 1011.0, 1012.0, 1013.0, 1014.0, 1015.0, ... (349 total)
+--- PASS: TestConvertFilePhase5ConvertsJPEGXRResourcesToJPEG (0.45s)
+=== RUN   TestConvertFilePhase6TracksCalibrePackageAndNavigationSemantics
+2026/04/22 23:48:19 kfx: error: Failed to locate 349 referenced positions: 1006.0, 1007.0, 1008.0, 1009.0, 1010.0, 1011.0, 1012.0, 1013.0, 1014.0, 1015.0, ... (349 total)
+--- PASS: TestConvertFilePhase6TracksCalibrePackageAndNavigationSemantics (0.45s)
+=== RUN   TestConvertFilePhase7UsesPageTemplateStylesForSectionBodyClasses
+2026/04/22 23:48:19 kfx: error: Failed to locate 349 referenced positions: 1006.0, 1007.0, 1008.0, 1009.0, 1010.0, 1011.0, 1012.0, 1013.0, 1014.0, 1015.0, ... (349 total)
+--- PASS: TestConvertFilePhase7UsesPageTemplateStylesForSectionBodyClasses (0.45s)
+=== RUN   TestConvertFilePhase8MatchesInlineStyleEventsAndFitWidthContainers
+2026/04/22 23:48:20 kfx: error: Failed to locate 349 referenced positions: 1006.0, 1007.0, 1008.0, 1009.0, 1010.0, 1011.0, 1012.0, 1013.0, 1014.0, 1015.0, ... (349 total)
+--- PASS: TestConvertFilePhase8MatchesInlineStyleEventsAndFitWidthContainers (0.45s)
+=== RUN   TestSymbolResolverAccountsForIonSystemSymbols
+--- PASS: TestSymbolResolverAccountsForIonSystemSymbols (0.00s)
+=== RUN   TestIonTypeParity
+=== RUN   TestIonTypeParity/A1-1_SingletonFlatten_NotNeededForTypedStructs
+=== RUN   TestIonTypeParity/A1-3_IonSExpVsList_DoesNotAffectBehavior
+=== RUN   TestIonTypeParity/A1-4_AnnotationStripping_HandledAtDecode
+=== RUN   TestIonTypeParity/A1-7_NoneVsEmptyString_NullCheck
+=== RUN   TestIonTypeParity/A1-8_DuplicateErrorDetail_Sufficient
+--- PASS: TestIonTypeParity (0.00s)
+    --- PASS: TestIonTypeParity/A1-1_SingletonFlatten_NotNeededForTypedStructs (0.00s)
+    --- PASS: TestIonTypeParity/A1-3_IonSExpVsList_DoesNotAffectBehavior (0.00s)
+    --- PASS: TestIonTypeParity/A1-4_AnnotationStripping_HandledAtDecode (0.00s)
+    --- PASS: TestIonTypeParity/A1-7_NoneVsEmptyString_NullCheck (0.00s)
+    --- PASS: TestIonTypeParity/A1-8_DuplicateErrorDetail_Sufficient (0.00s)
+=== RUN   TestSymbolTableWritePathNotNeeded
+=== RUN   TestSymbolTableWritePathNotNeeded/A2-2_CreateLocalSymbol_WritePath
+=== RUN   TestSymbolTableWritePathNotNeeded/A2-4_FindSymbolReferences_CosmeticOvercollect
+=== RUN   TestSymbolTableWritePathNotNeeded/A2-5_AnnotationSymbolCollection_Cosmetic
+=== RUN   TestSymbolTableWritePathNotNeeded/A2-6_ReplaceSymbolTableImport_WritePath
+=== RUN   TestSymbolTableWritePathNotNeeded/A2-7_ReturnNilVsEmptySlice_FunctionallyEquivalent
+--- PASS: TestSymbolTableWritePathNotNeeded (0.00s)
+    --- PASS: TestSymbolTableWritePathNotNeeded/A2-2_CreateLocalSymbol_WritePath (0.00s)
+    --- PASS: TestSymbolTableWritePathNotNeeded/A2-4_FindSymbolReferences_CosmeticOvercollect (0.00s)
+    --- PASS: TestSymbolTableWritePathNotNeeded/A2-5_AnnotationSymbolCollection_Cosmetic (0.00s)
+    --- PASS: TestSymbolTableWritePathNotNeeded/A2-6_ReplaceSymbolTableImport_WritePath (0.00s)
+    --- PASS: TestSymbolTableWritePathNotNeeded/A2-7_ReturnNilVsEmptySlice_FunctionallyEquivalent (0.00s)
+=== RUN   TestSectionProcessingLogging
+=== RUN   TestSectionProcessingLogging/A3-1_OuterLoop_Upstream
+=== RUN   TestSectionProcessingLogging/A3-2_LogSeverity_Cosmetic
+=== RUN   TestSectionProcessingLogging/A3-4_DebugLogging_Cosmetic
+--- PASS: TestSectionProcessingLogging (0.00s)
+    --- PASS: TestSectionProcessingLogging/A3-1_OuterLoop_Upstream (0.00s)
+    --- PASS: TestSectionProcessingLogging/A3-2_LogSeverity_Cosmetic (0.00s)
+    --- PASS: TestSectionProcessingLogging/A3-4_DebugLogging_Cosmetic (0.00s)
+=== RUN   TestConnectedPaginationDefault
+=== RUN   TestConnectedPaginationDefault/A4-2_PushPopContext_InternalTracking
+=== RUN   TestConnectedPaginationDefault/A4-4_DebugLogging_Cosmetic
+=== RUN   TestConnectedPaginationDefault/A4-5_PopVsDelete_FunctionallyEquivalent
+=== RUN   TestConnectedPaginationDefault/A4-8_ConnectedPaginationDefault
+--- PASS: TestConnectedPaginationDefault (0.00s)
+    --- PASS: TestConnectedPaginationDefault/A4-2_PushPopContext_InternalTracking (0.00s)
+    --- PASS: TestConnectedPaginationDefault/A4-4_DebugLogging_Cosmetic (0.00s)
+    --- PASS: TestConnectedPaginationDefault/A4-5_PopVsDelete_FunctionallyEquivalent (0.00s)
+    --- PASS: TestConnectedPaginationDefault/A4-8_ConnectedPaginationDefault (0.00s)
+=== RUN   TestPositionLocationInternals
+=== RUN   TestPositionLocationInternals/A5-1_TypeComparison_Adaptation
+=== RUN   TestPositionLocationInternals/A5-4_MatchReportBug_GoCorrect
+=== RUN   TestPositionLocationInternals/A5-12_SectionName_NilVsEmpty
+=== RUN   TestPositionLocationInternals/A5-13_LogLevels_Cosmetic
+=== RUN   TestPositionLocationInternals/A5-21_ReturnNilVsNone_Equivalent
+=== RUN   TestPositionLocationInternals/A5-22_LazyInitVsZeroValue
+=== RUN   TestPositionLocationInternals/A5-23_PosDataClassVsClosures_Adaptation
+=== RUN   TestPositionLocationInternals/A5-24_ReportConstantVsHardcoded
+--- PASS: TestPositionLocationInternals (0.00s)
+    --- PASS: TestPositionLocationInternals/A5-1_TypeComparison_Adaptation (0.00s)
+    --- PASS: TestPositionLocationInternals/A5-4_MatchReportBug_GoCorrect (0.00s)
+    --- PASS: TestPositionLocationInternals/A5-12_SectionName_NilVsEmpty (0.00s)
+    --- PASS: TestPositionLocationInternals/A5-13_LogLevels_Cosmetic (0.00s)
+    --- PASS: TestPositionLocationInternals/A5-21_ReturnNilVsNone_Equivalent (0.00s)
+    --- PASS: TestPositionLocationInternals/A5-22_LazyInitVsZeroValue (0.00s)
+    --- PASS: TestPositionLocationInternals/A5-23_PosDataClassVsClosures_Adaptation (0.00s)
+    --- PASS: TestPositionLocationInternals/A5-24_ReportConstantVsHardcoded (0.00s)
+=== RUN   TestVersionConstantsParity
+=== RUN   TestVersionConstantsParity/C1-1_TrailingCommaTuples_GoCorrect
+=== RUN   TestVersionConstantsParity/C1-2_DeadConstant_NotNeeded
+=== RUN   TestVersionConstantsParity/C1-3_IntVersionKeyFallback_CorrectAdaptation
+=== RUN   TestVersionConstantsParity/C1-5_HeterogeneousVersionCapabilities_GoCorrect
+--- PASS: TestVersionConstantsParity (0.00s)
+    --- PASS: TestVersionConstantsParity/C1-1_TrailingCommaTuples_GoCorrect (0.00s)
+    --- PASS: TestVersionConstantsParity/C1-2_DeadConstant_NotNeeded (0.00s)
+    --- PASS: TestVersionConstantsParity/C1-3_IntVersionKeyFallback_CorrectAdaptation (0.00s)
+    --- PASS: TestVersionConstantsParity/C1-5_HeterogeneousVersionCapabilities_GoCorrect (0.00s)
+=== RUN   TestMapBoxAlign
+--- PASS: TestMapBoxAlign (0.00s)
+=== RUN   TestRebuildCallsAllSteps
+=== RUN   TestRebuildCallsAllSteps/C3-7_RebuildSplit_ArchitecturalAdaptation
+=== RUN   TestRebuildCallsAllSteps/C3-10_LogErrorOnce_Deduplication
+2026/04/22 23:48:20 kfx: error: test low-severity error message unique to m5 test
+=== RUN   TestRebuildCallsAllSteps/C3-12_ContainerFragmentTypes_Map
+--- PASS: TestRebuildCallsAllSteps (0.00s)
+    --- PASS: TestRebuildCallsAllSteps/C3-7_RebuildSplit_ArchitecturalAdaptation (0.00s)
+    --- PASS: TestRebuildCallsAllSteps/C3-10_LogErrorOnce_Deduplication (0.00s)
+    --- PASS: TestRebuildCallsAllSteps/C3-12_ContainerFragmentTypes_Map (0.00s)
+=== RUN   TestSuffixLocationParity
+--- PASS: TestSuffixLocationParity (0.00s)
+=== RUN   TestDebugVariantsConstant
+--- PASS: TestDebugVariantsConstant (0.00s)
+=== RUN   TestValueStrNilHandling
+=== RUN   TestValueStrNilHandling/NilInterface
+=== RUN   TestValueStrNilHandling/NilFloat64Pointer
+=== RUN   TestValueStrNilHandling/ValidFloat64Pointer
+=== RUN   TestValueStrNilHandling/ZeroFloat64Pointer
+=== RUN   TestValueStrNilHandling/ZeroIntValue
+--- PASS: TestValueStrNilHandling (0.00s)
+    --- PASS: TestValueStrNilHandling/NilInterface (0.00s)
+    --- PASS: TestValueStrNilHandling/NilFloat64Pointer (0.00s)
+    --- PASS: TestValueStrNilHandling/ValidFloat64Pointer (0.00s)
+    --- PASS: TestValueStrNilHandling/ZeroFloat64Pointer (0.00s)
+    --- PASS: TestValueStrNilHandling/ZeroIntValue (0.00s)
+=== RUN   TestLowSeverityNonRegressive
+=== RUN   TestLowSeverityNonRegressive/IonTypeHandling_NoBehavioralDifference
+=== RUN   TestLowSeverityNonRegressive/SymbolTable_NotUsedInConversion
+=== RUN   TestLowSeverityNonRegressive/SectionProcessing_CosmeticOnly
+=== RUN   TestLowSeverityNonRegressive/ContextStack_Equivalent
+=== RUN   TestLowSeverityNonRegressive/PositionLocation_Equivalent
+=== RUN   TestLowSeverityNonRegressive/VersionConstants_Correct
+=== RUN   TestLowSeverityNonRegressive/MapBoxAlign_JustifyPresent
+=== RUN   TestLowSeverityNonRegressive/RebuildArchitecture_SameOutput
+=== RUN   TestLowSeverityNonRegressive/ImageBookInternals_Identical
+=== RUN   TestLowSeverityNonRegressive/ValueStrNilPointer_EmptyString
+--- PASS: TestLowSeverityNonRegressive (0.00s)
+    --- PASS: TestLowSeverityNonRegressive/IonTypeHandling_NoBehavioralDifference (0.00s)
+    --- PASS: TestLowSeverityNonRegressive/SymbolTable_NotUsedInConversion (0.00s)
+    --- PASS: TestLowSeverityNonRegressive/SectionProcessing_CosmeticOnly (0.00s)
+    --- PASS: TestLowSeverityNonRegressive/ContextStack_Equivalent (0.00s)
+    --- PASS: TestLowSeverityNonRegressive/PositionLocation_Equivalent (0.00s)
+    --- PASS: TestLowSeverityNonRegressive/VersionConstants_Correct (0.00s)
+    --- PASS: TestLowSeverityNonRegressive/MapBoxAlign_JustifyPresent (0.00s)
+    --- PASS: TestLowSeverityNonRegressive/RebuildArchitecture_SameOutput (0.00s)
+    --- PASS: TestLowSeverityNonRegressive/ImageBookInternals_Identical (0.00s)
+    --- PASS: TestLowSeverityNonRegressive/ValueStrNilPointer_EmptyString (0.00s)
+=== RUN   TestBuildBookStateFragmentSummaryMatchesReference
+--- PASS: TestBuildBookStateFragmentSummaryMatchesReference (0.42s)
+=== RUN   TestParseSectionFragmentKeepsAllPageTemplatesAndUsesLastAsPrimary
+--- PASS: TestParseSectionFragmentKeepsAllPageTemplatesAndUsesLastAsPrimary (0.00s)
+=== RUN   TestRenderSectionFragmentsUsesLastTemplateAsMainAndPrependsOverlaysAfterMain
+--- PASS: TestRenderSectionFragmentsUsesLastTemplateAsMainAndPrependsOverlaysAfterMain (0.00s)
+=== RUN   TestRenderSectionFragmentsSelectsActiveConditionalTemplateForFixedLayout
+--- PASS: TestRenderSectionFragmentsSelectsActiveConditionalTemplateForFixedLayout (0.00s)
+=== RUN   TestRenderNodeSupportsListsAndRules
+--- PASS: TestRenderNodeSupportsListsAndRules (0.00s)
+=== RUN   TestRenderNodeSupportsHiddenContent
+--- PASS: TestRenderNodeSupportsHiddenContent (0.00s)
+=== RUN   TestNormalizeHTMLWhitespaceReplacesEOLKindsAndPreservesSpaces
+--- PASS: TestNormalizeHTMLWhitespaceReplacesEOLKindsAndPreservesSpaces (0.00s)
+=== RUN   TestNormalizeHTMLWhitespaceCarriesDoubleSpaceAcrossInlineBoundaries
+--- PASS: TestNormalizeHTMLWhitespaceCarriesDoubleSpaceAcrossInlineBoundaries (0.00s)
+=== RUN   TestRenderTableNodePreservesColumnAndCellSpanAttributes
+--- PASS: TestRenderTableNodePreservesColumnAndCellSpanAttributes (0.00s)
+=== RUN   TestRenderNodePromotesClassifiedContainersToAside
+--- PASS: TestRenderNodePromotesClassifiedContainersToAside (0.00s)
+=== RUN   TestRenderTableNodePromotesCaptionClassification
+--- PASS: TestRenderTableNodePromotesCaptionClassification (0.00s)
+=== RUN   TestRenderNodeAddsFixedLayoutClassForFixedContainers
+--- PASS: TestRenderNodeAddsFixedLayoutClassForFixedContainers (0.00s)
+=== RUN   TestRenderTextNodeSupportsDropCaps
+--- PASS: TestRenderTextNodeSupportsDropCaps (0.00s)
+=== RUN   TestRenderNodePromotesFigureLayoutHints
+--- PASS: TestRenderNodePromotesFigureLayoutHints (0.00s)
+=== RUN   TestRenderNodePromotesHeadingLayoutHints
+--- PASS: TestRenderNodePromotesHeadingLayoutHints (0.00s)
+=== RUN   TestRenderNodePromotesInlineOnlyContainersToParagraphs
+--- PASS: TestRenderNodePromotesInlineOnlyContainersToParagraphs (0.00s)
+=== RUN   TestRenderNodeDoesNotPromoteMultiParagraphContainersToParagraph
+--- PASS: TestRenderNodeDoesNotPromoteMultiParagraphContainersToParagraph (0.00s)
+=== RUN   TestRenderNodeDoesNotPromoteLayoutHintsInFixedLayout
+--- PASS: TestRenderNodeDoesNotPromoteLayoutHintsInFixedLayout (0.00s)
+=== RUN   TestRenderNodeSupportsNodeLevelLinks
+--- PASS: TestRenderNodeSupportsNodeLevelLinks (0.00s)
+=== RUN   TestRenderNodeSupportsInlineRenderContainers
+--- PASS: TestRenderNodeSupportsInlineRenderContainers (0.00s)
+=== RUN   TestRenderImageNodeFitTightDropsWidthHundredPercent
+--- PASS: TestRenderImageNodeFitTightDropsWidthHundredPercent (0.00s)
+=== RUN   TestRenderTextNodeSupportsFirstLineStyles
+--- PASS: TestRenderTextNodeSupportsFirstLineStyles (0.00s)
+=== RUN   TestPruneUnusedStylesheetRulesKeepsPseudoClassRulesForUsedBaseClass
+--- PASS: TestPruneUnusedStylesheetRulesKeepsPseudoClassRulesForUsedBaseClass (0.00s)
+=== RUN   TestSimplifyStylesFullUnwrapsSpanWhenStyleIsFullyInherited
+--- PASS: TestSimplifyStylesFullUnwrapsSpanWhenStyleIsFullyInherited (0.00s)
+=== RUN   TestSimplifyStylesFullRunsBeforeCSSEmission
+--- PASS: TestSimplifyStylesFullRunsBeforeCSSEmission (0.00s)
+=== RUN   TestRenderNodeAddsMathRoleForClassifiedContent
+--- PASS: TestRenderNodeAddsMathRoleForClassifiedContent (0.00s)
+=== RUN   TestConditionEvaluatorMatchesKnownSupportedFeaturesAndLogic
+--- PASS: TestConditionEvaluatorMatchesKnownSupportedFeaturesAndLogic (0.00s)
+=== RUN   TestRenderNodeHonorsIncludeExcludeConditions
+--- PASS: TestRenderNodeHonorsIncludeExcludeConditions (0.00s)
+=== RUN   TestConditionalPropertiesMergeIntoRenderableNode
+--- PASS: TestConditionalPropertiesMergeIntoRenderableNode (0.00s)
+=== RUN   TestBuildResourcesKeepsNonImageResources
+--- PASS: TestBuildResourcesKeepsNonImageResources (0.00s)
+=== RUN   TestRenderNodeSupportsHTMLPluginResources
+--- PASS: TestRenderNodeSupportsHTMLPluginResources (0.00s)
+=== RUN   TestRenderNodeSupportsAudioAndVideoPluginResources
+--- PASS: TestRenderNodeSupportsAudioAndVideoPluginResources (0.00s)
+=== RUN   TestRenderNodeSupportsBasicSVGContainers
+--- PASS: TestRenderNodeSupportsBasicSVGContainers (0.00s)
+=== RUN   TestMaterializeRenderedSectionsUsesDOMAfterLateMutation
+--- PASS: TestMaterializeRenderedSectionsUsesDOMAfterLateMutation (0.00s)
+=== RUN   TestRenderTextNodeSupportsRubyAnnotations
+--- PASS: TestRenderTextNodeSupportsRubyAnnotations (0.00s)
+=== RUN   TestCleanupRenderedSectionsCombinesNestedDivsAndStripsEmptySpans
+--- PASS: TestCleanupRenderedSectionsCombinesNestedDivsAndStripsEmptySpans (0.00s)
+=== RUN   TestConvertFileMatchesReferenceStructureIgnoringImages
+2026/04/22 23:48:21 kfx: error: Failed to locate 349 referenced positions: 1006.0, 1007.0, 1008.0, 1009.0, 1010.0, 1011.0, 1012.0, 1013.0, 1014.0, 1015.0, ... (349 total)
+    pipeline_test.go:1296: OEBPS/c109.xhtml text mismatch
+--- FAIL: TestConvertFileMatchesReferenceStructureIgnoringImages (0.51s)
+=== RUN   TestConvertFileThreeBelowKFXZipMatchesCalibreComparableArchivePaths
+2026/04/22 23:48:21 kfx: Book symbol format is original
+2026/04/22 23:48:21 kfx: error: Failed to locate 252 referenced positions: 1.0, 1008.33, 1019.99, 1028.107, 1038.28, 1049.96, 1057.164, 1061.270, 1067.162, 1077.51, ... (252 total)
+--- PASS: TestConvertFileThreeBelowKFXZipMatchesCalibreComparableArchivePaths (0.26s)
+=== RUN   TestConvertFileElvisKFXZipMatchesCalibreComparableArchivePathsWhenPresent
+2026/04/22 23:48:21 kfx: Book symbol format is original
+2026/04/22 23:48:21 kfx: error: Failed to locate 48 referenced positions: 1.0, 1049.0, 11.0, 116.0, 12.0, 1209.0, 13.0, 1321.0, 14.0, 1430.0, ... (48 total)
+--- PASS: TestConvertFileElvisKFXZipMatchesCalibreComparableArchivePathsWhenPresent (0.30s)
+=== RUN   TestConvertFileHungerGamesKFXZipMatchesCalibreComparableArchivePathsWhenPresent
+2026/04/22 23:48:22 kfx: error: Failed to locate 995 referenced positions: 1000.0, 1001.0, 1002.0, 1003.0, 1004.0, 1005.0, 1006.0, 1007.0, 1008.0, 1009.0, ... (995 total)
+--- PASS: TestConvertFileHungerGamesKFXZipMatchesCalibreComparableArchivePathsWhenPresent (1.11s)
+=== RUN   TestConvertFileFamiliarsKFXZipMatchesCalibreComparableArchivePathsWhenPresent
+kfx: warning: ineffective properties in span element for kfx-style s188: text-indent: 2em
+2026/04/22 23:48:23 kfx: error: Failed to locate 402 referenced positions: 1003.142, 1005.895, 1008.280, 1014.188, 1019.143, 1022.244, 1028.46, 1031.90, 1036.45, 1044.194, ... (402 total)
+--- PASS: TestConvertFileFamiliarsKFXZipMatchesCalibreComparableArchivePathsWhenPresent (0.38s)
+=== RUN   TestCombineImageTiles_2x2Grid
+--- PASS: TestCombineImageTiles_2x2Grid (0.00s)
+=== RUN   TestCombineImageTiles_MissingTile
+2026/04/22 23:48:23 kfx: error: Resource test_resource is missing tile (1, 0): tile-0-1
+--- PASS: TestCombineImageTiles_MissingTile (0.00s)
+=== RUN   TestCombineImageTiles_MissingTileNotIgnored
+2026/04/22 23:48:23 kfx: error: Resource test_resource is missing tile (1, 0): tile-0-1
+--- PASS: TestCombineImageTiles_MissingTileNotIgnored (0.00s)
+=== RUN   TestCombineImageTiles_WrongDimensions
+2026/04/22 23:48:23 kfx: error: Resource test_resource tile 0, 0 size (30, 30) does not have padding 0 of expected size (50, 50)
+--- PASS: TestCombineImageTiles_WrongDimensions (0.00s)
+=== RUN   TestCombineImageTiles_JpegLossless
+--- PASS: TestCombineImageTiles_JpegLossless (0.00s)
+=== RUN   TestCombineImageTiles_PngDirect
+--- PASS: TestCombineImageTiles_PngDirect (0.00s)
+=== RUN   TestCombineImageTiles_WithPadding
+2026/04/22 23:48:23 kfx: error: Resource test_resource tile 0, 0 size (55, 55) does not have padding 5 of expected size (50, 50)
+2026/04/22 23:48:23 kfx: error: Resource test_resource tile 1, 0 size (55, 55) does not have padding 5 of expected size (50, 50)
+--- PASS: TestCombineImageTiles_WithPadding (0.00s)
+=== RUN   TestConvertJXRToJpegOrPNG_GrayImage
+--- PASS: TestConvertJXRToJpegOrPNG_GrayImage (0.00s)
+=== RUN   TestConvertJXR_RGBA
+--- PASS: TestConvertJXR_RGBA (0.00s)
+=== RUN   TestConvertPDFPageToImage_NoPanic
+2026/04/22 23:48:23 kfx: info: PDF page extraction for test.pdf page 1 (rendering placeholder)
+--- PASS: TestConvertPDFPageToImage_NoPanic (0.00s)
+=== RUN   TestConvertPDFPageToImage_InvalidData
+--- PASS: TestConvertPDFPageToImage_InvalidData (0.00s)
+=== RUN   TestPDFPageSuffix
+--- PASS: TestPDFPageSuffix (0.00s)
+=== RUN   TestResourceSearchPath_Mismatch
+2026/04/22 23:48:23 kfx: error: Image resource r1 has location loc_A != search_path loc_B
+--- PASS: TestResourceSearchPath_Mismatch (0.00s)
+=== RUN   TestResourceSearchPath_Match
+--- PASS: TestResourceSearchPath_Match (0.00s)
+=== RUN   TestResourceExternalRef
+--- PASS: TestResourceExternalRef (0.00s)
+=== RUN   TestResourceVariantSelection_BothDimensionsLarger
+--- PASS: TestResourceVariantSelection_BothDimensionsLarger (0.00s)
+=== RUN   TestResourceVariantSelection_WidthOnlyLarger
+--- PASS: TestResourceVariantSelection_WidthOnlyLarger (0.00s)
+=== RUN   TestResourceVariantSelection_HeightOnlyLarger
+--- PASS: TestResourceVariantSelection_HeightOnlyLarger (0.00s)
+=== RUN   TestResourceVariantSelection_SameDimensions
+--- PASS: TestResourceVariantSelection_SameDimensions (0.00s)
+=== RUN   TestGetExternalResource_TiledImage
+--- PASS: TestGetExternalResource_TiledImage (0.00s)
+=== RUN   TestGetExternalResource_PDFPage
+2026/04/22 23:48:23 kfx: info: PDF page extraction for loc_pdf page 1 (rendering placeholder)
+--- PASS: TestGetExternalResource_PDFPage (0.00s)
+=== RUN   TestGetExternalResource_ExternalRefProcessed
+--- PASS: TestGetExternalResource_ExternalRefProcessed (0.00s)
+=== RUN   TestMetadataProcessing258NoOverride
+--- PASS: TestMetadataProcessing258NoOverride (0.00s)
+=== RUN   TestMetadataProcessing258ReadingOrder
+--- PASS: TestMetadataProcessing258ReadingOrder (0.00s)
+=== RUN   TestSymbolFormatNonShortLogging
+--- PASS: TestSymbolFormatNonShortLogging (0.00s)
+=== RUN   TestSymbolFormatNonShortLogMessage
+--- PASS: TestSymbolFormatNonShortLogMessage (0.00s)
+=== RUN   TestCheckSymbolTableMissingSymbols
+--- PASS: TestCheckSymbolTableMissingSymbols (0.00s)
+=== RUN   TestCheckSymbolTableUnusedSymbols
+--- PASS: TestCheckSymbolTableUnusedSymbols (0.00s)
+=== RUN   TestCheckSymbolTableExpectedUnusedExceptions
+--- PASS: TestCheckSymbolTableExpectedUnusedExceptions (0.00s)
+=== RUN   TestCheckSymbolTableDictionaryNoMissingError
+--- PASS: TestCheckSymbolTableDictionaryNoMissingError (0.00s)
+=== RUN   TestCheckSymbolTableSampleSuffixAd
+--- PASS: TestCheckSymbolTableSampleSuffixAd (0.00s)
+=== RUN   TestHasIllustratedLayoutConditionFromParsedTemplate
+--- PASS: TestHasIllustratedLayoutConditionFromParsedTemplate (0.00s)
+=== RUN   TestHasIllustratedLayoutConditionInvalidOperator
+--- PASS: TestHasIllustratedLayoutConditionInvalidOperator (0.00s)
+=== RUN   TestHasIllustratedLayoutConditionWrongStructure
+--- PASS: TestHasIllustratedLayoutConditionWrongStructure (0.00s)
+=== RUN   TestHasIllustratedLayoutConditionNoCondition
+--- PASS: TestHasIllustratedLayoutConditionNoCondition (0.00s)
+=== RUN   TestHasIllustratedLayoutConditionAllOperators
+--- PASS: TestHasIllustratedLayoutConditionAllOperators (0.00s)
+=== RUN   TestOverlayTemplate171ValidationValid
+--- PASS: TestOverlayTemplate171ValidationValid (0.00s)
+=== RUN   TestOverlayTemplate171ValidationInvalidLayout
+--- PASS: TestOverlayTemplate171ValidationInvalidLayout (0.00s)
+=== RUN   TestOverlayTemplate171ValidationInvalidStructure
+--- PASS: TestOverlayTemplate171ValidationInvalidStructure (0.00s)
+=== RUN   TestOverlayTemplate171ValidationWrongFv1
+--- PASS: TestOverlayTemplate171ValidationWrongFv1 (0.00s)
+=== RUN   TestOverlayTemplate171ValidationWrongFv2
+--- PASS: TestOverlayTemplate171ValidationWrongFv2 (0.00s)
+=== RUN   TestOverlayTemplate171ValidationWrongFv20
+--- PASS: TestOverlayTemplate171ValidationWrongFv20 (0.00s)
+=== RUN   TestOverlayTemplate171ValidationWrongOperator
+--- PASS: TestOverlayTemplate171ValidationWrongOperator (0.00s)
+=== RUN   TestOverlayTemplate171ValidationNilCondition
+--- PASS: TestOverlayTemplate171ValidationNilCondition (0.00s)
+=== RUN   TestFontSizeRemMissingInheritedProperty
+--- PASS: TestFontSizeRemMissingInheritedProperty (0.00s)
+=== RUN   TestFontSizeRemMissingElementProperty
+--- PASS: TestFontSizeRemMissingElementProperty (0.00s)
+=== RUN   TestFontSizeRemIncorrectUnits
+--- PASS: TestFontSizeRemIncorrectUnits (0.00s)
+=== RUN   TestFontSizeRemValidConversion
+--- PASS: TestFontSizeRemValidConversion (0.00s)
+=== RUN   TestFontSizeRemEmBaseConversion
+--- PASS: TestFontSizeRemEmBaseConversion (0.00s)
+=== RUN   TestListTruncated
+--- PASS: TestListTruncated (0.00s)
+=== RUN   TestKindleFeatureVersion_TrueEq1
+--- PASS: TestKindleFeatureVersion_TrueEq1 (0.00s)
+=== RUN   TestKindleFeatureVersion_BoolIntEquivalence
+--- PASS: TestKindleFeatureVersion_BoolIntEquivalence (0.00s)
+=== RUN   TestIsKnownFeature_BoolIntEquivalence
+--- PASS: TestIsKnownFeature_BoolIntEquivalence (0.00s)
+=== RUN   TestColorAlphaThresholdConsistency
+--- PASS: TestColorAlphaThresholdConsistency (0.00s)
+=== RUN   TestColorAlphaConsistency_ColorStrVsCssColor
+--- PASS: TestColorAlphaConsistency_ColorStrVsCssColor (0.00s)
+=== RUN   TestIntToAlphaThresholds
+--- PASS: TestIntToAlphaThresholds (0.00s)
+=== RUN   TestAlphaToIntThresholds
+--- PASS: TestAlphaToIntThresholds (0.00s)
+=== RUN   TestFragmentValidation_KpfPrepub610
+2026/04/22 23:48:23 kfx: error: Unreferenced fragments: [(yj.eidhash_eid_section_map, position_data_1)]
+--- PASS: TestFragmentValidation_KpfPrepub610 (0.00s)
+=== RUN   TestIonDataEq_Equal
+--- PASS: TestIonDataEq_Equal (0.00s)
+=== RUN   TestIonDataEq_Different
+--- PASS: TestIonDataEq_Different (0.00s)
+=== RUN   TestIonDataEq_Struct
+--- PASS: TestIonDataEq_Struct (0.00s)
+=== RUN   TestIonDataEq_Slice
+--- PASS: TestIonDataEq_Slice (0.00s)
+=== RUN   TestIonDataEq_Nested
+--- PASS: TestIonDataEq_Nested (0.00s)
+=== RUN   TestIonDataEq_FloatNaN
+--- PASS: TestIonDataEq_FloatNaN (0.00s)
+=== RUN   TestFragmentValidation_DuplicateDetection
+2026/04/22 23:48:23 kfx: warning: Duplicate fragment: (external_resource, resource1)
+2026/04/22 23:48:23 kfx: error: Unreferenced fragments: [(external_resource, resource1)]
+2026/04/22 23:48:23 kfx: error: Duplicate fragment key with different content: (external_resource, resource1)
+2026/04/22 23:48:23 kfx: error: Unreferenced fragments: [(external_resource, resource1) (external_resource, resource1)]
+2026/04/22 23:48:23 kfx: fatal: Book appears to have KFX containers from multiple books. (duplicate fragments)
+--- PASS: TestFragmentValidation_DuplicateDetection (0.00s)
+=== RUN   TestFragmentValidation_KpfPrepubCleanup
+2026/04/22 23:48:23 kfx: error: Unreferenced fragments: [(nav_container, nav1) (anchor, style1) (storyline, story1) (section, section1) (structure, content1)]
+--- PASS: TestFragmentValidation_KpfPrepubCleanup (0.00s)
+=== RUN   TestFragmentValidation_SampleDict597
+2026/04/22 23:48:23 kfx: error: Unreferenced fragments: [(auxiliary_data, extra_data)]
+--- PASS: TestFragmentValidation_SampleDict597 (0.00s)
+=== RUN   TestDictionaryAnnotations_OnlyForDicts
+--- PASS: TestDictionaryAnnotations_OnlyForDicts (0.00s)
+=== RUN   TestRebuild_SkipsDictionary
+--- PASS: TestRebuild_SkipsDictionary (0.00s)
+=== RUN   TestCreateContainerID_NonDeterministic
+--- PASS: TestCreateContainerID_NonDeterministic (0.00s)
+=== RUN   TestCreateContainerID_ContainerFormat
+--- PASS: TestCreateContainerID_ContainerFormat (0.00s)
+=== RUN   TestOrganizeFragmentsCategorizesContentFragments
+--- PASS: TestOrganizeFragmentsCategorizesContentFragments (0.00s)
+=== RUN   TestOrganizeFragmentsRemaps270ContainerFormat
+--- PASS: TestOrganizeFragmentsRemaps270ContainerFormat (0.00s)
+=== RUN   TestOrganizeFragmentsRemaps593ReusesLastContainerID
+--- PASS: TestOrganizeFragmentsRemaps593ReusesLastContainerID (0.00s)
+=== RUN   TestOrganizeFragmentsRemaps262FontCountSuffix
+--- PASS: TestOrganizeFragmentsRemaps262FontCountSuffix (0.00s)
+=== RUN   TestOrganizeFragmentsRemaps387With215Suffix
+--- PASS: TestOrganizeFragmentsRemaps387With215Suffix (0.00s)
+=== RUN   TestMergeIonReferencedStringSymbolsRecursiveWalk
+--- PASS: TestMergeIonReferencedStringSymbolsRecursiveWalk (0.00s)
+=== RUN   TestMergeIonReferencedStringSymbolsNonDollarKeys
+--- PASS: TestMergeIonReferencedStringSymbolsNonDollarKeys (0.00s)
+=== RUN   TestMergeIonReferencedStringSymbolsEmptyString
+--- PASS: TestMergeIonReferencedStringSymbolsEmptyString (0.00s)
+=== RUN   TestMergeContentFragmentStringSymbols
+--- PASS: TestMergeContentFragmentStringSymbols (0.00s)
+=== RUN   TestMergeContentFragmentStringSymbolsSkipsEmpty
+--- PASS: TestMergeContentFragmentStringSymbolsSkipsEmpty (0.00s)
+=== RUN   TestBookSymbolsAccumulatesFromMultipleContainers
+--- PASS: TestBookSymbolsAccumulatesFromMultipleContainers (0.00s)
+=== RUN   TestSectionOrderFrom258
+--- PASS: TestSectionOrderFrom258 (0.00s)
+=== RUN   TestSectionOrderFallbackTo538
+--- PASS: TestSectionOrderFallbackTo538 (0.00s)
+=== RUN   TestSectionOrderFallbackToSortedKeys
+--- PASS: TestSectionOrderFallbackToSortedKeys (0.00s)
+=== RUN   TestDuplicateFragmentIDsRecorded
+--- PASS: TestDuplicateFragmentIDsRecorded (0.00s)
+=== RUN   TestSingletonCollapseWhenKeyEqualsCategory
+--- PASS: TestSingletonCollapseWhenKeyEqualsCategory (0.00s)
+=== RUN   TestSingletonNoCollapseWhenKeyDiffersFromCategory
+--- PASS: TestSingletonNoCollapseWhenKeyDiffersFromCategory (0.00s)
+=== RUN   TestNoCollapseWhenMultipleEntries
+--- PASS: TestNoCollapseWhenMultipleEntries (0.00s)
+=== RUN   TestNullIDErrorDetection
+    yj_book_test.go:529: detected mixed null/non-null ids of type "section" (expected behavior)
+--- PASS: TestNullIDErrorDetection (0.00s)
+=== RUN   TestChooseFragmentIdentity
+=== RUN   TestChooseFragmentIdentity/resolved_value_ID
+=== RUN   TestChooseFragmentIdentity/value_ID_is_placeholder,_fragment_also_placeholder
+=== RUN   TestChooseFragmentIdentity/both_are_resolved
+=== RUN   TestChooseFragmentIdentity/empty_value_uses_fragment
+=== RUN   TestChooseFragmentIdentity/value_ID_takes_priority
+=== RUN   TestChooseFragmentIdentity/nil_value_uses_fragment
+--- PASS: TestChooseFragmentIdentity (0.00s)
+    --- PASS: TestChooseFragmentIdentity/resolved_value_ID (0.00s)
+    --- PASS: TestChooseFragmentIdentity/value_ID_is_placeholder,_fragment_also_placeholder (0.00s)
+    --- PASS: TestChooseFragmentIdentity/both_are_resolved (0.00s)
+    --- PASS: TestChooseFragmentIdentity/empty_value_uses_fragment (0.00s)
+    --- PASS: TestChooseFragmentIdentity/value_ID_takes_priority (0.00s)
+    --- PASS: TestChooseFragmentIdentity/nil_value_uses_fragment (0.00s)
+=== RUN   TestIsResolvedIdentity
+--- PASS: TestIsResolvedIdentity (0.00s)
+=== RUN   TestIsPlaceholderSymbol
+--- PASS: TestIsPlaceholderSymbol (0.00s)
+=== RUN   TestGetMetadataValue_TwoTierLookup_FirstTierWins
+--- PASS: TestGetMetadataValue_TwoTierLookup_FirstTierWins (0.00s)
+=== RUN   TestGetMetadataValue_TwoTierLookup_Fallback
+--- PASS: TestGetMetadataValue_TwoTierLookup_Fallback (0.00s)
+=== RUN   TestGetMetadataValue_Default
+--- PASS: TestGetMetadataValue_Default (0.00s)
+=== RUN   TestGetMetadataValue_NilDefault
+--- PASS: TestGetMetadataValue_NilDefault (0.00s)
+=== RUN   TestGetMetadataValue_NonDefaultCategory
+--- PASS: TestGetMetadataValue_NonDefaultCategory (0.00s)
+=== RUN   TestGetFeatureValue_YJConversionNamespace_MajorOnly
+--- PASS: TestGetFeatureValue_YJConversionNamespace_MajorOnly (0.00s)
+=== RUN   TestGetFeatureValue_YJConversionNamespace_MajorMinor
+--- PASS: TestGetFeatureValue_YJConversionNamespace_MajorMinor (0.00s)
+=== RUN   TestGetFeatureValue_FormatCapabilities
+--- PASS: TestGetFeatureValue_FormatCapabilities (0.00s)
+=== RUN   TestGetFeatureValue_Default
+--- PASS: TestGetFeatureValue_Default (0.00s)
+=== RUN   TestIsMagazine_True
+--- PASS: TestIsMagazine_True (0.00s)
+=== RUN   TestIsMagazine_False
+--- PASS: TestIsMagazine_False (0.00s)
+=== RUN   TestIsMagazine_Empty
+--- PASS: TestIsMagazine_Empty (0.00s)
+=== RUN   TestIsSample_True
+--- PASS: TestIsSample_True (0.00s)
+=== RUN   TestIsSample_False
+--- PASS: TestIsSample_False (0.00s)
+=== RUN   TestIsFixedLayout_WithCapability
+--- PASS: TestIsFixedLayout_WithCapability (0.00s)
+=== RUN   TestIsFixedLayout_ScribeNotebook
+--- PASS: TestIsFixedLayout_ScribeNotebook (0.00s)
+=== RUN   TestIsFixedLayout_False
+--- PASS: TestIsFixedLayout_False (0.00s)
+=== RUN   TestIsPrintReplica_FixedLayoutEquals2
+--- PASS: TestIsPrintReplica_FixedLayoutEquals2 (0.00s)
+=== RUN   TestIsPrintReplica_TextbookAndNot3
+--- PASS: TestIsPrintReplica_TextbookAndNot3 (0.00s)
+=== RUN   TestIsPrintReplica_TextbookAnd3_False
+--- PASS: TestIsPrintReplica_TextbookAnd3_False (0.00s)
+=== RUN   TestIsPrintReplica_NoTextbookNoFixedLayout_False
+--- PASS: TestIsPrintReplica_NoTextbookNoFixedLayout_False (0.00s)
+=== RUN   TestIsPrintReplica_TextbookAndNil
+--- PASS: TestIsPrintReplica_TextbookAndNil (0.00s)
+=== RUN   TestIsImageBasedFixedLayout_True
+--- PASS: TestIsImageBasedFixedLayout_True (0.00s)
+=== RUN   TestIsImageBasedFixedLayout_False
+--- PASS: TestIsImageBasedFixedLayout_False (0.00s)
+=== RUN   TestCachingPattern_CdeType
+--- PASS: TestCachingPattern_CdeType (0.00s)
+=== RUN   TestCachingPattern_IsKfxV1
+--- PASS: TestCachingPattern_IsKfxV1 (0.00s)
+=== RUN   TestIsKfxV1_True
+--- PASS: TestIsKfxV1_True (0.00s)
+=== RUN   TestIsKfxV1_Version2_False
+--- PASS: TestIsKfxV1_Version2_False (0.00s)
+=== RUN   TestIsKfxV1_NoFragment_False
+--- PASS: TestIsKfxV1_NoFragment_False (0.00s)
+=== RUN   TestGetCoverImageData_JPEG
+--- PASS: TestGetCoverImageData_JPEG (0.00s)
+=== RUN   TestGetCoverImageData_NoCoverMetadata_Nil
+--- PASS: TestGetCoverImageData_NoCoverMetadata_Nil (0.00s)
+=== RUN   TestGetCoverImageData_NoRawMedia_Nil
+--- PASS: TestGetCoverImageData_NoRawMedia_Nil (0.00s)
+=== RUN   TestGetAssetId
+--- PASS: TestGetAssetId (0.00s)
+=== RUN   TestGetAssetId_NotFound
+--- PASS: TestGetAssetId_NotFound (0.00s)
+=== RUN   TestHasMetadata_WithTitleMetadata
+--- PASS: TestHasMetadata_WithTitleMetadata (0.00s)
+=== RUN   TestHasMetadata_WithReadingOrderMetadata
+--- PASS: TestHasMetadata_WithReadingOrderMetadata (0.00s)
+=== RUN   TestHasMetadata_Both
+--- PASS: TestHasMetadata_Both (0.00s)
+=== RUN   TestHasMetadata_Neither
+--- PASS: TestHasMetadata_Neither (0.00s)
+=== RUN   TestHasPDFResource_True
+--- PASS: TestHasPDFResource_True (0.00s)
+=== RUN   TestHasPDFResource_False
+--- PASS: TestHasPDFResource_False (0.00s)
+=== RUN   TestHasPDFResource_NoResources
+--- PASS: TestHasPDFResource_NoResources (0.00s)
+=== RUN   TestGetGenerators
+--- PASS: TestGetGenerators (0.00s)
+=== RUN   TestGetGenerators_Empty
+--- PASS: TestGetGenerators_Empty (0.00s)
+=== RUN   TestIsPDFBackedFixedLayout_True
+--- PASS: TestIsPDFBackedFixedLayout_True (0.00s)
+=== RUN   TestIsPDFBackedFixedLayout_False
+--- PASS: TestIsPDFBackedFixedLayout_False (0.00s)
+=== RUN   TestIsIllustratedLayout_True
+--- PASS: TestIsIllustratedLayout_True (0.00s)
+=== RUN   TestIsIllustratedLayout_False
+--- PASS: TestIsIllustratedLayout_False (0.00s)
+=== RUN   TestCdeType
+--- PASS: TestCdeType (0.00s)
+=== RUN   TestHasCoverData_False
+--- PASS: TestHasCoverData_False (0.00s)
+=== RUN   TestGetPageCount
+--- PASS: TestGetPageCount (0.00s)
+=== RUN   TestGetPageCount_NoNavRoot
+--- PASS: TestGetPageCount_NoNavRoot (0.00s)
+=== RUN   TestGetFeatureValue_FormatCapabilities_MultipleFeatures
+--- PASS: TestGetFeatureValue_FormatCapabilities_MultipleFeatures (0.00s)
+=== RUN   TestGetFeatureValue_FormatCapabilities_FallbackToItems
+--- PASS: TestGetFeatureValue_FormatCapabilities_FallbackToItems (0.00s)
+=== RUN   TestGetFeatureValue_FormatCapabilities_NotFound
+--- PASS: TestGetFeatureValue_FormatCapabilities_NotFound (0.00s)
+=== RUN   TestGetFeatureValue_FormatCapabilities_MultipleFragments
+--- PASS: TestGetFeatureValue_FormatCapabilities_MultipleFragments (0.00s)
+=== RUN   TestGetFeatureValue_FormatCapabilities_EmptyFragment
+--- PASS: TestGetFeatureValue_FormatCapabilities_EmptyFragment (0.00s)
+=== RUN   TestUpdateCoverSectionAndStoryline_StyleFragmentProcessing
+--- PASS: TestUpdateCoverSectionAndStoryline_StyleFragmentProcessing (0.00s)
+=== RUN   TestUpdateCoverSectionAndStoryline_NoStyleRef
+--- PASS: TestUpdateCoverSectionAndStoryline_NoStyleRef (0.00s)
+=== RUN   TestUpdateCoverSectionAndStoryline_NoSections
+--- PASS: TestUpdateCoverSectionAndStoryline_NoSections (0.00s)
+=== RUN   TestUpdateCoverSectionAndStoryline_MissingStyleFragment
+--- PASS: TestUpdateCoverSectionAndStoryline_MissingStyleFragment (0.00s)
+=== RUN   TestUpdateCoverSectionAndStoryline_NestedStyleFragments
+--- PASS: TestUpdateCoverSectionAndStoryline_NestedStyleFragments (0.00s)
+=== RUN   TestGetGenerators_PlaceholderFiltering
+--- PASS: TestGetGenerators_PlaceholderFiltering (0.00s)
+=== RUN   TestGetGenerators_NoVersionKey_Skipped
+--- PASS: TestGetGenerators_NoVersionKey_Skipped (0.00s)
+=== RUN   TestGetGenerators_EmptyPkgVersion
+--- PASS: TestGetGenerators_EmptyPkgVersion (0.00s)
+=== RUN   TestIsKfxV1_FirstFragmentOnly
+--- PASS: TestIsKfxV1_FirstFragmentOnly (0.00s)
+=== RUN   TestIsKfxV1_DefaultVersionZero
+--- PASS: TestIsKfxV1_DefaultVersionZero (0.00s)
+=== RUN   TestIsKfxV1_VersionOneIsTrue
+--- PASS: TestIsKfxV1_VersionOneIsTrue (0.00s)
+=== RUN   TestIsImageBasedFixedLayout_NonFixedLayoutReturnsFalse
+--- PASS: TestIsImageBasedFixedLayout_NonFixedLayoutReturnsFalse (0.00s)
+=== RUN   TestIsImageBasedFixedLayout_FixedLayoutNoImagesReturnsFalse
+--- PASS: TestIsImageBasedFixedLayout_FixedLayoutNoImagesReturnsFalse (0.00s)
+=== RUN   TestIsImageBasedFixedLayout_DelegatesToGetOrderedImageResources
+--- PASS: TestIsImageBasedFixedLayout_DelegatesToGetOrderedImageResources (0.00s)
+=== RUN   TestFixCoverImageData_NilInput
+--- PASS: TestFixCoverImageData_NilInput (0.00s)
+=== RUN   TestFixCoverImageData_AlreadyJFIF
+--- PASS: TestFixCoverImageData_AlreadyJFIF (0.00s)
+=== RUN   TestFixCoverImageData_EXIFReencode
+2026/04/22 23:48:23 kfx: info: Changed cover image from JPEG/no-app-marker to JPEG/JFIF for Kindle lockscreen display
+--- PASS: TestFixCoverImageData_EXIFReencode (0.00s)
+=== RUN   TestFixCoverImageData_NonJPEG_Unchanged
+--- PASS: TestFixCoverImageData_NonJPEG_Unchanged (0.00s)
+=== RUN   TestFixCoverImageData_CorruptJPEG_ReturnsOriginal
+2026/04/22 23:48:23 kfx: error: Failed to change cover image from JPEG/UNKNOWN to JPEG/JFIF
+--- PASS: TestFixCoverImageData_CorruptJPEG_ReturnsOriginal (0.00s)
+=== RUN   TestFixCoverImageData_ShortData_NoPanic
+--- PASS: TestFixCoverImageData_ShortData_NoPanic (0.00s)
+=== RUN   TestJpegType
+--- PASS: TestJpegType (0.00s)
+=== RUN   TestUpdateCoverSectionAndStoryline_DeepNested157
+--- PASS: TestUpdateCoverSectionAndStoryline_DeepNested157 (0.00s)
+=== RUN   TestUpdateCoverSectionAndStoryline_StyleFragmentWith146Children
+--- PASS: TestUpdateCoverSectionAndStoryline_StyleFragmentWith146Children (0.00s)
+=== RUN   TestUpdateCoverSectionAndStoryline_StructValueNotUpdated
+--- PASS: TestUpdateCoverSectionAndStoryline_StructValueNotUpdated (0.00s)
+=== RUN   TestContentChunkConstructionValid
+2026/04/22 23:48:23 kfx: bad ContentChunk: text length mismatch: pid=0 eid=5 len=20 sect=section1 text="hello" img=
+--- PASS: TestContentChunkConstructionValid (0.00s)
+=== RUN   TestContentChunkConstructionWithImageResource
+--- PASS: TestContentChunkConstructionWithImageResource (0.00s)
+=== RUN   TestContentChunkConstructionWithNilEID
+--- PASS: TestContentChunkConstructionWithNilEID (0.00s)
+=== RUN   TestContentChunkConstructionNegativePID
+2026/04/22 23:48:23 kfx: bad ContentChunk: pid=-1 eid=5 len=10 sect=sec text= img=
+--- PASS: TestContentChunkConstructionNegativePID (0.00s)
+=== RUN   TestContentChunkConstructionZeroEID
+2026/04/22 23:48:23 kfx: bad ContentChunk: pid=0 eid=0 len=10 sect=sec text= img=
+--- PASS: TestContentChunkConstructionZeroEID (0.00s)
+=== RUN   TestContentChunkConstructionNegativeEIDOffset
+2026/04/22 23:48:23 kfx: bad ContentChunk: pid=0 eid=5+-1 len=10 sect=sec text= img=
+--- PASS: TestContentChunkConstructionNegativeEIDOffset (0.00s)
+=== RUN   TestContentChunkConstructionNegativeLength
+2026/04/22 23:48:23 kfx: bad ContentChunk: pid=0 eid=5 len=-1 sect=sec text= img=
+--- PASS: TestContentChunkConstructionNegativeLength (0.00s)
+=== RUN   TestContentChunkConstructionTextLengthMismatch
+2026/04/22 23:48:23 kfx: bad ContentChunk: text length mismatch: pid=0 eid=5 len=10 sect=sec text="hello" img=
+--- PASS: TestContentChunkConstructionTextLengthMismatch (0.00s)
+=== RUN   TestContentChunkEqualMatchingPID
+--- PASS: TestContentChunkEqualMatchingPID (0.00s)
+=== RUN   TestContentChunkEqualDifferentPIDButSameEID
+--- PASS: TestContentChunkEqualDifferentPIDButSameEID (0.00s)
+=== RUN   TestContentChunkEqualMatchZeroLenTolerance
+--- PASS: TestContentChunkEqualMatchZeroLenTolerance (0.00s)
+=== RUN   TestContentChunkEqualMatchZeroLenBidirectional
+--- PASS: TestContentChunkEqualMatchZeroLenBidirectional (0.00s)
+=== RUN   TestContentChunkEqualNoMatchZeroLenDifferentLengths
+--- PASS: TestContentChunkEqualNoMatchZeroLenDifferentLengths (0.00s)
+=== RUN   TestContentChunkEqualEIDTypeMismatch
+--- PASS: TestContentChunkEqualEIDTypeMismatch (0.00s)
+=== RUN   TestContentChunkEqualBothStringEIDs
+--- PASS: TestContentChunkEqualBothStringEIDs (0.00s)
+=== RUN   TestContentChunkEqualNil
+--- PASS: TestContentChunkEqualNil (0.00s)
+=== RUN   TestConditionalTemplateRangeOpersSetStartToNil
+--- PASS: TestConditionalTemplateRangeOpersSetStartToNil (0.00s)
+=== RUN   TestConditionalTemplateRangeOper299
+--- PASS: TestConditionalTemplateRangeOper299 (0.00s)
+=== RUN   TestConditionalTemplateNonRangeOperSetStart
+--- PASS: TestConditionalTemplateNonRangeOperSetStart (0.00s)
+=== RUN   TestConditionalTemplateOper348
+--- PASS: TestConditionalTemplateOper348 (0.00s)
+=== RUN   TestConditionalTemplateUseNextDefaultFalse
+--- PASS: TestConditionalTemplateUseNextDefaultFalse (0.00s)
+=== RUN   TestConditionalTemplatePosInfoSnapshot
+--- PASS: TestConditionalTemplatePosInfoSnapshot (0.00s)
+=== RUN   TestCollectContentPositionInfoReturnsEmptyForMinimalBook
+--- PASS: TestCollectContentPositionInfoReturnsEmptyForMinimalBook (0.00s)
+=== RUN   TestCreatePositionMapBuildsPIDToEIDMapping
+--- PASS: TestCreatePositionMapBuildsPIDToEIDMapping (0.00s)
+=== RUN   TestCreatePositionMapDetectsEIDOffset
+--- PASS: TestCreatePositionMapDetectsEIDOffset (0.00s)
+=== RUN   TestCreatePositionMapNoEIDOffset
+--- PASS: TestCreatePositionMapNoEIDOffset (0.00s)
+=== RUN   TestCreatePositionMapDictionaryEarlyReturn
+2026/04/22 23:48:23 kfx: warning: Position map creation for KPF or dictionary not supported
+--- PASS: TestCreatePositionMapDictionaryEarlyReturn (0.00s)
+=== RUN   TestCreatePositionMapScribeEarlyReturn
+2026/04/22 23:48:23 kfx: warning: Position map creation for KPF or dictionary not supported
+--- PASS: TestCreatePositionMapScribeEarlyReturn (0.00s)
+=== RUN   TestCreatePositionMapKPFPPrepubEarlyReturn
+2026/04/22 23:48:23 kfx: warning: Position map creation for KPF or dictionary not supported
+--- PASS: TestCreatePositionMapKPFPPrepubEarlyReturn (0.00s)
+=== RUN   TestCreatePositionMapSectionToEIDMapping
+--- PASS: TestCreatePositionMapSectionToEIDMapping (0.00s)
+=== RUN   TestPidForEidLinearSearch
+--- PASS: TestPidForEidLinearSearch (0.00s)
+=== RUN   TestPidForEidCaching
+--- PASS: TestPidForEidCaching (0.00s)
+=== RUN   TestPidForEidNotFound
+--- PASS: TestPidForEidNotFound (0.00s)
+=== RUN   TestPidForEidEmptyPosInfo
+--- PASS: TestPidForEidEmptyPosInfo (0.00s)
+=== RUN   TestPidForEidCachingWraparound
+--- PASS: TestPidForEidCachingWraparound (0.00s)
+=== RUN   TestEidForPidBinarySearch
+--- PASS: TestEidForPidBinarySearch (0.00s)
+=== RUN   TestEidForPidNotFound
+--- PASS: TestEidForPidNotFound (0.00s)
+=== RUN   TestEidForPidEmptyPosInfo
+--- PASS: TestEidForPidEmptyPosInfo (0.00s)
+=== RUN   TestEidForPidExactChunkStart
+--- PASS: TestEidForPidExactChunkStart (0.00s)
+=== RUN   TestEidForPidChunkEndInclusive
+--- PASS: TestEidForPidChunkEndInclusive (0.00s)
+=== RUN   TestEidForPidAtEndOfLastChunk
+--- PASS: TestEidForPidAtEndOfLastChunk (0.00s)
+=== RUN   TestEidForPidPastEndOfLastChunk
+--- PASS: TestEidForPidPastEndOfLastChunk (0.00s)
+=== RUN   TestGenerateApproximateLocationsEvery110
+2026/04/22 23:48:23 kfx: Built approximate location_map with 4 locations
+--- PASS: TestGenerateApproximateLocationsEvery110 (0.00s)
+=== RUN   TestGenerateApproximateLocationsSectionReset
+2026/04/22 23:48:23 kfx: Built approximate location_map with 3 locations
+--- PASS: TestGenerateApproximateLocationsSectionReset (0.00s)
+=== RUN   TestGenerateApproximateLocationsSplitsAcrossChunks
+2026/04/22 23:48:23 kfx: Built approximate location_map with 2 locations
+--- PASS: TestGenerateApproximateLocationsSplitsAcrossChunks (0.00s)
+=== RUN   TestGenerateApproximateLocationsEmpty
+2026/04/22 23:48:23 kfx: Built approximate location_map with 0 locations
+--- PASS: TestGenerateApproximateLocationsEmpty (0.00s)
+=== RUN   TestLocationLengthComputation
+2026/04/22 23:48:23 kfx: Built approximate location_map with 4 locations
+--- PASS: TestLocationLengthComputation (0.00s)
+=== RUN   TestDetermineApproximatePagesFixedLayout
+--- PASS: TestDetermineApproximatePagesFixedLayout (0.00s)
+=== RUN   TestDetermineApproximatePagesReflowable
+--- PASS: TestDetermineApproximatePagesReflowable (0.00s)
+=== RUN   TestDetermineApproximatePagesSectionBoundaries
+--- PASS: TestDetermineApproximatePagesSectionBoundaries (0.00s)
+=== RUN   TestDetermineApproximatePagesSkipTemplateEIDs
+--- PASS: TestDetermineApproximatePagesSkipTemplateEIDs (0.00s)
+=== RUN   TestDetermineApproximatePagesCoverSkip
+--- PASS: TestDetermineApproximatePagesCoverSkip (0.00s)
+=== RUN   TestDetermineApproximatePagesWhitespaceLookback
+--- PASS: TestDetermineApproximatePagesWhitespaceLookback (0.00s)
+=== RUN   TestCreateApproximatePageListBinarySearch
+--- PASS: TestCreateApproximatePageListBinarySearch (0.00s)
+=== RUN   TestCreateApproximatePageListFixedLayout
+--- PASS: TestCreateApproximatePageListFixedLayout (0.00s)
+=== RUN   TestCreateApproximatePageListReflowableAuto
+--- PASS: TestCreateApproximatePageListReflowableAuto (0.00s)
+=== RUN   TestVerifyPositionInfoMatching
+--- PASS: TestVerifyPositionInfoMatching (0.00s)
+=== RUN   TestVerifyPositionInfoMismatchedEID
+2026/04/22 23:48:23 kfx: warning: position_id map extra at idx=0, chunk: pid=0 eid=99 len=10 sect=sec1 text= img=
+2026/04/22 23:48:23 kfx: warning: position_id content extra at idx=0, chunk: pid=0 eid=10 len=10 sect=sec1 text= img=
+--- PASS: TestVerifyPositionInfoMismatchedEID (0.00s)
+=== RUN   TestVerifyPositionInfoExtraContent
+2026/04/22 23:48:23 kfx: warning: position_id content extra at idx=1, chunk: pid=10 eid=20 len=15 sect=sec1 text= img=
+--- PASS: TestVerifyPositionInfoExtraContent (0.00s)
+=== RUN   TestAnchorEidOffsetFound
+--- PASS: TestAnchorEidOffsetFound (0.00s)
+=== RUN   TestAnchorEidOffsetNotFound
+2026/04/22 23:48:23 kfx: Failed to locate position for anchor: nonexistent
+--- PASS: TestAnchorEidOffsetNotFound (0.00s)
+=== RUN   TestMatchReportLimitEnforcement
+--- PASS: TestMatchReportLimitEnforcement (0.00s)
+=== RUN   TestMatchReportCountIncrement
+2026/04/22 23:48:23 kfx: warning: test message 1
+2026/04/22 23:48:23 kfx: warning: test message 2
+2026/04/22 23:48:23 kfx: warning: test message 3
+--- PASS: TestMatchReportCountIncrement (0.00s)
+=== RUN   TestContentChunkString
+--- PASS: TestContentChunkString (0.00s)
+=== RUN   TestContentChunkStringNoOffset
+--- PASS: TestContentChunkStringNoOffset (0.00s)
+=== RUN   TestConditionalTemplateString
+--- PASS: TestConditionalTemplateString (0.00s)
+=== RUN   TestConditionalTemplateStringRange
+--- PASS: TestConditionalTemplateStringRange (0.00s)
+=== RUN   TestSortContentChunksByPID
+--- PASS: TestSortContentChunksByPID (0.00s)
+=== RUN   TestCollectLocationMapInfoNoFragments
+--- PASS: TestCollectLocationMapInfoNoFragments (0.00s)
+=== RUN   TestFragmentStoreBasic
+--- PASS: TestFragmentStoreBasic (0.00s)
+=== RUN   TestFragmentStoreMultiple
+--- PASS: TestFragmentStoreMultiple (0.00s)
+=== RUN   TestCollectContentPositionInfoWalksSections
+--- PASS: TestCollectContentPositionInfoWalksSections (0.00s)
+=== RUN   TestCollectContentPositionInfoTwoSections
+2026/04/22 23:48:23 kfx: error: duplicate eid 10 in sections sec1 and sec2
+--- PASS: TestCollectContentPositionInfoTwoSections (0.00s)
+=== RUN   TestCollectPositionInfo_EidSectionMap
+--- PASS: TestCollectPositionInfo_EidSectionMap (0.00s)
+=== RUN   TestCollectPositionInfo_MergeEids
+--- PASS: TestCollectPositionInfo_MergeEids (0.00s)
+=== RUN   TestCollectPositionMapInfoBasic
+--- PASS: TestCollectPositionMapInfoBasic (0.00s)
+=== RUN   TestCollectPositionMapInfo_SPIM
+--- PASS: TestCollectPositionMapInfo_SPIM (0.00s)
+=== RUN   TestCollectPositionMapInfo_EidValidation
+--- PASS: TestCollectPositionMapInfo_EidValidation (0.00s)
+=== RUN   TestCreateLocationMapRemovesOldAndBuildsNew
+--- PASS: TestCreateLocationMapRemovesOldAndBuildsNew (0.00s)
+=== RUN   TestCreateApproximatePageListBasic
+2026/04/22 23:48:23 kfx: Created 3 approximate page numbers
+--- PASS: TestCreateApproximatePageListBasic (0.00s)
+=== RUN   TestCreateApproximatePageListInvalidCDEType
+2026/04/22 23:48:23 kfx: error: Cannot create page numbers for KFX MAGZ
+--- PASS: TestCreateApproximatePageListInvalidCDEType (0.00s)
+=== RUN   TestCreateApproximatePageListDictionary
+2026/04/22 23:48:23 kfx: error: Cannot create page numbers for KFX dictionary
+--- PASS: TestCreateApproximatePageListDictionary (0.00s)
+=== RUN   TestCreatePositionMapStores
+--- PASS: TestCreatePositionMapStores (0.00s)
+=== RUN   TestCreatePositionMapRemovesOld
+--- PASS: TestCreatePositionMapRemovesOld (0.00s)
+=== RUN   TestCheckPositionAndLocationMaps
+2026/04/22 23:48:23 kfx: warning: position_id content extra at idx=0, chunk: pid=0 eid=10 len=4 sect=sec1 text= img=
+--- PASS: TestCheckPositionAndLocationMaps (0.00s)
+=== RUN   TestCheckPositionAndLocationMapsEmptyBook
+--- PASS: TestCheckPositionAndLocationMapsEmptyBook (0.00s)
+=== RUN   TestCreatePositionMapWithEIDOffset
+--- PASS: TestCreatePositionMapWithEIDOffset (0.00s)
+=== RUN   TestCreatePositionMapDictionaryRemovesOldFragments
+2026/04/22 23:48:23 kfx: warning: Position map creation for KPF or dictionary not supported
+--- PASS: TestCreatePositionMapDictionaryRemovesOldFragments (0.00s)
+=== RUN   TestCollectContentPositionInfoEmptySections
+--- PASS: TestCollectContentPositionInfoEmptySections (0.00s)
+=== RUN   TestCollectPositionMapInfoNoFragments
+--- PASS: TestCollectPositionMapInfoNoFragments (0.00s)
+=== RUN   TestCollectPositionMapInfoDictionaryPath
+--- PASS: TestCollectPositionMapInfoDictionaryPath (0.00s)
+=== RUN   TestAnchorEidOffset_OffsetFrom143
+--- PASS: TestAnchorEidOffset_OffsetFrom143 (0.00s)
+=== RUN   TestAnchorEidOffset_NoOffsetDefaultsZero
+--- PASS: TestAnchorEidOffset_NoOffsetDefaultsZero (0.00s)
+=== RUN   TestDetermineApproximatePages_RuneIndexing
+--- PASS: TestDetermineApproximatePages_RuneIndexing (0.00s)
+=== RUN   TestContentChunk_NilVsEmpty
+--- PASS: TestContentChunk_NilVsEmpty (0.00s)
+=== RUN   TestHasNonImageRenderInline
+--- PASS: TestHasNonImageRenderInline (0.00s)
+=== RUN   TestHasNonImageRenderInline_ImageType
+--- PASS: TestHasNonImageRenderInline_ImageType (0.00s)
+=== RUN   TestHasNonImageRenderInline_NoRenderInline
+--- PASS: TestHasNonImageRenderInline_NoRenderInline (0.00s)
+=== RUN   TestHasNonImageRenderInline_Nested
+--- PASS: TestHasNonImageRenderInline_Nested (0.00s)
+=== RUN   TestHasNonImageRenderInline_Cached
+--- PASS: TestHasNonImageRenderInline_Cached (0.00s)
+=== RUN   TestHasNonImageRenderInline_608Fragment
+--- PASS: TestHasNonImageRenderInline_608Fragment (0.00s)
+=== RUN   TestCollectLocationMapInfo_550Validation
+2026/04/22 23:48:23 kfx: error: Bad location_map entry at index 0: expected map
+2026/04/22 23:48:23 kfx: error: Bad location_map entry at index 1: missing $155
+--- PASS: TestCollectLocationMapInfo_550Validation (0.00s)
+=== RUN   TestCollectLocationMapInfo_550Missing182List
+2026/04/22 23:48:23 kfx: error: Bad location_map fragment: missing or invalid $182 list
+--- PASS: TestCollectLocationMapInfo_550Missing182List (0.00s)
+=== RUN   TestCollectLocationMapInfo_621Validation
+2026/04/22 23:48:23 kfx: error: Bad yj.location_pid_map fragment: map[yj.location_pid_map:map[id:10]]
+--- PASS: TestCollectLocationMapInfo_621Validation (0.00s)
+=== RUN   TestCreateApproximatePageList_DoublePageSpread
+2026/04/22 23:48:23 kfx: error: Cannot create page numbers for fixed layout books with page spreads
+--- PASS: TestCreateApproximatePageList_DoublePageSpread (0.00s)
+=== RUN   TestCollectPositionInfo_StoryValidation
+--- PASS: TestCollectPositionInfo_StoryValidation (0.00s)
+=== RUN   TestProcessPageSpreadLeaf_HTML
+--- PASS: TestProcessPageSpreadLeaf_HTML (0.00s)
+=== RUN   TestProcessPageSpreadLeafPosition
+--- PASS: TestProcessPageSpreadLeafPosition (0.00s)
+=== RUN   TestProcessPageSpreadLeaf_NoPositionWithoutParent
+--- PASS: TestProcessPageSpreadLeaf_NoPositionWithoutParent (0.00s)
+=== RUN   TestClassifySymbolSharedNumeric
+--- PASS: TestClassifySymbolSharedNumeric (0.00s)
+=== RUN   TestClassifySymbolCommonExactNames
+--- PASS: TestClassifySymbolCommonExactNames (0.00s)
+=== RUN   TestClassifySymbolCommonPrefixAndRegex
+--- PASS: TestClassifySymbolCommonPrefixAndRegex (0.00s)
+=== RUN   TestClassifySymbolDictionary
+--- PASS: TestClassifySymbolDictionary (0.00s)
+=== RUN   TestClassifySymbolOriginal
+--- PASS: TestClassifySymbolOriginal (0.00s)
+=== RUN   TestClassifySymbolBase64
+--- PASS: TestClassifySymbolBase64 (0.00s)
+=== RUN   TestClassifySymbolShort
+--- PASS: TestClassifySymbolShort (0.00s)
+=== RUN   TestClassifySymbolUnknown
+--- PASS: TestClassifySymbolUnknown (0.00s)
+=== RUN   TestClassifySymbolPriorityOrder
+--- PASS: TestClassifySymbolPriorityOrder (0.00s)
+=== RUN   TestAllowedSymbolPrefix
+--- PASS: TestAllowedSymbolPrefix (0.00s)
+=== RUN   TestGetReadingOrdersFrom538
+--- PASS: TestGetReadingOrdersFrom538 (0.00s)
+=== RUN   TestGetReadingOrdersFallsBackTo258
+--- PASS: TestGetReadingOrdersFallsBackTo258 (0.00s)
+=== RUN   TestGetReadingOrdersEmpty
+--- PASS: TestGetReadingOrdersEmpty (0.00s)
+=== RUN   TestGetReadingOrdersPrefers538Over258
+--- PASS: TestGetReadingOrdersPrefers538Over258 (0.00s)
+=== RUN   TestOrderedSectionNamesDeduplication
+--- PASS: TestOrderedSectionNamesDeduplication (0.00s)
+=== RUN   TestOrderedSectionNamesEmpty
+--- PASS: TestOrderedSectionNamesEmpty (0.00s)
+=== RUN   TestOrderedSectionNamesPreservesOrder
+--- PASS: TestOrderedSectionNamesPreservesOrder (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionTrue
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionTrue (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWithWrongOperator
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionWithWrongOperator (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionNoCondition
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionNoCondition (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionEmpty
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionEmpty (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionAllOperators
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionAllOperators (0.00s)
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/wrong_length_2
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/wrong_length_4
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2]_wrong_type
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2]_wrong_length
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2][0]_wrong
+=== RUN   TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[1]_wrong
+--- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/wrong_length_2 (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/wrong_length_4 (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2]_wrong_type (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2]_wrong_length (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[2][0]_wrong (0.00s)
+    --- PASS: TestHasIllustratedLayoutPageTemplateConditionWrongStructure/fv[1]_wrong (0.00s)
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/empty_favors_SHORT
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/all_SHORT
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/all_DICTIONARY
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/mixed_SHORT_reaches_quorum
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/documentData_max_id_forces_SHORT
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/BASE64_reaches_quorum
+=== RUN   TestDetermineBookSymbolFormatQuorumAndPriority/ORIGINAL_fallback
+--- PASS: TestDetermineBookSymbolFormatQuorumAndPriority (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/empty_favors_SHORT (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/all_SHORT (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/all_DICTIONARY (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/mixed_SHORT_reaches_quorum (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/documentData_max_id_forces_SHORT (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/BASE64_reaches_quorum (0.00s)
+    --- PASS: TestDetermineBookSymbolFormatQuorumAndPriority/ORIGINAL_fallback (0.00s)
+=== RUN   TestCheckSymbolTableLogsUnknown
+--- PASS: TestCheckSymbolTableLogsUnknown (0.00s)
+=== RUN   TestCheckSymbolTableWithSymbols
+2026/04/22 23:48:23 kfx: error: Symbol table is missing symbols: [serif]
+--- PASS: TestCheckSymbolTableWithSymbols (0.00s)
+=== RUN   TestGetOrderedImageResourcesNotFixedLayout
+--- PASS: TestGetOrderedImageResourcesNotFixedLayout (0.00s)
+=== RUN   TestGetOrderedImageResourcesNoImages
+--- PASS: TestGetOrderedImageResourcesNoImages (0.00s)
+=== RUN   TestModuleControlConstants
+--- PASS: TestModuleControlConstants (0.00s)
+=== RUN   TestFixedLayoutImageFormats
+--- PASS: TestFixedLayoutImageFormats (0.00s)
+=== RUN   TestSymTypeConstants
+--- PASS: TestSymTypeConstants (0.00s)
+=== RUN   TestNumstr
+--- PASS: TestNumstr (0.00s)
+=== RUN   TestExtractFragmentIDFromValue
+--- PASS: TestExtractFragmentIDFromValue (0.00s)
+=== RUN   TestWalkFragmentStruct
+--- PASS: TestWalkFragmentStruct (0.00s)
+=== RUN   TestWalkFragmentList
+--- PASS: TestWalkFragmentList (0.00s)
+=== RUN   TestWalkFragmentEIDTracking
+--- PASS: TestWalkFragmentEIDTracking (0.00s)
+=== RUN   TestWalkFragmentSpecialRefs
+--- PASS: TestWalkFragmentSpecialRefs (0.00s)
+=== RUN   TestCheckFragmentUsageBFS
+--- PASS: TestCheckFragmentUsageBFS (0.00s)
+=== RUN   TestCheckFragmentUsageMissingFragments
+2026/04/22 23:48:23 kfx: error: Referenced fragment is missing from book: (storyline, nonexistent_storyline)
+--- PASS: TestCheckFragmentUsageMissingFragments (0.00s)
+=== RUN   TestCheckFragmentUsageUnreferencedFragments
+2026/04/22 23:48:23 kfx: error: Unreferenced fragments: [(external_resource, orphan_resource)]
+--- PASS: TestCheckFragmentUsageUnreferencedFragments (0.00s)
+=== RUN   TestDetermineEntityDependenciesTransitive
+--- PASS: TestDetermineEntityDependenciesTransitive (0.00s)
+=== RUN   TestDetermineEntityDependenciesSkipsSections
+--- PASS: TestDetermineEntityDependenciesSkipsSections (0.00s)
+=== RUN   TestDetermineEntityDependenciesSkipsCrossResource
+--- PASS: TestDetermineEntityDependenciesSkipsCrossResource (0.00s)
+=== RUN   TestRebuildContainerEntityMap
+--- PASS: TestRebuildContainerEntityMap (0.00s)
+=== RUN   TestRebuildContainerEntityMapExcludesRoots
+--- PASS: TestRebuildContainerEntityMapExcludesRoots (0.00s)
+=== RUN   TestFragmentIDKeys
+--- PASS: TestFragmentIDKeys (0.00s)
+=== RUN   TestCommonFragmentReferences
+--- PASS: TestCommonFragmentReferences (0.00s)
+=== RUN   TestNestedFragmentReferences
+--- PASS: TestNestedFragmentReferences (0.00s)
+=== RUN   TestSpecialFragmentReferences
+--- PASS: TestSpecialFragmentReferences (0.00s)
+=== RUN   TestSectionDataTypes
+--- PASS: TestSectionDataTypes (0.00s)
+=== RUN   TestEIDReferences
+--- PASS: TestEIDReferences (0.00s)
+=== RUN   TestExpectedAnnotations
+--- PASS: TestExpectedAnnotations (0.00s)
+=== RUN   TestFragmentListGet
+--- PASS: TestFragmentListGet (0.00s)
+=== RUN   TestWalkFragmentSExp
+--- PASS: TestWalkFragmentSExp (0.00s)
+=== RUN   TestWalkFragmentStringToSymbol
+--- PASS: TestWalkFragmentStringToSymbol (0.00s)
+=== RUN   TestWalkFragmentOptionalRef
+--- PASS: TestWalkFragmentOptionalRef (0.00s)
+=== RUN   TestWalkFragmentSectionVariants
+--- PASS: TestWalkFragmentSectionVariants (0.00s)
+=== RUN   TestNumstrEdgeCases
+--- PASS: TestNumstrEdgeCases (0.00s)
+=== RUN   TestFragmentKeyString
+--- PASS: TestFragmentKeyString (0.00s)
+=== RUN   TestWalkFragmentNestedRefs
+--- PASS: TestWalkFragmentNestedRefs (0.00s)
+=== RUN   TestDetermineEntityDependenciesEmpty
+--- PASS: TestDetermineEntityDependenciesEmpty (0.00s)
+=== RUN   TestRebuildContainerEntityMapEmpty
+2026/04/22 23:48:23 kfx: error: Omitting container_entity_map due to lack of content
+--- PASS: TestRebuildContainerEntityMapEmpty (0.00s)
+=== RUN   TestSpecialParentFragmentReferences
+--- PASS: TestSpecialParentFragmentReferences (0.00s)
+=== RUN   TestRootAndContainerFragmentTypes
+--- PASS: TestRootAndContainerFragmentTypes (0.00s)
+=== RUN   TestKnownFragmentTypes
+--- PASS: TestKnownFragmentTypes (0.00s)
+=== RUN   TestSortedFragmentKeys
+--- PASS: TestSortedFragmentKeys (0.00s)
+=== RUN   TestSortedFragmentKeysFromSet
+--- PASS: TestSortedFragmentKeysFromSet (0.00s)
+=== RUN   TestEntityDepsToInterface
+--- PASS: TestEntityDepsToInterface (0.00s)
+=== RUN   TestRebuildContainerEntityMapEntityOrder
+--- PASS: TestRebuildContainerEntityMapEntityOrder (0.00s)
+=== RUN   TestSortImportUsed
+--- PASS: TestSortImportUsed (0.00s)
+=== RUN   TestYJSymbolCatalog_NameAndVersion
+--- PASS: TestYJSymbolCatalog_NameAndVersion (0.00s)
+=== RUN   TestYJSymbolCatalog_SymbolsMatchGolden
+--- PASS: TestYJSymbolCatalog_SymbolsMatchGolden (0.00s)
+=== RUN   TestYJSymbolCatalog_ExtensionCoverage
+    yj_symbol_catalog_test.go:101: Go table extends 149 symbols beyond catalog (SIDs 852–1000) with $N placeholders
+--- PASS: TestYJSymbolCatalog_ExtensionCoverage (0.00s)
+=== RUN   TestYJSymbolCatalog_NoDuplicates
+--- PASS: TestYJSymbolCatalog_NoDuplicates (0.00s)
+=== RUN   TestProcessSectionScribePageDispatch
+--- PASS: TestProcessSectionScribePageDispatch (0.00s)
+=== RUN   TestProcessSectionScribeTemplateDispatch
+--- PASS: TestProcessSectionScribeTemplateDispatch (0.00s)
+=== RUN   TestProcessSectionScribePagePriorityOverTemplate
+--- PASS: TestProcessSectionScribePagePriorityOverTemplate (0.00s)
+=== RUN   TestProcessSectionComicDispatch
+--- PASS: TestProcessSectionComicDispatch (0.00s)
+=== RUN   TestProcessSectionChildrenDispatch
+--- PASS: TestProcessSectionChildrenDispatch (0.00s)
+=== RUN   TestProcessSectionScribePriorityOverComic
+--- PASS: TestProcessSectionScribePriorityOverComic (0.00s)
+=== RUN   TestProcessSectionMagazineWithConditionalTemplate
+--- PASS: TestProcessSectionMagazineWithConditionalTemplate (0.00s)
+=== RUN   TestProcessSectionPrintReplicaWithConditionalTemplate
+--- PASS: TestProcessSectionPrintReplicaWithConditionalTemplate (0.00s)
+=== RUN   TestProcessSectionMagazineWithoutConditionalTemplate
+--- PASS: TestProcessSectionMagazineWithoutConditionalTemplate (0.00s)
+=== RUN   TestProcessSectionReflowableDefault
+--- PASS: TestProcessSectionReflowableDefault (0.00s)
+=== RUN   TestProcessSectionReflowableWithEmptyBookType
+--- PASS: TestProcessSectionReflowableWithEmptyBookType (0.00s)
+=== RUN   TestPageTemplatesHaveConditionsTrue
+--- PASS: TestPageTemplatesHaveConditionsTrue (0.00s)
+=== RUN   TestPageTemplatesHaveConditionsFalse
+--- PASS: TestPageTemplatesHaveConditionsFalse (0.00s)
+=== RUN   TestPageTemplatesHaveConditionsNilCondition
+--- PASS: TestPageTemplatesHaveConditionsNilCondition (0.00s)
+=== RUN   TestPageTemplatesHaveConditionsNonNilCondition
+--- PASS: TestPageTemplatesHaveConditionsNonNilCondition (0.00s)
+=== RUN   TestStripUnusedKeys
+--- PASS: TestStripUnusedKeys (0.00s)
+=== RUN   TestStripUnusedKeysPreservesUnknownKeys
+--- PASS: TestStripUnusedKeysPreservesUnknownKeys (0.00s)
+=== RUN   TestProcessReadingOrderDeduplicatesSections
+2026/04/22 23:48:23 kfx: duplicate section section-a found in reading order
+--- PASS: TestProcessReadingOrderDeduplicatesSections (0.00s)
+=== RUN   TestBookTypeString
+--- PASS: TestBookTypeString (0.00s)
+=== RUN   TestDetectBookTypeFromFeatures
+=== RUN   TestDetectBookTypeFromFeatures/empty_features
+=== RUN   TestDetectBookTypeFromFeatures/facing_page_→_comic
+=== RUN   TestDetectBookTypeFromFeatures/double_page_spread_→_comic
+=== RUN   TestDetectBookTypeFromFeatures/publisher_panels_→_comic
+--- PASS: TestDetectBookTypeFromFeatures (0.00s)
+    --- PASS: TestDetectBookTypeFromFeatures/empty_features (0.00s)
+    --- PASS: TestDetectBookTypeFromFeatures/facing_page_→_comic (0.00s)
+    --- PASS: TestDetectBookTypeFromFeatures/double_page_spread_→_comic (0.00s)
+    --- PASS: TestDetectBookTypeFromFeatures/publisher_panels_→_comic (0.00s)
+=== RUN   TestDetectBookTypeFromCDEContentType
+=== RUN   TestDetectBookTypeFromCDEContentType/nil_metadata
+=== RUN   TestDetectBookTypeFromCDEContentType/no_cde_content_type
+=== RUN   TestDetectBookTypeFromCDEContentType/MAGZ_→_magazine
+=== RUN   TestDetectBookTypeFromCDEContentType/EBSP_→_not_magazine
+--- PASS: TestDetectBookTypeFromCDEContentType (0.00s)
+    --- PASS: TestDetectBookTypeFromCDEContentType/nil_metadata (0.00s)
+    --- PASS: TestDetectBookTypeFromCDEContentType/no_cde_content_type (0.00s)
+    --- PASS: TestDetectBookTypeFromCDEContentType/MAGZ_→_magazine (0.00s)
+    --- PASS: TestDetectBookTypeFromCDEContentType/EBSP_→_not_magazine (0.00s)
+=== RUN   TestProcessSectionComicWithOneTemplate
+--- PASS: TestProcessSectionComicWithOneTemplate (0.00s)
+=== RUN   TestProcessSectionReflowableWithMultipleTemplates
+--- PASS: TestProcessSectionReflowableWithMultipleTemplates (0.00s)
+=== RUN   TestProcessSectionWithNoTemplatesCreatesDefault
+--- PASS: TestProcessSectionWithNoTemplatesCreatesDefault (0.00s)
+=== RUN   TestStripAllYjSemanticsKeys
+--- PASS: TestStripAllYjSemanticsKeys (0.00s)
+=== RUN   TestIsUnusedSectionKey
+--- PASS: TestIsUnusedSectionKey (0.00s)
+=== RUN   TestFilterConditionalTemplatesTrue
+--- PASS: TestFilterConditionalTemplatesTrue (0.00s)
+=== RUN   TestFilterConditionalTemplatesInFixedLayout
+--- PASS: TestFilterConditionalTemplatesInFixedLayout (0.00s)
+=== RUN   TestFilterConditionalTemplatesInFixedLayoutWithBinaryCondition
+--- PASS: TestFilterConditionalTemplatesInFixedLayoutWithBinaryCondition (0.00s)
+=== RUN   TestMergeSectionProperties
+--- PASS: TestMergeSectionProperties (0.00s)
+=== RUN   TestSectionHasNmdlCanvasWidth
+--- PASS: TestSectionHasNmdlCanvasWidth (0.00s)
+=== RUN   TestSectionHasNmdlTemplateType
+--- PASS: TestSectionHasNmdlTemplateType (0.00s)
+=== RUN   TestSectionHasNmdlKeyAbsent
+--- PASS: TestSectionHasNmdlKeyAbsent (0.00s)
+=== RUN   TestHasConditionalTemplateWithCondition
+--- PASS: TestHasConditionalTemplateWithCondition (0.00s)
+=== RUN   TestHasConditionalTemplateWithoutCondition
+--- PASS: TestHasConditionalTemplateWithoutCondition (0.00s)
+=== RUN   TestBranchPriorityOrder
+--- PASS: TestBranchPriorityOrder (0.00s)
+=== RUN   TestSectionBranchString
+--- PASS: TestSectionBranchString (0.00s)
+=== RUN   TestPageSpreadBranchDetection
+--- PASS: TestPageSpreadBranchDetection (0.00s)
+=== RUN   TestFacingPageBranchDetection
+--- PASS: TestFacingPageBranchDetection (0.00s)
+=== RUN   TestScaleFitBranchDetection
+--- PASS: TestScaleFitBranchDetection (0.00s)
+=== RUN   TestConnectedPaginationBranchDetection
+--- PASS: TestConnectedPaginationBranchDetection (0.00s)
+=== RUN   TestLeafBranchDetection
+--- PASS: TestLeafBranchDetection (0.00s)
+=== RUN   TestLeafBranchDetectionWithEmptyData
+--- PASS: TestLeafBranchDetectionWithEmptyData (0.00s)
+=== RUN   TestVirtualPanelNoneAllowed
+--- PASS: TestVirtualPanelNoneAllowed (0.00s)
+=== RUN   TestVirtualPanelSymbol441Allowed
+--- PASS: TestVirtualPanelSymbol441Allowed (0.00s)
+=== RUN   TestVirtualPanelUnexpectedValue
+2026/04/22 23:48:23 kfx: warning: unexpected comic page_template virtual_panel: $999
+--- PASS: TestVirtualPanelUnexpectedValue (0.00s)
+=== RUN   TestPageSpreadLTRAlternation
+--- PASS: TestPageSpreadLTRAlternation (0.00s)
+=== RUN   TestPageSpreadRTLAlternation
+--- PASS: TestPageSpreadRTLAlternation (0.00s)
+=== RUN   TestScaleFitBranchProcesses
+--- PASS: TestScaleFitBranchProcesses (0.00s)
+=== RUN   TestScaleFitBranchNotPdfBacked
+--- PASS: TestScaleFitBranchNotPdfBacked (0.00s)
+=== RUN   TestScaleFitBranchNotSection
+--- PASS: TestScaleFitBranchNotSection (0.00s)
+=== RUN   TestConnectedPaginationBranchProcesses
+--- PASS: TestConnectedPaginationBranchProcesses (0.00s)
+=== RUN   TestLeafBranchCreatesSectionNameWithSpreadSuffix
+--- PASS: TestLeafBranchCreatesSectionNameWithSpreadSuffix (0.00s)
+=== RUN   TestLeafBranchCreatesSectionNameWithoutSpread
+--- PASS: TestLeafBranchCreatesSectionNameWithoutSpread (0.00s)
+=== RUN   TestRecursivePageSpreadProcessing
+--- PASS: TestRecursivePageSpreadProcessing (0.00s)
+=== RUN   TestLocationIDFromTemplate
+--- PASS: TestLocationIDFromTemplate (0.00s)
+=== RUN   TestLocationIDFromTemplateFallback
+--- PASS: TestLocationIDFromTemplateFallback (0.00s)
+=== RUN   TestLocationIDFromTemplateEmpty
+--- PASS: TestLocationIDFromTemplateEmpty (0.00s)
+=== RUN   TestProcessSectionComicDispatchesToPageSpreadTemplate
+--- PASS: TestProcessSectionComicDispatchesToPageSpreadTemplate (0.00s)
+=== RUN   TestExtractSpreadType
+--- PASS: TestExtractSpreadType (0.00s)
+=== RUN   TestUniqueSectionNameWithSpread
+--- PASS: TestUniqueSectionNameWithSpread (0.00s)
+=== RUN   TestLayoutSpreadBaseProperty
+--- PASS: TestLayoutSpreadBaseProperty (0.00s)
+=== RUN   TestConnectedPaginationValidation
+2026/04/22 23:48:23 kfx: error: unexpected connected_pagination: 3
+--- PASS: TestConnectedPaginationValidation (0.00s)
+=== RUN   TestPageSpreadWithMissingStoryline
+--- PASS: TestPageSpreadWithMissingStoryline (0.00s)
+=== RUN   TestPageSpreadWithEmptyChildList
+--- PASS: TestPageSpreadWithEmptyChildList (0.00s)
+=== RUN   TestLeafBranchWithParentTemplateID
+--- PASS: TestLeafBranchWithParentTemplateID (0.00s)
+=== RUN   TestStoryBranchParentTemplateIDFirstChildOnly
+--- PASS: TestStoryBranchParentTemplateIDFirstChildOnly (0.00s)
+=== RUN   TestStoryBranchParentTemplateIDZeroWhenNoLocationID
+--- PASS: TestStoryBranchParentTemplateIDZeroWhenNoLocationID (0.00s)
+=== RUN   TestConnectedBranchParentTemplateIDFirstChildOnly
+--- PASS: TestConnectedBranchParentTemplateIDFirstChildOnly (0.00s)
+=== RUN   TestScaleFitBranchParentTemplateIDAllChildren
+--- PASS: TestScaleFitBranchParentTemplateIDAllChildren (0.00s)
+=== RUN   TestScaleFitFallsToLeafWhenDollar67Present
+--- PASS: TestScaleFitFallsToLeafWhenDollar67Present (0.00s)
+=== RUN   TestScaleFitFallsToLeafWhenDollar66Present
+--- PASS: TestScaleFitFallsToLeafWhenDollar66Present (0.00s)
+=== RUN   TestScaleFitProcessesWhenPdfBackedNoDollar67Dollar66
+--- PASS: TestScaleFitProcessesWhenPdfBackedNoDollar67Dollar66 (0.00s)
+=== RUN   TestDetectBookTypeWired
+--- PASS: TestDetectBookTypeWired (0.00s)
+=== RUN   TestProcessSectionMagazine
+--- PASS: TestProcessSectionMagazine (0.00s)
+=== RUN   TestMagazineLayout437
+--- PASS: TestMagazineLayout437 (0.00s)
+=== RUN   TestComicCallsPageSpread
+--- PASS: TestComicCallsPageSpread (0.00s)
+=== RUN   TestComicTemplateCountValidation
+2026/04/22 23:48:23 kfx: error: Comic section comic-empty has 0 page templates
+2026/04/22 23:48:23 kfx: error: Comic section comic-multi has 2 page templates
+--- PASS: TestComicTemplateCountValidation (0.00s)
+=== RUN   TestRewriteAmznConditionAnchorIDToFragment
+--- PASS: TestRewriteAmznConditionAnchorIDToFragment (0.00s)
+=== RUN   TestRewriteAmznConditionAnchorOpaque
+--- PASS: TestRewriteAmznConditionAnchorOpaque (0.00s)
+=== RUN   TestRewriteAmznConditionRangeIDLeOperator
+--- PASS: TestRewriteAmznConditionRangeIDLeOperator (0.00s)
+=== RUN   TestRewriteAmznConditionRangeIDLtOperator
+--- PASS: TestRewriteAmznConditionRangeIDLtOperator (0.00s)
+=== RUN   TestRewriteAmznConditionCrossFileNotRewritten
+--- PASS: TestRewriteAmznConditionCrossFileNotRewritten (0.00s)
+=== RUN   TestConditionOperatorNames
+--- PASS: TestConditionOperatorNames (0.00s)
+=== RUN   TestFixupIllustratedLayoutAnchorsSkipsWhenNotIllustrated
+--- PASS: TestFixupIllustratedLayoutAnchorsSkipsWhenNotIllustrated (0.00s)
+=== RUN   TestFixupIllustratedLayoutAnchorsSkipsNilBook
+--- PASS: TestFixupIllustratedLayoutAnchorsSkipsNilBook (0.00s)
+=== RUN   TestFixupIllustratedLayoutAnchorsIteratesAllSections
+--- PASS: TestFixupIllustratedLayoutAnchorsIteratesAllSections (0.00s)
+=== RUN   TestRewriteAmznConditionPreservesOtherDeclarations
+--- PASS: TestRewriteAmznConditionPreservesOtherDeclarations (0.00s)
+=== RUN   TestRewriteAmznConditionNoFragmentNotRewritten
+--- PASS: TestRewriteAmznConditionNoFragmentNotRewritten (0.00s)
+=== RUN   TestRewriteAmznConditionNoMatchOnEmptyPath
+--- PASS: TestRewriteAmznConditionNoMatchOnEmptyPath (0.00s)
+=== RUN   TestRewriteAmznConditionBasenamesMatch
+--- PASS: TestRewriteAmznConditionBasenamesMatch (0.00s)
+=== RUN   TestRewriteAmznConditionBasenameNoExtension
+--- PASS: TestRewriteAmznConditionBasenameNoExtension (0.00s)
+=== RUN   TestCreateConditionalPageTemplatesSkipsWhenNoConditionalContent
+--- PASS: TestCreateConditionalPageTemplatesSkipsWhenNoConditionalContent (0.00s)
+=== RUN   TestCreateConditionalPageTemplatesBasicTemplate
+--- PASS: TestCreateConditionalPageTemplatesBasicTemplate (0.00s)
+=== RUN   TestCreateConditionalPageTemplatesFloatShapeNotRemoved
+--- PASS: TestCreateConditionalPageTemplatesFloatShapeNotRemoved (0.00s)
+=== RUN   TestCreateConditionalPageTemplatesDivElementRemoved
+--- PASS: TestCreateConditionalPageTemplatesDivElementRemoved (0.00s)
+=== RUN   TestCreateConditionalPageTemplatesPageAlignNoneDivMoved
+--- PASS: TestCreateConditionalPageTemplatesPageAlignNoneDivMoved (0.00s)
+=== RUN   TestParseStyleString
+--- PASS: TestParseStyleString (0.00s)
+=== RUN   TestSerializeStyleMap
+--- PASS: TestSerializeStyleMap (0.00s)
+=== RUN   TestFindElementByID
+--- PASS: TestFindElementByID (0.00s)
+=== RUN   TestFindElementByIDNotFound
+--- PASS: TestFindElementByIDNotFound (0.00s)
+=== RUN   TestStripOperatorSuffix
+--- PASS: TestStripOperatorSuffix (0.00s)
+=== RUN   TestPythonConditionOperatorSymbolCount
+--- PASS: TestPythonConditionOperatorSymbolCount (0.00s)
+=== RUN   TestEvaluateConditionDispatchMatchesLegacyCases
+--- PASS: TestEvaluateConditionDispatchMatchesLegacyCases (0.00s)
+=== RUN   TestReportMissingPositionsEmpty
+--- PASS: TestReportMissingPositionsEmpty (0.00s)
+=== RUN   TestReportMissingPositionsNil
+--- PASS: TestReportMissingPositionsNil (0.00s)
+=== RUN   TestReportMissingPositionsFormatsAndSorts
+--- PASS: TestReportMissingPositionsFormatsAndSorts (0.00s)
+=== RUN   TestReportMissingPositionsTruncatesLongList
+--- PASS: TestReportMissingPositionsTruncatesLongList (0.00s)
+=== RUN   TestReportDuplicateAnchorsSkipsWhenUnresolved
+--- PASS: TestReportDuplicateAnchorsSkipsWhenUnresolved (0.00s)
+=== RUN   TestReportDuplicateAnchorsSkipsSingleSite
+--- PASS: TestReportDuplicateAnchorsSkipsSingleSite (0.00s)
+=== RUN   TestReportDuplicateAnchorsEmitsForMultiSiteResolved
+--- PASS: TestReportDuplicateAnchorsEmitsForMultiSiteResolved (0.00s)
+=== RUN   TestReportDuplicateAnchorsOnlyReportsUsedAnchorsWithMultiplePositions
+--- PASS: TestReportDuplicateAnchorsOnlyReportsUsedAnchorsWithMultiplePositions (0.00s)
+=== RUN   TestReportDuplicateAnchorsPositionsSorted
+--- PASS: TestReportDuplicateAnchorsPositionsSorted (0.00s)
+=== RUN   TestRegisterAnchorBidirectional
+--- PASS: TestRegisterAnchorBidirectional (0.00s)
+=== RUN   TestRegisterAnchorMultiplePositions
+--- PASS: TestRegisterAnchorMultiplePositions (0.00s)
+=== RUN   TestRegisterAnchorStoresHeadingLevel
+--- PASS: TestRegisterAnchorStoresHeadingLevel (0.00s)
+=== RUN   TestRegisterAnchorSkipsEmptyName
+--- PASS: TestRegisterAnchorSkipsEmptyName (0.00s)
+=== RUN   TestRegisterAnchorSkipsZeroPosition
+--- PASS: TestRegisterAnchorSkipsZeroPosition (0.00s)
+=== RUN   TestProcessNavigationInitializesStructures
+--- PASS: TestProcessNavigationInitializesStructures (0.00s)
+=== RUN   TestNavContainerTypeTOC
+--- PASS: TestNavContainerTypeTOC (0.00s)
+=== RUN   TestNavContainerTypeLandmarks
+--- PASS: TestNavContainerTypeLandmarks (0.00s)
+=== RUN   TestNavContainerTypePageList
+--- PASS: TestNavContainerTypePageList (0.00s)
+=== RUN   TestSortPositionStrings
+--- PASS: TestSortPositionStrings (0.00s)
+=== RUN   TestTruncateListShort
+--- PASS: TestTruncateListShort (0.00s)
+=== RUN   TestTruncateListLong
+--- PASS: TestTruncateListLong (0.00s)
+=== RUN   TestNotebookConstants
+--- PASS: TestNotebookConstants (0.00s)
+=== RUN   TestSVGDoctype
+--- PASS: TestSVGDoctype (0.00s)
+=== RUN   TestBrushTypeConstants
+--- PASS: TestBrushTypeConstants (0.00s)
+=== RUN   TestThicknessName
+--- PASS: TestThicknessName (0.00s)
+=== RUN   TestThicknessChoices
+--- PASS: TestThicknessChoices (0.00s)
+=== RUN   TestThicknessChoicesNoEraser
+--- PASS: TestThicknessChoicesNoEraser (0.00s)
+=== RUN   TestStrokeColors
+--- PASS: TestStrokeColors (0.00s)
+=== RUN   TestAdjustColorForDensityLuminance
+--- PASS: TestAdjustColorForDensityLuminance (0.00s)
+=== RUN   TestAdjustColorForDensityClamping
+--- PASS: TestAdjustColorForDensityClamping (0.00s)
+=== RUN   TestAdjustColorForDensityGraySymmetry
+--- PASS: TestAdjustColorForDensityGraySymmetry (0.00s)
+=== RUN   TestDecodeStrokeValuesValidSignature
+--- PASS: TestDecodeStrokeValuesValidSignature (0.00s)
+=== RUN   TestDecodeStrokeValuesInvalidSignature
+2026/04/22 23:48:23 kfx: error: test signature is incorrect (0000)
+2026/04/22 23:48:23 kfx: info: test raw: 00000100000040
+2026/04/22 23:48:23 kfx: info: test values: [0]
+--- PASS: TestDecodeStrokeValuesInvalidSignature (0.00s)
+=== RUN   TestDecodeStrokeValuesNumValsMismatch
+2026/04/22 23:48:23 kfx: error: test expected 1 values, found 2
+2026/04/22 23:48:23 kfx: info: test raw: 01010200000044
+2026/04/22 23:48:23 kfx: info: test values: [0 0]
+--- PASS: TestDecodeStrokeValuesNumValsMismatch (0.00s)
+=== RUN   TestDecodeStrokeValuesNibbleExtraction
+--- PASS: TestDecodeStrokeValuesNibbleExtraction (0.00s)
+=== RUN   TestDecodeStrokeValuesIncrementDecoding
+=== RUN   TestDecodeStrokeValuesIncrementDecoding/n=0_bit2=1
+=== RUN   TestDecodeStrokeValuesIncrementDecoding/n=1_bit2=1
+=== RUN   TestDecodeStrokeValuesIncrementDecoding/n=1_bit2=1_bit3=1
+=== RUN   TestDecodeStrokeValuesIncrementDecoding/n=0_bit2=0
+--- PASS: TestDecodeStrokeValuesIncrementDecoding (0.00s)
+    --- PASS: TestDecodeStrokeValuesIncrementDecoding/n=0_bit2=1 (0.00s)
+    --- PASS: TestDecodeStrokeValuesIncrementDecoding/n=1_bit2=1 (0.00s)
+    --- PASS: TestDecodeStrokeValuesIncrementDecoding/n=1_bit2=1_bit3=1 (0.00s)
+    --- PASS: TestDecodeStrokeValuesIncrementDecoding/n=0_bit2=0 (0.00s)
+=== RUN   TestDecodeStrokeValuesMultiByteIncrement
+--- PASS: TestDecodeStrokeValuesMultiByteIncrement (0.00s)
+=== RUN   TestDecodeStrokeValuesDeltaDecoding
+--- PASS: TestDecodeStrokeValuesDeltaDecoding (0.00s)
+=== RUN   TestDecodeStrokeValuesEmpty
+--- PASS: TestDecodeStrokeValuesEmpty (0.00s)
+=== RUN   TestDecodeStrokeValuesExtraData
+2026/04/22 23:48:23 kfx: error: test_extra has extra data: ff
+2026/04/22 23:48:23 kfx: info: test_extra raw: 01010100000040ff
+2026/04/22 23:48:23 kfx: info: test_extra values: [0]
+--- PASS: TestDecodeStrokeValuesExtraData (0.00s)
+=== RUN   TestProcessScribeNotebookPageSectionStub
+--- PASS: TestProcessScribeNotebookPageSectionStub (0.00s)
+=== RUN   TestProcessScribeNotebookTemplateSectionStub
+--- PASS: TestProcessScribeNotebookTemplateSectionStub (0.00s)
+=== RUN   TestAdjustColorForDensityGrayInput
+--- PASS: TestAdjustColorForDensityGrayInput (0.00s)
+=== RUN   TestAdjustColorForDensityHalfGray
+--- PASS: TestAdjustColorForDensityHalfGray (0.00s)
+=== RUN   TestDecodeStrokeValuesNegativeIncrement
+--- PASS: TestDecodeStrokeValuesNegativeIncrement (0.00s)
+=== RUN   TestDecodeStrokeValuesSingleByteIncrement
+--- PASS: TestDecodeStrokeValuesSingleByteIncrement (0.00s)
+=== RUN   TestDecodeStrokeValuesThreeByteIncrement
+2026/04/22 23:48:23 kfx: error: test_3byte pos 0 instr 3 - check number of bytes
+2026/04/22 23:48:23 kfx: info: test_3byte raw: 01010100000030010001
+2026/04/22 23:48:23 kfx: info: test_3byte values: [65537]
+--- PASS: TestDecodeStrokeValuesThreeByteIncrement (0.00s)
+=== RUN   TestDecodeStrokeValuesNegativeThreeByteIncrement
+2026/04/22 23:48:23 kfx: error: test_neg3byte pos 0 instr 11 - check number of bytes
+2026/04/22 23:48:23 kfx: info: test_neg3byte raw: 010101000000b0010001
+2026/04/22 23:48:23 kfx: info: test_neg3byte values: [-65537]
+--- PASS: TestDecodeStrokeValuesNegativeThreeByteIncrement (0.00s)
+=== RUN   TestDecodeStrokeValuesNegativeSingleByteIncrement
+--- PASS: TestDecodeStrokeValuesNegativeSingleByteIncrement (0.00s)
+=== RUN   TestDecodeStrokeValuesNegativeZeroIncrement
+2026/04/22 23:48:23 kfx: error: test_negzero pos 0 instr 12 - negative zero increment
+2026/04/22 23:48:23 kfx: info: test_negzero raw: 010101000000c0
+2026/04/22 23:48:23 kfx: info: test_negzero values: [0]
+--- PASS: TestDecodeStrokeValuesNegativeZeroIncrement (0.00s)
+=== RUN   TestProcessNotebookContent_DispatchesDollar270
+--- PASS: TestProcessNotebookContent_DispatchesDollar270 (0.00s)
+=== RUN   TestProcessNotebookContent_SymbolLookup
+--- PASS: TestProcessNotebookContent_SymbolLookup (0.00s)
+=== RUN   TestProcessNotebookContent_UnknownContentType
+2026/04/22 23:48:23 kfx: error: test $999  has unknown content type: $999
+--- PASS: TestProcessNotebookContent_UnknownContentType (0.00s)
+=== RUN   TestProcessNotebookContent_RecursesDollar176
+--- PASS: TestProcessNotebookContent_RecursesDollar176 (0.00s)
+=== RUN   TestProcessNotebookContent_DispatchesStrokeWhenNoLayout
+--- PASS: TestProcessNotebookContent_DispatchesStrokeWhenNoLayout (0.00s)
+=== RUN   TestScribeNotebookStrokeGroup
+--- PASS: TestScribeNotebookStrokeGroup (0.00s)
+=== RUN   TestScribeNotebookStrokeGroup_ChunkedValidation
+2026/04/22 23:48:23 kfx: error: test has unexpected nmdl.chunked: false
+--- PASS: TestScribeNotebookStrokeGroup_ChunkedValidation (0.00s)
+=== RUN   TestBrushTypeClassification
+2026/04/22 23:48:23 kfx: error: Unexpected brush type 99
+--- PASS: TestBrushTypeClassification (0.00s)
+=== RUN   TestBrushTypeClassificationWithThickness
+--- PASS: TestBrushTypeClassificationWithThickness (0.00s)
+=== RUN   TestBrushTypeOpacity
+--- PASS: TestBrushTypeOpacity (0.00s)
+=== RUN   TestSVGPathGeneration_SinglePath
+--- PASS: TestSVGPathGeneration_SinglePath (0.00s)
+=== RUN   TestSVGPathGeneration_VariableThickness
+--- PASS: TestSVGPathGeneration_VariableThickness (0.00s)
+=== RUN   TestSVGPathGeneration_IncludePriorLineSegment
+--- PASS: TestSVGPathGeneration_IncludePriorLineSegment (0.00s)
+=== RUN   TestScribeNotebookAnnotation_HWR
+--- PASS: TestScribeNotebookAnnotation_HWR (0.00s)
+=== RUN   TestScribeNotebookAnnotation_UnexpectedType
+2026/04/22 23:48:23 kfx: error: test has unexpected annotation_type: nmdl.unknown_type
+--- PASS: TestScribeNotebookAnnotation_UnexpectedType (0.00s)
+=== RUN   TestScribeNotebookStroke_VariableDensity
+--- PASS: TestScribeNotebookStroke_VariableDensity (0.00s)
+=== RUN   TestAdjustColorForDensity_AllColors
+--- PASS: TestAdjustColorForDensity_AllColors (0.00s)
+=== RUN   TestThicknessMatching
+--- PASS: TestThicknessMatching (0.00s)
+=== RUN   TestScribeNotebookStroke_NormalStroke
+2026/04/22 23:48:23 kfx: error: nmdl.position_x has extra data: 54
+2026/04/22 23:48:23 kfx: info: nmdl.position_x raw: 010102000000150a54
+2026/04/22 23:48:23 kfx: info: nmdl.position_x values: [10 11]
+2026/04/22 23:48:23 kfx: error: nmdl.position_y has extra data: 54
+2026/04/22 23:48:23 kfx: info: nmdl.position_y raw: 010102000000150a54
+2026/04/22 23:48:23 kfx: info: nmdl.position_y values: [10 11]
+--- PASS: TestScribeNotebookStroke_NormalStroke (0.00s)
+=== RUN   TestDecodeStrokeValues_ShortData
+2026/04/22 23:48:23 kfx: error: test_short not enough data (1 bytes) to extract 5 values
+--- PASS: TestDecodeStrokeValues_ShortData (0.00s)
+=== RUN   TestDecodeStrokeValues_LargeValue
+--- PASS: TestDecodeStrokeValues_LargeValue (0.00s)
+=== RUN   TestSVGElement_SetAttrib
+--- PASS: TestSVGElement_SetAttrib (0.00s)
+=== RUN   TestNewSVGElement
+--- PASS: TestNewSVGElement (0.00s)
+=== RUN   TestContextStack
+--- PASS: TestContextStack (0.00s)
+=== RUN   TestQuantizeThickness
+--- PASS: TestQuantizeThickness (0.00s)
+=== RUN   TestYJPropertyInfoCoreKeys
+--- PASS: TestYJPropertyInfoCoreKeys (0.00s)
+=== RUN   TestConvertYJPropertiesFontFamily
+--- PASS: TestConvertYJPropertiesFontFamily (0.00s)
+=== RUN   TestConvertYJPropertiesBorderTop
+--- PASS: TestConvertYJPropertiesBorderTop (0.00s)
+=== RUN   TestProcessContentPropertiesExtractsKnownKeys
+--- PASS: TestProcessContentPropertiesExtractsKnownKeys (0.00s)
+=== RUN   TestConvertYJPropertiesNoFontFamily
+--- PASS: TestConvertYJPropertiesNoFontFamily (0.00s)
+=== RUN   TestPackageResourceStemImageUsesSymbolFormat
+--- PASS: TestPackageResourceStemImageUsesSymbolFormat (0.00s)
+=== RUN   TestPackageResourceStemResourceOriginal
+--- PASS: TestPackageResourceStemResourceOriginal (0.00s)
+=== RUN   TestUniquePackageResourceFilenameDedupesCaseInsensitive
+--- PASS: TestUniquePackageResourceFilenameDedupesCaseInsensitive (0.00s)
+=== RUN   TestResourceVariantHigherResolutionReplacesBase
+--- PASS: TestResourceVariantHigherResolutionReplacesBase (0.00s)
+=== RUN   TestResourceVariantNotSelectedWhenOnlyOneDimensionLarger
+--- PASS: TestResourceVariantNotSelectedWhenOnlyOneDimensionLarger (0.00s)
+=== RUN   TestResourceVariantIgnoredWhenFlagSet
+--- PASS: TestResourceVariantIgnoredWhenFlagSet (0.00s)
+=== RUN   TestResourceDeduplicationByBinaryData
+--- PASS: TestResourceDeduplicationByBinaryData (0.00s)
+=== RUN   TestResourceDeduplicationGeneratesUniqueFilename
+--- PASS: TestResourceDeduplicationGeneratesUniqueFilename (0.00s)
+=== RUN   TestResourceCachePreventsReFetching
+--- PASS: TestResourceCachePreventsReFetching (0.00s)
+=== RUN   TestLocateRawMediaReadsFromRawMedia
+--- PASS: TestLocateRawMediaReadsFromRawMedia (0.00s)
+=== RUN   TestLocateRawMediaReturnsNilForMissing
+2026/04/22 23:48:23 kfx: error: Missing bcRawMedia nonexistent
+--- PASS: TestLocateRawMediaReturnsNilForMissing (0.00s)
+=== RUN   TestLocateRawMediaNoReportWhenFlagFalse
+--- PASS: TestLocateRawMediaNoReportWhenFlagFalse (0.00s)
+=== RUN   TestProcessExternalResourceReferredUsesRootFilename
+--- PASS: TestProcessExternalResourceReferredUsesRootFilename (0.00s)
+=== RUN   TestProcessExternalResourceManifestMimetypeOnlyForReferred
+--- PASS: TestProcessExternalResourceManifestMimetypeOnlyForReferred (0.00s)
+=== RUN   TestGetOrderedImagesReturnValues
+--- PASS: TestGetOrderedImagesReturnValues (0.00s)
+=== RUN   TestGetOrderedImagesWithPids
+--- PASS: TestGetOrderedImagesWithPids (0.00s)
+=== RUN   TestGetOrderedImagesSplitLandscape
+2026/04/22 23:48:23 kfx: warning: Split 1 landscape comic images into left/right image pairs
+--- PASS: TestGetOrderedImagesSplitLandscape (0.00s)
+=== RUN   TestGetOrderedImagesSplitLandscapeRTL
+2026/04/22 23:48:23 kfx: warning: Split 1 landscape comic images into left/right image pairs
+--- PASS: TestGetOrderedImagesSplitLandscapeRTL (0.00s)
+=== RUN   TestConvertBookToCBZ
+2026/04/22 23:48:23 kfx: info: Combined 1 JPG, 1 PNG resources into a 2 page CBZ file
+--- PASS: TestConvertBookToCBZ (0.00s)
+=== RUN   TestConvertBookToCBZEmpty
+--- PASS: TestConvertBookToCBZEmpty (0.00s)
+=== RUN   TestCropImage_ResourceScaling
+--- PASS: TestCropImage_ResourceScaling (0.04s)
+=== RUN   TestCBZ_ConvertPDFPages
+2026/04/22 23:48:23 kfx: info: PDF page extraction for page.pdf page 1 (rendering placeholder)
+2026/04/22 23:48:23 kfx: info: Combined 1 PDF, 1 JPG resources into a 2 page CBZ file
+--- PASS: TestCBZ_ConvertPDFPages (0.00s)
+=== RUN   TestCBZ_ConvertJXR
+2026/04/22 23:48:23 kfx: info: Combined 1 JXR resources into a 1 page CBZ file
+--- PASS: TestCBZ_ConvertJXR (0.00s)
+=== RUN   TestCombineImagesIntoPDF
+--- PASS: TestCombineImagesIntoPDF (0.00s)
+=== RUN   TestCombineImagesIntoPDF_RTL
+--- PASS: TestCombineImagesIntoPDF_RTL (0.00s)
+=== RUN   TestCombineImagesIntoPDF_Empty
+--- PASS: TestCombineImagesIntoPDF_Empty (0.00s)
+=== RUN   TestTOCPageResolution
+--- PASS: TestTOCPageResolution (0.00s)
+=== RUN   TestTOCPageResolutionEmpty
+--- PASS: TestTOCPageResolutionEmpty (0.00s)
+=== RUN   TestGetResourceImageTiles
+--- PASS: TestGetResourceImageTiles (0.00s)
+=== RUN   TestGetResourceImageTilesWithPadding
+2026/04/22 23:48:23 kfx: error: Resource tiled-img tile 0, 0 size (100, 100) does not have padding 2 of expected size (100, 100)
+--- PASS: TestGetResourceImageTilesWithPadding (0.00s)
+=== RUN   TestGetResourceImageNoTiles
+--- PASS: TestGetResourceImageNoTiles (0.00s)
+=== RUN   TestGetResourceImageVariantSelection
+--- PASS: TestGetResourceImageVariantSelection (0.00s)
+=== RUN   TestGetResourceImageMissing
+--- PASS: TestGetResourceImageMissing (0.00s)
+=== RUN   TestGetResourceImagePDFResource
+--- PASS: TestGetResourceImagePDFResource (0.00s)
+=== RUN   TestSuffixLocation
+--- PASS: TestSuffixLocation (0.00s)
+=== RUN   TestYJVersions_FeatureKeysMatch
+--- PASS: TestYJVersions_FeatureKeysMatch (0.00s)
+=== RUN   TestYJVersions_FeatureKeysHash
+--- PASS: TestYJVersions_FeatureKeysHash (0.00s)
+=== RUN   TestSentinelConstantsAny
+--- PASS: TestSentinelConstantsAny (0.00s)
+=== RUN   TestSentinelConstantsTF
+--- PASS: TestSentinelConstantsTF (0.00s)
+=== RUN   TestFeatureNameConstantsComplete
+--- PASS: TestFeatureNameConstantsComplete (0.00s)
+=== RUN   TestPackageVersionPlaceholders
+--- PASS: TestPackageVersionPlaceholders (0.00s)
+=== RUN   TestKnownKFXGenerators
+--- PASS: TestKnownKFXGenerators (0.00s)
+=== RUN   TestGenericCreatorVersions
+--- PASS: TestGenericCreatorVersions (0.00s)
+=== RUN   TestKnownFeaturesCategories
+--- PASS: TestKnownFeaturesCategories (0.00s)
+=== RUN   TestKnownFeaturesReflowStyle
+--- PASS: TestKnownFeaturesReflowStyle (0.00s)
+=== RUN   TestKnownFeaturesYjTable
+--- PASS: TestKnownFeaturesYjTable (0.00s)
+=== RUN   TestKnownFeaturesYjAudio
+--- PASS: TestKnownFeaturesYjAudio (0.00s)
+=== RUN   TestKnownFeaturesAnySentinel
+--- PASS: TestKnownFeaturesAnySentinel (0.00s)
+=== RUN   TestKnownSupportedFeatures
+--- PASS: TestKnownSupportedFeatures (0.00s)
+=== RUN   TestKnownMetadataCategories
+--- PASS: TestKnownMetadataCategories (0.00s)
+=== RUN   TestKnownMetadataAnySentinel
+--- PASS: TestKnownMetadataAnySentinel (0.00s)
+=== RUN   TestKnownMetadataCreatorVersion
+--- PASS: TestKnownMetadataCreatorVersion (0.00s)
+=== RUN   TestKnownMetadataSymbols
+--- PASS: TestKnownMetadataSymbols (0.00s)
+=== RUN   TestKnownAuxiliaryMetadata
+--- PASS: TestKnownAuxiliaryMetadata (0.00s)
+=== RUN   TestKnownKCBData
+--- PASS: TestKnownKCBData (0.00s)
+=== RUN   TestUnsupported
+--- PASS: TestUnsupported (0.00s)
+=== RUN   TestKindleVersionCapabilities
+--- PASS: TestKindleVersionCapabilities (0.00s)
+=== RUN   TestKindleCapabilityVersions
+--- PASS: TestKindleCapabilityVersions (0.00s)
+=== RUN   TestIsKnownGeneratorPrefix
+--- PASS: TestIsKnownGeneratorPrefix (0.00s)
+=== RUN   TestIsKnownGeneratorMembership
+--- PASS: TestIsKnownGeneratorMembership (0.00s)
+=== RUN   TestIsKnownFeatureBasic
+--- PASS: TestIsKnownFeatureBasic (0.00s)
+=== RUN   TestIsKnownFeatureLookup
+--- PASS: TestIsKnownFeatureLookup (0.00s)
+=== RUN   TestIsKnownFeatureAnySentinel
+--- PASS: TestIsKnownFeatureAnySentinel (0.00s)
+=== RUN   TestKindleFeatureVersionResolution
+--- PASS: TestKindleFeatureVersionResolution (0.00s)
+=== RUN   TestIsKnownMetadataSimple
+--- PASS: TestIsKnownMetadataSimple (0.00s)
+=== RUN   TestIsKnownMetadataList
+--- PASS: TestIsKnownMetadataList (0.00s)
+=== RUN   TestIsKnownAuxMetadata
+--- PASS: TestIsKnownAuxMetadata (0.00s)
+=== RUN   TestIsKnownKCBData
+--- PASS: TestIsKnownKCBData (0.00s)
+=== RUN   TestIsKnownMetadataIntValues
+--- PASS: TestIsKnownMetadataIntValues (0.00s)
+=== RUN   TestIsKnownMetadataBoolValues
+--- PASS: TestIsKnownMetadataBoolValues (0.00s)
+=== RUN   TestIsKnownMetadataFloatValues
+--- PASS: TestIsKnownMetadataFloatValues (0.00s)
+=== RUN   TestKindleFeatureVersionTupleKey
+--- PASS: TestKindleFeatureVersionTupleKey (0.00s)
+=== RUN   TestKnownKCBDataMetadataReferences
+--- PASS: TestKnownKCBDataMetadataReferences (0.00s)
+=== RUN   TestIsKnownGeneratorAllPrefixes
+--- PASS: TestIsKnownGeneratorAllPrefixes (0.00s)
+=== RUN   TestKnownKCBDataBoolValues
+--- PASS: TestKnownKCBDataBoolValues (0.00s)
+=== RUN   TestAuxMetadataTFSet
+--- PASS: TestAuxMetadataTFSet (0.00s)
+FAIL
+FAIL	github.com/kaikozlov/kindle-koplugin/internal/kfx	9.041s
+FAIL

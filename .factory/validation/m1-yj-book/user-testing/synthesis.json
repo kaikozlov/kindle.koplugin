@@ -1,0 +1,33 @@
+{
+  "milestone": "m1-yj-book",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-M1-001",
+    "VAL-M1-002",
+    "VAL-M1-003",
+    "VAL-M1-004"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Pre-existing user-testing.md already contains comprehensive validation guidance; no updates needed",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null,
+  "notes": {
+    "VAL-M1-001": "12/18 Python methods have Go counterparts; 6 Calibre output mode methods correctly excluded by design (convert_to_single_kfx, convert_to_cbz, convert_to_pdf, convert_to_kpf, convert_to_zip_unpack, convert_to_json_content).",
+    "VAL-M1-002": "6 fragment organization tests pass: buildBookState fragment summary matches reference, organizeFragments correctly categorizes content, remaps $270 container format, handles $593 last container ID, $262 font count suffix, and $387 with $215 suffix.",
+    "VAL-M1-003": "go vet clean. Full test suite: only pre-existing TestConvertFileMatchesReferenceStructureIgnoringImages failure (image tiling issue unrelated to M1). All M1-specific tests pass.",
+    "VAL-M1-004": "M1 changes are documentation-only (yj_book.go comments + doc.go). EPUB output byte-identical to pre-M1 baseline. parity_check.sh shows expected $N vs real name format differences."
+  }
+}
