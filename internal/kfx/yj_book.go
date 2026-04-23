@@ -13,6 +13,37 @@ import (
 // ---------------------------------------------------------------------------
 // Port of yj_book.py: YJ_Book state, fragment catalog, and decode_book pipeline.
 // Also contains symbol merging helpers from yj_to_epub.py replace_ion_data.
+//
+// Python yj_book.py (348 lines, 18 functions) → Go yj_book.go (9 exported functions)
+//
+// Function mapping (Python → Go):
+//
+//   Core pipeline (ported):
+//     __init__                   → types: bookState, fragmentCatalog, decodedBook (kfx.go)
+//     load_symbol_catalog        → sharedTable() (yj_symbol_catalog.go) + newSymbolResolver
+//     decode_book                → buildBookState + organizeFragments
+//     locate_book_datafiles      → loadBookSources + collectContainerBlobs (kfx_container.go)
+//     locate_files_from_dir      → collectSidecarContainerBlobs + filepath.WalkDir
+//     check_located_file         → inline in collectSidecarContainerBlobs / collectZipContainerBlobs
+//     get_container              → loadContainerSourceData (kfx_container.go)
+//     expand_compressed_container → decryptDRMION (drm.go)
+//     final_actions              → N/A (Go uses standard library for cleanup)
+//     convert_to_epub            → ConvertFile (yj_to_epub.go)
+//     get_metadata               → ExtractSidecarMetadata (sidecar.go)
+//
+//   Excluded by design (Calibre output modes not needed by KOReader):
+//     convert_to_single_kfx      → Calibre KFX container serialization
+//     convert_to_cbz             → Calibre CBZ image book output
+//     convert_to_pdf             → Calibre PDF image book output
+//     convert_to_kpf             → Calibre KPF generation via Kindle Previewer CLI
+//     convert_to_zip_unpack      → Calibre ZIP unpack output
+//     convert_to_json_content    → Calibre JSON content output
+//
+//   Also from yj_to_epub.py (ported here):
+//     organize_fragments_by_type → organizeFragments
+//     replace_ion_data           → mergeIonReferencedStringSymbols + mergeContentFragmentStringSymbols
+//     determine_book_symbol_format → determineBookSymbolFormat (yj_to_epub.go)
+//     unique_part_of_local_symbol → uniquePartOfLocalSymbol (yj_to_epub.go)
 // ---------------------------------------------------------------------------
 
 
