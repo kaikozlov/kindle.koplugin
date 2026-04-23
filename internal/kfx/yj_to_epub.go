@@ -2,11 +2,13 @@ package kfx
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"image/jpeg"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/kaikozlov/kindle-koplugin/internal/epub"
@@ -273,6 +275,352 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	book.Language = normalizeLanguage(book.Language)
 
 	return book, nil
+}
+
+// buildBookState loads container sources from path and organizes fragments.
+// Port of YJ_Book.decode_book → KFX_EPUB.organize_fragments_by_type pipeline.
+func buildBookState(path string) (*bookState, error) {
+	sources, err := loadBookSources(path)
+	if err != nil {
+		return nil, err
+	}
+	return organizeFragments(path, sources)
+}
+
+// buildBookStateFromData creates a bookState from in-memory CONT KFX data.
+// This is used after DRMION decryption produces a valid CONT container.
+func buildBookStateFromData(contData []byte) (*bookState, error) {
+	if len(contData) < 18 || !bytes.HasPrefix(contData, contSignature) {
+		return nil, &UnsupportedError{Message: "data is not a valid CONT KFX container"}
+	}
+
+	source, err := loadContainerSourceData("<decrypted>", contData)
+	if err != nil {
+		return nil, err
+	}
+
+	return organizeFragments("<decrypted>", []*containerSource{source})
+}
+
+// Port of KFX_EPUB.organize_fragments_by_type (yj_to_epub.py) adapted to the Go fragmentCatalog layout.
+// replace_ion_data symbol collection is approximated by recording resolved fragment IDs during the index walk.
+func organizeFragments(bookPath string, sources []*containerSource) (*bookState, error) {
+	fragments := fragmentCatalog{
+		TitleMetadata:     nil,
+		ContentFeatures:   map[string]interface{}{},
+		DocumentData:      map[string]interface{}{},
+		ContentFragments:  map[string][]string{},
+		Storylines:        map[string]map[string]interface{}{},
+		StyleFragments:    map[string]map[string]interface{}{},
+		RubyGroups:        map[string]map[string]interface{}{},
+		RubyContents:      map[string]map[string]interface{}{},
+		SectionFragments:  map[string]sectionFragment{},
+		AnchorFragments:   map[string]anchorFragment{},
+		NavContainers:     map[string]map[string]interface{}{},
+		ResourceFragments: map[string]resourceFragment{},
+		ResourceRawData:   map[string]map[string]interface{}{},
+		FormatCapabilities: map[string]map[string]interface{}{},
+		Generators:        map[string]map[string]interface{}{},
+		FontFragments:     map[string]fontFragment{},
+		RawFragments:      map[string][]byte{},
+		PositionAliases:   map[int]string{},
+		FragmentIDsByType: map[string][]string{},
+	}
+	book := &decodedBook{
+		Identifier: bookPath,
+		Title:      strings.TrimSuffix(filepath.Base(bookPath), filepath.Ext(bookPath)),
+		Language:   "en",
+	}
+
+	// Two-pass approach matching Calibre's yj_book.decode_book():
+	//   Pass 1: container.deserialize() → loads doc_symbols into shared symtab
+	//   Pass 2: container.get_fragments() → decodes entities with accumulated symtab
+	//
+	// Calibre processes all containers in loop 1 (loading symbols), then all
+	// containers in loop 2 (decoding fragments). This ensures ALL docSymbols
+	// are accumulated before any entity is decoded.
+	sharedSym := &sharedDocSymbols{}
+
+	// Sort sources alphabetically by path, matching Calibre's sequential
+	// processing order.
+	sort.Slice(sources, func(i, j int) bool {
+		return sources[i].Path < sources[j].Path
+	})
+
+	// Pass 1: Accumulate docSymbols from all sources (Calibre: deserialize loop).
+	for _, source := range sources {
+		sharedSym.update(source.DocSymbols)
+	}
+
+	// Build resolver from fully accumulated docSymbols.
+	srcDocSymbols := sharedSym.get()
+	if len(srcDocSymbols) == 0 {
+		return nil, &UnsupportedError{Message: "no document symbol table found in any container"}
+	}
+	resolver, err := newSymbolResolver(srcDocSymbols)
+	if err != nil {
+		return nil, err
+	}
+
+	bookSymbols := map[string]struct{}{}
+	fontCount := 0
+	categorizedData := map[string]map[string]bool{}
+
+	// Pass 2: Decode all fragments using the fully accumulated resolver
+	// (Calibre: get_fragments loop).
+	for _, source := range sources {
+		lastContainerID := ""
+		for offset := 0; offset+24 <= len(source.IndexData); offset += 24 {
+			idID := binary.LittleEndian.Uint32(source.IndexData[offset : offset+4])
+			typeID := binary.LittleEndian.Uint32(source.IndexData[offset+4 : offset+8])
+			entityOffset := int(binary.LittleEndian.Uint64(source.IndexData[offset+8 : offset+16]))
+			entityLength := int(binary.LittleEndian.Uint64(source.IndexData[offset+16 : offset+24]))
+			start := source.HeaderLen + entityOffset
+			end := start + entityLength
+			if start < 0 || end > len(source.Data) || start >= end {
+				return nil, &UnsupportedError{Message: "entity offset is out of range"}
+			}
+
+			entityData := source.Data[start:end]
+			fragmentID := resolver.Resolve(idID)
+			bookSymbols[fragmentID] = struct{}{}
+			fragmentType := fmt.Sprintf("$%d", typeID)
+			payload, err := entityPayload(entityData)
+			if err != nil {
+				return nil, err
+			}
+
+			summaryID := fragmentID
+			switch fragmentType {
+			case "$270":
+				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
+				if err != nil {
+					return nil, err
+				}
+				containerID := fmt.Sprintf("%s:%s", asStringDefault(value["$161"]), asStringDefault(value["$409"]))
+				lastContainerID = containerID
+				summaryID = containerID
+			case "$593":
+				summaryID = lastContainerID
+			case "$262":
+				summaryID = fmt.Sprintf("%s-font-%03d", fragmentID, fontCount)
+				fontCount++
+			case "$258":
+				// Python has no special ID override for $258 (yj_to_epub.py L186: id = fragment.fid).
+				// The value is decoded later in the fragment type switch below.
+				summaryID = fragmentID
+			case "$387":
+				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
+				if err != nil {
+					return nil, err
+				}
+				summaryID = fmt.Sprintf("%s:%s", fragmentID, asStringDefault(value["$215"]))
+			}
+			fragments.FragmentIDsByType[fragmentType] = append(fragments.FragmentIDsByType[fragmentType], summaryID)
+
+			// Track categorized IDs for duplicate/null detection (Python organize_fragments_by_type L202-204).
+			if categorizedData[fragmentType] == nil {
+				categorizedData[fragmentType] = map[string]bool{}
+			}
+			if categorizedData[fragmentType][summaryID] {
+				log.Printf("kfx: book contains multiple %s fragments with id %s", fragmentType, summaryID)
+			}
+			categorizedData[fragmentType][summaryID] = true
+
+			switch fragmentType {
+			case "$145", "$157", "$164", "$258", "$259", "$260", "$262", "$266", "$270", "$391", "$490", "$538", "$585", "$593", "$608", "$609", "$756":
+				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
+				if err != nil {
+					return nil, err
+				}
+
+				switch fragmentType {
+				case "$145":
+					name, _ := asString(value["name"])
+					stringsValue := toStringSlice(value["$146"])
+					if name != "" && len(stringsValue) > 0 {
+						fragments.ContentFragments[name] = stringsValue
+					}
+				case "$157":
+					id := chooseFragmentIdentity(fragmentID, value["$173"])
+					if id != "" {
+						fragments.StyleFragments[id] = value
+					}
+				case "$164":
+					mergeIonReferencedStringSymbols(value, bookSymbols)
+					resource := parseResourceFragment(fragmentID, value)
+					if resource.Location != "" {
+						fragments.ResourceFragments[resource.ID] = resource
+					}
+					fragments.ResourceRawData[resource.ID] = value
+				case "$258":
+					order := readSectionOrder(value)
+					if len(order) > 0 {
+						fragments.SectionOrder = order
+					}
+					// Store $258 for applyReadingOrderMetadata (Python process_metadata L103: book_data.pop("$258", {})).
+					fragments.ReadingOrderMetadata = value
+				case "$259":
+					id := chooseFragmentIdentity(fragmentID, value["$176"])
+					if id != "" {
+						fragments.Storylines[id] = value
+					}
+				case "$260":
+					section := parseSectionFragment(fragmentID, value)
+					if section.ID != "" && section.Storyline != "" {
+						fragments.SectionFragments[section.ID] = section
+					}
+				case "$262":
+					font := parseFontFragment(value)
+					if font.Location != "" {
+						fragments.FontFragments[font.Location] = font
+					}
+				case "$266":
+					mergeIonReferencedStringSymbols(value, bookSymbols)
+					anchor := parseAnchorFragment(fragmentID, value)
+					if anchor.ID != "" && (anchor.PositionID != 0 || anchor.URI != "") {
+						fragments.AnchorFragments[anchor.ID] = anchor
+					}
+				case "$270":
+					fragments.Generators[summaryID] = value
+				case "$391":
+					id := chooseFragmentIdentity(fragmentID, value["$239"])
+					if id != "" {
+						fragments.NavContainers[id] = value
+					}
+				case "$490":
+					fragments.TitleMetadata = value
+				case "$538":
+					fragments.DocumentData = value
+				case "$585":
+					fragments.ContentFeatures = value
+				case "$593":
+					fragments.FormatCapabilities[summaryID] = value
+				case "$608":
+					id := chooseFragmentIdentity(fragmentID, value["$758"])
+					if id == "" {
+						id = fragmentID
+					}
+					fragments.RubyContents[id] = value
+				case "$756":
+					id := chooseFragmentIdentity(fragmentID, value["$757"])
+					if id == "" {
+						id = fragmentID
+					}
+					fragments.RubyGroups[id] = value
+				case "$609":
+					sectionID := parsePositionMapSectionID(fragmentID, value)
+					for _, positionID := range readPositionMap(value) {
+						if positionID != 0 && sectionID != "" {
+							fragments.PositionAliases[positionID] = sectionID
+						}
+					}
+				}
+			case "$389":
+				value, err := decodeIonValue(payload, srcDocSymbols, resolver)
+				if err != nil {
+					return nil, err
+				}
+				if rootList, ok := asSlice(value); ok {
+					for _, entry := range rootList {
+						entryMap, ok := asMap(entry)
+						if ok {
+							fragments.NavRoots = append(fragments.NavRoots, entryMap)
+						}
+					}
+				}
+			case "$417", "$418":
+				if fragmentID != "" {
+					dataCopy := append([]byte(nil), payload...)
+					fragments.RawFragments[fragmentID] = dataCopy
+					fragments.RawBlobOrder = append(fragments.RawBlobOrder, rawBlob{
+						ID:   fragmentID,
+						Data: dataCopy,
+					})
+				}
+			}
+		}
+	}
+
+	// Null ID detection (Python organize_fragments_by_type L214):
+	// When a category has multiple entries including an empty/null ID, log an error.
+	for category, ids := range categorizedData {
+		if len(ids) > 1 {
+			if ids[""] || ids["\x00"] {
+				log.Printf("kfx: fragment list contains mixed null/non-null ids of type %q", category)
+			}
+		}
+	}
+
+	// Port of replace_ion_data string-symbol discovery (yj_to_epub.py): collect YJ field string values into bookSymbols.
+	mergeIonReferencedStringSymbols(fragments.TitleMetadata, bookSymbols)
+	mergeIonReferencedStringSymbols(fragments.DocumentData, bookSymbols)
+	mergeIonReferencedStringSymbols(fragments.ContentFeatures, bookSymbols)
+	for _, m := range fragments.StyleFragments {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	for _, m := range fragments.Storylines {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	for _, m := range fragments.NavContainers {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	for _, m := range fragments.NavRoots {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	mergeContentFragmentStringSymbols(fragments.ContentFragments, bookSymbols)
+	for _, m := range fragments.RubyGroups {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	for _, m := range fragments.RubyContents {
+		mergeIonReferencedStringSymbols(m, bookSymbols)
+	}
+	for _, sec := range fragments.SectionFragments {
+		mergeIonReferencedStringSymbols(sec.PageTemplateValues, bookSymbols)
+		for _, t := range sec.PageTemplates {
+			mergeIonReferencedStringSymbols(t.PageTemplateValues, bookSymbols)
+			mergeIonReferencedStringSymbols(t.Condition, bookSymbols)
+		}
+	}
+
+	// Port of Python process_document_data reading_orders: $169 from $538 document data.
+	if len(fragments.SectionOrder) == 0 {
+		if docOrder := readSectionOrder(fragments.DocumentData); len(docOrder) > 0 {
+			fragments.SectionOrder = docOrder
+		}
+	}
+	if len(fragments.SectionOrder) == 0 {
+		for sectionID := range fragments.SectionFragments {
+			fragments.SectionOrder = append(fragments.SectionOrder, sectionID)
+		}
+		sort.Strings(fragments.SectionOrder)
+	}
+	for fragmentType := range fragments.FragmentIDsByType {
+		sort.Strings(fragments.FragmentIDsByType[fragmentType])
+	}
+
+	var primarySource *containerSource
+	if len(sources) > 0 {
+		primarySource = sources[0]
+	}
+
+	symbolFormat := determineBookSymbolFormat(bookSymbols, fragments.DocumentData, resolver)
+	// Python yj_to_epub.py L239: log.info for non-SHORT book symbol format.
+	if symbolFormat != symShort {
+		log.Printf("kfx: Book symbol format is %s", symbolFormat)
+	}
+	// KFX_EPUB.__init__ L77–80 after determine_book_symbol_format (L76).
+	applyKFXEPUBInitMetadataAfterOrganize(book, &fragments)
+
+	return &bookState{
+		Path:             bookPath,
+		Source:           primarySource,
+		Sources:          sources,
+		Book:             book,
+		Fragments:        fragments,
+		BookSymbols:      bookSymbols,
+		BookSymbolFormat: symbolFormat,
+	}, nil
 }
 
 // ConvertFile converts a KFX file at inputPath to an EPUB at outputPath.
