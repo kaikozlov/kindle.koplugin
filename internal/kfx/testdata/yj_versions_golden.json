@@ -1,0 +1,64 @@
+{
+  "feature_keys": {
+    "SDK.Marker": [
+      "CanonicalFormat"
+    ],
+    "com.amazon.kindle.nmdl": [
+      "note"
+    ],
+    "com.amazon.yjconversion": [
+      "ar-reflow-language",
+      "cn-reflow-language",
+      "fa-reflow-language",
+      "he-reflow-language",
+      "indic-reflow-language",
+      "jp-reflow-language",
+      "jpvertical-reflow-language",
+      "multiple_reading_orders-switchable",
+      "reflow-language",
+      "reflow-language-expansion",
+      "reflow-section-size",
+      "reflow-style",
+      "tcn-reflow-language",
+      "yj.conditional_structure",
+      "yj.illustrated_layout",
+      "yj_arabic_fixed_format",
+      "yj_audio",
+      "yj_custom_word_iterator",
+      "yj_dictionary",
+      "yj_direction_rtl",
+      "yj_double_page_spread",
+      "yj_facing_page",
+      "yj_fixed_layout",
+      "yj_graphical_highlights",
+      "yj_has_text_popups",
+      "yj_hdv",
+      "yj_interactive_image",
+      "yj_jpegxr_sd",
+      "yj_jpg_rst_marker_present",
+      "yj_mathml",
+      "yj_mixed_writing_mode",
+      "yj_non_pdf_fixed_layout",
+      "yj_pdf_backed_fixed_layout",
+      "yj_pdf_links",
+      "yj_pdf_support",
+      "yj_publisher_panels",
+      "yj_rotated_pages",
+      "yj_ruby",
+      "yj_table",
+      "yj_table_viewer",
+      "yj_textbook",
+      "yj_thumbnails_present",
+      "yj_vertical_text_shadow",
+      "yj_video"
+    ],
+    "format_capabilities": [
+      "db.delta_update",
+      "db.schema",
+      "kfxgen.pidMapWithOffset",
+      "kfxgen.positionMaps",
+      "kfxgen.textBlock"
+    ]
+  },
+  "feature_keys_hash": "24e20902ed80ad4f08f7f1c4274763c0c0bcb07d58eb380a2b094a68f7ef1059"
+}
