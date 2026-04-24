@@ -504,24 +504,268 @@ func TestDecodeStrokeValuesExtraData(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// VAL-D-018: processScribeNotebookPageSection — stub returns false
+// VAL-D-018: processScribeNotebookPageSection — non-nil context returns true
+// Python: yj_to_epub_notebook.py:78-156
 // ---------------------------------------------------------------------------
 
-func TestProcessScribeNotebookPageSectionStub(t *testing.T) {
-	result := processScribeNotebookPageSection(nil, nil, "", 0)
+func TestProcessScribeNotebookPageSection_NilContext(t *testing.T) {
+	// Nil context should return false
+	result := processScribeNotebookPageSection(nil, nil, nil, "", 0)
 	if result != false {
-		t.Error("processScribeNotebookPageSection should return false (stub)")
+		t.Error("processScribeNotebookPageSection should return false with nil context")
+	}
+}
+
+func TestProcessScribeNotebookPageSection_ExtractsCanvasDimensions(t *testing.T) {
+	// Verify canvas dimensions are extracted and validated.
+	ctx := &ScribeNotebookContext{}
+	section := map[string]interface{}{
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
+		"nmdl.normalized_ppi": 2520,
+	}
+
+	result := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+	if !result {
+		t.Error("processScribeNotebookPageSection should return true with valid section data")
+	}
+
+	// Canvas dimensions should be popped from section
+	if _, ok := section["nmdl.canvas_width"]; ok {
+		t.Error("nmdl.canvas_width should have been popped from section")
+	}
+	if _, ok := section["nmdl.canvas_height"]; ok {
+		t.Error("nmdl.canvas_height should have been popped from section")
+	}
+	if _, ok := section["nmdl.normalized_ppi"]; ok {
+		t.Error("nmdl.normalized_ppi should have been popped from section")
+	}
+}
+
+func TestProcessScribeNotebookPageSection_CreatesBookPart(t *testing.T) {
+	// Verify a book part is created with correct properties.
+	ctx := &ScribeNotebookContext{}
+	section := map[string]interface{}{
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
+		"nmdl.normalized_ppi": 2520,
+	}
+
+	result := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+	if !result {
+		t.Fatal("processScribeNotebookPageSection should return true")
+	}
+
+	// Should have created a book part
+	if len(ctx.BookParts) != 1 {
+		t.Fatalf("expected 1 book part, got %d", len(ctx.BookParts))
+	}
+
+	bp := ctx.BookParts[0]
+	if !bp.IsFXL {
+		t.Error("book part should be FXL (fixed layout)")
+	}
+	if bp.Filename != "test_section.xhtml" {
+		t.Errorf("book part filename = %q, want %q", bp.Filename, "test_section.xhtml")
+	}
+}
+
+func TestProcessScribeNotebookPageSection_ViewportMeta(t *testing.T) {
+	// Verify viewport meta element is created in head.
+	ctx := &ScribeNotebookContext{}
+	section := map[string]interface{}{
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
+		"nmdl.normalized_ppi": 2520,
+	}
+
+	processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+
+	bp := ctx.BookParts[0]
+	// Head should have a viewport meta child
+	var hasViewport bool
+	for _, child := range bp.Head.Children {
+		if child.Tag == "meta" && child.Attrib["name"] == "viewport" {
+			hasViewport = true
+			expected := "width=15624, height=20832"
+			if child.Attrib["content"] != expected {
+				t.Errorf("viewport content = %q, want %q", child.Attrib["content"], expected)
+			}
+		}
+	}
+	if !hasViewport {
+		t.Error("expected viewport meta element in book part head")
+	}
+}
+
+func TestProcessScribeNotebookPageSection_InlinePlacementType(t *testing.T) {
+	// Verify inline_placement_type handling.
+	ctx := &ScribeNotebookContext{}
+	section := map[string]interface{}{
+		"nmdl.canvas_width":        15624,
+		"nmdl.canvas_height":       20832,
+		"nmdl.normalized_ppi":      2520,
+		"nmdl.inline_placement_type": "$670", // valid placement type
+	}
+
+	processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+
+	// inline_placement_type should be popped from section
+	if _, ok := section["nmdl.inline_placement_type"]; ok {
+		t.Error("nmdl.inline_placement_type should have been popped from section")
+	}
+}
+
+func TestProcessScribeNotebookPageSection_TemplateID(t *testing.T) {
+	// Verify nmdl.template_id handling.
+	ctx := &ScribeNotebookContext{}
+	section := map[string]interface{}{
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
+		"nmdl.normalized_ppi": 2520,
+		"nmdl.template_id":   "template_123",
+	}
+
+	processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+
+	// template_id should be popped from section
+	if _, ok := section["nmdl.template_id"]; ok {
+		t.Error("nmdl.template_id should have been popped from section")
+	}
+
+	// Book part should have the template ID stored
+	bp := ctx.BookParts[0]
+	if bp.NmdlTemplateID != "template_123" {
+		t.Errorf("NmdlTemplateID = %q, want %q", bp.NmdlTemplateID, "template_123")
+	}
+}
+
+func TestProcessScribeNotebookPageSection_SVGElementCreated(t *testing.T) {
+	// Verify SVG page element is created with correct viewBox.
+	ctx := &ScribeNotebookContext{}
+	section := map[string]interface{}{
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
+		"nmdl.normalized_ppi": 2520,
+	}
+
+	processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+
+	bp := ctx.BookParts[0]
+	// Body should have an SVG element (either inline or as container with image)
+	if len(bp.Body.Children) == 0 {
+		t.Fatal("book part body should have children")
+	}
+}
+
+func TestProcessScribeNotebookPageSection_UnexpectedPPI(t *testing.T) {
+	// Verify unexpected PPI logs error but still succeeds.
+	ctx := &ScribeNotebookContext{}
+	section := map[string]interface{}{
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
+		"nmdl.normalized_ppi": 999, // unexpected value
+	}
+
+	result := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+	if !result {
+		t.Error("should still return true despite unexpected PPI")
 	}
 }
 
 // ---------------------------------------------------------------------------
-// VAL-D-019: processScribeNotebookTemplateSection — stub returns false
+// VAL-D-019: processScribeNotebookTemplateSection — non-nil context returns true
+// Python: yj_to_epub_notebook.py:158-218
 // ---------------------------------------------------------------------------
 
-func TestProcessScribeNotebookTemplateSectionStub(t *testing.T) {
-	result := processScribeNotebookTemplateSection(nil, nil, "")
+func TestProcessScribeNotebookTemplateSection_NilContext(t *testing.T) {
+	// Nil context should return false
+	result := processScribeNotebookTemplateSection(nil, nil, nil, "")
 	if result != false {
-		t.Error("processScribeNotebookTemplateSection should return false (stub)")
+		t.Error("processScribeNotebookTemplateSection should return false with nil context")
+	}
+}
+
+func TestProcessScribeNotebookTemplateSection_ExtractsTemplateType(t *testing.T) {
+	// Verify template type is extracted.
+	ctx := &ScribeNotebookContext{}
+	section := map[string]interface{}{
+		"nmdl.template_type": "lined",
+	}
+
+	result := processScribeNotebookTemplateSection(ctx, section, map[string]interface{}{}, "template_section")
+	if !result {
+		t.Error("processScribeNotebookTemplateSection should return true with valid section data")
+	}
+
+	// template_type should be popped from section
+	if _, ok := section["nmdl.template_type"]; ok {
+		t.Error("nmdl.template_type should have been popped from section")
+	}
+}
+
+func TestProcessScribeNotebookTemplateSection_CreatesBookPart(t *testing.T) {
+	// Verify a book part is created with correct properties.
+	ctx := &ScribeNotebookContext{}
+	section := map[string]interface{}{
+		"nmdl.template_type": "lined",
+	}
+
+	processScribeNotebookTemplateSection(ctx, section, map[string]interface{}{}, "template_section")
+
+	// Should have created a book part
+	if len(ctx.BookParts) != 1 {
+		t.Fatalf("expected 1 book part, got %d", len(ctx.BookParts))
+	}
+
+	bp := ctx.BookParts[0]
+	if !bp.IsFXL {
+		t.Error("book part should be FXL (fixed layout)")
+	}
+}
+
+func TestProcessScribeNotebookTemplateSection_SVGSerialization(t *testing.T) {
+	// Verify that SVG element is found and serialized when CREATE_SVG_FILES_IN_EPUB is true.
+	ctx := &ScribeNotebookContext{}
+	section := map[string]interface{}{
+		"nmdl.template_type": "grid",
+	}
+
+	processScribeNotebookTemplateSection(ctx, section, map[string]interface{}{}, "template_section")
+
+	// With no SVG child, the book part should still be created
+	if len(ctx.BookParts) != 1 {
+		t.Fatalf("expected 1 book part, got %d", len(ctx.BookParts))
+	}
+}
+
+func TestProcessScribeNotebookTemplateSection_SVGDocumentSerialization(t *testing.T) {
+	// Test SVG document serialization
+	root := &svgElement{
+		Tag: "svg",
+		Attrib: map[string]string{
+			"xmlns":   "http://www.w3.org/2000/svg",
+			"viewBox": "0 0 100 100",
+		},
+	}
+	newSVGElement(root, "rect", map[string]string{
+		"x": "0", "y": "0", "width": "100", "height": "100", "fill": "white",
+	})
+
+	data := serializeSVGDocument(root)
+	output := string(data)
+
+	if !containsStr(output, "<?xml") {
+		t.Error("SVG document should have XML declaration")
+	}
+	if !containsStr(output, "<svg") {
+		t.Error("SVG document should have <svg> element")
+	}
+	if !containsStr(output, "<rect") {
+		t.Error("SVG document should have <rect> element")
+	}
+	if !containsStr(output, "http://www.w3.org/2000/svg") {
+		t.Error("SVG document should have SVG namespace")
 	}
 }
 

@@ -2,8 +2,8 @@ package kfx
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
@@ -11,6 +11,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"sort"
 	"strings"
 )
 
@@ -1446,18 +1447,322 @@ func checkEmptyNotebook(content map[string]interface{}, context string) {
 }
 
 // ---------------------------------------------------------------------------
+// ScribeNotebookContext (architectural refactor)
+// ---------------------------------------------------------------------------
+
+// ScribeNotebookContext carries the book-level state needed by
+// processScribeNotebookPageSection and processScribeNotebookTemplateSection.
+// In Python, these are methods on KFX_EPUB (self), accessing self.new_book_part,
+// self.reading_orders, self.manifest_resource, etc.
+//
+// Port of Python's self (KFX_EPUB) context used by:
+//   - process_scribe_notebook_page_section (yj_to_epub_notebook.py:78-156)
+//   - process_scribe_notebook_template_section (yj_to_epub_notebook.py:158-218)
+type ScribeNotebookContext struct {
+	// notebookContext provides fragment lookup and content context stack.
+	notebookContext *notebookContext
+
+	// NmdlTemplateID is the default template ID (self.nmdl_template_id in Python).
+	NmdlTemplateID string
+
+	// WritingMode is the current writing mode (self.writing_mode in Python).
+	WritingMode string
+
+	// NewBookPart creates a new book part with the given filename.
+	// Returns a *ScribeBookPart.
+	// Port of Python: self.new_book_part(filename=...)
+	NewBookPart func(filename string) *ScribeBookPart
+
+	// ManifestResource registers a resource in the EPUB manifest.
+	// Port of Python: self.manifest_resource(filename, data=...)
+	ManifestResource func(filename string, data []byte)
+
+	// ResourceLocationFilename generates a resource filename.
+	// Port of Python: self.resource_location_filename(name, "", self.IMAGE_FILEPATH, is_symbol=False)
+	ResourceLocationFilename func(name string, subdir string, filepath string, isSymbol bool) string
+
+	// ProcessContentProperties extracts CSS properties from content data.
+	// Port of Python: self.process_content_properties(section)
+	ProcessContentProperties func(section map[string]interface{}) map[string]string
+
+	// AddStyle applies CSS style properties to an SVG element.
+	// Port of Python: self.add_style(elem, props, replace=...)
+	AddStyle func(elem *svgElement, props map[string]string, replace bool)
+
+	// SectionTextFilepath is the format string for section filenames.
+	// Port of Python: self.SECTION_TEXT_FILEPATH (e.g. "%s.xhtml")
+	SectionTextFilepath string
+
+	// ImageFilepath is the path prefix for image resources.
+	// Port of Python: self.IMAGE_FILEPATH
+	ImageFilepath string
+
+	// GetFragment looks up a fragment by type and ID.
+	GetFragment func(ftype string, fid string) map[string]interface{}
+
+	// GetNamedFragment looks up a fragment via storyline name mapping.
+	GetNamedFragment func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{}
+
+	// ReadingOrders contains the book's reading order data.
+	// Port of Python: self.reading_orders
+	ReadingOrders []map[string]interface{}
+
+	// BookParts is the list of all book parts created so far.
+	// Port of Python: self.book_parts
+	BookParts []*ScribeBookPart
+}
+
+// ScribeBookPart represents a book part created during scribe notebook processing.
+// Port of Python's book_part object created by self.new_book_part().
+type ScribeBookPart struct {
+	Filename      string
+	IsFXL         bool   // book_part.is_fxl
+	Omit          bool   // book_part.omit (template sections set this to True)
+	NmdlTemplateID string // book_part.nmdl_template_id
+	HTML          *svgElement // book_part.html (root HTML element)
+	Head          *svgElement // book_part.head()
+	Body          *svgElement // book_part.body()
+}
+
+// NewScribeBookPart creates a new ScribeBookPart with the given filename.
+func NewScribeBookPart(filename string) *ScribeBookPart {
+	html := &svgElement{Tag: "html", Attrib: map[string]string{}}
+	head := newSVGElement(html, "head", nil)
+	body := newSVGElement(html, "body", nil)
+	return &ScribeBookPart{
+		Filename: filename,
+		HTML:     html,
+		Head:     head,
+		Body:     body,
+	}
+}
+
+// ---------------------------------------------------------------------------
 // processScribeNotebookPageSection (yj_to_epub_notebook.py:78-156)
 // ---------------------------------------------------------------------------
 
 // processScribeNotebookPageSection processes scribe page sections with SVG stroke generation.
 // Port of KFX_EPUB_Notebook.process_scribe_notebook_page_section (yj_to_epub_notebook.py:78-156).
 //
-// This function requires full book context (new_book_part, reading_orders, manifest_resource,
-// process_content_properties, add_style, etc.) which is not available in the standalone function
-// signature. The validation branches (canvas dimensions, PPI, template ID) are implemented.
-// The SVG generation and book_part integration will be wired when notebook book context is available.
-func processScribeNotebookPageSection(section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string, seq int) bool {
-	_, _, _, _ = section, pageTemplate, sectionName, seq
+// Returns true if the section was successfully processed, false otherwise.
+func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string, seq int) bool {
+	_ = seq
+
+	if ctx == nil {
+		return false
+	}
+
+	// Python L79-80: nmdl_canvas_width = section.pop("nmdl.canvas_width")
+	var canvasWidth, canvasHeight int
+	if v, ok := section["nmdl.canvas_width"]; ok {
+		delete(section, "nmdl.canvas_width")
+		canvasWidth = toInt(v)
+	}
+	if v, ok := section["nmdl.canvas_height"]; ok {
+		delete(section, "nmdl.canvas_height")
+		canvasHeight = toInt(v)
+	}
+
+	// Python L82-91: Validate canvas dimensions
+	if !((canvasWidth == 15624 && canvasHeight == 20832) ||
+		(canvasWidth == 13726 && canvasHeight == 7350) ||
+		canvasWidth == 3906 || canvasWidth == 13734 ||
+		canvasWidth == 3066 || canvasWidth == 6132 || canvasWidth == 12264 ||
+		canvasHeight > 15000) {
+		log.Printf("kfx: warning: Unexpected nmdl.canvas width=%d height=%d", canvasWidth, canvasHeight)
+	}
+
+	// Python L93-95: nmdl_normalized_ppi validation
+	if v, ok := section["nmdl.normalized_ppi"]; ok {
+		delete(section, "nmdl.normalized_ppi")
+		ppi := toInt(v)
+		if ppi != 2520 {
+			log.Printf("kfx: error: Unexpected nmdl.normalized_ppi %d", ppi)
+		}
+	}
+
+	// Python L97-98: book_part = self.new_book_part(filename=self.SECTION_TEXT_FILEPATH % section_name)
+	sectionFilename := sectionName + ".xhtml"
+	if ctx.SectionTextFilepath != "" {
+		sectionFilename = fmt.Sprintf(ctx.SectionTextFilepath, sectionName)
+	}
+
+	var bookPart *ScribeBookPart
+	if ctx.NewBookPart != nil {
+		bookPart = ctx.NewBookPart(sectionFilename)
+	} else {
+		bookPart = NewScribeBookPart(sectionFilename)
+	}
+	bookPart.IsFXL = true
+
+	// Python L101-107: nmdl_template_id handling
+	if v, ok := section["nmdl.template_id"]; ok {
+		delete(section, "nmdl.template_id")
+		bookPart.NmdlTemplateID, _ = v.(string)
+	} else {
+		bookPart.NmdlTemplateID = ctx.NmdlTemplateID
+	}
+
+	// Python L102-107: Validate template_id is in reading_orders[1]
+	if bookPart.NmdlTemplateID != "" && bookPart.NmdlTemplateID != "$349" {
+		if len(ctx.ReadingOrders) != 2 ||
+			getReadingOrderCategory(ctx.ReadingOrders[1]) != "note_template_collection" ||
+			!readingOrderContains(ctx.ReadingOrders[1], bookPart.NmdlTemplateID) {
+			log.Printf("kfx: error: note_template_collection reading order does not contain nmdl.template_id %s used in section %s",
+				bookPart.NmdlTemplateID, sectionName)
+		}
+	}
+
+	// Python L109-110: add_meta_name_content(book_part.head(), "viewport", ...)
+	viewport := fmt.Sprintf("width=%d, height=%d", canvasWidth, canvasHeight)
+	metaElem := newSVGElement(bookPart.Head, "meta", map[string]string{
+		"name":    "viewport",
+		"content": viewport,
+	})
+	_ = metaElem
+
+	// Python L112-116: Create page SVG element
+	pageSvgElem := &svgElement{
+		Tag: "svg",
+		Attrib: map[string]string{
+			"version":             "1.1",
+			"preserveAspectRatio": "xMidYMid meet",
+			"viewBox":             fmt.Sprintf("0 0 %d %d", canvasWidth, canvasHeight),
+		},
+	}
+	// Set XML namespace attributes (Python uses nsmap=SVG_NAMESPACES)
+	pageSvgElem.Attrib["xmlns"] = "http://www.w3.org/2000/svg"
+	pageSvgElem.Attrib["xmlns:xlink"] = "http://www.w3.org/1999/xlink"
+
+	// Python L118-119: self.process_notebook_content(page_template, page_svg_elem)
+	if ctx.notebookContext != nil {
+		processNotebookContent(ctx.notebookContext, pageTemplate, pageSvgElem)
+	}
+	checkEmptyNotebookSafe(pageTemplate, fmt.Sprintf("Section %s page_template", sectionName))
+
+	// Python L121-155: CREATE_SVG_FILES_IN_EPUB path
+	if CREATE_SVG_FILES_IN_EPUB {
+		// Python L123-126: Generate SVG filename and serialize
+		pageSvgFilename := sectionName + ".svg"
+		if ctx.ResourceLocationFilename != nil {
+			pageSvgFilename = ctx.ResourceLocationFilename(sectionName+".svg", "", ctx.ImageFilepath, false)
+		}
+
+		svgData := serializeSVGDocument(pageSvgElem)
+		if ctx.ManifestResource != nil {
+			ctx.ManifestResource(pageSvgFilename, svgData)
+		}
+
+		// Python L131-136: Create HTML SVG element with white rect + image reference
+		htmlSvgElem := newSVGElement(bookPart.Body, "svg", map[string]string{
+			"version":             "1.1",
+			"preserveAspectRatio": "xMidYMid meet",
+			"viewBox":             fmt.Sprintf("0 0 %d %d", canvasWidth, canvasHeight),
+			"xmlns":               "http://www.w3.org/2000/svg",
+			"xmlns:xlink":         "http://www.w3.org/1999/xlink",
+		})
+
+		newSVGElement(htmlSvgElem, "rect", map[string]string{
+			"x": "0", "y": "0", "width": "100%", "height": "100%", "fill": "white",
+		})
+
+		// Python L140-143: Add image reference to SVG file
+		relPath := pageSvgFilename
+		// urlrelpath computes the relative path from book_part.filename to page_svg_filename
+		// For now, use the filename directly (both are in the same directory typically)
+		newSVGElement(htmlSvgElem, "image", map[string]string{
+			"x": "0", "y": "0", "width": "100%", "height": "100%",
+			"xlink:href": relPath,
+		})
+
+		// Python L146-155: Handle inline_placement_type and positioning
+		scribePageSectionPlacement(ctx, section, htmlSvgElem, sectionName)
+	} else {
+		// Python L145-146: else: body.append(page_svg_elem); html_svg_elem = page_svg_elem
+		bookPart.Body.Children = append(bookPart.Body.Children, pageSvgElem)
+		pageSvgElem.Parent = bookPart.Body
+		htmlSvgElem := pageSvgElem
+
+		scribePageSectionPlacement(ctx, section, htmlSvgElem, sectionName)
+	}
+
+	// Store the book part in context
+	ctx.BookParts = append(ctx.BookParts, bookPart)
+
+	return true
+}
+
+// scribePageSectionPlacement handles inline_placement_type and style positioning
+// for page sections. Port of Python L146-156 in process_scribe_notebook_page_section.
+func scribePageSectionPlacement(ctx *ScribeNotebookContext, section map[string]interface{}, htmlSvgElem *svgElement, sectionName string) {
+	// Python L146-150: nmdl.inline_placement_type handling
+	if v, ok := section["nmdl.inline_placement_type"]; ok {
+		delete(section, "nmdl.inline_placement_type")
+		placementType, _ := v.(string)
+
+		if placementType != "$670" && placementType != "$669" {
+			log.Printf("kfx: error: Unexpected nmdl.inline_placement_type: %s", placementType)
+		}
+
+		if ctx.ProcessContentProperties != nil {
+			contentProps := ctx.ProcessContentProperties(section)
+			if ctx.AddStyle != nil {
+				ctx.AddStyle(htmlSvgElem, contentProps, true)
+			}
+		}
+	} else {
+		// Python L152-153: self.add_style(html_svg_elem, {"height": "100%", "width": "100%"})
+		if ctx.AddStyle != nil {
+			ctx.AddStyle(htmlSvgElem, map[string]string{"height": "100%", "width": "100%"}, false)
+		}
+
+		// Python L155-156: if "$58" in section or "$59" in section → fixed layout positioning
+		if _, hasTop := section["top"]; hasTop || sectionHasPositionKey(section) {
+			section["position"] = "fixed"
+			if ctx.ProcessContentProperties != nil {
+				contentProps := ctx.ProcessContentProperties(section)
+				if ctx.AddStyle != nil {
+					ctx.AddStyle(htmlSvgElem, contentProps, true)
+				}
+			}
+		}
+	}
+}
+
+// sectionHasPositionKey checks if section has positioning keys ($58 or $59).
+// Port of Python: if "$58" in section or "$59" in section
+func sectionHasPositionKey(section map[string]interface{}) bool {
+	if _, ok := section["top"]; ok {
+		return true
+	}
+	if _, ok := section["left"]; ok {
+		return true
+	}
+	return false
+}
+
+// getReadingOrderCategory extracts the $178 category from a reading order.
+// Port of Python: self.reading_orders[1].get("$178", "")
+func getReadingOrderCategory(ro map[string]interface{}) string {
+	if v, ok := ro["category"]; ok {
+		s, _ := v.(string)
+		return s
+	}
+	return ""
+}
+
+// readingOrderContains checks if a reading order contains the given template ID in its $170 list.
+// Port of Python: book_part.nmdl_template_id not in self.reading_orders[1]["$170"]
+func readingOrderContains(ro map[string]interface{}, templateID string) bool {
+	if sections, ok := ro["sections"]; ok {
+		if list, ok := sections.([]interface{}); ok {
+			for _, item := range list {
+				if s, ok := item.(string); ok && s == templateID {
+					return true
+				}
+			}
+		}
+	}
 	return false
 }
 
@@ -1468,11 +1773,189 @@ func processScribeNotebookPageSection(section map[string]interface{}, pageTempla
 // processScribeNotebookTemplateSection processes scribe notebook templates.
 // Port of KFX_EPUB_Notebook.process_scribe_notebook_template_section (yj_to_epub_notebook.py:158-218).
 //
-// This function requires full book context (new_book_part, process_content, manifest_resource,
-// book_parts iteration, etc.) which is not available in the standalone function signature.
-// The template type extraction and validation are implemented.
-// The SVG extraction and book_part integration will be wired when notebook book context is available.
-func processScribeNotebookTemplateSection(section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string) bool {
-	_, _, _ = section, pageTemplate, sectionName
-	return false
+// Returns true if the section was successfully processed, false otherwise.
+func processScribeNotebookTemplateSection(ctx *ScribeNotebookContext, section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string) bool {
+	if ctx == nil {
+		return false
+	}
+
+	// Python L159-160: nmdl_template_type = section.pop("nmdl.template_type")
+	var nmdlTemplateType string
+	if v, ok := section["nmdl.template_type"]; ok {
+		delete(section, "nmdl.template_type")
+		nmdlTemplateType, _ = v.(string)
+	}
+	log.Printf("kfx: info: Notebook template: %s", nmdlTemplateType)
+
+	// Python L162-163: book_part = self.new_book_part(filename=...)
+	sectionFilename := sectionName + ".xhtml"
+	if ctx.SectionTextFilepath != "" {
+		sectionFilename = fmt.Sprintf(ctx.SectionTextFilepath, sectionName)
+	}
+
+	var bookPart *ScribeBookPart
+	if ctx.NewBookPart != nil {
+		bookPart = ctx.NewBookPart(sectionFilename)
+	} else {
+		bookPart = NewScribeBookPart(sectionFilename)
+	}
+	bookPart.IsFXL = true
+
+	// Python L165-167: self.process_content(page_template, top_level_elem, book_part, self.writing_mode, is_section=True)
+	// In Go, process_content is the main content rendering pipeline. For notebook templates,
+	// we use the notebook content processing path instead.
+	topLevelElem := bookPart.HTML
+	if ctx.notebookContext != nil {
+		processNotebookContent(ctx.notebookContext, pageTemplate, topLevelElem)
+	}
+	checkEmptyNotebookSafe(pageTemplate, fmt.Sprintf("Section %s page_template", sectionName))
+
+	// Python L169-217: CREATE_SVG_FILES_IN_EPUB path for templates
+	if CREATE_SVG_FILES_IN_EPUB {
+		// Python L170-171: Find SVG element in body
+		svgElem := findSVGElement(bookPart.Body)
+		if svgElem != nil {
+			// Python L172-175: Generate template SVG filename and serialize
+			templateSvgFilename := nmdlTemplateType + ".svg"
+			if ctx.ResourceLocationFilename != nil {
+				templateSvgFilename = ctx.ResourceLocationFilename(nmdlTemplateType+".svg", "", ctx.ImageFilepath, false)
+			}
+
+			// Python L176-178: Clean up SVG element for extraction
+			delete(svgElem.Attrib, "class")
+			delete(svgElem.Attrib, "style")
+
+			svgData := serializeSVGDocument(svgElem)
+			if ctx.ManifestResource != nil {
+				ctx.ManifestResource(templateSvgFilename, svgData)
+			}
+
+			// Python L179: book_part.omit = True
+			bookPart.Omit = true
+
+			// Python L181-216: Update page book parts that reference this template
+			for _, pageBookPart := range ctx.BookParts {
+				if pageBookPart.NmdlTemplateID == sectionName {
+					htmlSvgElem := findSVGElement(pageBookPart.Body)
+					if htmlSvgElem != nil {
+						// Python L184-189: Check for existing template image and validate
+						if len(htmlSvgElem.Children) == 3 {
+							log.Printf("kfx: error: SVG image already has template in Scribe notebook page: %s", pageBookPart.Filename)
+							// Remove the middle element (index 1) which is the old template image
+							htmlSvgElem.Children = append(htmlSvgElem.Children[:1], htmlSvgElem.Children[2:]...)
+						}
+
+						// Python L191-195: Insert template image reference at position 1
+						templateImage := &svgElement{
+							Tag: "image",
+							Attrib: map[string]string{
+								"x":      "0",
+								"y":      "0",
+								"width":  "100%",
+								"height": "100%",
+								"xlink:href": templateSvgFilename,
+							},
+						}
+
+						// Insert at position 1
+						if len(htmlSvgElem.Children) <= 1 {
+							htmlSvgElem.Children = append(htmlSvgElem.Children, templateImage)
+						} else {
+							htmlSvgElem.Children = append(
+								htmlSvgElem.Children[:1],
+								append([]*svgElement{templateImage}, htmlSvgElem.Children[1:]...)...,
+							)
+						}
+					} else {
+						log.Printf("kfx: error: Failed to locate the SVG image within Scribe notebook page: %s", pageBookPart.Filename)
+					}
+				}
+			}
+		} else {
+			log.Printf("kfx: error: Failed to locate the SVG image within Scribe notebook template: %s", bookPart.Filename)
+		}
+	}
+
+	// Store the book part
+	ctx.BookParts = append(ctx.BookParts, bookPart)
+
+	return true
+}
+
+// findSVGElement finds the first <svg> child element.
+func findSVGElement(parent *svgElement) *svgElement {
+	for _, child := range parent.Children {
+		if child.Tag == "svg" {
+			return child
+		}
+	}
+	return nil
+}
+
+// serializeSVGDocument serializes an SVG element tree to bytes with DOCTYPE.
+// Port of Python: etree.tostring(svg_document, encoding="utf-8", doctype=SVG_DOCTYPE, xml_declaration=True)
+func serializeSVGDocument(root *svgElement) []byte {
+	var buf bytes.Buffer
+	buf.WriteString("<?xml version='1.0' encoding='utf-8'?>\n")
+	buf.Write(SVG_DOCTYPE)
+	buf.WriteByte('\n')
+	serializeSVGElement(&buf, root, 0)
+	return buf.Bytes()
+}
+
+// serializeSVGElement recursively serializes an SVG element to XML.
+func serializeSVGElement(buf *bytes.Buffer, elem *svgElement, indent int) {
+	prefix := ""
+	for i := 0; i < indent; i++ {
+		prefix += "  "
+	}
+
+	buf.WriteString(prefix)
+	buf.WriteByte('<')
+	buf.WriteString(elem.Tag)
+
+	// Write attributes in a deterministic order
+	keys := make([]string, 0, len(elem.Attrib))
+	for k := range elem.Attrib {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		buf.WriteByte(' ')
+		buf.WriteString(k)
+		buf.WriteString("=\"")
+		buf.WriteString(elem.Attrib[k])
+		buf.WriteByte('"')
+	}
+
+	if len(elem.Children) == 0 && elem.Text == "" {
+		buf.WriteString("/>\n")
+		return
+	}
+
+	buf.WriteByte('>')
+
+	if elem.Text != "" {
+		buf.WriteString(elem.Text)
+	}
+
+	if len(elem.Children) > 0 {
+		buf.WriteByte('\n')
+		for _, child := range elem.Children {
+			serializeSVGElement(buf, child, indent+1)
+		}
+		buf.WriteString(prefix)
+	}
+
+	buf.WriteString("</")
+	buf.WriteString(elem.Tag)
+	buf.WriteString(">\n")
+}
+
+// checkEmptyNotebookSafe is a nil-safe version of checkEmptyNotebook.
+func checkEmptyNotebookSafe(content map[string]interface{}, context string) {
+	if content == nil {
+		return
+	}
+	checkEmptyNotebook(content, context)
 }

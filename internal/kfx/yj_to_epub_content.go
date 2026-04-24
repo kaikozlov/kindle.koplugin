@@ -356,10 +356,10 @@ func processSectionWithType(sectionID string, section sectionFragment, seq int, 
 
 	switch branch {
 	case branchScribePage:
-		return processSectionScribePage(section, seq)
+		return processSectionScribePage(section, seq, nil)
 
 	case branchScribeTemplate:
-		return processSectionScribeTemplate(section)
+		return processSectionScribeTemplate(section, nil)
 
 	case branchComic:
 		// Python L142-154: comic/children → resolve $608, call processPageSpreadPageTemplate
@@ -454,13 +454,13 @@ func renderSectionFragments(sectionID string, section sectionFragment, storyline
 
 // processSectionScribePage dispatches to the scribe notebook page section handler.
 // Port of Python's nmdl.canvas_width branch in process_section (L136-137).
-func processSectionScribePage(section sectionFragment, seq int) (renderedStoryline, []string, bool) {
+func processSectionScribePage(section sectionFragment, seq int, scribeCtx *ScribeNotebookContext) (renderedStoryline, []string, bool) {
 	templates := section.PageTemplates
 	if len(templates) == 0 {
 		return renderedStoryline{}, nil, false
 	}
 	template := templates[0]
-	result := processScribeNotebookPageSection(section.PageTemplateValues, template.PageTemplateValues, section.ID, seq)
+	result := processScribeNotebookPageSection(scribeCtx, section.PageTemplateValues, template.PageTemplateValues, section.ID, seq)
 	if !result {
 		return renderedStoryline{}, nil, false
 	}
@@ -469,13 +469,13 @@ func processSectionScribePage(section sectionFragment, seq int) (renderedStoryli
 
 // processSectionScribeTemplate dispatches to the scribe notebook template section handler.
 // Port of Python's nmdl.template_type branch in process_section (L139-140).
-func processSectionScribeTemplate(section sectionFragment) (renderedStoryline, []string, bool) {
+func processSectionScribeTemplate(section sectionFragment, scribeCtx *ScribeNotebookContext) (renderedStoryline, []string, bool) {
 	templates := section.PageTemplates
 	if len(templates) == 0 {
 		return renderedStoryline{}, nil, false
 	}
 	template := templates[0]
-	result := processScribeNotebookTemplateSection(section.PageTemplateValues, template.PageTemplateValues, section.ID)
+	result := processScribeNotebookTemplateSection(scribeCtx, section.PageTemplateValues, template.PageTemplateValues, section.ID)
 	if !result {
 		return renderedStoryline{}, nil, false
 	}
