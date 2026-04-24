@@ -564,3 +564,40 @@ func TestWarnUnmatchedReadingOrdersNavRootNoName(t *testing.T) {
 		t.Errorf("expected warning when nav root has no reading_order_name, got %q", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// VAL-M12-SCRIBE-NAV: processNavigation receives actual isScribeNotebook from book struct
+// Python: yj_to_epub_navigation.py L107 uses self.book.is_scribe_notebook
+// Go: yj_to_epub.go L132 passes book.IsScribeNotebook (was hardcoded false)
+// ---------------------------------------------------------------------------
+
+func TestProcessNavigation_SuppressesWarningForScribeNotebook(t *testing.T) {
+	// When isScribeNotebook=true, processNavigation should not warn about
+	// missing navigation for reading orders (the warning goes through
+	// warnUnmatchedReadingOrders which checks the flag).
+	navRoots := []map[string]interface{}{}
+	navContainers := map[string]map[string]interface{}{}
+	readingOrderNames := []string{"main"}
+
+	got := captureStderr(func() {
+		_ = processNavigation(navRoots, navContainers, "", readingOrderNames, true)
+	})
+	if strings.Contains(got, "Failed to locate navigation") {
+		t.Errorf("expected no warning for scribe notebook in processNavigation, got %q", got)
+	}
+}
+
+func TestProcessNavigation_WarnsForNonScribeNotebook(t *testing.T) {
+	// When isScribeNotebook=false and there are unmatched reading orders,
+	// processNavigation should emit a warning.
+	navRoots := []map[string]interface{}{}
+	navContainers := map[string]map[string]interface{}{}
+	readingOrderNames := []string{"main"}
+
+	got := captureStderr(func() {
+		_ = processNavigation(navRoots, navContainers, "", readingOrderNames, false)
+	})
+	if !strings.Contains(got, "Failed to locate navigation") {
+		t.Errorf("expected warning for non-scribe notebook, got %q", got)
+	}
+}

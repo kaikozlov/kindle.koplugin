@@ -603,3 +603,33 @@ func TestApplyMetadataItem_TitleGuard(t *testing.T) {
 		t.Errorf("expected Title='First' (guard), got %q", book.Title)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// VAL-M12-SCRIBE: IsScribeNotebook detection from document_data nmdl.template_id
+// Python: kpf_container.py L150/163 sets is_scribe_notebook=True
+// Go detects from nmdl.template_id in document_data (yj_to_epub_metadata.py L87)
+// ---------------------------------------------------------------------------
+
+func TestApplyDocumentData_ScribeNotebookDetection(t *testing.T) {
+	// When nmdl.template_id is present in document_data, the book should be
+	// detected as a scribe notebook. Python detects from ACTION/DELTA fragment
+	// schemas; Go detects from nmdl.template_id presence.
+	book := &decodedBook{}
+	value := map[string]interface{}{
+		"nmdl.template_id": "my_template",
+	}
+	applyDocumentData(book, value)
+	if !book.IsScribeNotebook {
+		t.Error("expected IsScribeNotebook=true when nmdl.template_id is present in document_data")
+	}
+}
+
+func TestApplyDocumentData_NotScribeNotebook(t *testing.T) {
+	// When nmdl.template_id is absent, the book should not be detected as scribe notebook.
+	book := &decodedBook{}
+	value := map[string]interface{}{}
+	applyDocumentData(book, value)
+	if book.IsScribeNotebook {
+		t.Error("expected IsScribeNotebook=false when nmdl.template_id is absent")
+	}
+}

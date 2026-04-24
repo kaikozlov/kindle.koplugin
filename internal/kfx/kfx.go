@@ -114,6 +114,15 @@ type decodedBook struct {
 	// HTMLCover is true when yj_illustrated_layout is present.
 	// Python L274-275: self.illustrated_layout = self.html_cover = True.
 	HTMLCover bool
+
+	// IsScribeNotebook is true when the book is a Kindle Scribe notebook.
+	// Python (yj_book.py L38): self.is_scribe_notebook = False (set True by kpf_container.py L150/163
+	// when ACTION_FRAGMENTS_SCHEMA or DELTA_FRAGMENTS_SCHEMA is found).
+	// Go detects this from nmdl.template_id in document_data (yj_to_epub_metadata.py L87)
+	// or from nmdl.* section keys during content processing.
+	// Used by navigation to suppress warnings for missing reading order nav data
+	// (yj_to_epub_navigation.py L107).
+	IsScribeNotebook bool
 }
 
 type renderedStoryline struct {

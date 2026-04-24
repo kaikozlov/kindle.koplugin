@@ -253,6 +253,12 @@ func applyDocumentData(book *decodedBook, value map[string]interface{}) {
 	// --- Port of Python nmdl_template_id. Python L87. ---
 	// Python: self.nmdl_template_id = document_data.pop("nmdl.template_id", None)
 	// Scribe notebook handling is in yj_to_epub_notebook.go.
+	// Detection: if nmdl.template_id is present in document_data, the book is a scribe notebook.
+	// Python sets is_scribe_notebook=True in kpf_container.py L150/163 when action/delta fragments
+	// are found. Go detects from document_data nmdl keys instead.
+	if _, hasNmdlTID := value["nmdl.template_id"]; hasNmdlTID {
+		book.IsScribeNotebook = true
+	}
 
 	// --- Port of Python max_id validation. Python L91-98. ---
 	// Python checks: if self.book_symbol_format != SYM_TYPE.SHORT → error.

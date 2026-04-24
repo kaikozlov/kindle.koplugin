@@ -129,7 +129,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 		}
 	}
 
-	navState := processNavigation(navRoots, navContainers, book.OrientationLock, getReadingOrderNames(state.Fragments), false)
+	navState := processNavigation(navRoots, navContainers, book.OrientationLock, getReadingOrderNames(state.Fragments), book.IsScribeNotebook)
 	selectedNav := navState.toc
 
 	// Stage: navigation (capture after processNavigation, before process_reading_order)
