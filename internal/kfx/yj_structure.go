@@ -255,6 +255,12 @@ func ResetReportedErrors() {
 // ExtractFragmentIDFromValue extracts a fragment ID from a value struct based on the fragment type.
 // Python: BookStructure.extract_fragment_id_from_value (yj_structure.py:703-716)
 func ExtractFragmentIDFromValue(ftype string, value interface{}) string {
+	return ExtractFragmentIDFromValueOpts(ftype, value, false, false)
+}
+
+// ExtractFragmentIDFromValueOpts extracts a fragment ID with optional book-type flags.
+// Python L710-714: $609 + is_dictionary/is_kpf_prepub → append "-spm"; $610 + int → "eidbucket_N".
+func ExtractFragmentIDFromValueOpts(ftype string, value interface{}, isDictionary, isKpfPrepub bool) string {
 	valMap, ok := asMap(value)
 	if !ok {
 		return ftype
@@ -265,8 +271,23 @@ func ExtractFragmentIDFromValue(ftype string, value interface{}) string {
 	}
 	for _, idKey := range idKeys {
 		if idVal, exists := valMap[idKey]; exists {
-			fid, ok := asString(idVal)
-			if ok {
+			// Python L710: if ftype == "$609" and (self.is_dictionary or self.is_kpf_prepub):
+			//     fid = IS(str(fid) + "-spm")
+			if ftype == "section_position_id_map" && (isDictionary || isKpfPrepub) {
+				if fid, ok := asString(idVal); ok {
+					return fid + "-spm"
+				}
+			}
+
+			// Python L712: elif ftype == "$610" and isinstance(fid, int):
+			//     fid = IonSymbol("eidbucket_%d" % fid)
+			if ftype == "yj.eidhash_eid_section_map" {
+				if intVal, ok := asInt(idVal); ok {
+					return fmt.Sprintf("eidbucket_%d", intVal)
+				}
+			}
+
+			if fid, ok := asString(idVal); ok {
 				return fid
 			}
 		}
@@ -439,8 +460,27 @@ func processSymbolReference(
 	eidRefs *map[interface{}]bool,
 	fragmentList FragmentList,
 ) {
+	processSymbolReferenceOpts(data, container, containerParent, fragment,
+		mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList, false)
+}
+
+// processSymbolReferenceOpts is the full implementation accepting isKpfPrepub flag.
+// Python: walk_fragment L910: if container == "$155" or (self.is_kpf_prepub and container == "$174"): eid_defs.add(data)
+func processSymbolReferenceOpts(
+	data string,
+	container string,
+	containerParent string,
+	fragment Fragment,
+	mandatoryFragRefs *map[FragmentKey]bool,
+	optionalFragRefs *map[FragmentKey]bool,
+	eidDefs *map[interface{}]bool,
+	eidRefs *map[interface{}]bool,
+	fragmentList FragmentList,
+	isKpfPrepub bool,
+) {
 	// Track EID definitions (container == "id")
-	if container == "id" {
+	// Python L910: if container == "$155" or (self.is_kpf_prepub and container == "$174"):
+	if container == "id" || (isKpfPrepub && container == "section_name") {
 		(*eidDefs)[data] = true
 	}
 
@@ -985,17 +1025,17 @@ func walkInternalOpts(
 
 	case ionTypeString:
 		if cont == "location" || cont == "yj.tiles" {
-			processSymbolReference(
+			processSymbolReferenceOpts(
 				fmt.Sprintf("%v", data), cont, cParent, fragment,
-				mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList,
+				mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList, opts.IsKpfPrepub,
 			)
 		}
 
 	case ionTypeSymbol:
 		sym, _ := asString(data)
-		processSymbolReference(
+		processSymbolReferenceOpts(
 			sym, cont, cParent, fragment,
-			mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList,
+			mandatoryFragRefs, optionalFragRefs, eidDefs, eidRefs, fragmentList, opts.IsKpfPrepub,
 		)
 	}
 
@@ -1906,6 +1946,15 @@ func sortedKeys(m map[string]bool) []string {
 // Port of BookStructure.find_symbol_references (yj_structure.py L1151-1174).
 func findSymbolReferences(data interface{}, usedSymbols map[string]bool) {
 	switch typed := data.(type) {
+	// Python L1153-1156: if data_type is IonAnnotation: add annotations, recurse value
+	case ionAnnotationData:
+		for _, a := range typed.Annotations {
+			if a != "" {
+				usedSymbols[a] = true
+			}
+		}
+		findSymbolReferences(typed.Value, usedSymbols)
+
 	case map[string]interface{}:
 		for k, v := range typed {
 			// In Python, all struct keys (IonSymbol) are added to the set.
