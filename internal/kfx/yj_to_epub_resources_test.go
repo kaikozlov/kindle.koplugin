@@ -1018,6 +1018,81 @@ func TestConvertPDFPageToImage_InvalidPDFData_ReturnsPlaceholder(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// VAL-FIX-008: Unused font file warning + manifest
+// Python: yj_to_epub_resources.py L320-323
+//
+// Python's process_fonts has a second loop after the main font processing:
+//   for location in raw_fonts:
+//       log.warning("Unused font file: %s" % location)
+//       filename = self.resource_location_filename(location, "", self.FONT_FILEPATH)
+//       self.manifest_resource(filename, data=raw_fonts[location])
+//
+// Fonts that exist in the KFX container (bcRawFont) but have no corresponding
+// $262 font fragment are considered "unused" — they should be logged with a
+// warning and still manifested in the EPUB.
+// ---------------------------------------------------------------------------
+
+// createTestTTF returns minimal bytes that look like a TrueType font to detectFontExtension.
+func createTestTTF() []byte {
+	return []byte{0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+}
+
+func TestBuildResources_UnusedFontFile_WarnsAndManifests(t *testing.T) {
+	// Python yj_to_epub_resources.py L320-323:
+	// Raw font data that has no matching $262 font fragment should produce
+	// a warning log and still be included in the EPUB manifest.
+	book := &decodedBook{}
+
+	// A font fragment that WILL be matched to its raw data
+	fonts := map[string]fontFragment{
+		"used_font_loc": {Location: "used_font_loc", Family: "UsedFont"},
+	}
+
+	// Raw data includes both used and unused font blobs
+	usedFontData := createTestTTF()
+	unusedFontData := createTestTTF()
+	// Make them different so they don't dedupe
+	unusedFontData = append(unusedFontData, 0xFF)
+
+	raw := map[string][]byte{
+		"used_font_loc":   usedFontData,
+		"unused_font_loc": unusedFontData,
+	}
+
+	// rawOrder includes both; the unused one won't be consumed by the font loop
+	// because there's no matching entry in the fonts map.
+	rawOrder := []rawBlob{
+		{ID: "used_font_loc", Data: usedFontData},
+		{ID: "unused_font_loc", Data: unusedFontData},
+	}
+
+	resources, _, _, _ := buildResources(book, nil, fonts, raw, rawOrder, symOriginal)
+
+	// Both fonts should appear in the output resources
+	fontFileCount := 0
+	for _, r := range resources {
+		if r.MediaType == "font/ttf" || r.MediaType == "application/octet-stream" {
+			fontFileCount++
+		}
+	}
+	if fontFileCount < 2 {
+		t.Fatalf("expected at least 2 font resources (used + unused), got %d; resources: %+v", fontFileCount, resources)
+	}
+
+	// The unused font should be present in the output
+	foundUnused := false
+	for _, r := range resources {
+		if bytes.Equal(r.Data, unusedFontData) {
+			foundUnused = true
+			break
+		}
+	}
+	if !foundUnused {
+		t.Fatal("expected unused font data to be present in output resources")
+	}
+}
+
 func TestGetPDFPageImage_MultiPagePDF_ExtractsCorrectPage(t *testing.T) {
 	// Python resources.py:370 — pdf.pages[page_num - 1]
 	// Verify that extraction targets the correct page number.

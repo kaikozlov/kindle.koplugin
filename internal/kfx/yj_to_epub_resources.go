@@ -794,12 +794,28 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 		stylesheet.WriteString(line)
 	}
 
-	// Note: Python process_fonts (L320-323) has a second loop for unused raw fonts:
-	//   for location in raw_fonts: log.warning("Unused font file: %s" % location)
-	//   self.manifest_resource(filename, data=raw_fonts[location])
-	// Go's architecture uses a raw blob pool (fontPool) matched by order, so unused raw
-	// fonts simply remain unmatched — functionally equivalent, but without the diagnostic warning.
-	// This is acceptable because the font deduplication above ensures correct output.
+	// Python process_fonts L320-323: Second loop for unused raw font files.
+	// In Python, raw_fonts ($418) is a dict of bcRawFont entries keyed by location.
+	// The first loop pops matched entries, so remaining entries have no $262 font fragment.
+	// Go uses a fontPool (raw blobs detected as fonts by magic bytes), so unused fonts are
+	// pool entries whose ID is not a key in the fonts map and not already processed.
+	for _, blob := range fontPool {
+		if _, alreadyProcessed := usedFontLocations[blob.ID]; alreadyProcessed {
+			continue // already added to output by the font loop above
+		}
+		if _, hasFontFragment := fonts[blob.ID]; hasFontFragment {
+			continue // has a font fragment but was skipped (error already logged above)
+		}
+		// This raw font blob has no corresponding $262 font fragment — unused.
+		// Python: log.warning("Unused font file: %s" % location)
+		fmt.Fprintf(os.Stderr, "kfx: warning: unused font file: %s\n", blob.ID)
+		filename := uniqueFontPackageFilename(blob.ID, blob.Data, symFmt, usedOEBPSNames)
+		output = append(output, epub.Resource{
+			Filename:  filename,
+			MediaType: fontMediaType(filename),
+			Data:      blob.Data,
+		})
+	}
 
 	// Note: Python process_fonts (L298) checks is_kpf_prepub for raw_media fallback:
 	//   elif location in raw_fonts or (self.book.is_kpf_prepub and location in raw_media):
