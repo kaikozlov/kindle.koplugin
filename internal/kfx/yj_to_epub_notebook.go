@@ -1265,12 +1265,17 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 	dataType := detectIonType(content)
 
 	if dataType == ionTypeSymbol {
-		// IonSymbol: resolve to fragment via $608 lookup
+		// IonSymbol: resolve to fragment via $608 lookup.
+		// Python (L575-580): self.process_content(self.get_fragment(ftype="$608", fid=content))
+		// In Python, process_content is the full content rendering pipeline.
+		// In Go's notebook context, processNotebookContent handles the rendering.
 		fid, _ := content.(string)
-		fragment := nc.getFragment("structure", fid)
+		var fragment map[string]interface{}
+		if nc.getFragment != nil {
+			fragment = nc.getFragment("structure", fid)
+		}
 		if fragment != nil {
-			// Python calls self.process_content() here, which is a different pipeline.
-			// For notebook context, this is typically a no-op or placeholder.
+			processNotebookContent(nc, fragment, elem)
 		}
 		return
 	}
@@ -1606,7 +1611,8 @@ func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[st
 	}
 
 	// Python L102-107: Validate template_id is in reading_orders[1]
-	if bookPart.NmdlTemplateID != "" && bookPart.NmdlTemplateID != "$349" {
+	// $349 = "none" (SID 349 in the YJ symbol catalog)
+	if bookPart.NmdlTemplateID != "" && bookPart.NmdlTemplateID != "none" {
 		if len(ctx.ReadingOrders) != 2 ||
 			getReadingOrderCategory(ctx.ReadingOrders[1]) != "note_template_collection" ||
 			!readingOrderContains(ctx.ReadingOrders[1], bookPart.NmdlTemplateID) {
@@ -1669,9 +1675,8 @@ func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[st
 		})
 
 		// Python L140-143: Add image reference to SVG file
-		relPath := pageSvgFilename
-		// urlrelpath computes the relative path from book_part.filename to page_svg_filename
-		// For now, use the filename directly (both are in the same directory typically)
+		// Python: XLINK_HREF: urlrelpath(page_svg_filename, ref_from=book_part.filename)
+		relPath := urlRelPath(pageSvgFilename, bookPart.Filename)
 		newSVGElement(htmlSvgElem, "image", map[string]string{
 			"x": "0", "y": "0", "width": "100%", "height": "100%",
 			"xlink:href": relPath,
@@ -1702,7 +1707,9 @@ func scribePageSectionPlacement(ctx *ScribeNotebookContext, section map[string]i
 		delete(section, "nmdl.inline_placement_type")
 		placementType, _ := v.(string)
 
-		if placementType != "$670" && placementType != "$669" {
+		// Python: if inline_placement_type not in ["$670", "$669"]:
+		// $670 = "yj.after" (SID 670), $669 = "yj.before" (SID 669) in YJ symbol catalog.
+		if placementType != "yj.after" && placementType != "yj.before" {
 			log.Printf("kfx: error: Unexpected nmdl.inline_placement_type: %s", placementType)
 		}
 
@@ -1823,7 +1830,11 @@ func processScribeNotebookTemplateSection(ctx *ScribeNotebookContext, section ma
 				templateSvgFilename = ctx.ResourceLocationFilename(nmdlTemplateType+".svg", "", ctx.ImageFilepath, false)
 			}
 
-			// Python L176-178: Clean up SVG element for extraction
+			// Python L176: etree.cleanup_namespaces(book_part.html)
+			// Remove inherited namespace attributes that should not appear on standalone SVG.
+			cleanupSVGNamespaces(svgElem)
+
+			// Python L177: svg_elem.attrib.pop("class", None); svg_elem.attrib.pop("style", None)
 			delete(svgElem.Attrib, "class")
 			delete(svgElem.Attrib, "style")
 
@@ -1848,14 +1859,15 @@ func processScribeNotebookTemplateSection(ctx *ScribeNotebookContext, section ma
 						}
 
 						// Python L191-195: Insert template image reference at position 1
+						// Python: XLINK_HREF: urlrelpath(template_svg_filename, ref_from=book_part.filename)
 						templateImage := &svgElement{
 							Tag: "image",
 							Attrib: map[string]string{
-								"x":      "0",
-								"y":      "0",
-								"width":  "100%",
-								"height": "100%",
-								"xlink:href": templateSvgFilename,
+								"x":           "0",
+								"y":           "0",
+								"width":       "100%",
+								"height":      "100%",
+								"xlink:href":  urlRelPath(templateSvgFilename, bookPart.Filename),
 							},
 						}
 
@@ -1892,6 +1904,31 @@ func findSVGElement(parent *svgElement) *svgElement {
 		}
 	}
 	return nil
+}
+
+// cleanupSVGNamespaces removes inherited namespace attributes that should not appear
+// in a standalone SVG document. Python's etree.cleanup_namespaces(html) strips unused
+// namespace declarations before the SVG element is extracted.
+// Port of Python: etree.cleanup_namespaces(book_part.html) (yj_to_epub_notebook.py L178).
+func cleanupSVGNamespaces(elem *svgElement) {
+	// Attributes to strip: HTML-specific namespaces and inherited XMLNS declarations
+	// that don't belong in standalone SVG output.
+	// Python's etree.cleanup_namespaces(html) strips unused namespace declarations
+	// before the SVG element is extracted for standalone use.
+	// Port of Python: etree.cleanup_namespaces(book_part.html) (yj_to_epub_notebook.py L178).
+	htmlNamespaces := []string{
+		"xmlns:epub",
+		"xmlns:m",
+		"xmlns:mbp",
+		"xmlns:idx",
+	}
+	for _, ns := range htmlNamespaces {
+		delete(elem.Attrib, ns)
+	}
+	// Recursively clean children
+	for _, child := range elem.Children {
+		cleanupSVGNamespaces(child)
+	}
 }
 
 // serializeSVGDocument serializes an SVG element tree to bytes with DOCTYPE.

@@ -605,7 +605,7 @@ func TestProcessScribeNotebookPageSection_InlinePlacementType(t *testing.T) {
 		"nmdl.canvas_width":        15624,
 		"nmdl.canvas_height":       20832,
 		"nmdl.normalized_ppi":      2520,
-		"nmdl.inline_placement_type": "$670", // valid placement type
+		"nmdl.inline_placement_type": "yj.after", // valid placement type ($670 = "yj.after")
 	}
 
 	processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
