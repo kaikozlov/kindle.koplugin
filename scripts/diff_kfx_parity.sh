@@ -6,8 +6,8 @@ plugin_dir="$(cd "$script_dir/.." && pwd)"
 # The plugin directory IS the repo root (kindle.koplugin is the top-level project)
 repo_root="$plugin_dir"
 
-default_input="$repo_root/REFERENCE/kfx_examples/Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx"
-default_reference="$repo_root/REFERENCE/martyr_calibre.epub"
+default_input="$repo_root/REFERENCE/books/martyr/input.kfx"
+default_reference="$repo_root/REFERENCE/books/martyr/calibre.epub"
 
 input_path="$default_input"
 reference_epub="$default_reference"
@@ -28,8 +28,8 @@ Options:
   -h, --help                Show this help
 
 Defaults:
-  --input          REFERENCE/kfx_examples/Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx
-  --reference-epub REFERENCE/martyr_calibre.epub
+  --input          REFERENCE/books/martyr/input.kfx
+  --reference-epub REFERENCE/books/martyr/calibre.epub
 EOF
 }
 

@@ -15,7 +15,7 @@ repo_root="$(cd "$plugin_dir/.." && pwd)"
 # --- Test files definition ---
 # Format: label|input_path|python_ref_epub
 declare -a TEST_FILES=(
-  "Martyr|${repo_root}/REFERENCE/kfx_examples/Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx|/tmp/martyr_python_ref.epub"
+  "Martyr|${repo_root}/REFERENCE/books/martyr/input.kfx|/tmp/martyr_python_ref.epub"
   "Elvis|${repo_root}/REFERENCE/KFX_DRM/decrypted/Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip|/tmp/Elvis and the Underdogs_B009NG3090_calibre.epub"
   "HG|${repo_root}/REFERENCE/KFX_DRM/decrypted/The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip|/tmp/The Hunger Games Trilogy_B004XJRQUQ_calibre.epub"
   "3B|${repo_root}/REFERENCE/KFX_DRM/decrypted/Three Below (Floors #2)_B008PL1YQ0_decrypted.kfx-zip|/tmp/Three Below (Floors #2)_B008PL1YQ0_calibre.epub"

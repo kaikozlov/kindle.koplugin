@@ -25,8 +25,8 @@ Go worktree (where you are now):
 | Hunger Games (DRMION) | ❌ 87 files | Heading `<a>` class, CSS class naming, spine, stylesheet |
 | Throne of Glass (DRMION) | ❌ 65 files | Heading `<a>` class, CSS class naming, JXR images |
 
-Decrypted KFX-zip files: `REFERENCE/kfx_new/decrypted/*.kfx-zip`
-Calibre reference EPUBs: `REFERENCE/kfx_new/calibre_epubs/*.epub`
+Decrypted KFX-zip files: `REFERENCE/books/<name>/input.kfx-zip`
+Calibre reference EPUBs: `REFERENCE/books/<name>/calibre.epub`
 
 ## Methodology: File-by-File Audit
 

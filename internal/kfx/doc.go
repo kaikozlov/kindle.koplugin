@@ -89,6 +89,6 @@
 // # Confirmatory Testing
 //
 // Use scripts/diff_kfx_parity.sh and scripts/kfx_reference_snapshot.py (fragment-summary) per fixture:
-// REFERENCE/kfx_examples/*.kfx, REFERENCE/kfx_new/decrypted/*.kfx-zip, monolithic_kfx, and
-// REFERENCE/kfx_new/calibre_epubs/*.epub references where present.
+// REFERENCE/books/<name>/input.kfx (CONT), input.kfx-zip (DRMION), original.kfx (DRMION), and
+// REFERENCE/books/<name>/calibre.epub references.
 package kfx

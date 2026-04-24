@@ -58,7 +58,7 @@ func TestConvertFileDRMIONMissingKeys(t *testing.T) {
 }
 
 func TestConvertFileCreatesReadableEPUB(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
@@ -94,7 +94,7 @@ func TestConvertFileCreatesReadableEPUB(t *testing.T) {
 }
 
 func TestClassifyRecognizesDRMFixtures(t *testing.T) {
-	martyr := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	martyr := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, martyr)
 	mode, reason, err := Classify(martyr)
 	if err != nil {
@@ -104,7 +104,7 @@ func TestClassifyRecognizesDRMFixtures(t *testing.T) {
 		t.Fatalf("Classify(Martyr) = %q %q", mode, reason)
 	}
 
-	familiars := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "The Familiars_B003VIWNQW.kfx")
+	familiars := filepath.Join("..", "..", "REFERENCE", "books", "familiars", "original.kfx")
 	testutil.SkipIfMissing(t, familiars)
 	mode, reason, err = Classify(familiars)
 	if err != nil {
@@ -116,7 +116,7 @@ func TestClassifyRecognizesDRMFixtures(t *testing.T) {
 }
 
 func TestClassifyRecognizesDecryptedKFXZipFixtures(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "elvis", "input.kfx-zip")
 	testutil.SkipIfMissing(t, input)
 
 	mode, reason, err := Classify(input)
@@ -134,9 +134,9 @@ func TestClassifyRecognizesDecryptedKFXZipFixtures(t *testing.T) {
 // Previously this test compared ZIP vs monolithic KFX output, but monolithic
 // files extracted from multi-container ZIPs lack doc symbols (stored in
 // metadata.kfx) and cannot be converted standalone. The monolithic files in
-// REFERENCE/kfx_new/monolithic_kfx/ are just the main.kfx entries from the ZIPs.
+// REFERENCE/books/<name>/original.kfx files are the DRMION originals for Classify tests.
 func TestConvertFileFromKFXZipSucceeds(t *testing.T) {
-	inputZip := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip")
+	inputZip := filepath.Join("..", "..", "REFERENCE", "books", "elvis", "input.kfx-zip")
 	testutil.SkipIfMissing(t, inputZip)
 	outputZip := filepath.Join(t.TempDir(), "elvis-zip.epub")
 
@@ -158,7 +158,7 @@ func TestConvertFileFromKFXZipSucceeds(t *testing.T) {
 }
 
 func TestConvertFileFromKFXZipPreservesResolvedPageAnchors(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "hunger_games", "input.kfx-zip")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "hunger.epub")
 
@@ -194,7 +194,7 @@ func TestConvertFileFromKFXZipPreservesResolvedPageAnchors(t *testing.T) {
 }
 
 func TestConvertFileFromKFXZipPreservesInlinePageMarkerAnchors(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "The Familiars_B003VIWNQW_decrypted.kfx-zip")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "familiars", "input.kfx-zip")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "familiars.epub")
 
@@ -238,7 +238,7 @@ func TestNormalizeLanguagePreservesBareEnglish(t *testing.T) {
 }
 
 func TestConvertFilePhase1PreservesCoverAndPackageResources(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
@@ -306,7 +306,7 @@ func TestConvertFilePhase1PreservesCoverAndPackageResources(t *testing.T) {
 }
 
 func TestConvertFilePhase2PreservesSectionIDsAndLinkedContents(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
@@ -380,7 +380,7 @@ func TestConvertFilePhase2PreservesSectionIDsAndLinkedContents(t *testing.T) {
 }
 
 func TestConvertFilePhase3UsesCanonicalSectionFilesForNavigationAndSpine(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
@@ -416,7 +416,7 @@ func TestConvertFilePhase3UsesCanonicalSectionFilesForNavigationAndSpine(t *test
 }
 
 func TestConvertFilePhase4EmitsStyleClassesForTitleAndChapterPages(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
@@ -471,7 +471,7 @@ func TestConvertFilePhase4EmitsStyleClassesForTitleAndChapterPages(t *testing.T)
 }
 
 func TestConvertFilePhase5ConvertsJPEGXRResourcesToJPEG(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
@@ -538,7 +538,7 @@ func TestConvertFilePhase5ConvertsJPEGXRResourcesToJPEG(t *testing.T) {
 }
 
 func TestConvertFilePhase6TracksCalibrePackageAndNavigationSemantics(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
@@ -653,7 +653,7 @@ func TestConvertFilePhase6TracksCalibrePackageAndNavigationSemantics(t *testing.
 }
 
 func TestConvertFilePhase7UsesPageTemplateStylesForSectionBodyClasses(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
@@ -693,7 +693,7 @@ func TestConvertFilePhase7UsesPageTemplateStylesForSectionBodyClasses(t *testing
 }
 
 func TestConvertFilePhase8MatchesInlineStyleEventsAndFitWidthContainers(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
 
@@ -755,7 +755,7 @@ func TestConvertFilePhase8MatchesInlineStyleEventsAndFitWidthContainers(t *testi
 }
 
 func TestSymbolResolverAccountsForIonSystemSymbols(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	docSymbols := readFixtureDocSymbols(t, input)
 

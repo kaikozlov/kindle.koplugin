@@ -12,7 +12,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "$script_dir/.." && pwd)"
 
-trace_dir="$project_root/REFERENCE/kfx_new/parity_traces"
+trace_dir="$project_root/REFERENCE/books/parity_traces"
 mkdir -p "$trace_dir"
 
 keep=0
@@ -27,12 +27,12 @@ done
 
 # Define fixtures
 declare -A FIXTURES
-FIXTURES[Martyr]="$project_root/REFERENCE/kfx_examples/Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx"
-FIXTURES[ThreeBelow]="$project_root/REFERENCE/kfx_new/decrypted/Three Below (Floors #2)_B008PL1YQ0_decrypted.kfx-zip"
-FIXTURES[Elvis]="$project_root/REFERENCE/kfx_new/decrypted/Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip"
-FIXTURES[Familiars]="$project_root/REFERENCE/kfx_new/decrypted/The Familiars_B003VIWNQW_decrypted.kfx-zip"
-FIXTURES[HungerGames]="$project_root/REFERENCE/kfx_new/decrypted/The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip"
-FIXTURES[ThroneOfGlass]="$project_root/REFERENCE/kfx_new/decrypted/Throne of Glass_B007N6JEII_decrypted.kfx-zip"
+FIXTURES[Martyr]="$project_root/REFERENCE/books/martyr/input.kfx"
+FIXTURES[ThreeBelow]="$project_root/REFERENCE/books/three_below/input.kfx-zip"
+FIXTURES[Elvis]="$project_root/REFERENCE/books/elvis/input.kfx-zip"
+FIXTURES[Familiars]="$project_root/REFERENCE/books/familiars/input.kfx-zip"
+FIXTURES[HungerGames]="$project_root/REFERENCE/books/hunger_games/input.kfx-zip"
+FIXTURES[ThroneOfGlass]="$project_root/REFERENCE/books/throne_of_glass/input.kfx-zip"
 
 if [[ -n "$book" ]]; then
   if [[ -z "${FIXTURES[$book]+x}" ]]; then

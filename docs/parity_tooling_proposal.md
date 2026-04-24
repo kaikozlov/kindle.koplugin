@@ -150,7 +150,7 @@ Create `scripts/trace_python.py`:
 - Captures: organize_fragments output, metadata, anchor map, nav tree, rendered sections (HTML), CSS, final sections
 - Outputs structured JSON
 - Run once per fixture book to create "golden" trace files
-- Store golden traces in `REFERENCE/kfx_new/parity_traces/`
+- Store golden traces in `REFERENCE/books/parity_traces/`
 
 ### Phase 2: Go Trace Hooks (1 session)
 

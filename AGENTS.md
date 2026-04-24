@@ -550,14 +550,18 @@ The project has 6 real books from a Kindle device. When comparing Go output agai
 
 ### Fixture Paths
 
-| What | Path |
-|------|------|
-| Raw KFX (CONT) | `REFERENCE/kfx_examples/Martyr_*.kfx` |
-| Decrypted KFX-zip (DRMION) | `REFERENCE/kfx_new/decrypted/*.kfx-zip` |
-| Calibre reference EPUBs | `REFERENCE/kfx_new/calibre_epubs/*.epub` |
-| Martyr Calibre reference | `REFERENCE/martyr_calibre.epub` |
-| DRM keys cache | `REFERENCE/kindle_device/cache/drm_keys.json` |
-| Raw device files | `REFERENCE/kindle_device/Items01/` |
+All test fixtures live under `REFERENCE/books/<name>/` with consistent naming:
+
+| File | Meaning | Present For |
+|------|---------|-------------|
+| `input.kfx` | CONT (unencrypted) source | Martyr |
+| `input.kfx-zip` | Decrypted DRMION source (what Go converts) | All DRMION books |
+| `original.kfx` | DRMION original (for Classify tests) | Old DRMION books |
+| `voucher` | DRM voucher from device | All DRMION books |
+| `calibre.epub` | Calibre golden reference | All books |
+
+Top-level: `REFERENCE/books/drm_keys.json` — merged page keys for all 9 DRMION books.
+| Raw device files | `REFERENCE/kindle_device/Items01/` (device backups, not test fixtures) |
 
 ### Known Parity Gaps (ordered by difficulty)
 

@@ -6,11 +6,11 @@ import (
 )
 
 func TestRunClassifiesFixtureBooks(t *testing.T) {
-	root := filepath.Join("..", "..", "REFERENCE", "kfx_examples")
+	root := filepath.Join("..", "..", "REFERENCE", "books")
 
-	kfxFiles, _ := filepath.Glob(filepath.Join(root, "*.kfx"))
+	kfxFiles, _ := filepath.Glob(filepath.Join(root, "*", "*.kfx"))
 	if len(kfxFiles) == 0 {
-		t.Skip("no KFX fixture files found in REFERENCE/kfx_examples")
+		t.Skip("no KFX fixture files found in REFERENCE/books")
 	}
 
 	result, err := Run(root)
@@ -19,7 +19,7 @@ func TestRunClassifiesFixtureBooks(t *testing.T) {
 	}
 
 	if len(result.Books) == 0 {
-		t.Skip("no KFX fixture files found in REFERENCE/kfx_examples")
+		t.Skip("no KFX fixture files found in REFERENCE/books")
 	}
 
 	for _, book := range result.Books {

@@ -17,7 +17,7 @@ import (
 )
 
 func TestBuildBookStateFragmentSummaryMatchesReference(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 
 	state, err := buildBookState(input)
@@ -1397,10 +1397,10 @@ func TestCleanupRenderedSectionsCombinesNestedDivsAndStripsEmptySpans(t *testing
 }
 
 func TestConvertFileMatchesReferenceStructureIgnoringImages(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_examples", "Martyr_5AFAFAA13FFE43ECBE78F0FF3761814C.kfx")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "input.kfx")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "martyr.epub")
-	reference := filepath.Join("..", "..", "REFERENCE", "martyr_calibre.epub")
+	reference := filepath.Join("..", "..", "REFERENCE", "books", "martyr", "calibre.epub")
 	testutil.SkipIfMissing(t, reference)
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -1441,10 +1441,10 @@ func TestConvertFileMatchesReferenceStructureIgnoringImages(t *testing.T) {
 // Second non-Martyr gate: same non-image path list as Calibre for Three Below (Floors #2).
 // Full byte-for-byte text parity vs calibre_epubs is still Phase D work (manifest/spine ordering, OPF metadata).
 func TestConvertFileThreeBelowKFXZipMatchesCalibreComparableArchivePaths(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "Three Below (Floors #2)_B008PL1YQ0_decrypted.kfx-zip")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "three_below", "input.kfx-zip")
 	testutil.SkipIfMissing(t, input)
 	output := filepath.Join(t.TempDir(), "three-below.epub")
-	reference := filepath.Join("..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "Three Below (Floors #2)_B008PL1YQ0_decrypted.epub")
+	reference := filepath.Join("..", "..", "REFERENCE", "books", "three_below", "calibre.epub")
 	testutil.SkipIfMissing(t, reference)
 
 	if err := ConvertFile(input, output, ""); err != nil {
@@ -1484,25 +1484,25 @@ func testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T
 }
 
 func TestConvertFileElvisKFXZipMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "Elvis and the Underdogs_B009NG3090_decrypted.kfx-zip")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "elvis", "input.kfx-zip")
 	testutil.SkipIfMissing(t, input)
-	reference := filepath.Join("..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "Elvis and the Underdogs_B009NG3090_decrypted.epub")
+	reference := filepath.Join("..", "..", "REFERENCE", "books", "elvis", "calibre.epub")
 	testutil.SkipIfMissing(t, reference)
 	testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t, input, reference)
 }
 
 func TestConvertFileHungerGamesKFXZipMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "The Hunger Games Trilogy_B004XJRQUQ_decrypted.kfx-zip")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "hunger_games", "input.kfx-zip")
 	testutil.SkipIfMissing(t, input)
-	reference := filepath.Join("..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "The Hunger Games Trilogy_B004XJRQUQ_decrypted.epub")
+	reference := filepath.Join("..", "..", "REFERENCE", "books", "hunger_games", "calibre.epub")
 	testutil.SkipIfMissing(t, reference)
 	testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t, input, reference)
 }
 
 func TestConvertFileFamiliarsKFXZipMatchesCalibreComparableArchivePathsWhenPresent(t *testing.T) {
-	input := filepath.Join("..", "..", "REFERENCE", "kfx_new", "decrypted", "The Familiars_B003VIWNQW_decrypted.kfx-zip")
+	input := filepath.Join("..", "..", "REFERENCE", "books", "familiars", "input.kfx-zip")
 	testutil.SkipIfMissing(t, input)
-	reference := filepath.Join("..", "..", "REFERENCE", "kfx_new", "calibre_epubs", "The Familiars_B003VIWNQW_decrypted.epub")
+	reference := filepath.Join("..", "..", "REFERENCE", "books", "familiars", "calibre.epub")
 	testutil.SkipIfMissing(t, reference)
 	testConvertFileMatchesCalibreComparableArchivePathsWhenPresent(t, input, reference)
 }
