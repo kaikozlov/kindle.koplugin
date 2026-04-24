@@ -641,6 +641,7 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 	sort.Strings(resourceIDs)
 
 	resourceFilenameByID := map[string]string{}
+	resourceDimensions := map[string][2]int{} // filename → {width, height}
 	usedOEBPSNames := map[string]struct{}{}
 	firstImageFilename := ""
 	for _, resourceID := range resourceIDs {
@@ -710,6 +711,9 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 			Data:      data,
 		})
 		resourceFilenameByID[resourceID] = filename
+		if resource.Width > 0 || resource.Height > 0 {
+			resourceDimensions[filename] = [2]int{resource.Width, resource.Height}
+		}
 		if firstImageFilename == "" {
 			firstImageFilename = filename
 		}
@@ -836,6 +840,7 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 			break
 		}
 	}
+	book.ResourceDimensions = resourceDimensions
 	return output, coverImageHref, strings.TrimSpace(stylesheet.String()), resourceFilenameByID
 }
 

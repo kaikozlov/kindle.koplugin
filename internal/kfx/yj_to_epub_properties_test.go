@@ -151,6 +151,155 @@ func TestConvertYJPropertiesPositionRelativePreserved(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Tests for vh/vw viewport unit cross-conversion
+// (Python yj_to_epub_properties.py L1753-1785, VAL-FIX-013)
+// ---------------------------------------------------------------------------
+
+// TestConvertViewportUnits_DirectConversion converts vh on height directly to %.
+// This is the simple case that already works.
+func TestConvertViewportUnits_DirectConversion(t *testing.T) {
+	sty := map[string]string{
+		"height":           "50vh",
+		"-amzn-page-align": "all",
+	}
+	convertViewportUnits(sty, nil, nil, "")
+	if sty["height"] != "50%" {
+		t.Errorf("expected height=50%%, got %q", sty["height"])
+	}
+}
+
+// TestConvertViewportUnits_CrossConversionWidthVH converts width in vh units to height in %
+// using image aspect ratio. Python L1756-1779: when name[0] != unit[1], the property
+// name is swapped and the value is scaled by the image's aspect ratio.
+func TestConvertViewportUnits_CrossConversionWidthVH(t *testing.T) {
+	// width:50vh on a 200x100 image → height:(50*100/200)% = height:25%
+	sty := map[string]string{
+		"width":            "50vh",
+		"-amzn-page-align": "all",
+	}
+	imgDims := map[string][2]int{
+		"image.jpg": {200, 100}, // width=200, height=100
+	}
+	elem := &htmlElement{
+		Tag:   "img",
+		Attrs: map[string]string{"src": "image.jpg"},
+	}
+	convertViewportUnits(sty, elem, imgDims, "section.xhtml")
+
+	// Python pops "width" and sets "height"
+	if _, hasWidth := sty["width"]; hasWidth {
+		t.Error("expected width to be removed after cross-conversion")
+	}
+	if sty["height"] != "25%" {
+		t.Errorf("expected height=25%% after cross-conversion, got %q", sty["height"])
+	}
+}
+
+// TestConvertViewportUnits_CrossConversionHeightVW converts height in vw units to width in %
+// using image aspect ratio.
+func TestConvertViewportUnits_CrossConversionHeightVW(t *testing.T) {
+	// height:50vw on a 100x200 image → width:(50*100/200)% = width:25%
+	sty := map[string]string{
+		"height":           "50vw",
+		"-amzn-page-align": "all",
+	}
+	imgDims := map[string][2]int{
+		"image.jpg": {100, 200}, // width=100, height=200
+	}
+	elem := &htmlElement{
+		Tag:   "img",
+		Attrs: map[string]string{"src": "image.jpg"},
+	}
+	convertViewportUnits(sty, elem, imgDims, "section.xhtml")
+
+	// Python pops "height" and sets "width"
+	if _, hasHeight := sty["height"]; hasHeight {
+		t.Error("expected height to be removed after cross-conversion")
+	}
+	if sty["width"] != "25%" {
+		t.Errorf("expected width=25%% after cross-conversion, got %q", sty["width"])
+	}
+}
+
+// TestConvertViewportUnits_CrossConversionSnapsTo100 snaps values between 99 and 101 to 100.
+// Python L1774-1775: if quantity > 99.0 and quantity < 101.0: quantity = 100.0
+func TestConvertViewportUnits_CrossConversionSnapsTo100(t *testing.T) {
+	// width:100vh on a 100x100 image → height:(100*100/100)% = 100% (exact, should snap)
+	sty := map[string]string{
+		"width":            "100vh",
+		"-amzn-page-align": "all",
+	}
+	imgDims := map[string][2]int{
+		"image.jpg": {100, 100},
+	}
+	elem := &htmlElement{
+		Tag:   "img",
+		Attrs: map[string]string{"src": "image.jpg"},
+	}
+	convertViewportUnits(sty, elem, imgDims, "section.xhtml")
+
+	if sty["height"] != "100%" {
+		t.Errorf("expected height=100%% (snapped), got %q", sty["height"])
+	}
+}
+
+// TestConvertViewportUnits_CrossConversionNotImage logs error for non-img elements.
+// Python L1780: log.error("viewport-based units with wrong property on non-image")
+func TestConvertViewportUnits_CrossConversionNotImage(t *testing.T) {
+	sty := map[string]string{
+		"width":            "50vh",
+		"-amzn-page-align": "all",
+	}
+	elem := &htmlElement{
+		Tag:   "div",
+		Attrs: map[string]string{},
+	}
+	convertViewportUnits(sty, elem, nil, "section.xhtml")
+
+	// Non-image with wrong-axis should NOT convert — just log error
+	if sty["width"] != "50vh" {
+		t.Errorf("expected width to remain 50vh for non-image, got %q", sty["width"])
+	}
+}
+
+// TestConvertViewportUnits_CrossConversionBothDimsSpecified logs error when both
+// height and width are already in sty. Python L1779: log.error("viewport-based
+// units with wrong property: ...") when both dimensions are present.
+func TestConvertViewportUnits_CrossConversionBothDimsSpecified(t *testing.T) {
+	sty := map[string]string{
+		"width":            "50vh",
+		"height":           "75%",
+		"-amzn-page-align": "all",
+	}
+	elem := &htmlElement{
+		Tag:   "img",
+		Attrs: map[string]string{"src": "image.jpg"},
+	}
+	imgDims := map[string][2]int{
+		"image.jpg": {200, 100},
+	}
+	convertViewportUnits(sty, elem, imgDims, "section.xhtml")
+
+	// Should NOT cross-convert when both height and width already present
+	if sty["width"] != "50vh" {
+		t.Errorf("expected width to remain 50vh when both dims present, got %q", sty["width"])
+	}
+}
+
+// TestConvertViewportUnits_NoPageAlign skips conversion when page-align is "none".
+// Python L1755: if page_align != "none" and name in ["height", "width"]
+func TestConvertViewportUnits_NoPageAlign(t *testing.T) {
+	sty := map[string]string{
+		"height":           "50vh",
+		"-amzn-page-align": "none",
+	}
+	convertViewportUnits(sty, nil, nil, "")
+	if sty["height"] != "50vh" {
+		t.Errorf("expected height unchanged when page-align=none, got %q", sty["height"])
+	}
+}
+
 func TestConvertYJPropertiesNoFontFamily(t *testing.T) {
 	// s36C style fragment — has border properties but no $11
 	props := map[string]interface{}{

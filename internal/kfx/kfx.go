@@ -64,6 +64,10 @@ type decodedBook struct {
 	CoverImageHref           string
 	Stylesheet               string
 	ResourceHrefByID         map[string]string
+	// ResourceDimensions maps EPUB resource filenames to their pixel dimensions [width, height].
+	// Populated during buildResources from resource_fragment metadata ($422/$66 width, $423/$67 height).
+	// Used by simplify_styles for vh/vw cross-conversion (Python yj_to_epub_properties.py L1753-1785).
+	ResourceDimensions       map[string][2]int
 	RenderedSections         []renderedSection
 	Sections                 []epub.Section
 	Resources                []epub.Resource

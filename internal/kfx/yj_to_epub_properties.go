@@ -1013,7 +1013,10 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 			}
 		}
 
-		simplifyStylesElementFull(bodyElem, catalog, bodyInherited, &simplifyState{})
+		simplifyStylesElementFull(bodyElem, catalog, bodyInherited, &simplifyState{
+			resourceDims:    book.ResourceDimensions,
+			sectionFilename: book.RenderedSections[i].Filename,
+		})
 
 		// Extract -kfx-attrib-xml-lang from body style to set xml:lang on <body>.
 		// Python does this in fixup_styles_and_classes via style.partition("-kfx-attrib-", ...)
@@ -1721,6 +1724,8 @@ func applyStyleToElementClasses(elem *htmlElement, catalog *styleCatalog, baseNa
 // Python uses self.last_kfx_heading_level (instance variable) but Go needs explicit state.
 type simplifyState struct {
 	lastKfxHeadingLevel string // tracks last seen heading level (Python: self.last_kfx_heading_level)
+	resourceDims        map[string][2]int // image dimensions by filename (for vh/vw cross-conversion)
+	sectionFilename     string            // current section filename (for resolving img src paths)
 }
 
 func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherited map[string]string, state *simplifyState, parentKnownWidth ...bool) (containsBlock, containsText, containsImage bool) {
@@ -1809,6 +1814,10 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	// Convert the full sty map (inherited + explicit) so that inherited lh/rem values
 	// are also normalized before being passed to children.
 	convertStyleUnits(sty, inherited)
+	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1753-1785, VAL-FIX-013):
+	// Convert vh/vw viewport units to percentages, including cross-conversion for images
+	// with wrong-axis units (e.g. width:50vh → height:100% using image aspect ratio).
+	convertViewportUnits(sty, elem, state.resourceDims, state.sectionFilename)
 	// Sync explicitStyle with the converted values of properties that were explicitly set.
 	for name := range explicitStyle {
 		if val, ok := sty[name]; ok {
@@ -4352,20 +4361,119 @@ func convertStyleUnits(sty map[string]string, inherited map[string]string) {
 				sty[name] = formatCSSQuantity(q) + unit
 			}
 		}
+	}
+}
 
-		// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1753-1785):
-		// Convert vh/vw viewport units to percentages for page-aligned content.
-		// Python does full cross-conversion for images with wrong-axis units (e.g. height in vw),
-		// which requires image dimension knowledge. We handle the simple case (direct conversion)
-		// and skip the complex cross-conversion.
-		if (unit == "vh" || unit == "vw") && quantity != nil {
-			if pageAlignVal, hasAlign := sty["-amzn-page-align"]; hasAlign && pageAlignVal != "none" {
-				if name == "height" || name == "width" {
-					sty[name] = formatCSSQuantity(*quantity) + "%"
-				}
+// convertViewportUnits converts vh/vw viewport units to percentages for page-aligned content.
+// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1753-1785, VAL-FIX-013).
+//
+// Direct conversion: height in vh → height in %, width in vw → width in %
+// Cross-conversion: width in vh → height in % (using image aspect ratio),
+//
+//	height in vw → width in % (using image aspect ratio)
+//
+// Cross-conversion requires image dimensions from resourceDimensions, looked up
+// by resolving the img element's src attribute. Python uses self.oebps_files[filename]
+// for this; Go uses the ResourceDimensions map populated during buildResources.
+func convertViewportUnits(sty map[string]string, elem *htmlElement, resourceDimensions map[string][2]int, sectionFilename string) {
+	pageAlign := sty["-amzn-page-align"]
+	if pageAlign == "none" || pageAlign == "" {
+		// Python L1783: log.error("viewport-based units with wrong property or without page-align")
+		return
+	}
+
+	for name, val := range sty {
+		quantity, unit := splitCSSValue(val)
+		if quantity == nil {
+			continue
+		}
+		if unit != "vh" && unit != "vw" {
+			continue
+		}
+		if name != "height" && name != "width" {
+			// Python L1783: log.error("viewport-based units with wrong property or without page-align")
+			continue
+		}
+
+		// Python L1756: if name[0] != unit[1]
+		// "width"[0]='w', "vh"[1]='h' → 'w' != 'h' → CROSS
+		// "height"[0]='h', "vw"[1]='w' → 'h' != 'w' → CROSS
+		// "height"[0]='h', "vh"[1]='h' → 'h' == 'h' → DIRECT
+		// "width"[0]='w', "vw"[1]='w' → 'w' == 'w' → DIRECT
+		if name[0] != unit[1] {
+			// Cross-conversion: wrong-axis unit
+			// Python L1757: if not ("height" in sty and "width" in sty)
+			_, hasHeight := sty["height"]
+			_, hasWidth := sty["width"]
+			if hasHeight && hasWidth {
+				// Python L1779: log.error("viewport-based units with wrong property: %s:%s")
+				fmt.Fprintf(os.Stderr, "kfx: error: viewport-based units with wrong property: %s:%s\n", name, val)
+				continue
 			}
+
+			if elem == nil || elem.Tag != "img" {
+				// Python L1780: log.error("viewport-based units with wrong property on non-image: %s:%s")
+				fmt.Fprintf(os.Stderr, "kfx: error: viewport-based units with wrong property on non-image: %s:%s\n", name, val)
+				continue
+			}
+
+			// Look up image dimensions
+			imgSrc := elem.Attrs["src"]
+			imgWidth, imgHeight := lookupImageDimensions(resourceDimensions, imgSrc, sectionFilename)
+			if imgWidth == 0 || imgHeight == 0 {
+				fmt.Fprintf(os.Stderr, "kfx: error: cannot resolve image dimensions for cross-conversion: %s\n", imgSrc)
+				continue
+			}
+
+			origProp := name
+			delete(sty, origProp)
+
+			q := *quantity
+			if name == "width" {
+				// Python L1769: quantity = (quantity * img_file.height) / img_file.width
+				q = (q * float64(imgHeight)) / float64(imgWidth)
+				name = "height"
+			} else {
+				// Python L1772: quantity = (quantity * img_file.width) / img_file.height
+				q = (q * float64(imgWidth)) / float64(imgHeight)
+				name = "width"
+			}
+
+			// Python L1774-1775: snap 99-101 to 100
+			if q > 99.0 && q < 101.0 {
+				q = 100.0
+			} else {
+				fmt.Fprintf(os.Stderr, "kfx: warning: converted %s:%s for img %dw x %dh to %s:%f%%\n",
+					origProp, val, imgWidth, imgHeight, name, q)
+			}
+
+			sty[name] = formatCSSQuantity(q) + "%"
+		} else {
+			// Direct conversion: same-axis unit (height+vh or width+vw)
+			sty[name] = formatCSSQuantity(*quantity) + "%"
 		}
 	}
+}
+
+// lookupImageDimensions resolves an img src to resource dimensions.
+// Mirrors Python's get_url_filename(urlabspath(elem.get("src"), ref_from=book_part.filename))
+// followed by self.oebps_files[filename].height/width.
+func lookupImageDimensions(resourceDimensions map[string][2]int, src, refFrom string) (width, height int) {
+	if resourceDimensions == nil || src == "" {
+		return 0, 0
+	}
+	// Try direct filename match (mirrors lookupImageFile in yj_to_epub_misc.go)
+	filename := src
+	if idx := strings.LastIndex(src, "/"); idx >= 0 {
+		filename = src[idx+1:]
+	}
+	if dims, ok := resourceDimensions[filename]; ok {
+		return dims[0], dims[1]
+	}
+	if dims, ok := resourceDimensions[src]; ok {
+		return dims[0], dims[1]
+	}
+	return 0, 0
 }
 
 // normalizeLanguageTag normalizes a BCP 47 language tag to match Python's fix_language
