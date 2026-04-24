@@ -906,6 +906,138 @@ func formatCSSQuantity(q float64) string {
 // This conversion happens in simplifyStylesElementFull BEFORE the comparison/stripping loop,
 // so that lh/rem values are normalized to em before being compared against heritableDefaultProperties.
 //
+// ---------------------------------------------------------------------------
+// checkEpubVersion — Python epub_output.py L654-684
+//
+// Determines whether to generate EPUB2 or EPUB3 output based on content features.
+// Called after book parts are created but before EPUB assembly.
+//
+// The function checks:
+//  1. If EPUB2 was not desired (generate_epub2 is already false), return immediately
+//  2. Fixed layout, author/title pronunciations → require EPUB3
+//  3. Certain file mimetypes (application/octet-stream, application/xml,
+//     text/javascript, text/html) → require EPUB3
+//  4. Nav or FXL book parts → require EPUB3
+//  5. EPUB3-only HTML tags (article, aside, audio, etc.) → require EPUB3
+//  6. data-* attributes or epub:type/epub:prefix attributes → require EPUB3
+//
+// In practice, the Go converter always sets Epub2Desired=false (EPUB3 by default),
+// so this function will always return false (generate EPUB3). It is ported for
+// completeness and correctness matching Python's behavior.
+//
+// Port of Python check_epub_version (epub_output.py L654-684).
+// ---------------------------------------------------------------------------
+
+// epub3OnlyTags lists HTML tags that only exist in EPUB3 (HTML5).
+// Python epub_output.py L674-677 — if elem.tag in {...}: self.generate_epub2 = False
+var epub3OnlyTags = map[string]bool{
+	"article": true, "aside": true, "audio": true, "bdi": true, "canvas": true,
+	"details": true, "dialog": true, "embed": true, "figcaption": true,
+	"figure": true, "footer": true, "header": true, "main": true, "mark": true,
+	"meter": true, "nav": true, "picture": true, "progress": true, "rt": true,
+	"ruby": true, "section": true, "source": true, "summary": true,
+	"template": true, "time": true, "track": true, "video": true, "wbr": true,
+}
+
+// epub3Mimetypes lists MIME types that require EPUB3.
+// Python epub_output.py L662-663 — if oebps_file.mimetype in [...]: self.generate_epub2 = False
+var epub3Mimetypes = map[string]bool{
+	"application/octet-stream": true,
+	"application/xml":         true,
+	"text/javascript":         true,
+	"text/html":               true,
+}
+
+// checkEpubVersion determines whether the book content requires EPUB3.
+// Returns true if EPUB2 generation is acceptable, false if EPUB3 is required.
+//
+// Python references:
+//
+//	L655: if not self.generate_epub2: return
+//	L657-658: if self.fixed_layout or self.author_pronunciations or self.title_pronunciation: return False
+//	L661-663: for oebps_file in self.oebps_files.values(): if mimetype in [...] return False
+//	L667-669: for book_part in self.book_parts: if is_nav or is_fxl return False
+//	L672-677: for elem in book_part.html.iter("*"): if tag in EPUB3_TAGS return False
+//	L680-682: for attrib in elem.attrib.keys(): if data-* or epub:type or epub:prefix return False
+func checkEpubVersion(epub2Desired bool, book *decodedBook, sections []epub.Section, resources []epub.Resource) bool {
+	// Python L655: if not self.generate_epub2: return
+	if !epub2Desired {
+		return false
+	}
+
+	// Python L657-658: fixed_layout, pronunciations require EPUB3
+	if book.FixedLayout || len(book.AuthorPronunciations) > 0 || book.TitlePronunciation != "" {
+		return false
+	}
+
+	// Python L661-663: check resource mimetypes for EPUB3-only types
+	for _, res := range resources {
+		if epub3Mimetypes[res.MediaType] {
+			return false
+		}
+	}
+
+	// Python L667-669: check book parts for nav or FXL properties
+	for _, section := range sections {
+		// is_nav: properties contains "nav"
+		if section.Properties == "nav" || strings.Contains(section.Properties, " nav") || strings.HasPrefix(section.Properties, "nav ") {
+			return false
+		}
+		// is_fxl: properties contains "rendition:layout-pre-paginated"
+		if strings.Contains(section.Properties, "rendition:layout-pre-paginated") {
+			return false
+		}
+	}
+
+	// Python L672-682: check rendered section HTML for EPUB3-only elements and attributes
+	for i := range book.RenderedSections {
+		rs := &book.RenderedSections[i]
+		if rs.Root == nil {
+			continue
+		}
+		if hasEPUB3Content(rs.Root) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// hasEPUB3Content checks if an HTML element tree contains EPUB3-only tags or attributes.
+// Python epub_output.py L672-682.
+func hasEPUB3Content(root *htmlElement) bool {
+	var walk func(elem *htmlElement) bool
+	walk = func(elem *htmlElement) bool {
+		// Python L674-677: if elem.tag in EPUB3_TAGS
+		if epub3OnlyTags[elem.Tag] {
+			return true
+		}
+		// Python L680-682: for attrib in elem.attrib.keys()
+		//   if attrib.startswith("data-") or attrib in [EPUB_PREFIX, EPUB_TYPE]
+		for attr := range elem.Attrs {
+			if strings.HasPrefix(attr, "data-") {
+				return true
+			}
+			// EPUB_PREFIX = {http://www.idpf.org/2007/ops}prefix
+			// EPUB_TYPE = {http://www.idpf.org/2007/ops}type
+			// In Go's rendered HTML, epub:type appears as "epub:type" attribute
+			if attr == "epub:type" || attr == "epub:prefix" {
+				return true
+			}
+		}
+		// Recurse into children
+		for _, child := range elem.Children {
+			if el, ok := child.(*htmlElement); ok {
+				if walk(el) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(root)
+}
+
 // lh conversion:
 //   - For line-height: if USE_NORMAL_LINE_HEIGHT and value in [0.99, 1.01], set to "normal"
 //   - Otherwise: multiply by LINE_HEIGHT_SCALE_FACTOR (1.2), clamp to MINIMUM_LINE_HEIGHT (1.0)

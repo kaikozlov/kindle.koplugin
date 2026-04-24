@@ -132,6 +132,11 @@ type decodedBook struct {
 	// Used by navigation to suppress warnings for missing reading order nav data
 	// (yj_to_epub_navigation.py L107).
 	IsScribeNotebook bool
+
+	// GenerateEpub2 is true when the book content allows EPUB2 output.
+	// Set by checkEpubVersion after rendering. When false, EPUB3 features are used.
+	// Python: self.generate_epub2 (epub_output.py L268, L654-684).
+	GenerateEpub2 bool
 }
 
 type renderedStoryline struct {

@@ -341,6 +341,12 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	book.Identifier = normalizeBookIdentifier(book.Identifier)
 	book.Language = normalizeLanguage(book.Language)
 
+	// Python epub_output.py L447: self.check_epub_version()
+	// Determine whether to generate EPUB2 or EPUB3 based on content features.
+	// Currently Epub2Desired is always false (EPUB3 by default), so checkEpubVersion
+	// always returns false. The function is ported for correctness and future use.
+	book.GenerateEpub2 = checkEpubVersion(false, book, book.Sections, book.Resources)
+
 	return book, nil
 }
 
@@ -402,6 +408,12 @@ func ConvertFile(inputPath, outputPath string, cacheDir string) error {
 		Guide:                   book.Guide,
 		PageList:                book.PageList,
 		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
+		Epub2Desired:            false, // Python: epub2_desired defaults to False
+		GenerateEpub2:           book.GenerateEpub2,
+		TitlePronunciation:      book.TitlePronunciation,
+		AuthorPronunciations:    book.AuthorPronunciations,
+		FixedLayout:             book.FixedLayout,
+		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
 
@@ -446,6 +458,12 @@ func ConvertFileWithTrace(inputPath string, outputPath string, tracePath string)
 		Guide:                   book.Guide,
 		PageList:                book.PageList,
 		GenerateEpub2Compatible: true,
+		Epub2Desired:            false,
+		GenerateEpub2:           book.GenerateEpub2,
+		TitlePronunciation:      book.TitlePronunciation,
+		AuthorPronunciations:    book.AuthorPronunciations,
+		FixedLayout:             book.FixedLayout,
+		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
 
@@ -578,6 +596,12 @@ func convertFromDRMIONData(contData []byte, outputPath string, originalPath stri
 		Guide:               book.Guide,
 		PageList:                book.PageList,
 		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
+		Epub2Desired:            false,
+		GenerateEpub2:           book.GenerateEpub2,
+		TitlePronunciation:      book.TitlePronunciation,
+		AuthorPronunciations:    book.AuthorPronunciations,
+		FixedLayout:             book.FixedLayout,
+		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
 
@@ -617,6 +641,12 @@ func convertFromCONTData(contData []byte, outputPath string) error {
 		Guide:               book.Guide,
 		PageList:                book.PageList,
 		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
+		Epub2Desired:            false,
+		GenerateEpub2:           book.GenerateEpub2,
+		TitlePronunciation:      book.TitlePronunciation,
+		AuthorPronunciations:    book.AuthorPronunciations,
+		FixedLayout:             book.FixedLayout,
+		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
 

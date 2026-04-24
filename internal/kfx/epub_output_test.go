@@ -2,6 +2,8 @@ package kfx
 
 import (
 	"testing"
+
+	"github.com/kaikozlov/kindle-koplugin/internal/epub"
 )
 
 // ---------------------------------------------------------------------------
@@ -675,5 +677,204 @@ func TestAspectRatioMatch(t *testing.T) {
 	}
 	if aspectRatioMatch(0, 1) {
 		t.Error("expected 0/1 NOT to match")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests for checkEpubVersion — Python epub_output.py L654-684
+// ---------------------------------------------------------------------------
+
+// TestCheckEpubVersion_NotDesired returns false immediately when EPUB2 not desired.
+// Python L655: if not self.generate_epub2: return
+func TestCheckEpubVersion_NotDesired(t *testing.T) {
+	book := &decodedBook{FixedLayout: true}
+	result := checkEpubVersion(false, book, nil, nil)
+	if result {
+		t.Error("expected false (EPUB3) when epub2Desired is false")
+	}
+}
+
+// TestCheckEpubVersion_FixedLayoutRequiresEPUB3 verifies that fixed-layout
+// books require EPUB3.
+// Python L657: if self.fixed_layout: self.generate_epub2 = False
+func TestCheckEpubVersion_FixedLayoutRequiresEPUB3(t *testing.T) {
+	book := &decodedBook{FixedLayout: true}
+	result := checkEpubVersion(true, book, nil, nil)
+	if result {
+		t.Error("expected false (EPUB3 required) for fixed-layout book")
+	}
+}
+
+// TestCheckEpubVersion_AuthorPronunciationsRequiresEPUB3 verifies that books
+// with author pronunciations require EPUB3.
+// Python L657: if self.author_pronunciations: self.generate_epub2 = False
+func TestCheckEpubVersion_AuthorPronunciationsRequiresEPUB3(t *testing.T) {
+	book := &decodedBook{AuthorPronunciations: []string{"pron.mp3"}}
+	result := checkEpubVersion(true, book, nil, nil)
+	if result {
+		t.Error("expected false (EPUB3 required) for book with author pronunciations")
+	}
+}
+
+// TestCheckEpubVersion_TitlePronunciationRequiresEPUB3 verifies that books
+// with title pronunciation require EPUB3.
+// Python L657: if self.title_pronunciation: self.generate_epub2 = False
+func TestCheckEpubVersion_TitlePronunciationRequiresEPUB3(t *testing.T) {
+	book := &decodedBook{TitlePronunciation: "title_pron.mp3"}
+	result := checkEpubVersion(true, book, nil, nil)
+	if result {
+		t.Error("expected false (EPUB3 required) for book with title pronunciation")
+	}
+}
+
+// TestCheckEpubVersion_EPUB3MimetypeRequiresEPUB3 verifies that resources with
+// EPUB3-only mimetypes force EPUB3.
+// Python L661-663: if oebps_file.mimetype in ["application/octet-stream", ...]
+func TestCheckEpubVersion_EPUB3MimetypeRequiresEPUB3(t *testing.T) {
+	for _, mt := range []string{
+		"application/octet-stream",
+		"application/xml",
+		"text/javascript",
+		"text/html",
+	} {
+		book := &decodedBook{}
+		resources := []epub.Resource{{Filename: "test", MediaType: mt}}
+		result := checkEpubVersion(true, book, nil, resources)
+		if result {
+			t.Errorf("expected false (EPUB3 required) for mimetype %q", mt)
+		}
+	}
+}
+
+// TestCheckEpubVersion_NavSectionRequiresEPUB3 verifies that nav sections
+// require EPUB3.
+// Python L668: if book_part.is_nav: self.generate_epub2 = False
+func TestCheckEpubVersion_NavSectionRequiresEPUB3(t *testing.T) {
+	book := &decodedBook{}
+	sections := []epub.Section{
+		{Filename: "nav.xhtml", Properties: "nav"},
+	}
+	result := checkEpubVersion(true, book, sections, nil)
+	if result {
+		t.Error("expected false (EPUB3 required) for nav section")
+	}
+}
+
+// TestCheckEpubVersion_FXLSectionRequiresEPUB3 verifies that fixed-layout
+// sections require EPUB3.
+// Python L668: if book_part.is_fxl: self.generate_epub2 = False
+func TestCheckEpubVersion_FXLSectionRequiresEPUB3(t *testing.T) {
+	book := &decodedBook{}
+	sections := []epub.Section{
+		{Filename: "page.xhtml", Properties: "rendition:layout-pre-paginated"},
+	}
+	result := checkEpubVersion(true, book, sections, nil)
+	if result {
+		t.Error("expected false (EPUB3 required) for FXL section")
+	}
+}
+
+// TestCheckEpubVersion_EPUB3TagRequiresEPUB3 verifies that sections containing
+// EPUB3-only HTML tags require EPUB3.
+// Python L674-677: if elem.tag in {article, aside, audio, ...}: self.generate_epub2 = False
+func TestCheckEpubVersion_EPUB3TagRequiresEPUB3(t *testing.T) {
+	for _, tag := range []string{"article", "aside", "audio", "nav", "section", "ruby", "video"} {
+		book := &decodedBook{
+			RenderedSections: []renderedSection{
+				{
+					Filename: "test.xhtml",
+					Root: &htmlElement{
+						Tag: "html",
+						Children: []htmlPart{
+							&htmlElement{Tag: tag},
+						},
+					},
+				},
+			},
+		}
+		result := checkEpubVersion(true, book, nil, nil)
+		if result {
+			t.Errorf("expected false (EPUB3 required) for tag %q", tag)
+		}
+	}
+}
+
+// TestCheckEpubVersion_DataAttributeRequiresEPUB3 verifies that elements with
+// data-* attributes require EPUB3.
+// Python L681: if attrib.startswith("data-"): self.generate_epub2 = False
+func TestCheckEpubVersion_DataAttributeRequiresEPUB3(t *testing.T) {
+	book := &decodedBook{
+		RenderedSections: []renderedSection{
+			{
+				Filename: "test.xhtml",
+				Root: &htmlElement{
+					Tag: "div",
+					Attrs: map[string]string{"data-custom": "value"},
+					Children: []htmlPart{
+						&htmlElement{Tag: "p", Children: []htmlPart{htmlText{Text: "hello"}}},
+					},
+				},
+			},
+		},
+	}
+	result := checkEpubVersion(true, book, nil, nil)
+	if result {
+		t.Error("expected false (EPUB3 required) for data-* attribute")
+	}
+}
+
+// TestCheckEpubVersion_EpubTypeAttributeRequiresEPUB3 verifies that elements
+// with epub:type attributes require EPUB3.
+// Python L681: if attrib in [EPUB_PREFIX, EPUB_TYPE]: self.generate_epub2 = False
+func TestCheckEpubVersion_EpubTypeAttributeRequiresEPUB3(t *testing.T) {
+	book := &decodedBook{
+		RenderedSections: []renderedSection{
+			{
+				Filename: "test.xhtml",
+				Root: &htmlElement{
+					Tag: "div",
+					Attrs: map[string]string{"epub:type": "chapter"},
+					Children: []htmlPart{
+						&htmlElement{Tag: "p", Children: []htmlPart{htmlText{Text: "hello"}}},
+					},
+				},
+			},
+		},
+	}
+	result := checkEpubVersion(true, book, nil, nil)
+	if result {
+		t.Error("expected false (EPUB3 required) for epub:type attribute")
+	}
+}
+
+// TestCheckEpubVersion_PlainReflowableReturnsTrue verifies that a plain
+// reflowable book with no EPUB3 features allows EPUB2.
+// Python: all checks pass without setting generate_epub2 to False.
+func TestCheckEpubVersion_PlainReflowableReturnsTrue(t *testing.T) {
+	book := &decodedBook{
+		RenderedSections: []renderedSection{
+			{
+				Filename: "test.xhtml",
+				Root: &htmlElement{
+					Tag: "html",
+					Children: []htmlPart{
+						&htmlElement{Tag: "head"},
+						&htmlElement{Tag: "body", Children: []htmlPart{
+							&htmlElement{Tag: "p", Children: []htmlPart{htmlText{Text: "hello"}}},
+						}},
+					},
+				},
+			},
+		},
+	}
+	sections := []epub.Section{
+		{Filename: "test.xhtml"},
+	}
+	resources := []epub.Resource{
+		{Filename: "img.jpg", MediaType: "image/jpeg"},
+	}
+	result := checkEpubVersion(true, book, sections, resources)
+	if !result {
+		t.Error("expected true (EPUB2 OK) for plain reflowable book")
 	}
 }
