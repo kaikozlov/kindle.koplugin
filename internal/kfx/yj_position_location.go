@@ -150,6 +150,12 @@ func eidsEqual(a, b interface{}) bool {
 	}
 }
 
+// eidOffsetKey is used as a map key for the equals set in conditional template processing.
+type eidOffsetKey struct {
+	EID    interface{}
+	Offset int
+}
+
 // ConditionalTemplate tracks conditional template position information for illustrated layout.
 // Port of Python ConditionalTemplate class (yj_position_location.py lines 65–85).
 type ConditionalTemplate struct {
@@ -1594,22 +1600,149 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 		}
 
 		// Handle conditional template insertion for illustrated layout stories
-		if bpl.cpiProcessingStory && len(eidCondInfo) > 0 && !bpl.cpiFixed {
-			bpl.cpiFixed = true
-			// Simplified conditional template processing
-			for len(eidCondInfo) > 0 {
-				ct := eidCondInfo[0]
-				if ct.StartEID == nil && !RANGE_OPERS[ct.Oper] {
-					ct.StartEID = eid
-					ct.StartEIDOffset = eidOffset
+		// Port of Python yj_position_location.py L209-327
+		if bpl.cpiProcessingStory && len(eidCondInfo) > 0 {
+			if !bpl.cpiFixed {
+				// One-time initialization: set start_eid for non-range operators
+				// and build the equals set. Port of Python L218-228.
+				prevEID := eid
+				prevEIDOffset := eidOffset
+				equals := map[eidOffsetKey]bool{}
+
+				for _, ct := range eidCondInfo {
+					if ct.StartEID == nil && !RANGE_OPERS[ct.Oper] {
+						ct.StartEID = eid
+						ct.StartEIDOffset = eidOffset
+						ct.EndEID = eid
+						ct.EndEIDOffset = eidOffset
+					}
+					if ct.Oper == "==" {
+						equals[eidOffsetKey{ct.StartEID, ct.StartEIDOffset}] = true
+					}
 				}
-				if ct.StartEID != nil && eidsEqual(ct.StartEID, eid) && ct.StartEIDOffset == eidOffset {
+
+				// Build moves list and reorder eid_cond_info.
+				// Port of Python L229-275.
+				moves := []int{}
+				prevEqualCTIdx := -1
+				var prevEqualCTStartEID interface{}
+				var prevEqualCTStartEIDOffset int
+				storyStartEID := eidCondInfo[len(eidCondInfo)-1].StartEID
+				storyStartEIDOffset := eidCondInfo[len(eidCondInfo)-1].StartEIDOffset
+
+				for idx, ct := range eidCondInfo {
+					if ct.Oper == "yj.collision" {
+						// $348 (collision) entries always move to front
+						moves = append(moves, idx)
+
+					} else if ct.Oper == "==" {
+						// $294 (equals) duplicate entries move to front
+						if prevEqualCTIdx == idx-1 &&
+							eidsEqual(ct.StartEID, prevEqualCTStartEID) &&
+							ct.StartEIDOffset == prevEqualCTStartEIDOffset {
+							ct.StartEID = storyStartEID
+							ct.StartEIDOffset = storyStartEIDOffset
+							ct.EndEID = storyStartEID
+							ct.EndEIDOffset = storyStartEIDOffset
+							moves = append(moves, idx)
+						} else {
+							prevEqualCTStartEID = ct.StartEID
+							prevEqualCTStartEIDOffset = ct.StartEIDOffset
+						}
+						prevEqualCTIdx = idx
+
+					} else if ct.StartEID == nil && RANGE_OPERS[ct.Oper] {
+						// Range operator: resolve start_eid using prev_eid/prev_eid_offset
+						for equals[eidOffsetKey{prevEID, prevEIDOffset}] {
+							prevEIDOffset++
+						}
+						ct.StartEID = prevEID
+						ct.StartEIDOffset = prevEIDOffset
+
+						if eidsEqual(ct.StartEID, ct.EndEID) &&
+							(ct.StartEIDOffset > ct.EndEIDOffset ||
+								(ct.Oper == "<" && ct.StartEIDOffset == ct.EndEIDOffset)) {
+							// Range ends before it starts — move to front
+							prevEID = ct.StartEID
+							prevEIDOffset = ct.StartEIDOffset
+							ct.StartEID = eid
+							ct.StartEIDOffset = eidOffset
+							moves = append(moves, idx)
+						} else {
+							prevEID = ct.EndEID
+							prevEIDOffset = ct.EndEIDOffset
+						}
+					}
+				}
+
+				// Apply moves: pop from back to front and insert at position 0
+				for i := len(moves) - 1; i >= 0; i-- {
+					idx := moves[i]
+					entry := eidCondInfo[idx]
+					eidCondInfo = append(eidCondInfo[:idx], eidCondInfo[idx+1:]...)
+					eidCondInfo = append([]*ConditionalTemplate{entry}, eidCondInfo...)
+				}
+
+				bpl.cpiFixed = true
+			}
+
+			// Best-match search: iterate ALL entries, find the one matching
+			// current eid with the lowest start_eid_offset.
+			// Port of Python L290-327.
+			for len(eidCondInfo) > 0 {
+				var ct *ConditionalTemplate
+				ctIdx := -1
+
+				for idx_, ct_ := range eidCondInfo {
+					if ct_.UseNext {
+						ct_.StartEID = eid
+						ct_.StartEIDOffset = eidOffset
+						ct_.UseNext = false
+					}
+
+					if ct_.StartEID != nil && eidsEqual(ct_.StartEID, eid) &&
+						(ct == nil || ct_.StartEIDOffset < ct.StartEIDOffset) {
+						ctIdx = idx_
+						ct = ct_
+					}
+				}
+
+				if ct == nil {
+					break
+				}
+
+				if ct.StartEIDOffset < eidOffset {
+					log.Printf("kfx: error: conditional %s is before %v+%d-%d", ct, eid, eidOffset, eidOffset+length)
+					eidCondInfo = append(eidCondInfo[:ctIdx], eidCondInfo[ctIdx+1:]...)
+
+				} else if ct.StartEIDOffset == eidOffset {
+					// Exact match — insert conditional position info
 					for _, cpo := range ct.PosInfo {
 						cpo.PID = bpl.cpiPID
 						bpl.cpiPID += cpo.Length
 						sectionPosInfo = append(sectionPosInfo, cpo)
 					}
-					eidCondInfo = eidCondInfo[1:]
+					eidCondInfo = append(eidCondInfo[:ctIdx], eidCondInfo[ctIdx+1:]...)
+
+				} else if ct.StartEIDOffset < eidOffset+length {
+					// Conditional falls inside the current chunk — split
+					splitLen := ct.StartEIDOffset - eidOffset
+					sectionPosInfo = append(sectionPosInfo, &ContentChunk{
+						PID:         bpl.cpiPID,
+						EID:         eid,
+						EIDOffset:   eidOffset,
+						Length:      splitLen,
+						SectionName: eidSection[eid],
+					})
+					length -= splitLen
+					eidOffset += splitLen
+					bpl.cpiPID += splitLen
+
+				} else if ct.StartEIDOffset == eidOffset+length {
+					// Conditional falls past the chunk — mark for next use
+					ct.UseNext = true
+					break
+
 				} else {
 					break
 				}
@@ -1703,17 +1836,21 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 				}
 			}
 
-			// Handle $141 (page templates) — Python lines 290–360
+			// Handle $141 (page templates) — Python lines 290–460
 			if ptList, ok := asSlice(v["page_templates"]); ok {
 				if bpl.HasIllustratedLayoutConditionalPageTemplate {
 					pidSave := bpl.cpiPID
+					haveRange := false
+					var lastOper string
+
 					for _, pt := range ptList {
 						extractPositionData(pt, currentEID, "page_templates", 0, 0, advance, noteRefs)
 
-						// Check for $171 condition — Python lines 303–327
 						if ptMap, ok := asMap(pt); ok {
 							if condition, ok := asSlice(ptMap["condition"]); ok &&
 								len(condition) == 3 {
+								// Conditional template ($171 condition present)
+								// Port of Python lines 412–431
 								condOp, _ := asString(condition[0])
 								if condOp == "==" || condOp == "<=" || condOp == "<" {
 									// Parse condition_eid_offset from condition[2][1]
@@ -1723,13 +1860,40 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 											eidCondInfo = append(eidCondInfo, NewConditionalTemplate(
 												anchorEID, anchorOffset, condOp,
 												copyChunkSlice(sectionPosInfo)))
+
+											if RANGE_OPERS[condOp] {
+												haveRange = true
+											}
+											lastOper = condOp
 										}
 									}
 								}
+							} else {
+								// Non-conditional template (no $171 condition) — collision entry
+								// Port of Python lines 434–447
+								nonConditionalPosInfo := copyChunkSlice(sectionPosInfo)
+
+								if haveRange {
+									var finalRangePosInfo []*ContentChunk
+									if lastOper == "<" {
+										finalRangePosInfo = nonConditionalPosInfo
+										nonConditionalPosInfo = nil
+									} else {
+										finalRangePosInfo = nil
+									}
+
+									eidCondInfo = append(eidCondInfo, NewConditionalTemplate(
+										nil, 0, "<",
+										finalRangePosInfo))
+								}
+
+								eidCondInfo = append(eidCondInfo, NewConditionalTemplate(
+									nil, 0, "yj.collision",
+									nonConditionalPosInfo))
 							}
 						}
 
-						// Clear section_pos_info after each template (Python line 358)
+						// Clear section_pos_info after each template (Python line 449)
 						sectionPosInfo = sectionPosInfo[:0]
 					}
 					bpl.cpiPID = pidSave
