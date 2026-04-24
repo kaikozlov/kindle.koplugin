@@ -5164,20 +5164,20 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 	}
 	delete(working, "selection")
 
-	// Port of Python $475 fit_text validation (yj_to_epub_content.py L669-673).
-	// Pops fit_text from the node and validates its value is "scale_fit" ($472).
+	// Port of Python $475 fit_text validation (yj_to_epub_content.py L663-668).
+	// Pops fit_text ($475) from the node and validates its value is "force" ($472).
 	// Purely diagnostic — does not modify output.
 	if fitText, exists := working["fit_text"]; exists {
-		if ftStr, ok := asString(fitText); ok && ftStr != "scale_fit" {
+		if ftStr, ok := asString(fitText); ok && ftStr != "force" {
 			log.Printf("kfx: error: container has unexpected fit_text=%s", ftStr)
 		}
 	}
 	delete(working, "fit_text")
 
-	// Port of Python $429 backdrop_style validation (yj_to_epub_content.py L682-689).
-	// Pops backdrop_style from the node, looks up the style definition, and validates
-	// that only expected keys remain (style_name, margin_top, margin_bottom).
-	// Purely diagnostic — does not modify output.
+	// Port of Python $429 backdrop_style validation (yj_to_epub_content.py L697-704).
+	// Pops backdrop_style ($429) from the node, looks up the style definition, and validates
+	// that only expected keys remain after popping style_name ($173), fill_color ($70),
+	// and fill_opacity ($72). Purely diagnostic — does not modify output.
 	if bdStyleName, exists := working["backdrop_style"]; exists {
 		if name, ok := asString(bdStyleName); ok && name != "" {
 			bdStyleContent := map[string]interface{}{}
@@ -5188,10 +5188,10 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 			} else {
 				log.Printf("kfx: error: No definition found for backdrop style: %s", name)
 			}
-			// Python pops style_name, margin_top, margin_bottom (expected keys)
+			// Python pops $173 (style_name), $70 (fill_color), $72 (fill_opacity) — expected keys
 			delete(bdStyleContent, "style_name")
-			delete(bdStyleContent, "margin_top")
-			delete(bdStyleContent, "margin_bottom")
+			delete(bdStyleContent, "fill_color")
+			delete(bdStyleContent, "fill_opacity")
 			for k := range bdStyleContent {
 				log.Printf("kfx: warning: backdrop style %s has unexpected key %q", name, k)
 			}
@@ -5228,15 +5228,15 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 	delete(working, "activate")
 	delete(working, "ordinal")
 
-	// Port of Python $69 ignore:true for fixed layout containers (yj_to_epub_content.py L621-630).
-	// When layout is "fixed" and ignore is true, adds z-index: 1 to the element style.
-	// Python: self.add_style(content_elem, {"z-index": "1"})
+	// Port of Python $69 ignore:true for fixed layout containers (yj_to_epub_content.py L614-622).
+	// When layout is "fixed" ($324) and ignore ($69) is true, Python adds z-index:1 CSS
+	// to the content element via self.add_style(content_elem, {"z-index": "1"}).
+	// We store the marker so containerClass can add z-index:1 to the element's style.
 	if ignoreVal, exists := working["ignore"]; exists {
 		ignore, _ := asBool(ignoreVal)
 		if ignore {
 			layout := asStringDefault(working["layout"])
 			if layout == "fixed" {
-				// Add z-index: 1 to the node's pending style
 				working["__ignore_zindex__"] = true
 			}
 		}
@@ -5696,6 +5696,12 @@ func (r *storylineRenderer) containerClass(node map[string]interface{}) string {
 	declarations := cssDeclarationsFromMap(cssMap)
 	if mapFontStyle(style["font_style"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
+	}
+	// Port of Python $69 ignore:true z-index addition (yj_to_epub_content.py L617).
+	// When layout is "fixed" and ignore is true, Python adds z-index:1 via
+	// self.add_style(content_elem, {"z-index": "1"}).
+	if _, hasIgnoreZIndex := node["__ignore_zindex__"]; hasIgnoreZIndex {
+		declarations = append(declarations, "z-index: 1")
 	}
 	if len(declarations) == 0 {
 		return ""

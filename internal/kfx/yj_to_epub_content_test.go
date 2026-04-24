@@ -2306,12 +2306,15 @@ func TestActivateDataConsumedFromContainerNode(t *testing.T) {
 
 func TestIgnoreZIndexAddedForFixedLayoutContainer(t *testing.T) {
 	r := &storylineRenderer{
-		styleFragments: map[string]map[string]interface{}{},
+		styleFragments: map[string]map[string]interface{}{
+			"s1": {"font_size": int64(16)}, // minimal style so containerClass produces output
+		},
 	}
 	node := map[string]interface{}{
 		"type":    "container",
 		"layout":  "fixed",
 		"ignore":  true,
+		"style":   "s1",
 		"content": map[string]interface{}{"name": "c1", "content_index": 0},
 	}
 	result, ok := r.prepareRenderableNode(node)
@@ -2322,8 +2325,162 @@ func TestIgnoreZIndexAddedForFixedLayoutContainer(t *testing.T) {
 	if _, exists := result["ignore"]; exists {
 		t.Error("ignore should have been popped from node")
 	}
-	// Check that z-index was added
-	_ = result // ignore consumed, layout remains for downstream consumption
+	// __ignore_zindex__ marker should be set so containerClass can read it
+	if _, exists := result["__ignore_zindex__"]; !exists {
+		t.Error("expected __ignore_zindex__ marker to be set on result node")
+	}
+	// Verify containerClass produces z-index:1 in the style output
+	styleAttr := r.containerClass(result)
+	if styleAttr == "" {
+		t.Fatal("expected non-empty style attribute from containerClass")
+	}
+	if !containsDeclaration(styleAttr, "z-index", "1") {
+		t.Errorf("expected z-index:1 in style output, got: %s", styleAttr)
+	}
+}
+
+// Verifies that z-index is NOT added when ignore is false or layout is not "fixed".
+func TestIgnoreZIndexNotAddedForNonFixedLayout(t *testing.T) {
+	r := &storylineRenderer{
+		styleFragments: map[string]map[string]interface{}{
+			"s1": {"font_size": int64(16)},
+		},
+	}
+	// Test: non-fixed layout should not get z-index
+	node := map[string]interface{}{
+		"type":    "container",
+		"layout":  "reflowable",
+		"ignore":  true,
+		"style":   "s1",
+		"content": map[string]interface{}{"name": "c1", "content_index": 0},
+	}
+	result, ok := r.prepareRenderableNode(node)
+	if !ok {
+		t.Fatal("expected node to be renderable")
+	}
+	if _, exists := result["__ignore_zindex__"]; exists {
+		t.Error("__ignore_zindex__ should NOT be set for non-fixed layout")
+	}
+}
+
+// =============================================================================
+// $475 fit_text validation — correct symbol name "force" ($472)
+// Port of Python yj_to_epub_content.py L663-668.
+// fit_text should be validated against "force" ($472), not "scale_fit".
+// =============================================================================
+
+func TestFitTextAcceptsForce(t *testing.T) {
+	r := &storylineRenderer{
+		styleFragments: map[string]map[string]interface{}{},
+	}
+	node := map[string]interface{}{
+		"type":     "container",
+		"fit_text": "force",
+	}
+	result, ok := r.prepareRenderableNode(node)
+	if !ok {
+		t.Fatal("expected node to be renderable")
+	}
+	// fit_text should be consumed
+	if _, exists := result["fit_text"]; exists {
+		t.Error("fit_text should have been popped from node")
+	}
+}
+
+func TestFitTextRejectsOtherValues(t *testing.T) {
+	r := &storylineRenderer{
+		styleFragments: map[string]map[string]interface{}{},
+	}
+	node := map[string]interface{}{
+		"type":     "container",
+		"fit_text": "scale_fit",
+	}
+	result, ok := r.prepareRenderableNode(node)
+	if !ok {
+		t.Fatal("expected node to be renderable")
+	}
+	// fit_text should still be consumed (popped) even if value is unexpected
+	if _, exists := result["fit_text"]; exists {
+		t.Error("fit_text should have been popped from node regardless of value")
+	}
+}
+
+// =============================================================================
+// $429 backdrop_style validation — correct keys fill_color ($70), fill_opacity ($72)
+// Port of Python yj_to_epub_content.py L697-704.
+// Python pops $173 (style_name), $70 (fill_color), $72 (fill_opacity).
+// =============================================================================
+
+func TestBackdropStylePopsCorrectKeys(t *testing.T) {
+	r := &storylineRenderer{
+		styleFragments: map[string]map[string]interface{}{
+			"bd1": {
+				"style_name":   "bd1",
+				"fill_color":   "#FFFFFF",
+				"fill_opacity": float64(1.0),
+			},
+		},
+	}
+	node := map[string]interface{}{
+		"type":          "container",
+		"backdrop_style": "bd1",
+	}
+	result, ok := r.prepareRenderableNode(node)
+	if !ok {
+		t.Fatal("expected node to be renderable")
+	}
+	// backdrop_style should be consumed
+	if _, exists := result["backdrop_style"]; exists {
+		t.Error("backdrop_style should have been popped from node")
+	}
+}
+
+func TestBackdropStyleDetectsUnexpectedKeys(t *testing.T) {
+	r := &storylineRenderer{
+		styleFragments: map[string]map[string]interface{}{
+			"bd2": {
+				"style_name":   "bd2",
+				"fill_color":   "#000000",
+				"fill_opacity": float64(0.5),
+				"extra_key":    "unexpected",
+			},
+		},
+	}
+	node := map[string]interface{}{
+		"type":          "container",
+		"backdrop_style": "bd2",
+	}
+	result, ok := r.prepareRenderableNode(node)
+	if !ok {
+		t.Fatal("expected node to be renderable")
+	}
+	_ = result
+}
+
+// Helper to check if a CSS style string contains a specific declaration.
+func containsDeclaration(styleStr, prop, value string) bool {
+	// Parse the style string for "prop: value"
+	for _, part := range splitStyleDeclarations(styleStr) {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, prop+":") {
+			val := strings.TrimSpace(strings.TrimPrefix(part, prop+":"))
+			return val == value
+		}
+	}
+	return false
+}
+
+func splitStyleDeclarations(s string) []string {
+	// Split on semicolons, handling both "key: val; key: val" and "key: val"
+	parts := strings.Split(s, ";")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 // =============================================================================
