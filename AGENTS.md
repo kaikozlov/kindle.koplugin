@@ -561,7 +561,6 @@ All test fixtures live under `REFERENCE/books/<name>/` with consistent naming:
 | `calibre.epub` | Calibre golden reference | All books |
 
 Top-level: `REFERENCE/books/drm_keys.json` — merged page keys for all 9 DRMION books.
-| Raw device files | `REFERENCE/kindle_device/Items01/` (device backups, not test fixtures) |
 
 ### Known Parity Gaps (ordered by difficulty)
 
