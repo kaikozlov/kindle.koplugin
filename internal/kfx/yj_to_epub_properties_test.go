@@ -105,6 +105,52 @@ func TestProcessContentPropertiesExtractsKnownKeys(t *testing.T) {
 	}
 }
 
+func TestConvertYJPropertiesPositionOebPageFootDropped(t *testing.T) {
+	// Python (yj_to_epub_properties.py L1101-1102):
+	//   if property == "position" and value in ["oeb-page-foot", "oeb-page-head"]:
+	//       property = "display" if self.generate_epub2 and EMIT_OEB_PAGE_PROPS else None
+	// Since Go generates EPUB3 (not EPUB2), the property should be dropped entirely —
+	// it must NOT appear as "position" in the output declarations.
+	props := map[string]interface{}{
+		"position": "footer", // mapped to "oeb-page-foot" by yjPropertyInfo value map
+	}
+	result, _ := convertYJProperties(props, nil)
+
+	if _, ok := result["position"]; ok {
+		t.Error("position:oeb-page-foot should be dropped in EPUB3 mode, but 'position' key found in declarations")
+	}
+	if _, ok := result["display"]; ok {
+		t.Error("position:oeb-page-foot should NOT be converted to display in EPUB3 mode, but 'display' key found in declarations")
+	}
+}
+
+func TestConvertYJPropertiesPositionOebPageHeadDropped(t *testing.T) {
+	// Same as above but for oeb-page-head (header).
+	props := map[string]interface{}{
+		"position": "header", // mapped to "oeb-page-head" by yjPropertyInfo value map
+	}
+	result, _ := convertYJProperties(props, nil)
+
+	if _, ok := result["position"]; ok {
+		t.Error("position:oeb-page-head should be dropped in EPUB3 mode, but 'position' key found in declarations")
+	}
+	if _, ok := result["display"]; ok {
+		t.Error("position:oeb-page-head should NOT be converted to display in EPUB3 mode, but 'display' key found in declarations")
+	}
+}
+
+func TestConvertYJPropertiesPositionRelativePreserved(t *testing.T) {
+	// Ensure normal position values (like "relative") are NOT dropped.
+	props := map[string]interface{}{
+		"position": "relative",
+	}
+	result, _ := convertYJProperties(props, nil)
+
+	if result["position"] != "relative" {
+		t.Errorf("expected position=relative, got %q", result["position"])
+	}
+}
+
 func TestConvertYJPropertiesNoFontFamily(t *testing.T) {
 	// s36C style fragment — has border properties but no $11
 	props := map[string]interface{}{

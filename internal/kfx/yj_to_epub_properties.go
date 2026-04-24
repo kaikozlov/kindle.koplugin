@@ -3830,9 +3830,14 @@ func convertYJProperties(yjProperties map[string]interface{}, resolveResource Re
 			cssName = yjPropName
 		}
 
-		// position: oeb-page-foot/oeb-page-head → display (EPUB2 handling)
+		// Python (yj_to_epub_properties.py L1101-1102):
+		//   if property == "position" and value in ["oeb-page-foot", "oeb-page-head"]:
+		//       property = "display" if self.generate_epub2 and EMIT_OEB_PAGE_PROPS else None
+		// Go generates EPUB3 (not EPUB2), and EMIT_OEB_PAGE_PROPS defaults to False,
+		// so the property is always dropped (set to None in Python). The continue
+		// skips adding this property to declarations, matching Python's behavior.
 		if cssName == "position" && (value == "oeb-page-foot" || value == "oeb-page-head") {
-			continue // skip for now (EPUB3 path)
+			continue
 		}
 
 		// Python fix_language (yj_to_epub_properties.py:2089): normalize language tag.
