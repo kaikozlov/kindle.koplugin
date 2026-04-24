@@ -44,7 +44,10 @@ func applyMetadata(book *decodedBook, value map[string]interface{}) {
 					book.Authors = append([]string{v}, book.Authors...)
 				}
 			case "kindle_title_metadata/author_pronunciation":
-				// Python stores in self.author_pronunciations; not needed for EPUB output.
+				// Python (L193-194): if value: self.author_pronunciations.insert(0, value)
+				if v, ok := asString(entry["value"]); ok && v != "" {
+					book.AuthorPronunciations = append([]string{v}, book.AuthorPronunciations...)
+				}
 			case "kindle_title_metadata/language", "language":
 				if v, ok := asString(entry["value"]); ok && v != "" {
 					book.Language = v
@@ -104,7 +107,10 @@ func applyMetadata(book *decodedBook, value map[string]interface{}) {
 					book.IsSample = v
 				}
 			case "kindle_title_metadata/title_pronunciation":
-				// Python (L232-234): self.title_pronunciation = value; not needed for EPUB.
+				// Python (L232-234): if not self.title_pronunciation: self.title_pronunciation = value.strip()
+				if v, ok := asString(entry["value"]); ok && v != "" && book.TitlePronunciation == "" {
+					book.TitlePronunciation = strings.TrimSpace(v)
+				}
 			case "kindle_title_metadata/periodicals_generation_V2":
 				// Python (L222-224): set_book_type("magazine"), virtual_panels_allowed = True.
 				// Book type detection handles this via detectBookType.

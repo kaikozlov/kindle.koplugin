@@ -633,3 +633,148 @@ func TestApplyDocumentData_NotScribeNotebook(t *testing.T) {
 		t.Error("expected IsScribeNotebook=false when nmdl.template_id is absent")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Author and title pronunciation storage
+// Python yj_to_epub_metadata.py L193-194: author_pronunciation → self.author_pronunciations
+// Python yj_to_epub_metadata.py L232-234: title_pronunciation → self.title_pronunciation
+// ---------------------------------------------------------------------------
+
+func TestApplyMetadata_AuthorPronunciation_Stored(t *testing.T) {
+	// Python (L193-194): if value: self.author_pronunciations.insert(0, value)
+	book := &decodedBook{}
+	meta := makeCategorisedMetadata([]struct {
+		category string
+		key      string
+		value    interface{}
+	}{
+		{"kindle_title_metadata", "author_pronunciation", "author_pron_01.mp3"},
+	})
+
+	applyMetadata(book, meta)
+
+	if len(book.AuthorPronunciations) != 1 {
+		t.Fatalf("expected 1 author pronunciation, got %d", len(book.AuthorPronunciations))
+	}
+	if book.AuthorPronunciations[0] != "author_pron_01.mp3" {
+		t.Errorf("expected author pronunciation 'author_pron_01.mp3', got %q", book.AuthorPronunciations[0])
+	}
+}
+
+func TestApplyMetadata_AuthorPronunciation_MultiplePrepended(t *testing.T) {
+	// Python uses insert(0, value) which prepends each pronunciation.
+	// Multiple entries should be prepended in order, so the last one processed is first in list.
+	book := &decodedBook{}
+	meta := makeCategorisedMetadata([]struct {
+		category string
+		key      string
+		value    interface{}
+	}{
+		{"kindle_title_metadata", "author_pronunciation", "first_pron.mp3"},
+		{"kindle_title_metadata", "author_pronunciation", "second_pron.mp3"},
+	})
+
+	applyMetadata(book, meta)
+
+	if len(book.AuthorPronunciations) != 2 {
+		t.Fatalf("expected 2 author pronunciations, got %d", len(book.AuthorPronunciations))
+	}
+	// Second entry is prepended, so it appears first
+	if book.AuthorPronunciations[0] != "second_pron.mp3" {
+		t.Errorf("expected first pronunciation 'second_pron.mp3' (prepended), got %q", book.AuthorPronunciations[0])
+	}
+	if book.AuthorPronunciations[1] != "first_pron.mp3" {
+		t.Errorf("expected second pronunciation 'first_pron.mp3', got %q", book.AuthorPronunciations[1])
+	}
+}
+
+func TestApplyMetadata_AuthorPronunciation_EmptyValueIgnored(t *testing.T) {
+	// Python (L193): if value: — empty values are skipped
+	book := &decodedBook{}
+	meta := makeCategorisedMetadata([]struct {
+		category string
+		key      string
+		value    interface{}
+	}{
+		{"kindle_title_metadata", "author_pronunciation", ""},
+	})
+
+	applyMetadata(book, meta)
+
+	if len(book.AuthorPronunciations) != 0 {
+		t.Errorf("expected 0 author pronunciations for empty value, got %d", len(book.AuthorPronunciations))
+	}
+}
+
+func TestApplyMetadata_TitlePronunciation_Stored(t *testing.T) {
+	// Python (L232-234): if not self.title_pronunciation: self.title_pronunciation = value.strip()
+	book := &decodedBook{}
+	meta := makeCategorisedMetadata([]struct {
+		category string
+		key      string
+		value    interface{}
+	}{
+		{"kindle_title_metadata", "title_pronunciation", "title_pron.mp3"},
+	})
+
+	applyMetadata(book, meta)
+
+	if book.TitlePronunciation != "title_pron.mp3" {
+		t.Errorf("expected TitlePronunciation='title_pron.mp3', got %q", book.TitlePronunciation)
+	}
+}
+
+func TestApplyMetadata_TitlePronunciation_FirstWins(t *testing.T) {
+	// Python (L232): if not self.title_pronunciation: — first pronunciation wins
+	book := &decodedBook{}
+	meta := makeCategorisedMetadata([]struct {
+		category string
+		key      string
+		value    interface{}
+	}{
+		{"kindle_title_metadata", "title_pronunciation", "first_pron.mp3"},
+		{"kindle_title_metadata", "title_pronunciation", "second_pron.mp3"},
+	})
+
+	applyMetadata(book, meta)
+
+	if book.TitlePronunciation != "first_pron.mp3" {
+		t.Errorf("expected TitlePronunciation='first_pron.mp3' (first wins), got %q", book.TitlePronunciation)
+	}
+}
+
+func TestApplyMetadata_TitlePronunciation_PreserveExisting(t *testing.T) {
+	// Python (L232): if not self.title_pronunciation: — existing value is preserved
+	book := &decodedBook{TitlePronunciation: "existing_pron.mp3"}
+	meta := makeCategorisedMetadata([]struct {
+		category string
+		key      string
+		value    interface{}
+	}{
+		{"kindle_title_metadata", "title_pronunciation", "new_pron.mp3"},
+	})
+
+	applyMetadata(book, meta)
+
+	if book.TitlePronunciation != "existing_pron.mp3" {
+		t.Errorf("expected TitlePronunciation='existing_pron.mp3' (preserved), got %q", book.TitlePronunciation)
+	}
+}
+
+func TestApplyMetadata_TitlePronunciation_EmptyValueIgnored(t *testing.T) {
+	// Python (L232-234): value.strip() — empty values result in empty string, guard skips
+	book := &decodedBook{}
+	meta := makeCategorisedMetadata([]struct {
+		category string
+		key      string
+		value    interface{}
+	}{
+		{"kindle_title_metadata", "title_pronunciation", "  "},
+	})
+
+	applyMetadata(book, meta)
+
+	if book.TitlePronunciation != "" {
+		t.Errorf("expected empty TitlePronunciation for whitespace-only value, got %q", book.TitlePronunciation)
+	}
+}

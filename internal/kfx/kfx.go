@@ -36,8 +36,10 @@ func (e *UnsupportedError) Error() string {
 
 type decodedBook struct {
 	Title                    string
+	TitlePronunciation       string
 	Language                 string
 	Authors                  []string
+	AuthorPronunciations     []string
 	Identifier               string
 	Published                string
 	Description              string
