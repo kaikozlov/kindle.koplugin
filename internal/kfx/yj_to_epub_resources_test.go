@@ -1093,6 +1093,96 @@ func TestBuildResources_UnusedFontFile_WarnsAndManifests(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// VAL-FIX-009: is_kpf_prepub font raw_media fallback
+// Python: yj_to_epub_resources.py L297-298
+//
+// Python separates raw_fonts ($418) from raw_media ($417). For KPF prepub books,
+// fonts may exist in raw_media instead of raw_fonts. Python's fallback:
+//   elif location in raw_fonts or (self.book.is_kpf_prepub and location in raw_media):
+//       raw_font = raw_fonts.pop(location, None) or raw_media.pop(location)
+//
+// Go stores both bcRawFont and bcRawMedia entries in a unified RawFragments map,
+// so the fallback is implicit — raw[location] finds fonts from either source.
+// This test verifies that font data stored as bcRawMedia (not bcRawFont) is found
+// by the font lookup in buildResources.
+// ---------------------------------------------------------------------------
+
+func TestBuildResources_FontInRawMedia_FoundByUnifiedMap(t *testing.T) {
+	// Simulate a KPF prepub scenario: font data lives in bcRawMedia ($417),
+	// not in a dedicated bcRawFont ($418) entry. In Go, both go into RawFragments.
+	// The font lookup uses raw[location] which finds data from either source.
+	book := &decodedBook{IsKpfPrepub: true}
+
+	fonts := map[string]fontFragment{
+		"media_font_loc": {Location: "media_font_loc", Family: "PrepubFont"},
+	}
+
+	// Font data only in raw (simulating bcRawMedia, no bcRawFont entry)
+	fontData := createTestTTF()
+	raw := map[string][]byte{
+		"media_font_loc": fontData,
+	}
+
+	rawOrder := []rawBlob{
+		{ID: "media_font_loc", Data: fontData},
+	}
+
+	resources, _, stylesheet, _ := buildResources(book, nil, fonts, raw, rawOrder, symOriginal)
+
+	// Font should be found and included in output
+	foundFont := false
+	for _, r := range resources {
+		if bytes.Equal(r.Data, fontData) {
+			foundFont = true
+			break
+		}
+	}
+	if !foundFont {
+		t.Fatal("expected font data from raw_media (bcRawMedia) to be found in output resources")
+	}
+
+	// Stylesheet should contain @font-face with PrepubFont family
+	if !strings.Contains(stylesheet, "PrepubFont") {
+		t.Fatalf("expected stylesheet to contain 'PrepubFont', got:\n%s", stylesheet)
+	}
+}
+
+func TestBuildResources_FontInRawMedia_NotFoundWithoutUnifiedMap(t *testing.T) {
+	// Verify that when font data is NOT in the raw map, it falls back to fontPool.
+	// This tests the positional fallback (nextFontBlob) rather than raw[location].
+	book := &decodedBook{IsKpfPrepub: false}
+
+	fontData := createTestTTF()
+	fonts := map[string]fontFragment{
+		"some_location": {Location: "some_location", Family: "FallbackFont"},
+	}
+
+	// Empty raw map — font must come from fontPool via positional match
+	raw := map[string][]byte{}
+	rawOrder := []rawBlob{
+		{ID: "unmatched_id", Data: fontData},
+	}
+
+	resources, _, stylesheet, _ := buildResources(book, nil, fonts, raw, rawOrder, symOriginal)
+
+	// Font should still be found via fontPool fallback
+	foundFont := false
+	for _, r := range resources {
+		if bytes.Equal(r.Data, fontData) {
+			foundFont = true
+			break
+		}
+	}
+	if !foundFont {
+		t.Fatal("expected font data to be found via fontPool fallback")
+	}
+
+	if !strings.Contains(stylesheet, "FallbackFont") {
+		t.Fatalf("expected stylesheet to contain 'FallbackFont', got:\n%s", stylesheet)
+	}
+}
+
 func TestGetPDFPageImage_MultiPagePDF_ExtractsCorrectPage(t *testing.T) {
 	// Python resources.py:370 — pdf.pages[page_num - 1]
 	// Verify that extraction targets the correct page number.

@@ -133,6 +133,16 @@ type decodedBook struct {
 	// (yj_to_epub_navigation.py L107).
 	IsScribeNotebook bool
 
+	// IsKpfPrepub is true when the book was loaded from a KPF container (Kindle Previewer export)
+	// that does not have final metadata (no ASIN, asset_id, cde_content_type, or content_id).
+	// Python sets this in kpf_container.py L216, then clears it at L223 if those metadata keys exist.
+	// Go processes KFX containers directly (not KPF), so this is always false in the normal pipeline.
+	// Design difference: Python separates raw_fonts ($418) from raw_media ($417) and uses is_kpf_prepub
+	// to fall back to raw_media for font lookup. Go stores both in a unified RawFragments map, so
+	// the fallback is implicit — raw[location] finds fonts from either source.
+	// Port of Python self.is_kpf_prepub (kpf_container.py L216-223, yj_to_epub_resources.py L297-298).
+	IsKpfPrepub bool
+
 	// GenerateEpub2 is true when the book content allows EPUB2 output.
 	// Set by checkEpubVersion after rendering. When false, EPUB3 features are used.
 	// Python: self.generate_epub2 (epub_output.py L268, L654-684).

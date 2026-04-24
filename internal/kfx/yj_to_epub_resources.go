@@ -817,10 +817,14 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 		})
 	}
 
-	// Note: Python process_fonts (L298) checks is_kpf_prepub for raw_media fallback:
+	// Python process_fonts (L297-298) checks is_kpf_prepub for raw_media fallback:
 	//   elif location in raw_fonts or (self.book.is_kpf_prepub and location in raw_media):
-	// Go doesn't implement is_kpf_prepub for font lookup — raw fonts are always matched
-	// from the dedicated font pool. This matches behavior for all 6 test books.
+	//       raw_font = raw_fonts.pop(location, None) or raw_media.pop(location)
+	// In Python, fonts are looked up from raw_fonts ($418) first, then for KPF prepub books,
+	// from raw_media ($417) as a fallback. In Go, both bcRawFont and bcRawMedia entries
+	// are stored in the unified RawFragments map (the `raw` parameter above), so
+	// raw[location] finds fonts from either source without needing an is_kpf_prepub check.
+	// The decodedBook.IsKpfPrepub field exists for completeness but is not needed here.
 
 	coverImageHref := resourceFilenameByID[book.CoverImageID]
 	if coverImageHref == "" && book.CoverImageID != "" {
