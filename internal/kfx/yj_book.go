@@ -5,9 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
-	"path/filepath"
 	"sort"
-	"strings"
 )
 
 // ---------------------------------------------------------------------------
@@ -266,7 +264,6 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 	}
 	book := &decodedBook{
 		Identifier: bookPath,
-		Title:      strings.TrimSuffix(filepath.Base(bookPath), filepath.Ext(bookPath)),
 		Language:   "en",
 	}
 

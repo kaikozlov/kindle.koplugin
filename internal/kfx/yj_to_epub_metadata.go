@@ -35,11 +35,7 @@ func applyMetadata(book *decodedBook, value map[string]interface{}) {
 			switch catKey {
 			case "kindle_title_metadata/title":
 				// Python (L230): if not self.title: self.title = value.strip()
-				// Note: In Python's process_metadata_item, the title guard prevents overwriting.
-				// In Go's applyMetadata, each categorised_metadata entry is iterated once in order,
-				// so the first title entry wins. However, keeping the overwrite behavior (no guard)
-				// matches the existing Go behavior which produced correct EPUB output for all test books.
-				if v, ok := asString(entry["value"]); ok && v != "" {
+				if v, ok := asString(entry["value"]); ok && v != "" && book.Title == "" {
 					book.Title = strings.TrimSpace(v)
 				}
 			case "kindle_title_metadata/author":
@@ -86,24 +82,33 @@ func applyMetadata(book *decodedBook, value map[string]interface{}) {
 					book.Identifier = v
 				}
 			case "kindle_title_metadata/cde_content_type", "cde_content_type":
-				// Python (L202-206): sets cde_content_type, MAGZ→magazine, EBSP→sample.
+				// Python (L201-206): sets cde_content_type, MAGZ→magazine, EBSP→sample.
 				// Book type detection is handled by detectBookType in content processing.
+				if v, ok := asString(entry["value"]); ok {
+					book.CDEContentType = v
+					if v == "EBSP" {
+						book.IsSample = true
+					}
+				}
 			case "kindle_title_metadata/dictionary_lookup":
 				// Python (L213-217): sets is_dictionary, source_language, target_language.
-				// Dictionary support is handled by yj_position_location.go; log for awareness.
-				fmt.Fprintf(os.Stderr, "kfx: dictionary_lookup metadata present (dictionary book)\n")
+				book.IsDictionary = true
 			case "kindle_title_metadata/is_dictionary":
 				// Python (L236): self.is_dictionary = value
-				fmt.Fprintf(os.Stderr, "kfx: is_dictionary metadata: %v\n", entry["value"])
+				if v, ok := asBool(entry["value"]); ok {
+					book.IsDictionary = v
+				}
 			case "kindle_title_metadata/is_sample":
 				// Python (L238): self.is_sample = value
-				fmt.Fprintf(os.Stderr, "kfx: is_sample metadata: %v\n", entry["value"])
+				if v, ok := asBool(entry["value"]); ok {
+					book.IsSample = v
+				}
 			case "kindle_title_metadata/title_pronunciation":
 				// Python (L232-234): self.title_pronunciation = value; not needed for EPUB.
 			case "kindle_title_metadata/periodicals_generation_V2":
 				// Python (L222-224): set_book_type("magazine"), virtual_panels_allowed = True.
 				// Book type detection handles this via detectBookType.
-				fmt.Fprintf(os.Stderr, "kfx: periodicals_generation_V2 metadata present (magazine)\n")
+				book.VirtualPanelsAllowed = true
 			case "kindle_ebook_metadata/book_orientation_lock":
 				// Python (L227-229): check for conflict with document_data orientation_lock.
 				if v, ok := asString(entry["value"]); ok && v != "" {
@@ -113,37 +118,55 @@ func applyMetadata(book *decodedBook, value map[string]interface{}) {
 					book.OrientationLock = v
 				}
 			case "kindle_capability_metadata/yj_fixed_layout":
-				// Python (L259-267): fixed_layout=True; value==1 pass, 2→pdf_backed+print_replica,
-				// 3→pdf_backed+pdf_backed_fixed_layout+virtual_panels.
+				// Python (L249-267): fixed_layout=True; value==1 pass, 2→pdf_backed+print_replica,
+				// 3→pdf_backed+pdf_backed_fixed_layout+virtual_panels_allowed.
 				if v, ok := asInt(entry["value"]); ok && v > 0 {
 					book.FixedLayout = true
+					switch v {
+					case 2:
+						book.IsPDFBacked = true
+						book.IsPrintReplica = true
+					case 3:
+						book.IsPDFBacked = true
+						book.IsPDFBackedFixedLayout = true
+						book.VirtualPanelsAllowed = true
+					}
 				}
 			case "kindle_capability_metadata/yj_illustrated_layout":
 				// Python (L274-275): illustrated_layout=True, html_cover=True.
 				if v, ok := asBool(entry["value"]); ok && v {
 					book.IllustratedLayout = true
+					book.HTMLCover = true
 				}
 			case "kindle_capability_metadata/yj_facing_page", "kindle_capability_metadata/yj_double_page_spread":
 				// Python (L268-270): set_book_type("comic").
 				// Book type detection handled by detectBookType.
 			case "kindle_capability_metadata/yj_publisher_panels":
-				// Python (L262-266): set_book_type("comic"); value==0→virtual_panels, else→region_magnification.
+				// Python (L259-266): set_book_type("comic"); value==0→virtual_panels_allowed, else→region_magnification.
 				// Book type detection handled by detectBookType.
+				if v, ok := asInt(entry["value"]); ok {
+					if v == 0 {
+						book.VirtualPanelsAllowed = true
+					} else {
+						book.RegionMagnification = true
+					}
+				}
 			case "kindle_capability_metadata/continuous_popup_progression":
 				// Python (L242-247): virtual_panels_allowed=True; value==0→comic, value==1→children.
-				fmt.Fprintf(os.Stderr, "kfx: continuous_popup_progression capability: %v\n", entry["value"])
+				book.VirtualPanelsAllowed = true
 			case "kindle_capability_metadata/yj_forced_continuous_scroll":
 				// Python (L250-251): self.scrolled_continuous = True
-				fmt.Fprintf(os.Stderr, "kfx: yj_forced_continuous_scroll capability present\n")
+				book.ScrolledContinuous = true
 			case "kindle_capability_metadata/yj_guided_view_native":
 				// Python (L253): self.guided_view_native = True
-				fmt.Fprintf(os.Stderr, "kfx: yj_guided_view_native capability present\n")
+				book.GuidedViewNative = true
 			case "kindle_capability_metadata/yj_has_text_popups":
 				// Python (L255-257): set_book_type("children"), region_magnification=True
-				fmt.Fprintf(os.Stderr, "kfx: yj_has_text_popups capability present (children book)\n")
+				book.RegionMagnification = true
 			case "kindle_capability_metadata/yj_textbook":
 				// Python (L271-273): is_pdf_backed=True, is_print_replica=True
-				fmt.Fprintf(os.Stderr, "kfx: yj_textbook capability present (print replica)\n")
+				book.IsPDFBacked = true
+				book.IsPrintReplica = true
 			case "kindle_title_metadata/support_landscape":
 				// Python (L286): if value is False and self.orientation_lock == "none".
 				// Go uses "" as the "none" default (when $433 is absent), but applyDocumentData
@@ -310,6 +333,7 @@ func applyContentFeatures(book *decodedBook, value map[string]interface{}) {
 		// Fallback: generic recursive search for illustrated_layout / fixed_layout feature names.
 		if hasNamedFeature(value, "yj.illustrated_layout") {
 			book.IllustratedLayout = true
+			book.HTMLCover = true
 		}
 		if hasNamedFeature(value, "yj_fixed_layout") || hasNamedFeature(value, "yj_non_pdf_fixed_layout") || hasNamedFeature(value, "yj_pdf_backed_fixed_layout") {
 			book.FixedLayout = true
@@ -329,6 +353,7 @@ func applyContentFeatures(book *decodedBook, value map[string]interface{}) {
 			book.FixedLayout = true
 		case "kindle_capability_metadata/yj_illustrated_layout":
 			book.IllustratedLayout = true
+			book.HTMLCover = true
 		}
 	}
 
@@ -504,6 +529,12 @@ func applyMetadataItem(book *decodedBook, key string, value interface{}) {
 	case "cde_content_type":
 		// Python (L201-206): MAGZ→magazine, EBSP→sample.
 		// Book type detection handled by detectBookType.
+		if s, ok := asString(value); ok {
+			book.CDEContentType = s
+			if s == "EBSP" {
+				book.IsSample = true
+			}
+		}
 	case "reading_orders":
 		// Python (L276-278): if not self.reading_orders: self.reading_orders = value
 		// Already handled by readSectionOrder in organizeFragments.

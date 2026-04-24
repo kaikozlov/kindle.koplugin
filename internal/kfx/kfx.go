@@ -65,6 +65,55 @@ type decodedBook struct {
 	// used to resolve "default" font names in KFX data. Port of Python
 	// KFX_EPUB_Properties.default_font_family (yj_to_epub_metadata.py L110).
 	DefaultFontFamily string
+
+	// --- Book type flags (set by applyMetadata, propagated to content processing) ---
+	// Port of Python GAP 4 / N2-N7: book type flag propagation from yj_to_epub_metadata.py.
+
+	// CDEContentType stores the raw cde_content_type value (e.g. "MAGZ", "EBSP", "EBOK").
+	// Python L201-206: self.cde_content_type = value; MAGZ→magazine, EBSP→sample.
+	CDEContentType string
+
+	// IsDictionary is true for dictionary books (kindle_title_metadata/dictionary_lookup or is_dictionary).
+	// Python L213-217, L236.
+	IsDictionary bool
+
+	// IsSample is true when cde_content_type is "EBSP" or is_sample metadata is true.
+	// Python L206, L238.
+	IsSample bool
+
+	// ScrolledContinuous is true when yj_forced_continuous_scroll capability is present.
+	// Python L250-251.
+	ScrolledContinuous bool
+
+	// GuidedViewNative is true when yj_guided_view_native capability is present.
+	// Python L253.
+	GuidedViewNative bool
+
+	// RegionMagnification is true when yj_has_text_popups or yj_publisher_panels (non-zero)
+	// capability is present. Controls magnification region processing.
+	// Python L255-257, L265-266.
+	RegionMagnification bool
+
+	// IsPDFBacked is true when yj_fixed_layout==2 or ==3, or yj_textbook capability is present.
+	// Python L260, L263, L272.
+	IsPDFBacked bool
+
+	// IsPrintReplica is true when yj_fixed_layout==2 or yj_textbook (and not fixed_layout==3).
+	// Python L260, L272.
+	IsPrintReplica bool
+
+	// IsPDFBackedFixedLayout is true when yj_fixed_layout==3.
+	// Python L263.
+	IsPDFBackedFixedLayout bool
+
+	// VirtualPanelsAllowed is true for comic books with continuous_popup_progression or
+	// yj_publisher_panels==0 or yj_fixed_layout==3.
+	// Python L243, L265, L264.
+	VirtualPanelsAllowed bool
+
+	// HTMLCover is true when yj_illustrated_layout is present.
+	// Python L274-275: self.illustrated_layout = self.html_cover = True.
+	HTMLCover bool
 }
 
 type renderedStoryline struct {
