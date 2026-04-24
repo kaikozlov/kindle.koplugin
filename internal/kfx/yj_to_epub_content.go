@@ -4336,6 +4336,15 @@ func (r *storylineRenderer) renderTableRow(node map[string]interface{}, depth in
 	for _, child := range children {
 		cellNode, ok := asMap(child)
 		if !ok {
+			// Port of Python table_row child promotion (yj_to_epub_content.py L811-826):
+			// Bare strings or unexpected types in content_list get wrapped in <td>.
+			// Python: for idx, child_elem in enumerate(list(content_elem)):
+			//   if child_elem.tag == "div": child_elem.tag = "td"
+			//   elif child_elem.tag != "td": wrap in <td>
+			if text, ok := asString(child); ok && text != "" {
+				cell := &htmlElement{Tag: "td", Children: []htmlPart{htmlText{Text: text}}}
+				row.Children = append(row.Children, cell)
+			}
 			continue
 		}
 		cell := r.renderTableCell(cellNode, depth+1)
@@ -5154,6 +5163,16 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 		}
 	}
 	delete(working, "selection")
+
+	// Port of Python $475 fit_text validation (yj_to_epub_content.py L669-673).
+	// Pops fit_text from the node and validates its value is "scale_fit" ($472).
+	// Purely diagnostic — does not modify output.
+	if fitText, exists := working["fit_text"]; exists {
+		if ftStr, ok := asString(fitText); ok && ftStr != "scale_fit" {
+			log.Printf("kfx: error: container has unexpected fit_text=%s", ftStr)
+		}
+	}
+	delete(working, "fit_text")
 
 	// Port of Python $429 backdrop_style validation (yj_to_epub_content.py L682-689).
 	// Pops backdrop_style from the node, looks up the style definition, and validates
