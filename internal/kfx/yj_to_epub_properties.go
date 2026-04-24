@@ -712,6 +712,14 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 		})
 	}
 
+	// Ported from Python consolidate_html (epub_output.py:742-775):
+	// Merge adjacent inline elements with identical attributes, then strip empty
+	// <span> tags with no attributes. Must run before beautifyHTML (Python calls
+	// consolidate_html at L700 before beautify_html at L703).
+	for i := range book.RenderedSections {
+		consolidateHTML(book.RenderedSections[i].Root)
+	}
+
 	// Ported from Python beautify_html (epub_output.py:783-789):
 	// Strip spans with no attributes (left over after REMOVE_EMPTY_NAMED_CLASSES).
 	for i := range book.RenderedSections {

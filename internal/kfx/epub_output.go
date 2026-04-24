@@ -161,6 +161,229 @@ func promoteCoverSectionFromGuide(sections []string, guideEntries []guideEntry, 
 	}
 	return result
 }
+// consolidateHTML merges adjacent inline elements with identical attributes and
+// strips empty <span> tags with no attributes. Ported from Python's consolidate_html
+// (epub_output.py L742-775).
+//
+// The merge logic:
+//  1. For each direct child of <body>, iterate descendants looking for inline elements
+//     (a, b, em, i, span, strong, sub, sup, u) that have a next sibling with the same
+//     tag and identical attributes.
+//  2. If the current element has no "tail" (no text between its closing tag and the
+//     next sibling), merge the next sibling into it: move text, children, and tail.
+//  3. Repeat until no more merges are possible.
+//  4. Strip empty <span> elements with no attributes.
+func consolidateHTML(body *htmlElement) {
+	if body == nil {
+		return
+	}
+
+	// Phase 1: Merge adjacent inline elements with identical attributes.
+	// Python: epub_output.py L743-770.
+	inlineTags := map[string]bool{
+		"a": true, "b": true, "em": true, "i": true,
+		"span": true, "strong": true, "sub": true, "sup": true, "u": true,
+	}
+
+	for _, topChild := range body.Children {
+		topElem, ok := topChild.(*htmlElement)
+		if !ok {
+			continue
+		}
+		// Python: `changed = True; while changed:` — retry until stable
+		for {
+			changed := false
+			// Walk all descendants depth-first (Python: toptag.iterdescendants())
+			consolidateWalk(topElem, inlineTags, &changed)
+			if !changed {
+				break
+			}
+		}
+	}
+
+	// Phase 2: Strip empty <span> tags with no attributes.
+	// Python: epub_output.py L773-775 — uses TEMP_TAG + strip_tags.
+	// Note: beautifyHTML's Phase 1 already strips ALL <span> tags with no attributes
+	// (not just empty ones), so this phase is partially redundant. However, we
+	// implement it faithfully to handle the case where consolidateHTML is called
+	// without beautifyHTML. We only strip truly empty spans (no children) to match
+	// Python's strip_tags behavior which unwraps spans but preserves their content.
+	stripEmptySpansNoAttrs(body)
+}
+
+// consolidateWalk walks all descendants of elem looking for mergeable inline elements.
+// When a merge happens, sets *changed to true and returns immediately (Python's
+// `if changed: break` pattern).
+func consolidateWalk(elem *htmlElement, inlineTags map[string]bool, changed *bool) {
+	for _, child := range elem.Children {
+		childElem, ok := child.(*htmlElement)
+		if !ok {
+			continue
+		}
+		if !inlineTags[childElem.Tag] {
+			// Not an inline element — recurse into its children
+			consolidateWalk(childElem, inlineTags, changed)
+			if *changed {
+				return
+			}
+			continue
+		}
+
+		// This is an inline element. Try to merge with next siblings.
+		// We need the parent to manipulate children.
+		consolidateTryMerge(childElem, elem, inlineTags, changed)
+		if *changed {
+			return
+		}
+		// Also recurse into this element's children
+		consolidateWalk(childElem, inlineTags, changed)
+		if *changed {
+			return
+		}
+	}
+}
+
+// consolidateTryMerge tries to merge consecutive siblings of the same tag and
+// attributes into childElem. parent is childElem's parent.
+func consolidateTryMerge(childElem, parent *htmlElement, inlineTags map[string]bool, changed *bool) {
+	for {
+		// Find the index of childElem in parent's Children
+		childIdx := -1
+		for i, c := range parent.Children {
+			if c == childElem {
+				childIdx = i
+				break
+			}
+		}
+		if childIdx < 0 || childIdx+1 >= len(parent.Children) {
+			return // no next sibling
+		}
+
+		// Python: `while (not e.tail) and (n is not None) and n.tag == e.tag
+		//           and sorted(attrs) == sorted(attrs)`
+		//
+		// In Go's model, "e.tail" is represented as a text htmlPart immediately
+		// after the element in the parent's Children array. If the next part is a
+		// text node (not an element), that's equivalent to Python's e.tail being set,
+		// so we stop merging.
+		nextPart := parent.Children[childIdx+1]
+		nextElem, ok := nextPart.(*htmlElement)
+		if !ok {
+			// Next sibling is text — equivalent to e.tail being set in Python.
+			// Python condition `not e.tail` is false, so stop.
+			return
+		}
+
+		// Check: same tag and identical attributes
+		if nextElem.Tag != childElem.Tag {
+			return
+		}
+		if !attrsEqual(childElem.Attrs, nextElem.Attrs) {
+			return
+		}
+
+		// Merge nextElem into childElem.
+		// Python L753-762: merge n.text into e, move n's children to e.
+		mergeInto(childElem, nextElem)
+
+		// Remove nextElem from parent. Python: `n.getparent().remove(n)`
+		parent.Children = append(parent.Children[:childIdx+1], parent.Children[childIdx+2:]...)
+
+		// Python L764: `if n.tail: e.tail = n.tail`
+		// In our model, nextElem's "tail" would be a text node after nextElem
+		// in parent's Children. Since we removed nextElem, any text that was after
+		// it is now after childElem, which is correct. No action needed — the text
+		// part naturally follows childElem now.
+
+		*changed = true
+		// Continue the while loop — check next sibling after childElem
+	}
+}
+
+// mergeInto merges src element's text and children into dst element.
+// Python: epub_output.py L753-762.
+func mergeInto(dst, src *htmlElement) {
+	// Python L753-757: merge n.text into e
+	// In our model, src's "text" is its first child if it's a htmlText.
+	srcText := ""
+	if len(src.Children) > 0 {
+		if txt, ok := src.Children[0].(htmlText); ok {
+			srcText = txt.Text
+			src.Children = src.Children[1:]
+		} else if txt, ok := src.Children[0].(*htmlText); ok {
+			srcText = txt.Text
+			src.Children = src.Children[1:]
+		}
+	}
+
+	if srcText != "" {
+		if len(dst.Children) > 0 {
+			// Python L755: `tt = e[-1]; tt.tail = (tt.tail + n.text) if tt.tail else n.text`
+			// Append to the last child's text
+			lastChild := dst.Children[len(dst.Children)-1]
+			switch lc := lastChild.(type) {
+			case *htmlText:
+				lc.Text += srcText
+			case htmlText:
+				// htmlText is a value type — need to replace
+				dst.Children[len(dst.Children)-1] = htmlText{Text: lc.Text + srcText}
+			case *htmlElement:
+				// Python appends to last child's tail. In our model, append a text node.
+				dst.Children = append(dst.Children, htmlText{Text: srcText})
+			}
+		} else {
+			// Python L757: `e.text = (e.text + n.text) if e.text else n.text`
+			dst.Children = append(dst.Children, htmlText{Text: srcText})
+		}
+	}
+
+	// Python L759-762: move all children from n to e
+	for _, c := range src.Children {
+		dst.Children = append(dst.Children, c)
+	}
+	src.Children = nil
+}
+
+// attrsEqual compares two attribute maps for equality.
+func attrsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
+}
+
+// stripEmptySpansNoAttrs removes <span> elements with no attributes and no children.
+// Python: epub_output.py L773-775 — `e.tag = TEMP_TAG; etree.strip_tags(body, TEMP_TAG)`.
+func stripEmptySpansNoAttrs(elem *htmlElement) {
+	if elem == nil {
+		return
+	}
+	newChildren := make([]htmlPart, 0, len(elem.Children))
+	for _, child := range elem.Children {
+		ch, ok := child.(*htmlElement)
+		if !ok {
+			newChildren = append(newChildren, child)
+			continue
+		}
+		if ch.Tag == "span" && len(ch.Attrs) == 0 && len(ch.Children) == 0 {
+			// Skip this empty span
+			continue
+		}
+		newChildren = append(newChildren, child)
+	}
+	elem.Children = newChildren
+	for _, child := range elem.Children {
+		if el, ok := child.(*htmlElement); ok {
+			stripEmptySpansNoAttrs(el)
+		}
+	}
+}
+
 func beautifyHTML(root *htmlElement) {
 	if root == nil {
 		return
