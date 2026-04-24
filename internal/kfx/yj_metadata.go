@@ -650,6 +650,380 @@ func getPageCount(cat *fragmentCatalog) int {
 }
 
 // ---------------------------------------------------------------------------
+// checkCoverSectionAndStoryline — Python yj_metadata.py:648-791
+//
+// Validates cover section structure. Checks section template types, resolves
+// cover storyline images, validates page template layouts, and can modify the
+// cover resource. Returns (resourceName, coverEID) on success, or an error
+// describing what went wrong.
+//
+// Parameters:
+//   - expectedResource: if non-empty, verify the cover uses this resource
+//   - expectedOrigWidth/expectedOrigHeight: if non-zero, verify cover dimensions
+//   - allowPDF: if true, allow PDF cover images ($565 format)
+//
+// Python symbol mapping (Go uses real names):
+//
+//	$141 → page_templates    $159 → type           $156 → layout
+//	$140 → float             $326 → solid          $323 → overflow
+//	$325 → radial            $320 → horizontal     $68  → visibility
+//	$66  → fixed_width       $67  → fixed_height   $176 → story_name
+//	$155 → id                $171 → condition       $259 → storyline
+//	$146 → content_list      $271 → image           $270 → container
+//	$175 → resource_name     $157 → style           $56  → width
+//	$57  → height            $306 → em              $314 → mm
+//	$307 → ex                $16  → font_size       $42  → line_height
+//	$173 → style_name        $546 → jxr             $377 → padding_bounds
+//	$183 → position          $324 → scale_fit       $475 → spacing_percent_base
+//	$69  → ignore            $164 → external_resource $161 → format
+//	$565 → ellipsis (=PDF in format context)   $214 → thumbnails
+// ---------------------------------------------------------------------------
+func checkCoverSectionAndStoryline(
+	cat *fragmentCatalog,
+	expectedResource string,
+	expectedOrigWidth, expectedOrigHeight int,
+	allowPDF bool,
+) (resourceName string, coverEID string, err error) {
+
+	// L654: cover_section = self.fragments.get(ftype="$260", fid=self.ordered_section_names()[0]).value
+	if len(cat.SectionOrder) == 0 {
+		return "", "", fmt.Errorf("no sections in book")
+	}
+	firstSectionID := cat.SectionOrder[0]
+	section, exists := cat.SectionFragments[firstSectionID]
+	if !exists {
+		return "", "", fmt.Errorf("first section %q not found", firstSectionID)
+	}
+	coverSection := section.RawValue
+	if coverSection == nil {
+		return "", "", fmt.Errorf("section %q has no raw value", firstSectionID)
+	}
+
+	// L655: page_templates = cover_section["$141"]
+	pageTemplates, ok := asSlice(coverSection["page_templates"])
+	if !ok || len(pageTemplates) == 0 {
+		return "", "", fmt.Errorf("cover section has no page_templates")
+	}
+
+	// L658-663: Validate first page template
+	// Python: if (page_template.get("$159") != "$270" or
+	//           page_template.get("$156") not in ["$326", "$323"] or
+	//           page_template.get("$140") not in [None, "$320", "$68"]):
+	pageTemplate0, ok := asMap(pageTemplates[0])
+	if !ok {
+		return "", "", fmt.Errorf("page_template[0] is not a map")
+	}
+	if asStringDefault(pageTemplate0["type"]) != "container" {
+		return "", "", fmt.Errorf("unexpected section template 0: type=%q, expected container", asStringDefault(pageTemplate0["type"]))
+	}
+	layout0 := asStringDefault(pageTemplate0["layout"])
+	if layout0 != "solid" && layout0 != "overflow" {
+		return "", "", fmt.Errorf("unexpected section template 0: layout=%q, expected solid or overflow", layout0)
+	}
+	float0, hasFloat0 := pageTemplate0["float"]
+	if hasFloat0 && float0 != nil {
+		floatStr := asStringDefault(float0)
+		if floatStr != "horizontal" && floatStr != "visibility" {
+			return "", "", fmt.Errorf("unexpected section template 0: float=%q", floatStr)
+		}
+	}
+
+	// L666-670: Extract template properties
+	templateLayout := layout0
+	origWidth := pageTemplate0["fixed_width"]
+	origHeight := pageTemplate0["fixed_height"]
+	storyName := asStringDefault(pageTemplate0["story_name"])
+	coverEID = asStringDefault(pageTemplate0["id"])
+
+	// L672-678: Validate second page template if present
+	if len(pageTemplates) > 1 {
+		pageTemplate1, ok := asMap(pageTemplates[1])
+		if !ok {
+			return "", "", fmt.Errorf("page_template[1] is not a map")
+		}
+		if asStringDefault(pageTemplate1["type"]) != "container" {
+			return "", "", fmt.Errorf("unexpected section template 1: type=%q", asStringDefault(pageTemplate1["type"]))
+		}
+		if asStringDefault(pageTemplate1["layout"]) != "radial" {
+			return "", "", fmt.Errorf("unexpected section template 1: layout=%q, expected radial", asStringDefault(pageTemplate1["layout"]))
+		}
+		if pageTemplate1["condition"] == nil {
+			return "", "", fmt.Errorf("unexpected section template 1: missing condition")
+		}
+		if asStringDefault(pageTemplate1["story_name"]) != storyName {
+			return "", "", fmt.Errorf("unexpected section template 1: story_name=%q, expected %q", asStringDefault(pageTemplate1["story_name"]), storyName)
+		}
+	}
+
+	// L680-681: Error if more than 2 page templates
+	if len(pageTemplates) > 2 {
+		return "", "", fmt.Errorf("found %d page_templates", len(pageTemplates))
+	}
+
+	// L683: Get cover storyline
+	coverStoryline, exists := cat.Storylines[storyName]
+	if !exists {
+		return "", "", fmt.Errorf("storyline %q not found", storyName)
+	}
+
+	// L684-686: Validate content_list length
+	contentList, ok := asSlice(coverStoryline["content_list"])
+	if !ok || len(contentList) != 1 {
+		return "", "", fmt.Errorf("unexpected storyline content_list len %d", len(contentList))
+	}
+
+	// L688: content = content_list[0]
+	content, ok := asMap(contentList[0])
+	if !ok {
+		return "", "", fmt.Errorf("storyline content_list[0] is not a map")
+	}
+
+	// L688: Branch on template_layout
+	if templateLayout == "solid" {
+		// L689-736: template_layout == $326 (solid)
+
+		// L689: Sub-branch on content type
+		if asStringDefault(content["type"]) == "image" {
+			// L690-704: Direct image content
+			// L691: resource_name = content.get("$175")
+			resourceName = asStringDefault(content["resource_name"])
+
+			// L694-703: Validate style fragment if present
+			if styleRef, ok := asString(content["style"]); ok && styleRef != "" {
+				style, exists := cat.StyleFragments[styleRef]
+				if !exists {
+					return "", "", fmt.Errorf("style fragment %q not found", styleRef)
+				}
+
+				// L697-700: Validate style width
+				styleWidth := style["width"]
+				if styleWidth != nil {
+					styleWidthMap, isMap := asMap(styleWidth)
+					if !isMap || asStringDefault(styleWidthMap["unit"]) != "mm" {
+						return "", "", fmt.Errorf("unexpected cover storyline style width %v", styleWidth)
+					}
+					if pctVal, ok := asInt(styleWidthMap["value"]); !ok || pctVal < 95 {
+						return "", "", fmt.Errorf("unexpected cover storyline style width value %v", styleWidthMap["value"])
+					}
+				}
+
+				// L702-703: Validate style has only allowed keys
+				for key := range style {
+					if key != "font_size" && key != "line_height" && key != "style_name" && key != "width" {
+						return "", "", fmt.Errorf("unexpected cover storyline style property %s", key)
+					}
+				}
+			}
+
+			// L705-706: Validate content has only allowed keys
+			for key := range content {
+				if key != "id" && key != "style" && key != "resource_name" && key != "type" {
+					return "", "", fmt.Errorf("unexpected cover storyline content %s", key)
+				}
+			}
+		} else {
+			// L707-736: Container/overflow layout path
+			// Python: if (content.get("$159") != "$270" or content.get("$156") != "$323" or content.get("$546") != "$377"):
+			if asStringDefault(content["type"]) != "container" || asStringDefault(content["layout"]) != "overflow" || asStringDefault(content["jxr"]) != "padding_bounds" {
+				return "", "", fmt.Errorf("unexpected cover storyline content")
+			}
+
+			// L711-712: Get orig dimensions from content
+			origWidth2Raw := content["width"]
+			origHeight2Raw := content["height"]
+			origWidth2, _ := asInt(origWidth2Raw)
+			origHeight2, _ := asInt(origHeight2Raw)
+			if origWidth2Raw == nil {
+				origWidth2 = -1
+			}
+			if origHeight2Raw == nil {
+				origHeight2 = -1
+			}
+
+			// L714-716: Get content_list2
+			contentList2, ok := asSlice(content["content_list"])
+			if !ok || len(contentList2) == 0 {
+				return "", "", fmt.Errorf("missing cover storyline content_list2")
+			}
+
+			// L718-719: content2 = content_list2[0]
+			content2, ok := asMap(contentList2[0])
+			if !ok {
+				return "", "", fmt.Errorf("content2 is not a map")
+			}
+			resourceName = asStringDefault(content2["resource_name"])
+
+			// L721-724: Validate content2
+			if asStringDefault(content2["type"]) != "image" || asStringDefault(content2["jxr"]) != "padding_bounds" || asStringDefault(content2["position"]) != "scale_fit" {
+				return "", "", fmt.Errorf("unexpected cover storyline content2")
+			}
+			content2Width, _ := asInt(content2["width"])
+			content2Height, _ := asInt(content2["height"])
+			if content2Width != origWidth2 || content2Height != origHeight2 {
+				return "", "", fmt.Errorf("unexpected cover storyline content2 dimensions")
+			}
+
+			// L726-728: Validate content2 keys
+			for key := range content2 {
+				if key != "id" && key != "width" && key != "height" && key != "jxr" && key != "resource_name" && key != "type" && key != "position" {
+					return "", "", fmt.Errorf("unexpected cover storyline content2 %s", key)
+				}
+			}
+
+			// L730-732: Validate content keys
+			for key := range content {
+				if key != "id" && key != "width" && key != "height" && key != "jxr" && key != "layout" && key != "type" && key != "content_list" {
+					return "", "", fmt.Errorf("unexpected cover storyline content %s", key)
+				}
+			}
+		}
+	} else {
+		// L737-768: template_layout != $326 (e.g., overflow)
+		// Python: if (content.get("$159") != "$270" or content.get("$156") != "$326" or content.get("$140") != "$320"):
+		if asStringDefault(content["type"]) != "container" || asStringDefault(content["layout"]) != "solid" || asStringDefault(content["float"]) != "horizontal" {
+			return "", "", fmt.Errorf("unexpected cover storyline content")
+		}
+
+		// L747-748: Override orig dimensions from page_template
+		origWidth = pageTemplate0["fixed_width"]
+		origHeight = pageTemplate0["fixed_height"]
+
+		// L749-751: Validate content keys
+		for key := range content {
+			if key != "id" && key != "fixed_width" && key != "fixed_height" && key != "spacing_percent_base" && key != "layout" && key != "float" && key != "type" && key != "content_list" {
+				return "", "", fmt.Errorf("unexpected cover storyline content %s", key)
+			}
+		}
+
+		// L753-755: Get content_list2
+		contentList2, ok := asSlice(content["content_list"])
+		if !ok || len(contentList2) == 0 {
+			return "", "", fmt.Errorf("missing cover storyline content_list2")
+		}
+
+		// L759: content2 = content_list2[0]
+		content2, ok := asMap(contentList2[0])
+		if !ok {
+			return "", "", fmt.Errorf("content2 is not a map")
+		}
+
+		// L761-762: Validate content2 type
+		if asStringDefault(content2["type"]) != "image" {
+			return "", "", fmt.Errorf("unexpected cover storyline content2")
+		}
+
+		// L764-766: Validate content2 width
+		width2 := content2["width"]
+		if width2 != nil {
+			width2Map, isMap := asMap(width2)
+			if !isMap || asStringDefault(width2Map["unit"]) != "mm" {
+				return "", "", fmt.Errorf("unexpected cover storyline width %v", width2)
+			}
+			if pctVal, ok := asInt(width2Map["value"]); !ok || pctVal < 95 {
+				return "", "", fmt.Errorf("unexpected cover storyline width value %v", width2Map["value"])
+			}
+		}
+
+		// L768-770: Validate content2 height
+		height2 := content2["height"]
+		if height2 != nil {
+			height2Map, isMap := asMap(height2)
+			if !isMap || asStringDefault(height2Map["unit"]) != "mm" {
+				return "", "", fmt.Errorf("unexpected cover storyline height %v", height2)
+			}
+			if pctVal, ok := asInt(height2Map["value"]); !ok || pctVal < 95 {
+				return "", "", fmt.Errorf("unexpected cover storyline height value %v", height2Map["value"])
+			}
+		}
+
+		// L772: resource_name = content2.get("$175")
+		resourceName = asStringDefault(content2["resource_name"])
+
+		// L774-776: Validate content2 keys
+		for key := range content2 {
+			if key != "id" && key != "width" && key != "height" && key != "type" && key != "resource_name" {
+				return "", "", fmt.Errorf("unexpected cover storyline content2 %s", key)
+			}
+		}
+
+		// L778-785: Check optional content3
+		if len(contentList2) >= 2 {
+			content3, ok := asMap(contentList2[1])
+			if !ok {
+				return "", "", fmt.Errorf("content3 is not a map")
+			}
+			if asStringDefault(content3["type"]) != "container" || asStringDefault(content3["layout"]) != "scale_fit" {
+				return "", "", fmt.Errorf("unexpected cover storyline content3")
+			}
+			// Python: content3.get("$69") is not True
+			if ignoreVal, ok := asBool(content3["ignore"]); !ok || !ignoreVal {
+				return "", "", fmt.Errorf("unexpected cover storyline content3: ignore not true")
+			}
+			for key := range content3 {
+				if key != "id" && key != "story_name" && key != "layout" && key != "ignore" && key != "type" {
+					return "", "", fmt.Errorf("unexpected cover storyline content3 %s", key)
+				}
+			}
+		}
+	}
+
+	// L770-773: Validate cover resource
+	// Python: cover_resource = self.fragments.get(ftype="$164", fid=resource_name).value
+	coverResource, exists := cat.ResourceRawData[resourceName]
+	if !exists {
+		return "", "", fmt.Errorf("cover resource %q not found", resourceName)
+	}
+	// Python: if cover_resource[IS("$161")] == "$565" and not allow_pdf:
+	// Go: $161 → format, $565 → ellipsis (but in Python context, $565 = PDF format)
+	// Note: In the Python code, IS("$161") checks the "$161" key, and "$565" is "pdf" format.
+	// But actually looking at the catalog mapping: $565 maps to "ellipsis" (not pdf).
+	// $563 = "pdf". Let me re-check...
+	// Actually: $565 = pdf in the FORMAT context (from resources.py).
+	// Looking at symbolFormats: "pdf" → "pdf". And in the Python code:
+	//   SYMBOL_FORMATS = {"$284": "png", "$285": "jpg", "$286": "gif", ...}
+	//   $565 in this context is checked against $161 which is format.
+	//   In the Go catalog, $565 = "ellipsis", but that's wrong for format context.
+	//   Wait - looking at the Python IS() function and how $565 is used:
+	//   cover_resource[IS("$161")] gets the format field. Then checks if it equals IS("$565").
+	//   In the Python symbol catalog, $565 = "pdf" (it's after "page_index"=$562).
+	//   Actually the catalog shows $565 = "ellipsis" but that might be wrong.
+	//   Let me check Python's actual value...
+	// Actually, $565 in the FORMAT context is pdf. Let me check the actual mapping.
+	// From the Python yj_metadata.py code: IS("$565") creates a symbol $565.
+	// From the symbol catalog: $565 = "ellipsis"
+	// But wait - looking at resources.py:
+	//   SYMBOL_FORMATS = {"$284": "png", "$285": "jpg", "$286": "gif", "$287": "pobject", "$565": "pdf", ...}
+	// So in the format context, $565 maps to "pdf".
+	// In the Go code, the resource format is already resolved to a string like "pdf".
+	// So we check if the format is "pdf".
+	resourceFormat, _ := asString(coverResource["format"])
+	if resourceFormat == "pdf" && !allowPDF {
+		return "", "", fmt.Errorf("first page uses a PDF image")
+	}
+
+	// L774-776: Validate expected resource
+	if expectedResource != "" && resourceName != expectedResource {
+		return "", "", fmt.Errorf("first page does not use expected cover image")
+	}
+
+	// L778-780: Validate expected dimensions
+	// Python uses direct comparison on the orig_width/orig_height values.
+	// In Go, origWidth and origHeight may be int or other types.
+	if expectedOrigWidth != 0 || expectedOrigHeight != 0 {
+		origWidthInt, widthOK := asInt(origWidth)
+		origHeightInt, heightOK := asInt(origHeight)
+		if expectedOrigWidth != 0 && (!widthOK || origWidthInt != expectedOrigWidth) {
+			return "", "", fmt.Errorf("first page does not use expected cover dimensions")
+		}
+		if expectedOrigHeight != 0 && (!heightOK || origHeightInt != expectedOrigHeight) {
+			return "", "", fmt.Errorf("first page does not use expected cover dimensions")
+		}
+	}
+
+	return resourceName, coverEID, nil
+}
+
+// ---------------------------------------------------------------------------
 // updateCoverSectionAndStoryline — Python yj_metadata.py:793-820
 //
 // Updates cover section and storyline dimensions when cover image size changes.

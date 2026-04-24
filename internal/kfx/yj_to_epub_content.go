@@ -1597,7 +1597,7 @@ func parseSectionFragment(fragmentID string, value map[string]interface{}) secti
 	id := chooseFragmentIdentity(fragmentID, value["section_name"])
 	containers, ok := asSlice(value["page_templates"])
 	if !ok || len(containers) == 0 {
-		return sectionFragment{ID: id}
+		return sectionFragment{ID: id, RawValue: value}
 	}
 	templates := make([]pageTemplateFragment, 0, len(containers))
 	for _, raw := range containers {
@@ -1618,7 +1618,7 @@ func parseSectionFragment(fragmentID string, value map[string]interface{}) secti
 		})
 	}
 	if len(templates) == 0 {
-		return sectionFragment{ID: id}
+		return sectionFragment{ID: id, RawValue: value}
 	}
 	mainTemplate := templates[len(templates)-1]
 	return sectionFragment{
@@ -1628,6 +1628,7 @@ func parseSectionFragment(fragmentID string, value map[string]interface{}) secti
 		PageTemplateStyle:  mainTemplate.PageTemplateStyle,
 		PageTemplateValues: mainTemplate.PageTemplateValues,
 		PageTemplates:      templates,
+		RawValue:           value,
 	}
 }
 

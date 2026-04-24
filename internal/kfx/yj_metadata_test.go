@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"strings"
 	"testing"
 )
 
@@ -1717,5 +1718,636 @@ func TestUpdateCoverSectionAndStoryline_StructValueNotUpdated(t *testing.T) {
 	// $57 should be updated
 	if ptv["height"] != 768 {
 		t.Errorf("expected $57=768, got %v", ptv["height"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VAL-FIX-004: checkCoverSectionAndStoryline — Python yj_metadata.py L648-791
+//
+// Tests for the cover section validation function. Each test verifies a
+// specific branch of the Python function.
+// ---------------------------------------------------------------------------
+
+// TestCheckCoverSection_SolidLayoutDirectImage tests the "solid" layout with
+// direct image content (Python L689-704: template_layout==$326, content type==$271).
+func TestCheckCoverSection_SolidLayoutDirectImage(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":         "container",
+					"layout":       "solid",
+					"fixed_width":  800,
+					"fixed_height": 600,
+					"story_name":   "story1",
+					"id":           "eid_cover",
+				},
+			},
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":          "image",
+				"resource_name": "cover_res",
+				"id":            "img1",
+			},
+		},
+	}
+	cat.ResourceRawData["cover_res"] = map[string]interface{}{
+		"format": "jpg",
+	}
+
+	resourceName, coverEID, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resourceName != "cover_res" {
+		t.Errorf("expected resourceName=cover_res, got %q", resourceName)
+	}
+	if coverEID != "eid_cover" {
+		t.Errorf("expected coverEID=eid_cover, got %q", coverEID)
+	}
+}
+
+// TestCheckCoverSection_SolidLayoutWithStyle tests the solid layout path with
+// a style fragment reference (Python L694-703: style validation).
+func TestCheckCoverSection_SolidLayoutWithStyle(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":         "container",
+					"layout":       "solid",
+					"fixed_width":  800,
+					"fixed_height": 600,
+					"story_name":   "story1",
+					"id":           "eid_cover",
+				},
+			},
+		},
+	}
+	cat.StyleFragments["style1"] = map[string]interface{}{
+		"font_size":   12,
+		"line_height": 1.2,
+		"style_name":  "coverStyle",
+		"width": map[string]interface{}{
+			"unit":  "mm",
+			"value": 100,
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":          "image",
+				"resource_name": "cover_res",
+				"id":            "img1",
+				"style":         "style1",
+			},
+		},
+	}
+	cat.ResourceRawData["cover_res"] = map[string]interface{}{
+		"format": "jpg",
+	}
+
+	resourceName, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resourceName != "cover_res" {
+		t.Errorf("expected resourceName=cover_res, got %q", resourceName)
+	}
+}
+
+// TestCheckCoverSection_SolidLayoutInvalidStyleWidth tests that an invalid
+// style width (< 95) causes an error (Python L700).
+func TestCheckCoverSection_SolidLayoutInvalidStyleWidth(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":       "container",
+					"layout":     "solid",
+					"story_name": "story1",
+				},
+			},
+		},
+	}
+	cat.StyleFragments["style1"] = map[string]interface{}{
+		"width": map[string]interface{}{
+			"unit":  "mm",
+			"value": 50, // < 95, should fail
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":          "image",
+				"resource_name": "cover_res",
+				"style":         "style1",
+			},
+		},
+	}
+
+	_, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err == nil {
+		t.Fatal("expected error for style width < 95")
+	}
+	if !strings.Contains(err.Error(), "style width") {
+		t.Errorf("expected style width error, got: %v", err)
+	}
+}
+
+// TestCheckCoverSection_SolidLayoutUnexpectedStyleKey tests that unexpected
+// style properties cause an error (Python L702-703).
+func TestCheckCoverSection_SolidLayoutUnexpectedStyleKey(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":       "container",
+					"layout":     "solid",
+					"story_name": "story1",
+				},
+			},
+		},
+	}
+	cat.StyleFragments["style1"] = map[string]interface{}{
+		"unexpected_key": "value",
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":          "image",
+				"resource_name": "cover_res",
+				"style":         "style1",
+			},
+		},
+	}
+
+	_, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err == nil {
+		t.Fatal("expected error for unexpected style key")
+	}
+	if !strings.Contains(err.Error(), "unexpected cover storyline style property") {
+		t.Errorf("expected style property error, got: %v", err)
+	}
+}
+
+// TestCheckCoverSection_SolidLayoutContainerOverflow tests the solid layout
+// path with container/overflow content (Python L707-736).
+func TestCheckCoverSection_SolidLayoutContainerOverflow(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":       "container",
+					"layout":     "solid",
+					"story_name": "story1",
+				},
+			},
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":   "container",
+				"layout": "overflow",
+				"jxr":    "padding_bounds",
+				"width":  800,
+				"height": 600,
+				"id":     "c1",
+				"content_list": []interface{}{
+					map[string]interface{}{
+						"type":          "image",
+						"jxr":           "padding_bounds",
+						"position":      "scale_fit",
+						"width":         800,
+						"height":        600,
+						"resource_name": "cover_res",
+						"id":            "img1",
+					},
+				},
+			},
+		},
+	}
+	cat.ResourceRawData["cover_res"] = map[string]interface{}{
+		"format": "jpg",
+	}
+
+	resourceName, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resourceName != "cover_res" {
+		t.Errorf("expected resourceName=cover_res, got %q", resourceName)
+	}
+}
+
+// TestCheckCoverSection_OverflowLayout tests the non-solid layout path
+// (Python L737-768: template_layout != $326).
+func TestCheckCoverSection_OverflowLayout(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":         "container",
+					"layout":       "overflow",
+					"float":        "horizontal",
+					"fixed_width":  800,
+					"fixed_height": 600,
+					"story_name":   "story1",
+					"id":           "eid_cover",
+				},
+			},
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":         "container",
+				"layout":       "solid",
+				"float":        "horizontal",
+				"fixed_width":  800,
+				"fixed_height": 600,
+				"id":           "c1",
+				"content_list": []interface{}{
+					map[string]interface{}{
+						"type":          "image",
+						"resource_name": "cover_res",
+						"id":            "img1",
+						"width": map[string]interface{}{
+							"unit":  "mm",
+							"value": 100,
+						},
+						"height": map[string]interface{}{
+							"unit":  "mm",
+							"value": 100,
+						},
+					},
+				},
+			},
+		},
+	}
+	cat.ResourceRawData["cover_res"] = map[string]interface{}{
+		"format": "jpg",
+	}
+
+	resourceName, coverEID, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resourceName != "cover_res" {
+		t.Errorf("expected resourceName=cover_res, got %q", resourceName)
+	}
+	if coverEID != "eid_cover" {
+		t.Errorf("expected coverEID=eid_cover, got %q", coverEID)
+	}
+}
+
+// TestCheckCoverSection_OverflowLayoutWithContent3 tests the overflow layout
+// path with an optional third content element (Python L778-785).
+func TestCheckCoverSection_OverflowLayoutWithContent3(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":       "container",
+					"layout":     "overflow",
+					"float":      "horizontal",
+					"story_name": "story1",
+				},
+			},
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":   "container",
+				"layout": "solid",
+				"float":  "horizontal",
+				"id":     "c1",
+				"content_list": []interface{}{
+					map[string]interface{}{
+						"type":          "image",
+						"resource_name": "cover_res",
+						"id":            "img1",
+					},
+					map[string]interface{}{
+						"type":       "container",
+						"layout":     "scale_fit",
+						"ignore":     true,
+						"id":         "c3",
+						"story_name": "story2",
+					},
+				},
+			},
+		},
+	}
+	cat.ResourceRawData["cover_res"] = map[string]interface{}{
+		"format": "jpg",
+	}
+
+	resourceName, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resourceName != "cover_res" {
+		t.Errorf("expected resourceName=cover_res, got %q", resourceName)
+	}
+}
+
+// TestCheckCoverSection_TwoPageTemplates tests validation of two page templates
+// (Python L672-678).
+func TestCheckCoverSection_TwoPageTemplates(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":       "container",
+					"layout":     "solid",
+					"story_name": "story1",
+					"id":         "eid_cover",
+				},
+				map[string]interface{}{
+					"type":       "container",
+					"layout":     "radial",
+					"condition":  "some_condition",
+					"story_name": "story1",
+					"id":         "eid_cover2",
+				},
+			},
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":          "image",
+				"resource_name": "cover_res",
+				"id":            "img1",
+			},
+		},
+	}
+	cat.ResourceRawData["cover_res"] = map[string]interface{}{
+		"format": "jpg",
+	}
+
+	resourceName, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resourceName != "cover_res" {
+		t.Errorf("expected resourceName=cover_res, got %q", resourceName)
+	}
+}
+
+// TestCheckCoverSection_TooManyPageTemplates tests error for >2 page templates
+// (Python L680-681).
+func TestCheckCoverSection_TooManyPageTemplates(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{"type": "container", "layout": "solid", "story_name": "story1"},
+				map[string]interface{}{"type": "container", "layout": "radial", "condition": "c", "story_name": "story1"},
+				map[string]interface{}{"type": "container", "layout": "solid", "story_name": "story1"},
+			},
+		},
+	}
+
+	_, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err == nil {
+		t.Fatal("expected error for >2 page_templates")
+	}
+	if !strings.Contains(err.Error(), "found 3 page_templates") {
+		t.Errorf("expected page_templates count error, got: %v", err)
+	}
+}
+
+// TestCheckCoverSection_InvalidTemplateType tests that an invalid template type
+// causes an error (Python L659-662).
+func TestCheckCoverSection_InvalidTemplateType(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":   "image", // wrong — should be "container"
+					"layout": "solid",
+				},
+			},
+		},
+	}
+
+	_, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err == nil {
+		t.Fatal("expected error for invalid template type")
+	}
+	if !strings.Contains(err.Error(), "unexpected section template 0") {
+		t.Errorf("expected template 0 error, got: %v", err)
+	}
+}
+
+// TestCheckCoverSection_PDFResourceDisallowed tests that PDF cover resources
+// cause an error when allowPDF is false (Python L770-773).
+func TestCheckCoverSection_PDFResourceDisallowed(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":       "container",
+					"layout":     "solid",
+					"story_name": "story1",
+				},
+			},
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":          "image",
+				"resource_name": "pdf_cover",
+				"id":            "img1",
+			},
+		},
+	}
+	cat.ResourceRawData["pdf_cover"] = map[string]interface{}{
+		"format": "pdf",
+	}
+
+	_, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err == nil {
+		t.Fatal("expected error for PDF cover")
+	}
+	if !strings.Contains(err.Error(), "PDF") {
+		t.Errorf("expected PDF error, got: %v", err)
+	}
+}
+
+// TestCheckCoverSection_PDFResourceAllowed tests that PDF cover resources are
+// accepted when allowPDF is true (Python kpf_book.py L128).
+func TestCheckCoverSection_PDFResourceAllowed(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":       "container",
+					"layout":     "solid",
+					"story_name": "story1",
+				},
+			},
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":          "image",
+				"resource_name": "pdf_cover",
+				"id":            "img1",
+			},
+		},
+	}
+	cat.ResourceRawData["pdf_cover"] = map[string]interface{}{
+		"format": "pdf",
+	}
+
+	resourceName, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resourceName != "pdf_cover" {
+		t.Errorf("expected resourceName=pdf_cover, got %q", resourceName)
+	}
+}
+
+// TestCheckCoverSection_ExpectedResourceMismatch tests validation of expected
+// resource name (Python L774-776).
+func TestCheckCoverSection_ExpectedResourceMismatch(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":       "container",
+					"layout":     "solid",
+					"story_name": "story1",
+				},
+			},
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":          "image",
+				"resource_name": "actual_res",
+				"id":            "img1",
+			},
+		},
+	}
+	cat.ResourceRawData["actual_res"] = map[string]interface{}{
+		"format": "jpg",
+	}
+
+	_, _, err := checkCoverSectionAndStoryline(cat, "expected_res", 0, 0, false)
+	if err == nil {
+		t.Fatal("expected error for resource mismatch")
+	}
+	if !strings.Contains(err.Error(), "expected cover image") {
+		t.Errorf("expected cover image mismatch error, got: %v", err)
+	}
+}
+
+// TestCheckCoverSection_NoSections tests error when no sections exist
+// (edge case before L654).
+func TestCheckCoverSection_NoSections(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{}
+
+	_, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err == nil {
+		t.Fatal("expected error for no sections")
+	}
+}
+
+// TestCheckCoverSection_ContentListWrongLength tests error when storyline
+// content_list has wrong length (Python L685-686).
+func TestCheckCoverSection_ContentListWrongLength(t *testing.T) {
+	cat := makeTestCatalogForMetadata()
+	cat.SectionOrder = []string{"cover_section"}
+	cat.SectionFragments["cover_section"] = sectionFragment{
+		ID:        "cover_section",
+		Storyline: "story1",
+		RawValue: map[string]interface{}{
+			"page_templates": []interface{}{
+				map[string]interface{}{
+					"type":       "container",
+					"layout":     "solid",
+					"story_name": "story1",
+				},
+			},
+		},
+	}
+	cat.Storylines["story1"] = map[string]interface{}{
+		"content_list": []interface{}{
+			map[string]interface{}{"type": "image", "resource_name": "r1"},
+			map[string]interface{}{"type": "image", "resource_name": "r2"},
+		},
+	}
+
+	_, _, err := checkCoverSectionAndStoryline(cat, "", 0, 0, false)
+	if err == nil {
+		t.Fatal("expected error for content_list len != 1")
+	}
+	if !strings.Contains(err.Error(), "content_list len") {
+		t.Errorf("expected content_list length error, got: %v", err)
 	}
 }

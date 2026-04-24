@@ -180,6 +180,7 @@ type sectionFragment struct {
 	PageTemplateStyle  string
 	PageTemplateValues map[string]interface{}
 	PageTemplates      []pageTemplateFragment
+	RawValue           map[string]interface{} // Original section fragment data for check_cover_section_and_storyline (Python yj_metadata.py L648-791).
 }
 
 type pageTemplateFragment struct {
