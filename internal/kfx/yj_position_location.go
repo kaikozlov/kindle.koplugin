@@ -1783,13 +1783,14 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 		case map[string]interface{}: // IonStruct
 			// Port of lines 230–577 (IonStruct branch)
 			// Set up EID tracking — Python lines 230–245
+			var parentEID interface{} // Python L372: parent_eid = current_eid (reset per struct)
 			if contentKey != "storyline" {
 				eid := v["id"]
 				if eid == nil {
 					eid = v["kfx_id"]
 				}
 				if eid != nil {
-					_ = currentEID // parentEID not used in simplified version
+					parentEID = currentEID // Python L372: parent_eid = current_eid
 					currentEID = eid
 					if existing, ok := eidSection[currentEID]; ok {
 						if existing == currentSectionName {
@@ -1809,6 +1810,22 @@ func (bpl *BookPosLoc) CollectContentPositionInfo(keepFootnoteRefs, skipNonRende
 				if skip, _ := asBool(v["ignore"]); skip || typ == "zoom_target" {
 					return
 				}
+			}
+
+			// Python L390-393: inline rendered content within content_list needs parent EID positioning
+			// When typ is container/image/text AND render is inline AND we're inside content_list,
+			// register content at the parent EID to position inline elements correctly.
+			// Python: have_content(parent_eid, -1 if list_index == 0 else 0, advance)
+			// In Go, listIndex is always an int (0 from non-list callers), so we don't check it
+			// against None like Python does — the parentEID != nil guard is sufficient.
+			renderMode, _ := asString(v["render"])
+			if (typ == "container" || typ == "image" || typ == "text") &&
+				parentEID != nil && contentKey == "content_list" && renderMode == "inline" {
+				length := 0
+				if listIndex == 0 {
+					length = -1
+				}
+				haveContent(parentEID, length, advance)
 			}
 
 			saveCPIDPIDForOffset := bpl.cpiPIDForOffset
