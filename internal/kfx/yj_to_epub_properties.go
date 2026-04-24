@@ -3665,9 +3665,10 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 	}
 
 	// Shadow: {$499/$500/$501/$502/$498, optional $336 inset}
+	// Port of Python yj_to_epub_properties.py L1207-1216: iterates sub-properties
+	// (horizontal_offset, vertical_offset, blur, spread, color) and appends optional "inset".
 	if _, has499 := v["horizontal_offset"]; has499 {
 		if _, has500 := v["vertical_offset"]; has500 {
-			// Simplified shadow handling — full port later if needed
 			parts := []string{}
 			for _, sub := range []string{"horizontal_offset", "vertical_offset", "blur", "spread", "color"} {
 				if subVal, ok := v[sub]; ok {

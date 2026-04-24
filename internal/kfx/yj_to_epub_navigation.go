@@ -91,9 +91,10 @@ func parseNavRepresentation(entry map[string]interface{}) (label string, icon st
 
 	// Python: if "content_list" in representation: process content list → text → description
 	if descRaw, ok := asSlice(representation["content_list"]); ok && len(descRaw) > 0 {
-		// Python builds a div element, processes content list, then extracts text.
-		// Simplified: just extract text content from the representation.
-		// In practice, navigation descriptions are simple text strings.
+		// Python (yj_to_epub_navigation.py L303-306) builds a div element, calls process_content_list,
+		// then extracts text via itertext(). Here we extract string content directly.
+		// Navigation descriptions are simple text strings in practice, so the full
+		// content rendering pipeline is not needed for correct EPUB output.
 		var textParts []string
 		for _, item := range descRaw {
 			if s, ok := asString(item); ok {

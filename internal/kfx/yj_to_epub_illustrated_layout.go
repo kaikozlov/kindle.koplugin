@@ -812,20 +812,18 @@ func isInlineParent(tag string) bool {
 }
 
 // findBlockParent walks up from the given element to find the nearest
-// block-level parent (div, li, td). Since Go's htmlElement doesn't have
-// parent pointers, this is a simplified version that checks the element itself.
+// block-level parent (div, li, td). Go's htmlElement doesn't have parent
+// pointers, so this checks the element itself rather than walking up.
 // Port of Python's `while target.tag not in ["div", "li", "td"]: target = target.getparent()`.
+// In practice, targets found by ID in conditional templates are typically already block elements.
 func findBlockParent(target *htmlElement) *htmlElement {
 	if target == nil {
 		return nil
 	}
-	// In Go's flat DOM model without parent pointers, we check the target itself.
-	// The target is found by ID and is typically already a block element.
 	if isBlockParent(target.Tag) {
 		return target
 	}
-	// If target is not a block element, we can't walk up. Return nil.
-	// In practice, targets found by ID in conditional templates are typically divs.
+	// Cannot walk up without parent pointers; return nil for non-block targets.
 	return nil
 }
 

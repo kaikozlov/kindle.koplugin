@@ -281,10 +281,15 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 	}
 
 	// 14. Generate filename using existing helper
+	// Note: MediaType hardcoded to "image/jpeg". Python uses SYMBOL_FORMATS to resolve
+	// the correct MIME type from the resource format symbol. Since Go converts all image
+	// resources to JPEG (or PNG via JXR conversion which updates locationFn extension),
+	// this works correctly for current test books. If non-JPEG/PNG resources are encountered,
+	// the Format field on resourceFragment should be set to resourceFormat for proper MIME resolution.
 	filename := uniquePackageResourceFilename(resourceFragment{
 		ID:        resource_name,
 		Location:  locationFn,
-		MediaType: "image/jpeg", // simplified; full parity uses SYMBOL_FORMATS
+		MediaType: "image/jpeg",
 	}, symOriginal, rp.usedOEBPSNames, rawMedia)
 
 	// Apply page suffix to filename

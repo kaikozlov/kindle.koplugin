@@ -1235,7 +1235,9 @@ func processStorylineDimensions(cat *fragmentCatalog, storyline map[string]inter
 // reportFeaturesAndMetadata — Python yj_metadata.py:434-534
 //
 // Debug reporting function. Logs features and metadata found in the book.
-// Simplified from Python which does extensive known-feature checking.
+// Go logs feature/generator counts only; Python additionally checks each feature
+// against a known-feature database and reports unknown features as errors.
+// This function does not affect EPUB output.
 // ---------------------------------------------------------------------------
 func reportFeaturesAndMetadata(cat *fragmentCatalog) {
 	// Report features from $585
