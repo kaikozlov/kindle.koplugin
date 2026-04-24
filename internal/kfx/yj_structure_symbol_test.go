@@ -774,3 +774,182 @@ func makeSymbolSet(names []string) map[string]struct{} {
 	}
 	return result
 }
+
+// =============================================================================
+// VAL-FIX-002: checkSymbolTable rebuild — replace_local_symbols + replace_symbol_table_import
+// Python: yj_structure.py L1143-1164 (check_symbol_table rebuild block + replace_symbol_table_import)
+// =============================================================================
+
+func TestCheckSymbolTableRebuildReplaceLocalSymbols(t *testing.T) {
+	// Python L1143-1148: when rebuild=true, the function:
+	// 1. Collects book_symbols (used local symbols where get_id >= local_min_id)
+	// 2. Sorts them with natural_sort_key
+	// 3. Calls replace_local_symbols(sorted_book_symbols)
+	// 4. Calls replace_symbol_table_import()
+
+	// Setup: fragmentCatalog with some local symbols used as struct keys in content
+	// (Python's find_symbol_references adds IonSymbol struct keys, not string values)
+	frags := fragmentCatalog{
+		StyleFragments: map[string]map[string]interface{}{
+			"zebra_style": {"local_sym_z": map[string]interface{}{}},
+			"alpha_style": {"local_sym_a": map[string]interface{}{}},
+		},
+		Storylines:        map[string]map[string]interface{}{},
+		NavContainers:     map[string]map[string]interface{}{},
+		NavRoots:          nil,
+		TitleMetadata:     nil,
+		DocumentData:      nil,
+		ContentFeatures:   nil,
+		SectionFragments:  map[string]sectionFragment{},
+		AnchorFragments:   map[string]anchorFragment{},
+		ResourceFragments: map[string]resourceFragment{},
+		ContentFragments:  map[string][]string{},
+		RubyGroups:        map[string]map[string]interface{}{},
+		RubyContents:      map[string]map[string]interface{}{},
+		RawFragments:      map[string][]byte{},
+	}
+
+	// symbolResolver with localStart=100, some local symbols already present
+	r := &symbolResolver{
+		localStart: 100,
+		locals:     []string{"old_local_1", "old_local_2"},
+	}
+
+	cfg := checkSymbolTableConfig{
+		OriginalSyms: []string{"local_sym_z", "local_sym_a", "old_local_1", "old_local_2"},
+	}
+
+	// Before rebuild, the resolver should have old locals
+	if len(r.locals) != 2 {
+		t.Fatalf("expected 2 locals before rebuild, got %d", len(r.locals))
+	}
+
+	checkSymbolTableWithConfig(frags, r, true, false, cfg)
+
+	// After rebuild:
+	// 1. replace_local_symbols should replace old locals with book_symbols
+	//    (the used local symbols, sorted by natural_sort_key)
+	// 2. "local_sym_z" and "local_sym_a" are used (in StyleFragments),
+	//    but "old_local_1" and "old_local_2" are NOT used.
+	//    So book_symbols = ["local_sym_a", "local_sym_z"] (natural-sorted)
+	// 3. resolver.locals should now be ["local_sym_a", "local_sym_z"]
+	if len(r.locals) != 2 {
+		t.Fatalf("expected 2 locals after rebuild, got %d: %v", len(r.locals), r.locals)
+	}
+	if r.locals[0] != "local_sym_a" {
+		t.Errorf("expected locals[0] = 'local_sym_a', got %q", r.locals[0])
+	}
+	if r.locals[1] != "local_sym_z" {
+		t.Errorf("expected locals[1] = 'local_sym_z', got %q", r.locals[1])
+	}
+}
+
+func TestCheckSymbolTableRebuildSymbolTableImport(t *testing.T) {
+	// Python L1151-1160: replace_symbol_table_import creates a new $ion_symbol_table
+	// fragment from the updated symbol table, removes the old one, inserts the new one.
+
+	// Setup: include a $ion_symbol_table raw fragment
+	frags := fragmentCatalog{
+		StyleFragments: map[string]map[string]interface{}{
+			"style1": {"my_local": map[string]interface{}{}},
+		},
+		Storylines:        map[string]map[string]interface{}{},
+		NavContainers:     map[string]map[string]interface{}{},
+		NavRoots:          nil,
+		TitleMetadata:     nil,
+		DocumentData:      nil,
+		ContentFeatures:   nil,
+		SectionFragments:  map[string]sectionFragment{},
+		AnchorFragments:   map[string]anchorFragment{},
+		ResourceFragments: map[string]resourceFragment{},
+		ContentFragments:  map[string][]string{},
+		RubyGroups:        map[string]map[string]interface{}{},
+		RubyContents:      map[string]map[string]interface{}{},
+		RawFragments: map[string][]byte{
+			"$ion_symbol_table": []byte("old_symtab_data"),
+		},
+		RawBlobOrder: []rawBlob{
+			{ID: "$ion_symbol_table", Data: []byte("old_symtab_data")},
+		},
+	}
+
+	r := &symbolResolver{
+		localStart: 100,
+		locals:     []string{"my_local"},
+	}
+
+	cfg := checkSymbolTableConfig{
+		OriginalSyms: []string{"my_local"},
+	}
+
+	checkSymbolTableWithConfig(frags, r, true, false, cfg)
+
+	// After rebuild, the RawFragments should have a new $ion_symbol_table
+	// that reflects the updated local symbols.
+	newSymtab, exists := frags.RawFragments["$ion_symbol_table"]
+	if !exists {
+		t.Fatal("expected $ion_symbol_table in RawFragments after rebuild")
+	}
+
+	// The new symbol table should contain the sorted local symbols
+	newSymtabStr := string(newSymtab)
+	if newSymtabStr == "" {
+		t.Fatal("expected non-empty $ion_symbol_table after rebuild")
+	}
+
+	// Verify the rebuild replaced the old data
+	if newSymtabStr == "old_symtab_data" {
+		t.Error("expected $ion_symbol_table to be rebuilt with new data, but got old data")
+	}
+}
+
+func TestCheckSymbolTableRebuildSortsNatually(t *testing.T) {
+	// Python L1148: sorted(book_symbols, key=natural_sort_key)
+	// Verify that symbols are sorted naturally (e.g., "sym2" before "sym10").
+
+	frags := fragmentCatalog{
+		StyleFragments: map[string]map[string]interface{}{
+			"s1": {"sym10": map[string]interface{}{}},
+			"s2": {"sym2": map[string]interface{}{}},
+			"s3": {"sym1": map[string]interface{}{}},
+		},
+		Storylines:        map[string]map[string]interface{}{},
+		NavContainers:     map[string]map[string]interface{}{},
+		NavRoots:          nil,
+		TitleMetadata:     nil,
+		DocumentData:      nil,
+		ContentFeatures:   nil,
+		SectionFragments:  map[string]sectionFragment{},
+		AnchorFragments:   map[string]anchorFragment{},
+		ResourceFragments: map[string]resourceFragment{},
+		ContentFragments:  map[string][]string{},
+		RubyGroups:        map[string]map[string]interface{}{},
+		RubyContents:      map[string]map[string]interface{}{},
+		RawFragments:      map[string][]byte{},
+	}
+
+	r := &symbolResolver{
+		localStart: 100,
+		locals:     []string{"old"},
+	}
+
+	cfg := checkSymbolTableConfig{
+		OriginalSyms: []string{"sym10", "sym2", "sym1", "old"},
+	}
+
+	checkSymbolTableWithConfig(frags, r, true, false, cfg)
+
+	// After rebuild, locals should be natural-sorted: sym1, sym2, sym10
+	if len(r.locals) != 3 {
+		t.Fatalf("expected 3 locals after rebuild, got %d: %v", len(r.locals), r.locals)
+	}
+	if r.locals[0] != "sym1" {
+		t.Errorf("expected locals[0] = 'sym1', got %q", r.locals[0])
+	}
+	if r.locals[1] != "sym2" {
+		t.Errorf("expected locals[1] = 'sym2', got %q", r.locals[1])
+	}
+	if r.locals[2] != "sym10" {
+		t.Errorf("expected locals[2] = 'sym10', got %q", r.locals[2])
+	}
+}

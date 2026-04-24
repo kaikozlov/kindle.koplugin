@@ -91,3 +91,23 @@ func (r *symbolResolver) isSharedSymbolText(name string) bool {
 	}
 	return isSharedSymbolName(name)
 }
+
+// replaceLocalSymbols replaces the local symbol table's symbols with the given sorted list.
+// Port of LocalSymbolTable.replace_local_symbols (ion_symbol_table.py L267-269).
+// Python: self.discard_local_symbols() + self.import_symbols(new_symbols).
+// In Go, the symbolResolver is simpler — just replace the locals slice.
+func (r *symbolResolver) replaceLocalSymbols(newSymbols []string) {
+	if r == nil {
+		return
+	}
+	r.locals = newSymbols
+}
+
+// getLocalSymbols returns the current local symbols.
+// Port of LocalSymbolTable.get_local_symbols (ion_symbol_table.py L271-272).
+func (r *symbolResolver) getLocalSymbols() []string {
+	if r == nil {
+		return nil
+	}
+	return r.locals
+}
