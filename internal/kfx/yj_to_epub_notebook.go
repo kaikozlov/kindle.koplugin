@@ -21,10 +21,12 @@ import (
 // This file contains:
 //   - Module-level constants (lines 16-68 of Python)
 //   - Standalone functions: adjustColorForDensity (lines 615-622), decodeStrokeValues (lines 624-703)
-//   - Stub methods: processScribeNotebookPageSection, processScribeNotebookTemplateSection
+//   - Notebook section processors: processScribeNotebookPageSection, processScribeNotebookTemplateSection
+//   - Notebook content processors: processNotebookContent, scribeNotebookStroke, scribeNotebookAnnotation
 //
-// The class methods (process_notebook_content, scribe_notebook_stroke, etc.) require full
-// book context (KFX_EPUB receiver) and will be expanded when scribe fixture integration is needed.
+// processScribeNotebookPageSection and processScribeNotebookTemplateSection use ScribeNotebookContext
+// to carry book state (new_book_part, reading_orders, manifest_resource, etc.). These are called
+// from processSectionWithType when a section has nmdl.canvas_width or nmdl.template_type.
 
 // ---------------------------------------------------------------------------
 // Module Constants (yj_to_epub_notebook.py lines 16-68)
