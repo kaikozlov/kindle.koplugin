@@ -128,11 +128,36 @@ func resolveSharedSymbol(sid uint32) string {
 	return fmt.Sprintf("$%d", sid)
 }
 
+// mergeIonReferencedStringSymbols walks a decoded ION value tree to collect string
+// symbol references into bookSymbols. This is the Go equivalent of Python's
+// replace_ion_data (yj_to_epub.py L282-305), which recurses into IonAnnotation,
+// IonList, IonSExp, and IonStruct to discover IonSymbol values.
+//
+// Port of Python replace_ion_data (yj_to_epub.py L282-305):
+//
+//	Python has 5 type branches:
+//	  IonAnnotation → recurse on .value       (L287-288)
+//	  IonList       → recurse on each element (L290-291)
+//	  IonSExp       → recurse on each element (L293-296) ← GAP 10
+//	  IonStruct     → recurse on keys+values  (L298-302)
+//	  IonSymbol     → add to book_symbols     (L304-305)
+//
+//	Go adaptation:
+//	  - IonAnnotation: handled during ION decode, not present in Go values.
+//	  - IonList/IonSExp: BOTH decode to []interface{} in Go. The single
+//	    []interface{} case below handles both Python branches (L290-291 and
+//	    L293-296), recursing into all children regardless of whether the
+//	    original ION type was List or SExp.
+//	  - IonStruct: decoded as map[string]interface{} (case below).
+//	  - IonSymbol: decoded as string; shared-symbol keys are detected by
+//	    isSharedSymbolName and their string values are collected.
 func mergeIonReferencedStringSymbols(value interface{}, bookSymbols map[string]struct{}) {
 	switch t := value.(type) {
 	case map[string]interface{}:
+		// IonStruct (Python L298-302): recurse into keys and values.
 		for k, v := range t {
 			if isSharedSymbolName(k) {
+				// Shared symbol key — collect the string value as a book symbol
 				if s, ok := v.(string); ok && s != "" {
 					bookSymbols[s] = struct{}{}
 				}
@@ -140,6 +165,10 @@ func mergeIonReferencedStringSymbols(value interface{}, bookSymbols map[string]s
 			mergeIonReferencedStringSymbols(v, bookSymbols)
 		}
 	case []interface{}:
+		// IonList (Python L290-291) AND IonSExp (Python L293-296, GAP 10):
+		// Both ION types decode to []interface{} in Go. This single case
+		// handles both, recursing into all child elements exactly as Python
+		// does for both IonList and IonSExp.
 		for _, v := range t {
 			mergeIonReferencedStringSymbols(v, bookSymbols)
 		}
@@ -460,6 +489,27 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 			}
 		}
 	}
+
+	// Design difference (GAP N8): Python organize_fragments_by_type collapses
+	// single-entry fragment categories (yj_to_epub.py L208-212):
+	//
+	//   for category, ids in categorized_data.items():
+	//       if len(ids) == 1:
+	//           id = list(ids)[0]
+	//           if id == category:
+	//               categorized_data[category] = categorized_data[category][id]
+	//
+	// This converts {"$538": {"$538": {...}}} → {"$538": {...}} when the sole key
+	// equals the type name. Go does NOT perform this singleton collapse because:
+	//   1. Go uses a typed fragmentCatalog struct with dedicated fields per fragment
+	//      type (e.g., DocumentData, TitleMetadata) instead of a generic
+	//      map[string]interface{} categorized_data dict.
+	//   2. Each typed field stores the unwrapped value directly — no intermediate
+	//      {"$538": {...}} wrapping exists to collapse.
+	//   3. The singleton collapse is only needed when using a generic dict-of-dicts;
+	//      Go's typed accessors make it unnecessary.
+	// The behavioral result is identical: callers access fragment data without
+	// the extra level of indirection in both Python (post-collapse) and Go (by design).
 
 	// Port of replace_ion_data string-symbol discovery (yj_to_epub.py): collect YJ field string values into bookSymbols.
 	mergeIonReferencedStringSymbols(fragments.TitleMetadata, bookSymbols)

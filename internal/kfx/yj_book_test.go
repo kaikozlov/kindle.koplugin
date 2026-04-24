@@ -593,6 +593,80 @@ func TestIsResolvedIdentity(t *testing.T) {
 // isPlaceholderSymbol tests
 // =============================================================================
 
+// =============================================================================
+// VAL-M1-001: GAP 10 — IonSExp recursion in mergeIonReferencedStringSymbols
+//
+// Python replace_ion_data (yj_to_epub.py L295-296) has an explicit IonSExp case:
+//     if data_type is IonSExp:
+//         return IonSExp([self.replace_ion_data(fc) for fc in f])
+//
+// In Go, both IonSExp and IonList decode to []interface{}, so the existing
+// []interface{} case in mergeIonReferencedStringSymbols handles both types.
+// This test verifies that SExp-shaped data (operator + args) is correctly
+// traversed and string symbols are collected from nested elements.
+// =============================================================================
+
+func TestMergeIonReferencedStringSymbols_IonSExp(t *testing.T) {
+	// IonSExp in Go is represented as []interface{}, same as IonList.
+	// Python replace_ion_data recurses into IonSExp children (L295-296).
+	// Go's mergeIonReferencedStringSymbols must do the same via the []interface{} case.
+	//
+	// Test with a SExp-like structure: [operator, arg1, arg2, ...]
+	// where args contain string symbols under shared-symbol keys.
+	bookSymbols := map[string]struct{}{}
+
+	// Simulate: IonSExp(["==", "position", IonSExp(["anchor", "my_anchor"])])
+	// In Python this is: IonSExp([IonSymbol("=="), IonSymbol("position"), IonSExp([...])])
+	// The string "my_anchor" should be collected because "anchor_name" is a shared symbol key.
+	sexpLikeData := []interface{}{
+		"==",
+		"position",
+		[]interface{}{
+			"anchor",
+			map[string]interface{}{
+				"anchor_name": "my_anchor_symbol",
+			},
+		},
+	}
+
+	mergeIonReferencedStringSymbols(sexpLikeData, bookSymbols)
+
+	if _, ok := bookSymbols["my_anchor_symbol"]; !ok {
+		t.Fatalf("expected bookSymbols to contain 'my_anchor_symbol' from SExp-nested data, got %v", bookSymbols)
+	}
+}
+
+func TestMergeIonReferencedStringSymbols_IonSExpDeepNesting(t *testing.T) {
+	// Verify deep nesting: SExp containing SExp containing struct with shared-symbol key
+	bookSymbols := map[string]struct{}{}
+
+	deeplyNested := []interface{}{
+		"operator",
+		[]interface{}{
+			"nested_op",
+			map[string]interface{}{
+				"content": "deep_symbol",
+			},
+		},
+		[]interface{}{
+			"another_op",
+			[]interface{}{
+				map[string]interface{}{
+					"style": "style_ref",
+				},
+			},
+		},
+	}
+
+	mergeIonReferencedStringSymbols(deeplyNested, bookSymbols)
+
+	for _, sym := range []string{"deep_symbol", "style_ref"} {
+		if _, ok := bookSymbols[sym]; !ok {
+			t.Fatalf("expected bookSymbols to contain %q from deeply nested SExp data, got %v", sym, bookSymbols)
+		}
+	}
+}
+
 func TestIsPlaceholderSymbol(t *testing.T) {
 	tests := []struct {
 		value string
