@@ -424,10 +424,10 @@ func processSection(sectionID string, section sectionFragment, seq int, storylin
 	// holds the equivalent data. We strip unused keys there.
 	stripUnusedSectionKeys(section.PageTemplateValues)
 
-	// Determine processing branch based on section content and book type.
-	// Note: book type detection is not yet fully wired (depends on B5 metadata getters),
-	// so currently this always falls through to the reflowable path.
-	// When book type is available, it will be passed through the renderer or section context.
+	// Simple reflowable-only path (no book type dispatch).
+	// Book type detection IS fully wired: detectBookTypeFull → pageSpreadConfig →
+	// processReadingOrder dispatches to processSectionWithType when config is present.
+	// This function is the fallback when no book type config is available.
 	_ = seq
 
 	return renderSectionFragments(sectionID, section, storylines, contentFragments, renderer)

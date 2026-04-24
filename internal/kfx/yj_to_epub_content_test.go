@@ -2702,9 +2702,9 @@ func TestDetectBookTypeFromBookFlags(t *testing.T) {
 
 func TestProcessReadingOrderUsesBookType(t *testing.T) {
 	// Verify that processReadingOrder dispatches correctly when a pageSpreadConfig
-	// is provided. This tests the wiring gap: processReadingOrder currently ignores
-	// book type and always calls processSection (reflowable), but should call
-	// processSectionWithType when book type is available.
+	// is provided. When cfg is non-nil, processReadingOrder calls processSectionWithType
+	// (which handles comic/magazine/scribe branches). When cfg is nil, it falls back
+	// to processSection (reflowable-only).
 
 	// Create a section that would be dispatched differently for comic vs reflowable
 	sectionFragments := map[string]sectionFragment{
