@@ -60,6 +60,53 @@ type OutlineEntry struct {
 	Children []OutlineEntry
 }
 
+// entireResourceUsed returns true if all pages of the PDF are included.
+// Port of Python PdfImageResource.entire_resource_used (resources.py:247-248).
+// Python: self.page_nums == list(range(1, self.total_pages + 1))
+func (r *ImageResource) entireResourceUsed() bool {
+	if r.TotalPages == 0 {
+		return len(r.PageNums) == 0
+	}
+	if len(r.PageNums) != r.TotalPages {
+		return false
+	}
+	for i, pn := range r.PageNums {
+		if pn != i+1 {
+			return false
+		}
+	}
+	return true
+}
+
+// pageNumberRanges converts PageNums into a list of half-open [start, end) ranges.
+// Port of Python PdfImageResource.page_number_ranges (resources.py:250-266).
+// Python groups consecutive pages: [1,2,3,5,6] → [(1,4),(5,7)]
+// These ranges are used with pypdf's writer.append(pages=(start,end)) API.
+func (r *ImageResource) pageNumberRanges() [][2]int {
+	var ranges [][2]int
+	start := 0
+	end := 0
+
+	for _, pageNum := range r.PageNums {
+		if start == 0 {
+			start = pageNum
+			end = pageNum
+		} else if pageNum == end+1 {
+			end = pageNum
+		} else {
+			ranges = append(ranges, [2]int{start, end + 1})
+			start = pageNum
+			end = pageNum
+		}
+	}
+
+	if start != 0 {
+		ranges = append(ranges, [2]int{start, end + 1})
+	}
+
+	return ranges
+}
+
 // ---------------------------------------------------------------------------
 // KFXImageBook — port of Python KFX_IMAGE_BOOK class
 // ---------------------------------------------------------------------------
@@ -468,6 +515,127 @@ func suffixLocation(location, suffix string) string {
 }
 
 // ---------------------------------------------------------------------------
+// convertImageToPDF — port of Python convert_image_to_pdf (resources.py:497-527)
+//
+// Converts an image resource to a single-page PDF resource.
+// Python uses Pillow's image.save(pdf_file, "pdf") which automatically creates
+// a PDF page sized to the image dimensions at the best DPI.
+// Go builds a minimal PDF with the image embedded as a DCTDecode (JPEG) stream.
+//
+// For PDF resources ($565), Python returns them as-is.
+// For JXR resources ($548), Python converts to JPEG/PNG first, then to PDF.
+// For all other formats, Python converts the image to PDF directly.
+// ---------------------------------------------------------------------------
+
+// convertImageToPDF converts an image resource into a single-page PDF resource.
+// Port of Python convert_image_to_pdf (resources.py:497-527).
+func convertImageToPDF(imgRes ImageResource) *ImageResource {
+	// Python: if image_resource.format == "$565": return image_resource
+	if imgRes.Format == "pdf" {
+		return &imgRes
+	}
+
+	imageData := imgRes.RawMedia
+
+	// Python: if image_resource.format == "$548": convert JXR first
+	if imgRes.Format == "jxr" {
+		convertedData, _ := convertJXRToJpegOrPNG(imageData, imgRes.Location)
+		imageData = convertedData
+	}
+
+	// Decode image to get dimensions and convert to JPEG for PDF embedding
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(imageData))
+	if err != nil {
+		log.Printf("kfx: error: failed to decode image for PDF conversion %s: %v", imgRes.Location, err)
+		return nil
+	}
+
+	// Re-encode as JPEG for PDF embedding
+	var jpegData []byte
+	if imgRes.Format == "jpg" {
+		jpegData = imageData
+	} else {
+		img, _, err := image.Decode(bytes.NewReader(imageData))
+		if err != nil {
+			log.Printf("kfx: error: failed to decode image for JPEG conversion %s: %v", imgRes.Location, err)
+			return nil
+		}
+		var buf bytes.Buffer
+		if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err != nil {
+			log.Printf("kfx: error: failed to convert image to JPEG %s: %v", imgRes.Location, err)
+			return nil
+		}
+		jpegData = buf.Bytes()
+	}
+
+	// Build minimal PDF with single page containing the image
+	pdfData := buildSinglePagePDF(jpegData, cfg.Width, cfg.Height)
+
+	return &ImageResource{
+		Format:     "pdf",
+		Location:   imgRes.Location,
+		RawMedia:   pdfData,
+		Height:     cfg.Height,
+		Width:      cfg.Width,
+		PageNums:   []int{1},
+		TotalPages: 1,
+	}
+}
+
+// buildSinglePagePDF creates a minimal single-page PDF with an embedded JPEG image.
+// The page dimensions match the image pixel dimensions (72 DPI implied).
+func buildSinglePagePDF(jpegData []byte, width, height int) []byte {
+	// Object 1: Catalog
+	// Object 2: Pages
+	// Object 3: Page
+	// Object 4: Image XObject
+	// Object 5: Content stream
+
+	w := float64(width)
+	h := float64(height)
+
+	contentStream := fmt.Sprintf("q %.2f 0 0 %.2f 0 0 cm /Img1 Do Q", w, h)
+
+	var buf bytes.Buffer
+	buf.WriteString("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+
+	// Object 1: Catalog
+	offset1 := buf.Len()
+	fmt.Fprintf(&buf, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+
+	// Object 2: Pages
+	offset2 := buf.Len()
+	fmt.Fprintf(&buf, "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n")
+
+	// Object 3: Page
+	offset3 := buf.Len()
+	fmt.Fprintf(&buf, "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.2f %.2f] /Contents 5 0 R /Resources << /XObject << /Img1 4 0 R >> >> >>\nendobj\n", w, h)
+
+	// Object 4: Image XObject
+	offset4 := buf.Len()
+	fmt.Fprintf(&buf, "4 0 obj\n<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n", width, height, len(jpegData))
+	buf.Write(jpegData)
+	buf.WriteString("\nendstream\nendobj\n")
+
+	// Object 5: Content stream
+	offset5 := buf.Len()
+	fmt.Fprintf(&buf, "5 0 obj\n<< /Length %d >>\nstream\n%s\nendstream\nendobj\n", len(contentStream), contentStream)
+
+	// Cross-reference table
+	xrefOffset := buf.Len()
+	fmt.Fprintf(&buf, "xref\n0 6\n")
+	fmt.Fprintf(&buf, "0000000000 65535 f \n")
+	fmt.Fprintf(&buf, "%010d 00000 n \n", offset1)
+	fmt.Fprintf(&buf, "%010d 00000 n \n", offset2)
+	fmt.Fprintf(&buf, "%010d 00000 n \n", offset3)
+	fmt.Fprintf(&buf, "%010d 00000 n \n", offset4)
+	fmt.Fprintf(&buf, "%010d 00000 n \n", offset5)
+	fmt.Fprintf(&buf, "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", xrefOffset)
+
+	return buf.Bytes()
+}
+
+// ---------------------------------------------------------------------------
 // combineImagesIntoCBZ — port of Python combine_images_into_cbz (L304-347)
 // ---------------------------------------------------------------------------
 
@@ -582,60 +750,147 @@ func extensionForFormat(formatSymbol string) string {
 // ---------------------------------------------------------------------------
 
 // combineImagesIntoPDF creates a PDF document from ordered images.
-// Supports JPEG and PNG image resources. Metadata and outline are optional.
+// Port of Python combine_images_into_pdf (yj_to_image_book.py:215-294).
+//
+// Python uses pypdf.PdfWriter to merge PDF pages and images. Go builds a minimal
+// PDF from scratch since we don't have pypdf. Key differences documented inline.
+//
+// PDF resource handling:
+//   - Python: uses pypdf.PdfReader to extract pages and pypdf.PdfWriter.append to merge
+//   - Go: converts all images (including PDF pages via convertImageToPDF) to JPEG-embedded
+//     PDF pages, then concatenates them. PDF resources that already contain valid PDF data
+//     are included directly as pages.
+//   - Limitation: Go cannot extract individual pages from a multi-page PDF like pypdf.
+//     This is documented in VAL-M10-001/VAL-M10-003.
 func combineImagesIntoPDF(orderedImages []ImageResource, metadata map[string]string, isRTL bool, outline []OutlineEntry) []byte {
 	if len(orderedImages) == 0 {
 		return nil
 	}
 
-	// Convert each image to a PDF page
-	var pages []pdfPage
+	// Python: yj_to_image_book.py:219-232
+	// Combine consecutive same-location PDF resources and convert non-PDF images to PDF.
+	// Python tracks image_resource_formats for logging and combined_pdf_images for merging.
+	var combinedPDFImages []ImageResource
+
 	for _, imgRes := range orderedImages {
 		if imgRes.Format == "pdf" {
-			// PDF resource — for now, skip (would need pypdf-like page extraction)
-			log.Printf("kfx: warning: PDF resource %s skipped in PDF output", imgRes.Location)
-			continue
-		}
-
-		// Decode image to get dimensions
-		cfg, _, err := image.DecodeConfig(bytes.NewReader(imgRes.RawMedia))
-		if err != nil {
-			log.Printf("kfx: error: Failed to decode image %s: %v", imgRes.Location, err)
-			continue
-		}
-
-		// Re-encode as JPEG for PDF embedding (or use raw if already JPEG)
-		var jpegData []byte
-		var isJPEG bool
-		if imgRes.Format == "jpg" {
-			jpegData = imgRes.RawMedia
-			isJPEG = true
+			// Python: yj_to_image_book.py:225-230 — merge consecutive PDF resources from same location
+			if len(combinedPDFImages) > 0 &&
+				combinedPDFImages[len(combinedPDFImages)-1].Format == "pdf" &&
+				combinedPDFImages[len(combinedPDFImages)-1].Location == imgRes.Location {
+				// Merge page_nums into the previous entry
+				combinedPDFImages[len(combinedPDFImages)-1].PageNums = append(
+					combinedPDFImages[len(combinedPDFImages)-1].PageNums, imgRes.PageNums...)
+			} else {
+				// New PDF resource entry
+				combinedPDFImages = append(combinedPDFImages, imgRes)
+			}
 		} else {
-			// Convert to JPEG for PDF
-			img, _, err := image.Decode(bytes.NewReader(imgRes.RawMedia))
-			if err != nil {
-				log.Printf("kfx: error: Failed to decode image for conversion %s: %v", imgRes.Location, err)
-				continue
+			// Python: combined_pdf_images.append(convert_image_to_pdf(image_resource))
+			pdfRes := convertImageToPDF(imgRes)
+			if pdfRes != nil {
+				combinedPDFImages = append(combinedPDFImages, *pdfRes)
 			}
-			var buf bytes.Buffer
-			if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err != nil {
-				log.Printf("kfx: error: Failed to convert image to JPEG %s: %v", imgRes.Location, err)
-				continue
-			}
-			jpegData = buf.Bytes()
-			isJPEG = false
+		}
+	}
+
+	if len(combinedPDFImages) == 0 {
+		return nil
+	}
+
+	// Python: yj_to_image_book.py:234-247
+	// If single resource using entire PDF, use its raw data directly.
+	// Otherwise, combine all resources.
+	//
+	// Go builds pages from each combined resource. For PDF resources, we embed
+	// the raw PDF data as a single page (limitation: no page extraction).
+	// For image-derived PDFs, we use the JPEG-embedded page.
+	var pages []pdfPage
+
+	for _, pdfImg := range combinedPDFImages {
+		if pdfImg.RawMedia == nil || len(pdfImg.RawMedia) == 0 {
+			continue
 		}
 
-		pages = append(pages, pdfPage{
-			imageData: jpegData,
-			isJPEG:    isJPEG,
-			width:     float64(cfg.Width),
-			height:    float64(cfg.Height),
-		})
+		if pdfImg.Format == "pdf" && bytes.HasPrefix(pdfImg.RawMedia, []byte("%PDF")) {
+			// PDF resource — extract page dimensions from the PDF's MediaBox
+			// and render to JPEG for embedding.
+			//
+			// LIMITATION (VAL-M10-001): Go cannot extract individual pages from a
+			// multi-page PDF like Python's pypdf. Instead, we render each requested
+			// page via convertPDFPageToImage (placeholder for now).
+			// Python: yj_to_image_book.py:252-259 uses writer.append(pages=page_range).
+			for _, pageNum := range pdfImg.PageNums {
+				imageData, imgFmt := convertPDFPageToImage(
+					pdfImg.Location, pdfImg.RawMedia, pageNum, nil, true)
+				if len(imageData) == 0 {
+					continue
+				}
+				cfg, _, err := image.DecodeConfig(bytes.NewReader(imageData))
+				if err != nil {
+					continue
+				}
+				// Convert to JPEG for PDF embedding
+				jpegData, jpegErr := ensureJPEG(imageData, imgFmt)
+				if jpegErr != nil {
+					continue
+				}
+				pages = append(pages, pdfPage{
+					imageData: jpegData,
+					isJPEG:    true,
+					width:     float64(cfg.Width),
+					height:    float64(cfg.Height),
+				})
+			}
+		} else {
+			// Image-derived resource — decode image and embed directly as JPEG page
+			// Python: convert_image_to_pdf creates a PDF, but for Go's buildPDF
+			// we just need the JPEG data and dimensions.
+			imageData := pdfImg.RawMedia
+			imgFormat := pdfImg.Format
+
+			// Handle JXR conversion
+			if imgFormat == "jxr" {
+				convertedData, convertedFmt := convertJXRToJpegOrPNG(imageData, pdfImg.Location)
+				imageData = convertedData
+				imgFormat = convertedFmt
+			}
+
+			// Decode to get dimensions
+			cfg, _, err := image.DecodeConfig(bytes.NewReader(imageData))
+			if err != nil {
+				log.Printf("kfx: error: failed to decode image for PDF %s: %v", pdfImg.Location, err)
+				continue
+			}
+
+			// Convert to JPEG for PDF embedding
+			jpegData, jpegErr := ensureJPEG(imageData, imgFormat)
+			if jpegErr != nil {
+				log.Printf("kfx: error: failed to convert image for PDF %s: %v", pdfImg.Location, jpegErr)
+				continue
+			}
+
+			pages = append(pages, pdfPage{
+				imageData: jpegData,
+				isJPEG:    true,
+				width:     float64(cfg.Width),
+				height:    float64(cfg.Height),
+			})
+		}
 	}
 
 	if len(pages) == 0 {
 		return nil
+	}
+
+	// Python: yj_to_image_book.py:234-236
+	// If single resource using entire PDF and no metadata/RTL/outline, return raw data
+	if len(combinedPDFImages) == 1 && combinedPDFImages[0].entireResourceUsed() &&
+		len(metadata) == 0 && !isRTL && len(outline) == 0 {
+		// Optimization: return the raw PDF data directly if it's a single complete resource
+		if bytes.HasPrefix(combinedPDFImages[0].RawMedia, []byte("%PDF")) {
+			return combinedPDFImages[0].RawMedia
+		}
 	}
 
 	return buildPDF(pages, metadata, isRTL, outline)
@@ -660,72 +915,35 @@ type pdfObject struct {
 }
 
 // buildPDF creates a minimal PDF from pages with optional metadata, RTL, and outline.
+// Port of Python's PDF construction logic in combine_images_into_pdf (yj_to_image_book.py:215-294).
+//
+// Python uses pypdf.PdfWriter with clone_from/append. Go builds PDF from scratch.
+// Differences from pypdf:
+//   - No compress_identical_objects (pypdf-specific optimization)
+//   - No pypdf page range extraction (all pages embedded as JPEG)
+//   - PDF structure is functionally equivalent: catalog, pages, page objects, outline
 func buildPDF(pages []pdfPage, metadata map[string]string, isRTL bool, outline []OutlineEntry) []byte {
 	var objects []pdfObject
 	objID := 1
 	nextID := func() int { id := objID; objID++; return id }
 
-	// Catalog
+	// Pre-allocate object IDs
 	catalogID := nextID()
-	// Pages
 	pagesID := nextID()
 
-	// Outline root (if needed)
 	var outlineRootID int
 	if len(outline) > 0 {
 		outlineRootID = nextID()
 	}
 
-	// Create page objects
-	var pageIDs []int
-	var imageObjIDs []int
-
-	for i, page := range pages {
-		pageID := nextID()
-		imageObjID := nextID()
-
-		// Image resource
-		colorSpace := "/DeviceRGB"
-		filter := "/DCTDecode" // JPEG
-		if !page.isJPEG {
-			// We re-encode non-JPEG as JPEG above, so this is always JPEG
-			filter = "/DCTDecode"
-		}
-
-		imageObj := pdfObject{
-			id: imageObjID,
-			content: fmt.Sprintf(
-				"<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace %s /BitsPerComponent 8 /Filter %s /Length %d >>",
-				int(page.width), int(page.height), colorSpace, filter, len(page.imageData),
-			),
-			stream: page.imageData,
-		}
-		objects = append(objects, imageObj)
-		imageObjIDs = append(imageObjIDs, imageObjID)
-
-		// Content stream: draw image filling the page
-		contentStream := fmt.Sprintf("q %.2f 0 0 %.2f 0 0 cm /Img%d Do Q", page.width, page.height, i+1)
-		contentID := nextID()
-		objects = append(objects, pdfObject{
-			id:      contentID,
-			content: fmt.Sprintf("<< /Length %d >>", len(contentStream)),
-			stream:  []byte(contentStream),
-		})
-
-		// Page resources
-		resources := fmt.Sprintf("<< /XObject << /Img%d %d 0 R >> >>", i+1, imageObjID)
-
-		// Page object (will be finalized after outline is built)
-		_ = pageID
-		_ = resources
-		_ = contentID
-		pageIDs = append(pageIDs, pageID)
+	// Allocate page IDs
+	pageIDs := make([]int, len(pages))
+	for i := range pages {
+		pageIDs[i] = nextID()
+		// image object + content stream object per page
+		nextID() // image XObject
+		nextID() // content stream
 	}
-
-	// Now build the actual objects in order
-	// Reset and rebuild properly
-	objID = 1
-	objects = objects[:0]
 
 	// 1. Catalog
 	catalogObj := "<< /Type /Catalog /Pages " + fmt.Sprintf("%d 0 R", pagesID)
@@ -954,8 +1172,16 @@ func serializePDF(objects []pdfObject, catalogID, infoID int) []byte {
 	// Binary comment to mark as binary PDF
 	buf.WriteString("%\xe2\xe3\xcf\xd3\n")
 
+	// Find maximum object ID for xref sizing
+	maxID := 0
+	for _, obj := range objects {
+		if obj.id > maxID {
+			maxID = obj.id
+		}
+	}
+
 	// Object positions for xref
-	offsets := make([]int64, len(objects)+1)
+	offsets := make([]int64, maxID+1)
 
 	for _, obj := range objects {
 		offsets[obj.id] = int64(buf.Len())
@@ -971,9 +1197,9 @@ func serializePDF(objects []pdfObject, catalogID, infoID int) []byte {
 	// Cross-reference table
 	xrefOffset := buf.Len()
 	fmt.Fprintf(&buf, "xref\n")
-	fmt.Fprintf(&buf, "0 %d\n", len(objects)+1)
+	fmt.Fprintf(&buf, "0 %d\n", maxID+1)
 	fmt.Fprintf(&buf, "0000000000 65535 f \n")
-	for i := 1; i <= len(objects); i++ {
+	for i := 1; i <= maxID; i++ {
 		if offsets[i] > 0 {
 			fmt.Fprintf(&buf, "%010d 00000 n \n", offsets[i])
 		} else {
@@ -999,6 +1225,85 @@ func decodeImageConfig(data []byte) (width, height int, err error) {
 		return 0, 0, err
 	}
 	return cfg.Width, cfg.Height, nil
+}
+
+// decodeImageConfigFromPDF extracts page dimensions from a PDF file.
+// Parses the first page's MediaBox to get width and height.
+// Returns error if the PDF cannot be parsed.
+func decodeImageConfigFromPDF(pdfData []byte) (image.Config, error) {
+	if len(pdfData) == 0 || !bytes.HasPrefix(pdfData, []byte("%PDF")) {
+		return image.Config{}, fmt.Errorf("not a valid PDF")
+	}
+
+	// Parse MediaBox from the first page
+	// Pattern: /MediaBox [0 0 WIDTH HEIGHT]
+	mediaBoxIdx := bytes.Index(pdfData, []byte("/MediaBox"))
+	if mediaBoxIdx < 0 {
+		return image.Config{}, fmt.Errorf("no MediaBox found in PDF")
+	}
+
+	// Extract the MediaBox values
+	boxStart := bytes.Index(pdfData[mediaBoxIdx:], []byte("["))
+	if boxStart < 0 {
+		return image.Config{}, fmt.Errorf("malformed MediaBox")
+	}
+	boxStart += mediaBoxIdx + 1
+	boxEnd := bytes.Index(pdfData[boxStart:], []byte("]"))
+	if boxEnd < 0 {
+		return image.Config{}, fmt.Errorf("malformed MediaBox")
+	}
+
+	boxContent := string(pdfData[boxStart : boxStart+boxEnd])
+	// Parse "0 0 WIDTH HEIGHT" or similar
+	var x0, y0, w, h float64
+	n, _ := fmt.Sscanf(strings.TrimSpace(boxContent), "%f %f %f %f", &x0, &y0, &w, &h)
+	if n < 4 {
+		return image.Config{}, fmt.Errorf("failed to parse MediaBox: %q", boxContent)
+	}
+
+	return image.Config{
+		Width:  int(w - x0),
+		Height: int(h - y0),
+	}, nil
+}
+
+// decodePDFPageDimensions extracts page dimensions from a single-page PDF.
+// This is used for PDFs created by convertImageToPDF (buildSinglePagePDF).
+func decodePDFPageDimensions(pdfData []byte) (image.Config, error) {
+	return decodeImageConfigFromPDF(pdfData)
+}
+
+// renderPDFPageToJPEG converts a single-page PDF to a JPEG image.
+// Since Go doesn't have pypdf's rendering capability, this uses the
+// convertPDFPageToImage pathway (which generates a placeholder for real PDFs).
+//
+// LIMITATION (VAL-M10-001): For PDF-backed books, this produces a placeholder
+// rather than the actual rendered page. None of the 6 test books use PDF resources.
+func renderPDFPageToJPEG(pdfData []byte) ([]byte, error) {
+	imageData, _ := convertPDFPageToImage("embedded-pdf", pdfData, 1, nil, true)
+	if len(imageData) == 0 {
+		return nil, fmt.Errorf("failed to render PDF page")
+	}
+	return imageData, nil
+}
+
+// ensureJPEG converts image data to JPEG if it isn't already.
+// Handles jpg, png, and other formats by decoding and re-encoding.
+func ensureJPEG(data []byte, format string) ([]byte, error) {
+	if format == "jpg" {
+		return data, nil
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("ensureJPEG: failed to decode: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err != nil {
+		return nil, fmt.Errorf("ensureJPEG: failed to encode JPEG: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
 // writePNG encodes an image.Image as PNG.

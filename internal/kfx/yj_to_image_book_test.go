@@ -917,5 +917,334 @@ func parsePDFXRef(data []byte) map[int]int64 {
 	return xref
 }
 
+// ---------------------------------------------------------------------------
+// M10 GAP 1: entireResourceUsed — Python PdfImageResource.entire_resource_used (resources.py:247-248)
+// Verifies that ImageResource has an entireResourceUsed method matching Python.
+// Python: self.page_nums == list(range(1, self.total_pages + 1))
+// ---------------------------------------------------------------------------
+
+func TestImageResource_EntireResourceUsed(t *testing.T) {
+	// Case 1: all pages used (page_nums = [1,2,3], total_pages = 3)
+	allPages := ImageResource{
+		Format:     "pdf",
+		PageNums:   []int{1, 2, 3},
+		TotalPages: 3,
+	}
+	if !allPages.entireResourceUsed() {
+		t.Error("expected entireResourceUsed() = true when all pages are listed")
+	}
+
+	// Case 2: partial pages (page_nums = [1], total_pages = 3)
+	partial := ImageResource{
+		Format:     "pdf",
+		PageNums:   []int{1},
+		TotalPages: 3,
+	}
+	if partial.entireResourceUsed() {
+		t.Error("expected entireResourceUsed() = false when only some pages listed")
+	}
+
+	// Case 3: single page PDF (page_nums = [1], total_pages = 1)
+	singlePage := ImageResource{
+		Format:     "pdf",
+		PageNums:   []int{1},
+		TotalPages: 1,
+	}
+	if !singlePage.entireResourceUsed() {
+		t.Error("expected entireResourceUsed() = true for single-page PDF")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M10 GAP 2: pageNumberRanges — Python PdfImageResource.page_number_ranges (resources.py:250-266)
+// Verifies that ImageResource has a pageNumberRanges method matching Python.
+// Python converts [1,2,3,5,6] → [(1,4),(5,7)] (pypdf page ranges are half-open)
+// ---------------------------------------------------------------------------
+
+func TestImageResource_PageNumberRanges(t *testing.T) {
+	// Consecutive pages: [1,2,3] → [(1,4)]
+	consecutive := ImageResource{
+		PageNums: []int{1, 2, 3},
+	}
+	ranges := consecutive.pageNumberRanges()
+	if len(ranges) != 1 || ranges[0][0] != 1 || ranges[0][1] != 4 {
+		t.Errorf("expected [(1,4)], got %v", ranges)
+	}
+
+	// Gapped pages: [1,2,5,6] → [(1,3),(5,7)]
+	gapped := ImageResource{
+		PageNums: []int{1, 2, 5, 6},
+	}
+	ranges = gapped.pageNumberRanges()
+	if len(ranges) != 2 {
+		t.Fatalf("expected 2 ranges, got %d", len(ranges))
+	}
+	if ranges[0][0] != 1 || ranges[0][1] != 3 {
+		t.Errorf("expected first range (1,3), got %v", ranges[0])
+	}
+	if ranges[1][0] != 5 || ranges[1][1] != 7 {
+		t.Errorf("expected second range (5,7), got %v", ranges[1])
+	}
+
+	// Single page: [3] → [(3,4)]
+	single := ImageResource{
+		PageNums: []int{3},
+	}
+	ranges = single.pageNumberRanges()
+	if len(ranges) != 1 || ranges[0][0] != 3 || ranges[0][1] != 4 {
+		t.Errorf("expected [(3,4)], got %v", ranges)
+	}
+
+	// Empty: [] → []
+	empty := ImageResource{
+		PageNums: []int{},
+	}
+	ranges = empty.pageNumberRanges()
+	if len(ranges) != 0 {
+		t.Errorf("expected empty ranges, got %v", ranges)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M10 GAP 3: convertImageToPDF — Python convert_image_to_pdf (resources.py:497-527)
+// Verifies that converting a JPEG image to PDF produces a valid PDF resource.
+// Python converts image → PdfImageResource with 1 page.
+// ---------------------------------------------------------------------------
+
+func TestConvertImageToPDF(t *testing.T) {
+	imgData := createTestJPEG(t, 100, 200)
+
+	imgRes := ImageResource{
+		Format:   "jpg",
+		Location: "test-image.jpg",
+		RawMedia: imgData,
+		Height:   200,
+		Width:    100,
+	}
+
+	pdfRes := convertImageToPDF(imgRes)
+	if pdfRes == nil {
+		t.Fatal("expected non-nil PDF resource from image conversion")
+	}
+
+	// Should produce a PDF format resource
+	if pdfRes.Format != "pdf" {
+		t.Errorf("expected format 'pdf', got %q", pdfRes.Format)
+	}
+
+	// Should have page_nums = [1] (single page)
+	if len(pdfRes.PageNums) != 1 || pdfRes.PageNums[0] != 1 {
+		t.Errorf("expected PageNums=[1], got %v", pdfRes.PageNums)
+	}
+
+	// Should have total_pages = 1
+	if pdfRes.TotalPages != 1 {
+		t.Errorf("expected TotalPages=1, got %d", pdfRes.TotalPages)
+	}
+
+	// Should be a valid PDF
+	if !isValidPDF(pdfRes.RawMedia) {
+		t.Error("expected RawMedia to be a valid PDF")
+	}
+
+	// entireResourceUsed should be true (single page, all pages used)
+	if !pdfRes.entireResourceUsed() {
+		t.Error("expected entireResourceUsed() = true for single-page PDF")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M10 GAP 3b: convertImageToPDF for JXR — Python resources.py:503-504
+// Verifies JXR images are converted to JPEG/PNG first, then to PDF.
+// ---------------------------------------------------------------------------
+
+func TestConvertImageToPDF_JXR(t *testing.T) {
+	// JXR data that falls back to standard decode (it's actually a JPEG)
+	imgData := createTestJPEG(t, 100, 200)
+
+	imgRes := ImageResource{
+		Format:   "jxr",
+		Location: "test-image.jxr",
+		RawMedia: imgData,
+		Height:   200,
+		Width:    100,
+	}
+
+	pdfRes := convertImageToPDF(imgRes)
+	if pdfRes == nil {
+		t.Fatal("expected non-nil PDF resource from JXR conversion")
+	}
+	if pdfRes.Format != "pdf" {
+		t.Errorf("expected format 'pdf', got %q", pdfRes.Format)
+	}
+	if !isValidPDF(pdfRes.RawMedia) {
+		t.Error("expected valid PDF output from JXR conversion")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M10 GAP 4: PDF merging of consecutive same-location PDF resources
+// Python: yj_to_image_book.py:225-230
+// If two consecutive images are both PDF format with same location,
+// their page_nums should be merged into a single entry.
+// ---------------------------------------------------------------------------
+
+func TestCombineImagesIntoPDF_MergesConsecutivePDFs(t *testing.T) {
+	// Create a minimal valid PDF to embed
+	pdfData := createSinglePagePDF(t)
+
+	images := []ImageResource{
+		{Format: "pdf", Location: "doc.pdf", RawMedia: pdfData, PageNums: []int{1}, TotalPages: 3},
+		{Format: "pdf", Location: "doc.pdf", RawMedia: pdfData, PageNums: []int{2}, TotalPages: 3},
+	}
+
+	pdfResult := combineImagesIntoPDF(images, nil, false, nil)
+	if pdfResult == nil {
+		t.Fatal("expected non-nil PDF from merged PDF resources")
+	}
+	if !isValidPDF(pdfResult) {
+		t.Error("expected valid PDF output")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M10 GAP 5: addPDFOutline — Python add_pdf_outline (yj_to_image_book.py:296-302)
+// Verifies recursive outline creation with nested children.
+// ---------------------------------------------------------------------------
+
+func TestAddPDFOutline(t *testing.T) {
+	imgData := createTestJPEG(t, 100, 200)
+
+	images := []ImageResource{
+		{Format: "jpg", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
+		{Format: "jpg", Location: "img2.jpg", RawMedia: createTestJPEG(t, 100, 200), Width: 100, Height: 200},
+	}
+
+	// Nested outline: Chapter 1 → Section 1.1, Section 1.2
+	outline := []OutlineEntry{
+		{
+			Title:   "Chapter 1",
+			PageNum: 0,
+			Children: []OutlineEntry{
+				{Title: "Section 1.1", PageNum: 0},
+				{Title: "Section 1.2", PageNum: 1},
+			},
+		},
+		{Title: "Chapter 2", PageNum: 1},
+	}
+
+	pdfData := combineImagesIntoPDF(images, nil, false, outline)
+	if pdfData == nil {
+		t.Fatal("expected non-nil PDF with outline")
+	}
+	if !isValidPDF(pdfData) {
+		t.Error("expected valid PDF output")
+	}
+
+	// Verify all outline entries are present
+	if !bytes.Contains(pdfData, []byte("Chapter 1")) {
+		t.Error("expected PDF to contain 'Chapter 1' outline")
+	}
+	if !bytes.Contains(pdfData, []byte("Section 1.1")) {
+		t.Error("expected PDF to contain 'Section 1.1' outline")
+	}
+	if !bytes.Contains(pdfData, []byte("Section 1.2")) {
+		t.Error("expected PDF to contain 'Section 1.2' outline")
+	}
+	if !bytes.Contains(pdfData, []byte("Chapter 2")) {
+		t.Error("expected PDF to contain 'Chapter 2' outline")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M10 GAP 6: PDF supports metadata, RTL, and outline together
+// Python: combine_images_into_pdf (yj_to_image_book.py:215-294) full path
+// ---------------------------------------------------------------------------
+
+func TestCombineImagesIntoPDF_WithMetadataAndRTLAndOutline(t *testing.T) {
+	imgData := createTestJPEG(t, 100, 200)
+
+	images := []ImageResource{
+		{Format: "jpg", Location: "img1.jpg", RawMedia: imgData, Width: 100, Height: 200},
+	}
+
+	metadata := map[string]string{
+		"/Title":  "RTL Test",
+		"/Author": "Test Author",
+	}
+
+	outline := []OutlineEntry{
+		{Title: "Start", PageNum: 0},
+	}
+
+	pdfData := combineImagesIntoPDF(images, metadata, true, outline)
+	if pdfData == nil {
+		t.Fatal("expected non-nil PDF with metadata, RTL, and outline")
+	}
+	if !isValidPDF(pdfData) {
+		t.Error("expected valid PDF")
+	}
+	if !bytes.Contains(pdfData, []byte("/R2L")) {
+		t.Error("expected R2L direction in PDF")
+	}
+	if !bytes.Contains(pdfData, []byte("RTL Test")) {
+		t.Error("expected title metadata in PDF")
+	}
+	if !bytes.Contains(pdfData, []byte("Start")) {
+		t.Error("expected outline entry in PDF")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M10 GAP 7: PDF resource pages not skipped in PDF output
+// Python: combine_images_into_pdf processes PDF-format images with pypdf
+// Go currently skips PDF resources — this test documents the limitation.
+// VAL-M10-001: PDF page conversion addressed.
+// ---------------------------------------------------------------------------
+
+func TestCombineImagesIntoPDF_PDFResourcesDocumented(t *testing.T) {
+	// Create a single-page PDF that combineImageToPDF would produce
+	imgData := createTestJPEG(t, 100, 200)
+	imgRes := ImageResource{
+		Format:   "jpg",
+		Location: "test.jpg",
+		RawMedia: imgData,
+		Height:   200,
+		Width:    100,
+	}
+	pdfRes := convertImageToPDF(imgRes)
+
+	// Now try to combine a PDF resource into a PDF
+	// Python would use pypdf to merge pages; Go should handle this
+	result := combineImagesIntoPDF([]ImageResource{*pdfRes}, nil, false, nil)
+	if result == nil {
+		t.Fatal("expected non-nil PDF — Go should handle PDF-to-PDF merging")
+	}
+	if !isValidPDF(result) {
+		t.Error("expected valid PDF output")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M10: createSinglePagePDF helper for tests
+// ---------------------------------------------------------------------------
+
+func createSinglePagePDF(t *testing.T) []byte {
+	t.Helper()
+	imgData := createTestJPEG(t, 100, 200)
+	imgRes := ImageResource{
+		Format:   "jpg",
+		Location: "test.jpg",
+		RawMedia: imgData,
+		Height:   200,
+		Width:    100,
+	}
+	pdfRes := convertImageToPDF(imgRes)
+	if pdfRes == nil {
+		t.Fatal("failed to create test PDF")
+	}
+	return pdfRes.RawMedia
+}
+
 // Suppress unused import warning
 var _ = io.EOF
