@@ -80,6 +80,7 @@ func TestOrganizeFragmentsCategorizesContentFragments(t *testing.T) {
 		NavContainers:     map[string]map[string]interface{}{},
 		RubyGroups:        map[string]map[string]interface{}{},
 		RubyContents:      map[string]map[string]interface{}{},
+		PathBundles:       map[string]map[string]interface{}{},
 		RawFragments:      map[string][]byte{},
 		PositionAliases:   map[int]string{},
 		FragmentIDsByType: map[string][]string{},

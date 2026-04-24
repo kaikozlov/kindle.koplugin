@@ -29,6 +29,7 @@ func makeTestCatalogForMetadata() *fragmentCatalog {
 		ResourceRawData:      map[string]map[string]interface{}{},
 		FormatCapabilities:   map[string]map[string]interface{}{},
 		Generators:           map[string]map[string]interface{}{},
+		PathBundles:          map[string]map[string]interface{}{},
 		FontFragments:        map[string]fontFragment{},
 		RawFragments:         map[string][]byte{},
 		PositionAliases:      map[int]string{},
