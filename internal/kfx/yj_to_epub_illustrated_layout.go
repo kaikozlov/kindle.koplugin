@@ -26,10 +26,42 @@ var conditionOperatorNames = map[string]string{
 
 // emitPageTemplates controls whether to emit CSS @-amzn-page-element rules
 // or inline content. Python default is False (EMIT_PAGE_TEMPLATES).
+//
+// DESIGN DECISION: EMIT_PAGE_TEMPLATES=true is intentionally NOT ported because:
+//
+//   1. The Python default is False. Calibre's KFX Input plugin uses the inline
+//      mode (EMIT_PAGE_TEMPLATES=false) for all EPUB generation.
+//
+//   2. The EMIT_PAGE_TEMPLATES=true path generates Amazon-proprietary CSS
+//      (@-amzn-master-page, @-amzn-page-element, @-amzn-condition) that is
+//      specific to Kindle Previewer and not needed for KOReader's EPUB rendering.
+//
+//   3. All 6 test books (Martyr, Three Below, Familiars, Elvis, Hunger Games,
+//      Throne of Glass) use the EMIT_PAGE_TEMPLATES=false path, producing
+//      394/394 matching output files.
+//
+//   4. The true path adds significant complexity: CSS file generation
+//      (LAYOUT_CSS_FILEPATH, link_css_file, manifest_resource with
+//      "text/amzn+css" mimetype), style inventory tracking (inventory_style),
+//      range processing with master roots and page element IDs, and the
+//      ADD_FINAL_CONTENT zero-width-non-joiner insertion for KPR failure
+//      prevention. None of this is needed for KOReader.
+//
+// If EMIT_PAGE_TEMPLATES=true is ever needed, the following Python sections
+// must be ported:
+//   - fixup_illustrated_layout_anchors: range_end_ids tracking and range
+//     processing (L47-128)
+//   - create_conditional_page_templates: inline_content detection, epub_types
+//     management, @-amzn-page-element CSS generation, pe_lines collection,
+//     @-amzn-master-page CSS generation, LAYOUT_CSS_FILEPATH resource
+//     creation (L234-248, L281-297, L347-375)
+//   - Additional dependencies: inventory_style, link_css_file,
+//     manifest_resource, get_url_filename, urlabspath
 const emitPageTemplates = false
 
 // addFinalContent adds a zero-width non-joiner div to prevent KPR failure.
 // Port of ADD_FINAL_CONTENT (L13).
+// Only relevant when EMIT_PAGE_TEMPLATES=true.
 const addFinalContent = true
 
 // emitEmptyConditions controls whether to emit conditions even when empty.
@@ -204,6 +236,14 @@ func isElementDescendant(root *htmlElement, needle *htmlElement) bool {
 // Port of fixup_illustrated_layout_anchors (L29-128).
 // Python iterates body.findall("div") which finds direct child divs only
 // (lxml findall is non-recursive for non-dotted paths).
+//
+// GUARD DIFFERENCE: Python checks self.has_conditional_content (L30), Go checks
+// book.IllustratedLayout. These are functionally equivalent: if has_conditional_content
+// is false, there are no -kfx-amzn-condition styles to rewrite, so the early return
+// is correct either way. Go's IllustratedLayout guard may be slightly broader (set for
+// any illustrated layout book even without conditional content), but the inner loop
+// also checks for the presence of "-kfx-amzn-condition" in the style string, so
+// elements without conditions are safely skipped.
 func fixupIllustratedLayoutAnchors(book *decodedBook, sections []renderedSection) {
 	if book == nil || !book.IllustratedLayout {
 		return
@@ -541,10 +581,12 @@ func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement,
 				}
 
 				if emitPageTemplates {
-					// EMIT_PAGE_TEMPLATES=True path (Python L234-248).
-					// Not exercised since emitPageTemplates is false.
-					// Port inline_content, epub_types, and CSS generation logic
-					// if EMIT_PAGE_TEMPLATES is ever enabled.
+					// EXCLUDED: EMIT_PAGE_TEMPLATES=true path (Python L234-248).
+					// See the emitPageTemplates constant documentation above for
+					// the full rationale. This path handles inline_content detection,
+					// epub_types management (amzn:full-page, amzn:kindle-illustrated,
+					// amzn:non-decorative, amzn:decorative), and float/collision
+					// validation. Not needed since emitPageTemplates is always false.
 					_ = isFloat
 					_ = collision
 					_ = inlineContent
@@ -694,9 +736,15 @@ func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement,
 				}
 			}
 		}
-		// EMIT_PAGE_TEMPLATES=True path (Python L347-375) is not ported since
-		// emitPageTemplates is always false. This includes CSS @-amzn-master-page
-		// generation, style inventory, and media-query hiding.
+		// EXCLUDED: EMIT_PAGE_TEMPLATES=true path (Python L347-375).
+		// See the emitPageTemplates constant documentation for rationale.
+		// This path would generate CSS @-amzn-master-page rules with
+		// @-amzn-condition blocks, collect pe_lines for @-amzn-page-element
+		// CSS, call inventory_style for deduplication, set media-query
+		// hiding styles (-kfx-media-query: not amzn-mobi; display: none),
+		// walk up to block-level parents (div, figure, h1-h6, p), and write
+		// the CSS to a layout resource file via LAYOUT_CSS_FILEPATH with
+		// "text/amzn+css" mimetype. None of this is needed for KOReader.
 	}
 }
 
