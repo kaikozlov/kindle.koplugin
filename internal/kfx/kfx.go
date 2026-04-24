@@ -52,6 +52,13 @@ type decodedBook struct {
 	FixedLayout              bool
 	IllustratedLayout        bool
 	HasConditionalContent    bool // set during content rendering when conditional page templates are found
+
+	// OriginalWidth and OriginalHeight are the most common viewport dimensions across
+	// all fixed-layout book parts. Set by compareFixedLayoutViewports when the book is
+	// fixed-layout and dimensions haven't been determined yet.
+	// Port of Python self.original_width / self.original_height (epub_output.py L303, L636).
+	OriginalWidth  int
+	OriginalHeight int
 	OverrideKindleFonts      bool
 	CoverImageID             string
 	CoverImageHref           string

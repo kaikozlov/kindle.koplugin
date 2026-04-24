@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"image/jpeg"
+	"log"
 	"math"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -382,6 +385,203 @@ func stripEmptySpansNoAttrs(elem *htmlElement) {
 			stripEmptySpansNoAttrs(el)
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// compareFixedLayoutViewports — Python epub_output.py L614-653
+//
+// Examines fixed-layout book parts, determines the most common viewport
+// dimensions, and logs warnings about conflicting aspect ratios.
+//
+// In Python, this scans book_part.html → <head> → <meta name="viewport">
+// for width/height patterns. In Go, the rendered sections have a Root
+// htmlElement tree that may contain <meta> elements with viewport data
+// (e.g., from notebook page sections or future fixed-layout rendering).
+//
+// The function sets book.OriginalWidth and book.OriginalHeight from the
+// most common viewport. It also warns about:
+//   - Viewports smaller than 100px in either dimension
+//   - Conflicting aspect ratios across book parts
+//
+// Port of Python compare_fixed_layout_viewports (epub_output.py L614-653).
+// ---------------------------------------------------------------------------
+
+var (
+	viewportWidthRe  = regexp.MustCompile(`width=([0-9]+)`)
+	viewportHeightRe = regexp.MustCompile(`height=([0-9]+)`)
+)
+
+// viewportKey is a (width, height) pair used as a map key.
+type viewportKey struct {
+	width  int
+	height int
+}
+
+// viewportEntry holds a viewport dimension with its count.
+type viewportEntry struct {
+	key   viewportKey
+	count int
+}
+
+// compareFixedLayoutViewports scans rendered sections for viewport meta tags,
+// determines the most common viewport dimensions, and warns about conflicts.
+// Port of Python epub_output.py L614-653.
+//
+// Python references:
+//
+//	L615: viewport_count = collections.defaultdict(int)
+//	L616: cover_width, cover_height = None, None
+//	L617: for book_part in self.book_parts:
+//	L619: head = book_part.html.find("head")
+//	L620-621: for meta in head.iterfind("meta"): if meta.get("name") == "viewport"
+//	L623-624: regex extract width/height from content attribute
+//	L625-632: count viewports, track cover dimensions, warn about small viewports
+//	L634-636: sort by count, set original_width/height
+//	L638-652: detect conflicting aspect ratios
+func compareFixedLayoutViewports(book *decodedBook) {
+	if book == nil || !book.FixedLayout {
+		return
+	}
+	// Python L615-616
+	viewportCount := make(map[viewportKey]int)
+	var coverWidth, coverHeight int
+
+	// Python L617: for book_part in self.book_parts:
+	for i := range book.RenderedSections {
+		section := &book.RenderedSections[i]
+		if section.Root == nil {
+			continue
+		}
+
+		// Python L619: head = book_part.html.find("head")
+		// Python L620-621: for meta in head.iterfind("meta"): if meta.get("name") == "viewport"
+		walkHTMLElement(section.Root, func(elem *htmlElement) {
+			if elem.Tag != "meta" {
+				return
+			}
+			if elem.Attrs["name"] != "viewport" {
+				return
+			}
+
+			// Python L622-624: extract width and height from content attribute
+			content := elem.Attrs["content"]
+			if content == "" {
+				return
+			}
+			mw := viewportWidthRe.FindStringSubmatch(content)
+			mh := viewportHeightRe.FindStringSubmatch(content)
+			if mw == nil || mh == nil {
+				return
+			}
+
+			// Python L626-627
+			width, errW := strconv.Atoi(mw[1])
+			height, errH := strconv.Atoi(mh[1])
+			if errW != nil || errH != nil {
+				return
+			}
+
+			// Python L628: viewport_count[(width, height)] += 1
+			vk := viewportKey{width: width, height: height}
+			viewportCount[vk]++
+
+			// Python L629-630: if book_part.is_cover_page: cover_width, cover_height = width, height
+			// In Go, cover section is identified by being the first section with a cover image.
+			if i == 0 && book.CoverImageHref != "" {
+				coverWidth = width
+				coverHeight = height
+			}
+
+			// Python L631-632: if width < 100 or height < 100:
+			if width < 100 || height < 100 {
+				log.Printf("kfx: warning: Fixed-layout viewport %s is too small: %s", section.Filename, content)
+			}
+		})
+	}
+
+	// Python L634: if len(viewport_count) > 0:
+	if len(viewportCount) == 0 {
+		return
+	}
+
+	// Python L635: viewports_by_count = sorted(viewport_count.items(), key=lambda x: -x[1])
+	entries := make([]viewportEntry, 0, len(viewportCount))
+	for k, count := range viewportCount {
+		entries = append(entries, viewportEntry{key: k, count: count})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].count > entries[j].count
+	})
+
+	// Python L636: (self.original_width, self.original_height), best_count = viewports_by_count[0]
+	best := entries[0]
+	book.OriginalWidth = best.key.width
+	book.OriginalHeight = best.key.height
+
+	// Python L638: if len(viewports_by_count) > 1:
+	if len(entries) < 2 {
+		return
+	}
+
+	// Python L639-640: best_aspect_ratio and conflicts list
+	bestAspectRatio := float64(book.OriginalWidth) / float64(nonZero(book.OriginalHeight))
+	type conflictEntry struct {
+		count       int
+		aspectRatio float64
+		width       int
+		height      int
+	}
+	conflicts := []conflictEntry{
+		{best.count, bestAspectRatio, book.OriginalWidth, book.OriginalHeight},
+	}
+
+	// Python L642-649: check each viewport against best
+	// Python: is_comic check uses self.is_comic. Go uses bookType from detectBookType.
+	isComic := false
+	bt := detectBookTypeFromBook(book)
+	if bt == bookTypeComic {
+		isComic = true
+	}
+
+	for _, entry := range entries {
+		w, h := entry.key.width, entry.key.height
+		ar := float64(w) / float64(nonZero(h))
+
+		// Python L644-648: skip if matching or comic exception
+		if aspectRatioMatch(bestAspectRatio, ar) ||
+			aspectRatioMatch(bestAspectRatio, ar*2) ||
+			aspectRatioMatch(bestAspectRatio, ar/2) ||
+			(isComic && w == coverWidth && h == coverHeight && entry.count == 1) {
+			continue
+		}
+		conflicts = append(conflicts, conflictEntry{entry.count, ar, w, h})
+	}
+
+	// Python L651-652: if len(conflicts) > 1:
+	if len(conflicts) > 1 {
+		parts := make([]string, len(conflicts))
+		for i, c := range conflicts {
+			parts[i] = fmt.Sprintf("%d @ %f (%dw x %dh)", c.count, c.aspectRatio, c.width, c.height)
+		}
+		log.Printf("kfx: info: Conflicting viewport aspect ratios: %s", strings.Join(parts, ", "))
+	}
+}
+
+// aspectRatioMatch returns true if two aspect ratios are within 1.5% of each other.
+// Port of Python aspect_ratio_match (epub_output.py L1365-1366).
+func aspectRatioMatch(ratio1, ratio2 float64) bool {
+	if ratio1 == 0 {
+		return ratio2 == 0
+	}
+	return math.Abs(ratio1-ratio2)/ratio1 <= 0.015
+}
+
+// nonZero returns n if non-zero, else 1 (avoids division by zero).
+func nonZero(n int) int {
+	if n == 0 {
+		return 1
+	}
+	return n
 }
 
 func beautifyHTML(root *htmlElement) {

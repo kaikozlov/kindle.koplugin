@@ -506,3 +506,174 @@ func elementText(elem *htmlElement) string {
 	}
 	return out
 }
+
+// ---------------------------------------------------------------------------
+// Tests for compareFixedLayoutViewports — Python epub_output.py L614-653
+// ---------------------------------------------------------------------------
+
+// TestCompareFixedLayoutViewports_NonFixedLayout is a no-op when FixedLayout is false.
+func TestCompareFixedLayoutViewports_NonFixedLayout(t *testing.T) {
+	book := &decodedBook{
+		FixedLayout: false,
+		RenderedSections: []renderedSection{
+			{Filename: "test.xhtml", Root: &htmlElement{
+				Tag: "html",
+				Children: []htmlPart{
+					&htmlElement{Tag: "meta", Attrs: map[string]string{"name": "viewport", "content": "width=800, height=600"}},
+				},
+			}},
+		},
+	}
+	compareFixedLayoutViewports(book)
+	if book.OriginalWidth != 0 || book.OriginalHeight != 0 {
+		t.Errorf("expected no viewport detection for non-fixed-layout, got %dx%d", book.OriginalWidth, book.OriginalHeight)
+	}
+}
+
+// TestCompareFixedLayoutViewports_SingleViewport sets OriginalWidth/Height from the most common viewport.
+func TestCompareFixedLayoutViewports_SingleViewport(t *testing.T) {
+	book := &decodedBook{
+		FixedLayout: true,
+		RenderedSections: []renderedSection{
+			{Filename: "sec1.xhtml", Root: &htmlElement{
+				Tag: "html",
+				Children: []htmlPart{
+					&htmlElement{Tag: "head", Children: []htmlPart{
+						&htmlElement{Tag: "meta", Attrs: map[string]string{"name": "viewport", "content": "width=1024, height=768"}},
+					}},
+				},
+			}},
+			{Filename: "sec2.xhtml", Root: &htmlElement{
+				Tag: "html",
+				Children: []htmlPart{
+					&htmlElement{Tag: "head", Children: []htmlPart{
+						&htmlElement{Tag: "meta", Attrs: map[string]string{"name": "viewport", "content": "width=1024, height=768"}},
+					}},
+				},
+			}},
+		},
+	}
+	compareFixedLayoutViewports(book)
+	if book.OriginalWidth != 1024 || book.OriginalHeight != 768 {
+		t.Errorf("expected 1024x768, got %dx%d", book.OriginalWidth, book.OriginalHeight)
+	}
+}
+
+// TestCompareFixedLayoutViewports_MultipleViewports selects the most common viewport.
+func TestCompareFixedLayoutViewports_MultipleViewports(t *testing.T) {
+	book := &decodedBook{
+		FixedLayout: true,
+		RenderedSections: []renderedSection{
+			{Filename: "sec1.xhtml", Root: &htmlElement{
+				Tag: "html",
+				Children: []htmlPart{
+					&htmlElement{Tag: "meta", Attrs: map[string]string{"name": "viewport", "content": "width=800, height=600"}},
+				},
+			}},
+			{Filename: "sec2.xhtml", Root: &htmlElement{
+				Tag: "html",
+				Children: []htmlPart{
+					&htmlElement{Tag: "meta", Attrs: map[string]string{"name": "viewport", "content": "width=1024, height=768"}},
+				},
+			}},
+			{Filename: "sec3.xhtml", Root: &htmlElement{
+				Tag: "html",
+				Children: []htmlPart{
+					&htmlElement{Tag: "meta", Attrs: map[string]string{"name": "viewport", "content": "width=1024, height=768"}},
+				},
+			}},
+		},
+	}
+	compareFixedLayoutViewports(book)
+	// 1024x768 appears twice, 800x600 appears once → 1024x768 wins
+	if book.OriginalWidth != 1024 || book.OriginalHeight != 768 {
+		t.Errorf("expected 1024x768 (most common), got %dx%d", book.OriginalWidth, book.OriginalHeight)
+	}
+}
+
+// TestCompareFixedLayoutViewports_SmallViewportWarns logs a warning for viewports < 100px.
+func TestCompareFixedLayoutViewports_SmallViewportWarns(t *testing.T) {
+	book := &decodedBook{
+		FixedLayout: true,
+		RenderedSections: []renderedSection{
+			{Filename: "tiny.xhtml", Root: &htmlElement{
+				Tag: "html",
+				Children: []htmlPart{
+					&htmlElement{Tag: "meta", Attrs: map[string]string{"name": "viewport", "content": "width=50, height=50"}},
+				},
+			}},
+		},
+	}
+	compareFixedLayoutViewports(book)
+	// Should still set dimensions even for small viewports
+	if book.OriginalWidth != 50 || book.OriginalHeight != 50 {
+		t.Errorf("expected 50x50, got %dx%d", book.OriginalWidth, book.OriginalHeight)
+	}
+}
+
+// TestCompareFixedLayoutViewports_NoViewports does nothing when no viewport metas found.
+func TestCompareFixedLayoutViewports_NoViewports(t *testing.T) {
+	book := &decodedBook{
+		FixedLayout: true,
+		RenderedSections: []renderedSection{
+			{Filename: "sec1.xhtml", Root: &htmlElement{
+				Tag: "html",
+				Children: []htmlPart{
+					&htmlElement{Tag: "p", Children: []htmlPart{htmlText{Text: "Hello"}}},
+				},
+			}},
+		},
+	}
+	compareFixedLayoutViewports(book)
+	if book.OriginalWidth != 0 || book.OriginalHeight != 0 {
+		t.Errorf("expected no viewport detection, got %dx%d", book.OriginalWidth, book.OriginalHeight)
+	}
+}
+
+// TestCompareFixedLayoutViewports_NilBook does not panic on nil book.
+func TestCompareFixedLayoutViewports_NilBook(t *testing.T) {
+	compareFixedLayoutViewports(nil)
+}
+
+// TestCompareFixedLayoutViewports_NilRoot skips sections with nil Root.
+func TestCompareFixedLayoutViewports_NilRoot(t *testing.T) {
+	book := &decodedBook{
+		FixedLayout: true,
+		RenderedSections: []renderedSection{
+			{Filename: "sec1.xhtml"},
+			{Filename: "sec2.xhtml", Root: &htmlElement{
+				Tag: "html",
+				Children: []htmlPart{
+					&htmlElement{Tag: "meta", Attrs: map[string]string{"name": "viewport", "content": "width=800, height=1200"}},
+				},
+			}},
+		},
+	}
+	compareFixedLayoutViewports(book)
+	if book.OriginalWidth != 800 || book.OriginalHeight != 1200 {
+		t.Errorf("expected 800x1200, got %dx%d", book.OriginalWidth, book.OriginalHeight)
+	}
+}
+
+// TestAspectRatioMatch verifies the 1.5% tolerance.
+func TestAspectRatioMatch(t *testing.T) {
+	// Exact match
+	if !aspectRatioMatch(1.5, 1.5) {
+		t.Error("expected exact match")
+	}
+	// Within 1.5%
+	if !aspectRatioMatch(1.0, 1.01) {
+		t.Error("expected 1% difference to match")
+	}
+	// Outside 1.5%
+	if aspectRatioMatch(1.0, 1.02) {
+		t.Error("expected 2% difference NOT to match")
+	}
+	// Zero ratio
+	if !aspectRatioMatch(0, 0) {
+		t.Error("expected 0/0 to match")
+	}
+	if aspectRatioMatch(0, 1) {
+		t.Error("expected 0/1 NOT to match")
+	}
+}

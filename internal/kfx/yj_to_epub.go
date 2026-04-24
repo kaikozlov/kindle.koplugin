@@ -325,6 +325,15 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	if trace != nil {
 		trace.addStage("final_sections", captureFinalSections(book.Sections))
 	}
+
+	// Python epub_output.py L473-474: compare_fixed_layout_viewports
+	// Called when fixed_layout AND (original dimensions unknown) AND (comic or children).
+	viewportBT := detectBookTypeFromBook(book)
+	if book.FixedLayout && (book.OriginalWidth == 0 || book.OriginalHeight == 0) &&
+		(viewportBT == bookTypeComic || viewportBT == bookTypeChildren) {
+		compareFixedLayoutViewports(book)
+	}
+
 	applyCoverSVGPromotion(book, resolvedDefaultFont)
 	pruneUnusedResources(book)
 	book.Stylesheet = pruneUnusedStylesheetRules(book.Stylesheet, collectReferencedClasses(book))
