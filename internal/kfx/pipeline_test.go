@@ -1156,6 +1156,135 @@ func TestRenderNodeSupportsBasicSVGContainers(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// m7-fix-kvg-shape-wiring: processKVGShape called from renderSVGNode
+// Python yj_to_epub_content.py L835-861: $272 (kvg) content type processes shapes
+// from $250 (shape_list) by calling process_kvg_shape for each shape.
+// Go's renderSVGNode must iterate shape_list and call processKVGShape.
+// =============================================================================
+
+// TestRenderSVGNodeProcessesShapeList verifies that renderSVGNode iterates the
+// shape_list from node data and calls processKVGShape for each shape.
+// Python yj_to_epub_content.py L858: for shape in content.pop("$250", []):
+//     self.process_kvg_shape(content_elem, shape, content_list, book_part, writing_mode)
+func TestRenderSVGNodeProcessesShapeList(t *testing.T) {
+	renderer := storylineRenderer{
+		contentFragments:  map[string][]string{},
+		resourceHrefByID:  map[string]string{},
+		resourceFragments: map[string]resourceFragment{},
+		anchorToFilename:  map[string]string{},
+		positionToSection: map[int]string{},
+		positionAnchors:   map[int]map[int][]string{},
+		positionAnchorID:  map[int]map[int]string{},
+		emittedAnchorIDs:  map[string]bool{},
+		styleFragments:    map[string]map[string]interface{}{},
+		styles:            newStyleCatalog(),
+	}
+
+	node := renderer.renderNode(map[string]interface{}{
+		"type":          "kvg",
+		"fixed_width":  100,
+		"fixed_height": 200,
+		"shape_list": []interface{}{
+			map[string]interface{}{
+				"type": "shape",
+				"path": []interface{}{
+					float64(0), float64(10.0), float64(20.0), // M 10 20
+					float64(1), float64(30.0), float64(40.0), // L 30 40
+					float64(4), // Z
+				},
+			},
+		},
+	}, 0)
+	got := renderHTMLPart(node)
+
+	if !strings.Contains(got, "<svg") {
+		t.Fatalf("svg html missing <svg>: %q", got)
+	}
+	if !strings.Contains(got, `<path d="M 10 20 L 30 40 Z"`) {
+		t.Fatalf("svg html missing path shape from shape_list: %q", got)
+	}
+}
+
+// TestRenderSVGNodeProcessesMultipleShapes verifies that multiple shapes in
+// shape_list are all rendered into the SVG element.
+func TestRenderSVGNodeProcessesMultipleShapes(t *testing.T) {
+	renderer := storylineRenderer{
+		contentFragments:  map[string][]string{},
+		resourceHrefByID:  map[string]string{},
+		resourceFragments: map[string]resourceFragment{},
+		anchorToFilename:  map[string]string{},
+		positionToSection: map[int]string{},
+		positionAnchors:   map[int]map[int][]string{},
+		positionAnchorID:  map[int]map[int]string{},
+		emittedAnchorIDs:  map[string]bool{},
+		styleFragments:    map[string]map[string]interface{}{},
+		styles:            newStyleCatalog(),
+	}
+
+	node := renderer.renderNode(map[string]interface{}{
+		"type":          "kvg",
+		"fixed_width":  100,
+		"fixed_height": 100,
+		"shape_list": []interface{}{
+			map[string]interface{}{
+				"type": "shape",
+				"path": []interface{}{
+					float64(0), float64(0.0), float64(0.0), // M 0 0
+					float64(4), // Z
+				},
+			},
+			map[string]interface{}{
+				"type": "shape",
+				"path": []interface{}{
+					float64(0), float64(50.0), float64(50.0), // M 50 50
+					float64(1), float64(100.0), float64(100.0), // L 100 100
+					float64(4), // Z
+				},
+				"stroke_color": float64(0xFF0000),
+			},
+		},
+	}, 0)
+	got := renderHTMLPart(node)
+
+	path1Count := strings.Count(got, `<path d="M 0 0 Z"`)
+	path2Count := strings.Count(got, `stroke=`)
+	if path1Count != 1 {
+		t.Fatalf("expected 1 simple path, got %d in: %q", path1Count, got)
+	}
+	if path2Count != 1 {
+		t.Fatalf("expected 1 stroked path, got %d stroke attrs in: %q", path2Count, got)
+	}
+}
+
+// TestRenderSVGNodeNoShapesStillWorks verifies that an SVG node without
+// shape_list still renders correctly (backward compatibility).
+func TestRenderSVGNodeNoShapesStillWorks(t *testing.T) {
+	renderer := storylineRenderer{
+		contentFragments:  map[string][]string{},
+		resourceHrefByID:  map[string]string{},
+		resourceFragments: map[string]resourceFragment{},
+		anchorToFilename:  map[string]string{},
+		positionToSection: map[int]string{},
+		positionAnchors:   map[int]map[int][]string{},
+		positionAnchorID:  map[int]map[int]string{},
+		emittedAnchorIDs:  map[string]bool{},
+		styleFragments:    map[string]map[string]interface{}{},
+		styles:            newStyleCatalog(),
+	}
+
+	node := renderer.renderNode(map[string]interface{}{
+		"type":          "kvg",
+		"fixed_width":  100,
+		"fixed_height": 200,
+	}, 0)
+	got := renderHTMLPart(node)
+
+	if !strings.Contains(got, "<svg") || !strings.Contains(got, "viewBox=\"0 0 100 200\"") {
+		t.Fatalf("svg html without shapes = %q", got)
+	}
+}
+
 func TestMaterializeRenderedSectionsUsesDOMAfterLateMutation(t *testing.T) {
 	section := renderedSection{
 		Filename:  "section.xhtml",

@@ -875,13 +875,20 @@ func processPlugin(resourceName string, altText string, contentElem *htmlElement
 		}
 
 		// Python L311-313: save play/pause image URIs
+		// Python: for uri in player.get(image_refs, []): self.uri_reference(uri, save=False)
+		// The list elements are URI strings, not maps with "uri" keys.
 		player, _ := asMap(facets["player"])
 		for _, imageRef := range []string{"play_images", "pause_images"} {
 			if uris, ok := asSlice(player[imageRef]); ok {
 				for _, u := range uris {
-					uriMap, _ := asMap(u)
-					if uriVal, ok := asString(uriMap["uri"]); ok {
-						rp.processExternalResource(uriVal, false, false, false, false, false)
+					// Python treats uri as a plain string directly
+					if uriStr, ok := u.(string); ok {
+						rp.processExternalResource(uriStr, false, false, false, false, false)
+					} else if uriMap, ok := asMap(u); ok {
+						// Fallback: some manifests may use map format
+						if uriVal, ok := asString(uriMap["uri"]); ok {
+							rp.processExternalResource(uriVal, false, false, false, false, false)
+						}
 					}
 				}
 			}
@@ -938,6 +945,7 @@ func processPlugin(resourceName string, altText string, contentElem *htmlElement
 
 	case "hyperlink":
 		// Python L370-380: hyperlink plugin
+		// Python: uri = manifest["facets"]["uri"] — a string directly, not a map
 		contentElem.Tag = "a"
 		setElementStyleFromMap(contentElem, map[string]string{
 			"height": "100%",
@@ -945,13 +953,8 @@ func processPlugin(resourceName string, altText string, contentElem *htmlElement
 		})
 
 		facets, _ := asMap(manifest["facets"])
-		uri, _ := asMap(facets["uri"])
-		if uri != nil {
-			uriStr, _ := asString(uri["uri"])
-			if uriStr == "" {
-				// facets["uri"] may be the URI string directly
-				uriStr, _ = asString(facets["uri"])
-			}
+		if facets != nil {
+			uriStr, _ := asString(facets["uri"])
 			if uriStr != "" {
 				href := resolvePluginURI(uriStr, rp, false)
 				contentElem.Attrs["href"] = urlRelPath(href, sectionFilename)
