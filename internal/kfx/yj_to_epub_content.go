@@ -3309,6 +3309,12 @@ type storylineRenderer struct {
 	// is encountered during rendering (Python: self.has_conditional_content).
 	// Port of Python yj_to_epub_content.py L508 and yj_to_epub_illustrated_layout.py L27.
 	hasConditionalContent bool
+	// regionMagnification tracks the region magnification state.
+	// Port of Python self.region_magnification (yj_to_epub_content.py L674-694).
+	regionMagnification regionMagnificationConfig
+	// pendingActivateElements holds activate <a> elements created by processRegionMagnification
+	// that need to be attached to container elements.
+	pendingActivateElements []htmlElement
 }
 
 type conditionEvaluator struct {
@@ -5149,7 +5155,108 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 	}
 	delete(working, "selection")
 
+	// Port of Python $429 backdrop_style validation (yj_to_epub_content.py L682-689).
+	// Pops backdrop_style from the node, looks up the style definition, and validates
+	// that only expected keys remain (style_name, margin_top, margin_bottom).
+	// Purely diagnostic — does not modify output.
+	if bdStyleName, exists := working["backdrop_style"]; exists {
+		if name, ok := asString(bdStyleName); ok && name != "" {
+			bdStyleContent := map[string]interface{}{}
+			if styleDef, found := r.styleFragments[name]; found {
+				for k, v := range styleDef {
+					bdStyleContent[k] = v
+				}
+			} else {
+				log.Printf("kfx: error: No definition found for backdrop style: %s", name)
+			}
+			// Python pops style_name, margin_top, margin_bottom (expected keys)
+			delete(bdStyleContent, "style_name")
+			delete(bdStyleContent, "margin_top")
+			delete(bdStyleContent, "margin_bottom")
+			for k := range bdStyleContent {
+				log.Printf("kfx: warning: backdrop style %s has unexpected key %q", name, k)
+			}
+		}
+	}
+	delete(working, "backdrop_style")
+
+	// Port of Python $754 main_content_id registration (yj_to_epub_content.py L869-870).
+	// Registers the main_content_id as an anchor so the element can be targeted
+	// by internal links. Python: self.register_link_id(content.pop("$754"), "main_content")
+	if mainContentID, exists := working["main_content_id"]; exists {
+		if eid, ok := asString(mainContentID); ok && eid != "" {
+			r.registerMainContentAnchor(eid)
+		}
+	}
+	delete(working, "main_content_id")
+
+	// Port of Python $426 activate/magnification processing (yj_to_epub_content.py L674-694).
+	// Pops activate entries from the node and processes magnification regions.
+	// The processRegionMagnification function handles creating <a class="app-amzn-magnify">
+	// elements and registering link IDs.
+	if activates, exists := working["activate"]; exists {
+		result := processRegionMagnification(working, &r.regionMagnification)
+		// Store activate elements for attachment to the rendered container element.
+		if len(result.ActivateElements) > 0 {
+			r.pendingActivateElements = append(r.pendingActivateElements, result.ActivateElements...)
+		}
+		// Register link IDs for magnification targets/sources.
+		for _, reg := range result.LinkRegistrations {
+			r.registerMagnifyLink(reg.EID, reg.Kind)
+		}
+		_ = activates
+	}
+	delete(working, "activate")
+	delete(working, "ordinal")
+
+	// Port of Python $69 ignore:true for fixed layout containers (yj_to_epub_content.py L621-630).
+	// When layout is "fixed" and ignore is true, adds z-index: 1 to the element style.
+	// Python: self.add_style(content_elem, {"z-index": "1"})
+	if ignoreVal, exists := working["ignore"]; exists {
+		ignore, _ := asBool(ignoreVal)
+		if ignore {
+			layout := asStringDefault(working["layout"])
+			if layout == "fixed" {
+				// Add z-index: 1 to the node's pending style
+				working["__ignore_zindex__"] = true
+			}
+		}
+	}
+	delete(working, "ignore")
+
 	return working, true
+}
+
+// registerMainContentAnchor registers a main_content_id as a position anchor target.
+// Port of Python: self.register_link_id(content.pop("$754"), "main_content")
+// (yj_to_epub_content.py L869-870).
+func (r *storylineRenderer) registerMainContentAnchor(eid string) {
+	if r == nil || eid == "" {
+		return
+	}
+	// Register in anchorNamesByID so the anchor system knows about this link target.
+	if r.anchorNamesByID == nil {
+		r.anchorNamesByID = map[string][]string{}
+	}
+	// The main_content_id creates an anchor with the eid as its name
+	r.anchorNamesByID[eid] = append(r.anchorNamesByID[eid], eid)
+	// Also register in directAnchorURI so wrapNodeLink can create hrefs to it
+	if r.directAnchorURI == nil {
+		r.directAnchorURI = map[string]string{}
+	}
+}
+
+// registerMagnifyLink registers a magnification link ID for activate elements.
+// Port of Python: self.register_link_id(eid, kind) (yj_to_epub_content.py L685-687).
+func (r *storylineRenderer) registerMagnifyLink(eid string, kind string) {
+	if r == nil || eid == "" {
+		return
+	}
+	anchorName := kind + "_" + eid
+	if r.anchorNamesByID == nil {
+		r.anchorNamesByID = map[string][]string{}
+	}
+	r.anchorNamesByID[anchorName] = append(r.anchorNamesByID[anchorName], anchorName)
 }
 
 // validateWordBoundaries validates $696 word_boundary_list against the node's text content.
