@@ -559,17 +559,6 @@ The project has 6 real books from a Kindle device. When comparing Go output agai
 | DRM keys cache | `REFERENCE/kindle_device/cache/drm_keys.json` |
 | Raw device files | `REFERENCE/kindle_device/Items01/` |
 
-### Current Parity Status (vs Calibre)
-
-| Book | Match | Known Gaps |
-|------|-------|------------|
-| Martyr | ✅ Byte-identical | None |
-| Three Below | ✅ Near-perfect | Only `xmlns:mbp` (fixed) |
-| Familiars | ⚠️ 7 files differ | Heading `<a>` class, stylesheet, content.opf |
-| Elvis | ❌ 21 files differ | Image CSS class naming/dedup, spine ordering |
-| Hunger Games | ❌ 87 files differ | Heading `<a>` class, CSS class naming, spine, stylesheet |
-| Throne of Glass | ❌ 65 files differ | Heading `<a>` class, CSS class naming, JXR images |
-
 ### Known Parity Gaps (ordered by difficulty)
 
 1. **`toc.ncx` `xmlns:mbp`** — ✅ Fixed
@@ -577,6 +566,9 @@ The project has 6 real books from a Kindle device. When comparing Go output agai
 3. **Heading `<a>` class** — Go omits class attribute on `<a>` inside headings (Python preserves it)
 4. **CSS class naming/deduplication** — Style catalog assigns different indices; image container classes especially affected
 5. **JXR images** — JPEG XR decoder exists but isn't wired into EPUB resource pipeline
+6. **JPEG encoding** — Go outputs raw baseline JPEG without JFIF headers; Calibre wraps in JFIF standard and re-compresses (affects all image-bearing books)
+7. **Extra `id` attributes on heading divs** — Go adds `id` on image-heading divs that Calibre omits
+8. **NCX page anchor fragments** — Go omits `#page_N` anchor fragments in toc.ncx page targets
 
 ---
 
