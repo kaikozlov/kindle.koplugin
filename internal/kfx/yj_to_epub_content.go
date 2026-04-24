@@ -2143,14 +2143,65 @@ func renderHTMLElement(element *htmlElement) string {
 	return out.String()
 }
 
+// unexpectedCharacters is the Go equivalent of Python's UNEXPECTED_CHARACTERS set
+// (yj_to_epub_content.py L67-84). These are C0/C1 control characters and other invalid
+// Unicode that must be filtered from text content before emitting XHTML, since they are
+// not valid in XML 1.0 documents.
+var unexpectedCharacters = map[rune]bool{
+	// C0 control characters (L68-71)
+	0x0000: true, 0x0001: true, 0x0002: true, 0x0003: true,
+	0x0004: true, 0x0005: true, 0x0006: true, 0x0007: true,
+	0x0008: true,
+	0x000B: true, 0x000C: true,
+	0x000E: true, 0x000F: true,
+	0x0010: true, 0x0011: true, 0x0012: true, 0x0013: true,
+	0x0014: true, 0x0015: true, 0x0016: true, 0x0017: true,
+	0x0018: true, 0x0019: true, 0x001A: true, 0x001B: true,
+	0x001C: true, 0x001D: true, 0x001E: true, 0x001F: true,
+	// C1 control characters (L72-75)
+	0x0080: true, 0x0081: true, 0x0082: true, 0x0083: true,
+	0x0084: true, 0x0085: true, 0x0086: true, 0x0087: true,
+	0x0088: true, 0x0089: true, 0x008A: true, 0x008B: true,
+	0x008C: true, 0x008D: true, 0x008E: true, 0x008F: true,
+	0x0090: true, 0x0091: true, 0x0092: true, 0x0093: true,
+	0x0094: true, 0x0095: true, 0x0096: true, 0x0097: true,
+	0x0098: true, 0x0099: true, 0x009A: true, 0x009B: true,
+	0x009C: true, 0x009D: true, 0x009E: true, 0x009F: true,
+	// Arabic Letter Mark (L76)
+	0x061C: true,
+	// Invisible Separator (L77)
+	0x2063: true,
+	// Interlinear Annotation characters (L78)
+	0xFFF9: true, 0xFFFA: true, 0xFFFB: true,
+	// Noncharacters (L79)
+	0xFFFE: true, 0xFFFF: true,
+}
+
+// cleanTextForLXML replaces characters in the UNEXPECTED_CHARACTERS set with "?",
+// matching Python's clean_text_for_lxml (yj_to_epub_content.py L1807-1816).
+func cleanTextForLXML(text string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	for _, r := range text {
+		if unexpectedCharacters[r] {
+			b.WriteByte('?')
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func escapeHTML(text string) string {
+	// Filter invalid XML characters before escaping (Python: clean_text_for_lxml, L1807-1816)
+	cleaned := cleanTextForLXML(text)
 	var replacer = strings.NewReplacer(
 		"&", "&amp;",
 		`"`, "&quot;",
 		"<", "&lt;",
 		">", "&gt;",
 	)
-	return replacer.Replace(text)
+	return replacer.Replace(cleaned)
 }
 
 // ---------------------------------------------------------------------------
@@ -2964,7 +3015,10 @@ func resolveContentText(contentFragments map[string][]string, ref map[string]int
 	if index < 0 || index >= len(values) {
 		return ""
 	}
-	return values[index]
+	// Filter invalid XML characters from KFX text content (Python: clean_text_for_lxml,
+	// yj_to_epub_content.py L67-84 + L1807-1816). Applied at the resolution layer
+	// so all downstream text consumers get clean text.
+	return cleanTextForLXML(values[index])
 }
 
 func inferBookLanguage(defaultLanguage string, contentFragments map[string][]string, storylines map[string]map[string]interface{}, styleFragments map[string]map[string]interface{}) string {
@@ -3639,7 +3693,7 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 		// IonString entries in $146 lists create text nodes.
 		// Python process_content (yj_to_epub_content.py:397-399) wraps them in <span>.
 		if text, ok := asString(raw); ok && text != "" {
-			return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
+			return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: cleanTextForLXML(text)}}}
 		}
 		return nil
 	}

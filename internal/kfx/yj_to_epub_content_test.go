@@ -2799,3 +2799,134 @@ func TestProcessReadingOrderWithComicBookType(t *testing.T) {
 		t.Errorf("expected 0 rendered sections for comic dispatch (handled by page-spread), got %d", len(book.RenderedSections))
 	}
 }
+
+// =============================================================================
+// Tests for cleanTextForLXML — VAL-FIX-003
+// Port of Python yj_to_epub_content.py L67-84 (UNEXPECTED_CHARACTERS) and L1807-1816 (clean_text_for_lxml)
+// =============================================================================
+
+func TestCleanTextForLXML_FiltersC0ControlCharacters(t *testing.T) {
+	// C0 control characters (0x00-0x1F except 0x09 TAB, 0x0A LF, 0x0D CR)
+	// Python L68-71: 0x0000-0x0008, 0x000b-0x000c, 0x000e-0x001f
+	input := "Hello\x00World\x01Test\x02"
+	expected := "Hello?World?Test?"
+	result := cleanTextForLXML(input)
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestCleanTextForLXML_FiltersC1ControlCharacters(t *testing.T) {
+	// C1 control characters (0x80-0x9F)
+	// Python L72-75: 0x0080-0x009f
+	input := "Text\u0080with\u009fC1"
+	expected := "Text?with?C1"
+	result := cleanTextForLXML(input)
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestCleanTextForLXML_PermitsWhitespace(t *testing.T) {
+	// Tab (0x09), LF (0x0A), CR (0x0D) are NOT in UNEXPECTED_CHARACTERS
+	input := "Line1\tindented\nLine2\r\nLine3"
+	result := cleanTextForLXML(input)
+	if result != input {
+		t.Errorf("whitespace should be preserved, expected %q, got %q", input, result)
+	}
+}
+
+func TestCleanTextForLXML_FiltersArabicLetterMark(t *testing.T) {
+	// Python L76: 0x061c (Arabic Letter Mark)
+	input := "Text\u061cMore"
+	expected := "Text?More"
+	result := cleanTextForLXML(input)
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestCleanTextForLXML_FiltersInvisibleSeparator(t *testing.T) {
+	// Python L77: 0x2063 (Invisible Separator)
+	input := "A\u2063B"
+	expected := "A?B"
+	result := cleanTextForLXML(input)
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestCleanTextForLXML_FiltersInterlinearAnnotationChars(t *testing.T) {
+	// Python L78: 0xfff9, 0xfffa, 0xfffb (Interlinear Annotation chars)
+	input := "A\ufff9B\ufffaC\ufffbD"
+	expected := "A?B?C?D"
+	result := cleanTextForLXML(input)
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestCleanTextForLXML_FiltersNonCharacters(t *testing.T) {
+	// Python L79: 0xfffe, 0xffff (noncharacters)
+	input := "X\ufffeY\uffffZ"
+	expected := "X?Y?Z"
+	result := cleanTextForLXML(input)
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestCleanTextForLXML_PreservesNormalText(t *testing.T) {
+	input := "Hello, World! 日本語 🌍"
+	result := cleanTextForLXML(input)
+	if result != input {
+		t.Errorf("normal text should be preserved, expected %q, got %q", input, result)
+	}
+}
+
+func TestCleanTextForLXML_EmptyString(t *testing.T) {
+	result := cleanTextForLXML("")
+	if result != "" {
+		t.Errorf("expected empty string, got %q", result)
+	}
+}
+
+func TestCleanTextForLXML_AllUnexpectedCharacters(t *testing.T) {
+	// Verify all entries in the UNEXPECTED_CHARACTERS set are filtered
+	for cp := range unexpectedCharacters {
+		input := string(rune(cp))
+		result := cleanTextForLXML(input)
+		if result != "?" {
+			t.Errorf("character U+%04X should be replaced with ?, got %q", cp, result)
+		}
+	}
+}
+
+func TestEscapeHTML_WithControlCharacters(t *testing.T) {
+	// Verify that escapeHTML now filters control characters via cleanTextForLXML
+	input := "Hello\x00World\x01Test"
+	result := escapeHTML(input)
+	if strings.Contains(result, "\x00") || strings.Contains(result, "\x01") {
+		t.Errorf("escapeHTML should filter control characters, got %q", result)
+	}
+	// The ? replacements should be present
+	if !strings.Contains(result, "Hello?World?Test") {
+		t.Errorf("expected control chars replaced with ?, got %q", result)
+	}
+}
+
+func TestResolveContentText_FiltersControlChars(t *testing.T) {
+	// Verify that text resolved from content fragments has control chars filtered
+	contentFragments := map[string][]string{
+		"test_frag": {"Hello\x00World\u0080End"},
+	}
+	ref := map[string]interface{}{
+		"name":  "test_frag",
+		"index": int64(0),
+	}
+	result := resolveContentText(contentFragments, ref)
+	expected := "Hello?World?End"
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
