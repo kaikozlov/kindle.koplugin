@@ -1591,6 +1591,26 @@ func getReadingOrders(frags fragmentCatalog) []interface{} {
 	return nil
 }
 
+// getReadingOrderNames extracts the reading_order_name from each reading order entry.
+// Used for navigation validation (N1 gap fix — Python process_navigation L97-102).
+func getReadingOrderNames(frags fragmentCatalog) []string {
+	orders := getReadingOrders(frags)
+	if len(orders) == 0 {
+		return nil
+	}
+	var names []string
+	for _, ro := range orders {
+		roMap, ok := asMap(ro)
+		if !ok {
+			continue
+		}
+		if name, ok := asString(roMap["reading_order_name"]); ok && name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // Port of BookStructure.ordered_section_names (yj_structure.py L1194-1201).
 // Returns flat list of section names from all reading orders, preserving order, deduplicating.
 func orderedSectionNames(frags fragmentCatalog) []string {

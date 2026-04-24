@@ -333,7 +333,7 @@ func TestRegisterAnchorSkipsZeroPosition(t *testing.T) {
 
 func TestProcessNavigationInitializesStructures(t *testing.T) {
 	// Calling processNavigation with no nav roots should produce empty structures.
-	state := processNavigation(nil, nil, "")
+	state := processNavigation(nil, nil, "", nil, false)
 	if state.positionAnchors == nil {
 		t.Error("positionAnchors should be non-nil")
 	}
@@ -372,7 +372,7 @@ func TestNavContainerTypeTOC(t *testing.T) {
 		},
 	}
 	navContainers := map[string]map[string]interface{}{}
-	state := processNavigation([]map[string]interface{}{}, navContainers, "")
+	state := processNavigation([]map[string]interface{}{}, navContainers, "", nil, false)
 	state.processContainer(container, false)
 	if len(state.toc) != 1 {
 		t.Fatalf("expected 1 TOC entry, got %d", len(state.toc))
@@ -394,7 +394,7 @@ func TestNavContainerTypeLandmarks(t *testing.T) {
 		},
 	}
 	navContainers := map[string]map[string]interface{}{}
-	state := processNavigation([]map[string]interface{}{}, navContainers, "")
+	state := processNavigation([]map[string]interface{}{}, navContainers, "", nil, false)
 	state.processContainer(container, false)
 	if len(state.guide) != 1 {
 		t.Fatalf("expected 1 guide entry, got %d", len(state.guide))
@@ -418,7 +418,7 @@ func TestNavContainerTypePageList(t *testing.T) {
 		},
 	}
 	navContainers := map[string]map[string]interface{}{}
-	state := processNavigation([]map[string]interface{}{}, navContainers, "")
+	state := processNavigation([]map[string]interface{}{}, navContainers, "", nil, false)
 	state.processContainer(container, false)
 	if len(state.pages) != 1 {
 		t.Fatalf("expected 1 page entry, got %d", len(state.pages))
@@ -466,5 +466,101 @@ func TestTruncateListLong(t *testing.T) {
 	}
 	if !strings.Contains(result[10], "15") || !strings.Contains(result[10], "total") {
 		t.Errorf("expected summary with count, got %q", result[10])
+	}
+}
+
+// ============================================================================
+// VAL-M11-001: Missing nav warning for reading orders (N1 gap)
+// Port of Python process_navigation L101-102 for-else pattern:
+//   for reading_order in self.reading_orders:
+//       ...
+//   else:
+//       if not self.book.is_scribe_notebook:
+//           log.warning("Failed to locate navigation for reading order \"%s\"" % reading_order_name)
+// ============================================================================
+
+func TestWarnUnmatchedReadingOrdersNoWarningWhenMatched(t *testing.T) {
+	// When every reading order has a matching nav root, no warning should be emitted.
+	navRoots := []map[string]interface{}{
+		{"reading_order_name": "main", "nav_containers": []interface{}{}},
+	}
+	readingOrderNames := []string{"main"}
+	got := captureStderr(func() {
+		warnUnmatchedReadingOrders(navRoots, readingOrderNames, false)
+	})
+	if strings.Contains(got, "Failed to locate navigation") {
+		t.Errorf("expected no warning when reading order is matched, got %q", got)
+	}
+}
+
+func TestWarnUnmatchedReadingOrdersWarningWhenMissing(t *testing.T) {
+	// When a reading order has no matching nav root, a warning should be emitted.
+	navRoots := []map[string]interface{}{
+		{"reading_order_name": "other", "nav_containers": []interface{}{}},
+	}
+	readingOrderNames := []string{"main"}
+	got := captureStderr(func() {
+		warnUnmatchedReadingOrders(navRoots, readingOrderNames, false)
+	})
+	if !strings.Contains(got, "Failed to locate navigation") {
+		t.Errorf("expected warning about missing navigation for reading order 'main', got %q", got)
+	}
+	if !strings.Contains(got, "main") {
+		t.Errorf("expected warning to mention reading order name 'main', got %q", got)
+	}
+}
+
+func TestWarnUnmatchedReadingOrdersNoWarningForScribeNotebook(t *testing.T) {
+	// Python: if not self.book.is_scribe_notebook: log.warning(...)
+	// When isScribeNotebook=true, no warning should be emitted even if no match.
+	navRoots := []map[string]interface{}{}
+	readingOrderNames := []string{"main"}
+	got := captureStderr(func() {
+		warnUnmatchedReadingOrders(navRoots, readingOrderNames, true)
+	})
+	if strings.Contains(got, "Failed to locate navigation") {
+		t.Errorf("expected no warning for scribe notebook, got %q", got)
+	}
+}
+
+func TestWarnUnmatchedReadingOrdersMultipleReadingOrders(t *testing.T) {
+	// Two reading orders, one matched and one unmatched.
+	navRoots := []map[string]interface{}{
+		{"reading_order_name": "main", "nav_containers": []interface{}{}},
+	}
+	readingOrderNames := []string{"main", "secondary"}
+	got := captureStderr(func() {
+		warnUnmatchedReadingOrders(navRoots, readingOrderNames, false)
+	})
+	if !strings.Contains(got, "secondary") {
+		t.Errorf("expected warning for unmatched 'secondary' reading order, got %q", got)
+	}
+	if strings.Contains(got, "main") {
+		t.Errorf("should not warn about matched 'main' reading order, got %q", got)
+	}
+}
+
+func TestWarnUnmatchedReadingOrdersEmptyReadingOrders(t *testing.T) {
+	// No reading orders → no warning.
+	navRoots := []map[string]interface{}{}
+	got := captureStderr(func() {
+		warnUnmatchedReadingOrders(navRoots, nil, false)
+	})
+	if got != "" {
+		t.Errorf("expected no output with no reading orders, got %q", got)
+	}
+}
+
+func TestWarnUnmatchedReadingOrdersNavRootNoName(t *testing.T) {
+	// Nav root with no reading_order_name should not match anything.
+	navRoots := []map[string]interface{}{
+		{"nav_containers": []interface{}{}},
+	}
+	readingOrderNames := []string{"main"}
+	got := captureStderr(func() {
+		warnUnmatchedReadingOrders(navRoots, readingOrderNames, false)
+	})
+	if !strings.Contains(got, "Failed to locate navigation") {
+		t.Errorf("expected warning when nav root has no reading_order_name, got %q", got)
 	}
 }

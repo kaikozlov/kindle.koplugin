@@ -208,7 +208,7 @@ type navProcessor struct {
 	orientationLock    string            // Python: self.orientation_lock — used for $248 entry_set filtering
 }
 
-func processNavigation(navRoots []map[string]interface{}, navContainers map[string]map[string]interface{}, orientationLock string) navProcessor {
+func processNavigation(navRoots []map[string]interface{}, navContainers map[string]map[string]interface{}, orientationLock string, readingOrderNames []string, isScribeNotebook bool) navProcessor {
 	state := navProcessor{
 		usedAnchorNames:    map[string]bool{},
 		positionAnchors:    map[int]map[int][]string{},
@@ -218,6 +218,11 @@ func processNavigation(navRoots []map[string]interface{}, navContainers map[stri
 		pageLabelAnchorID:  map[string]string{},
 		orientationLock:    orientationLock,
 	}
+
+	// Port of Python process_navigation L101-102 for-else pattern (N1 gap fix):
+	// Warn when a reading order has no matching navigation data in the nav roots.
+	warnUnmatchedReadingOrders(navRoots, readingOrderNames, isScribeNotebook)
+
 	containers := collectNavigationContainers(navRoots, navContainers)
 	hasNavHeadings := false
 	for _, container := range containers {
@@ -230,6 +235,39 @@ func processNavigation(navRoots []map[string]interface{}, navContainers map[stri
 		state.processContainer(container, hasNavHeadings)
 	}
 	return state
+}
+
+// warnUnmatchedReadingOrders logs a warning for any reading order that has no matching
+// navigation data in the nav roots. Port of Python process_navigation (yj_to_epub_navigation.py L97-102):
+//
+//	for reading_order in self.reading_orders:
+//	    for i, book_navigation in enumerate(book_navigations):
+//	        if book_navigation.get("$178", "") == reading_order_name:
+//	            break
+//	    else:
+//	        if not self.book.is_scribe_notebook:
+//	            log.warning("Failed to locate navigation for reading order \"%s\"" % reading_order_name)
+func warnUnmatchedReadingOrders(navRoots []map[string]interface{}, readingOrderNames []string, isScribeNotebook bool) {
+	if isScribeNotebook || len(readingOrderNames) == 0 {
+		return
+	}
+
+	// Build set of reading_order_name values present in nav roots.
+	navRootNames := map[string]bool{}
+	for _, root := range navRoots {
+		if name, ok := asString(root["reading_order_name"]); ok && name != "" {
+			navRootNames[name] = true
+		}
+	}
+
+	for _, roName := range readingOrderNames {
+		if roName == "" {
+			continue
+		}
+		if !navRootNames[roName] {
+			log.Printf("kfx: warning: Failed to locate navigation for reading order %q", roName)
+		}
+	}
 }
 
 func (p *navProcessor) processContainer(container map[string]interface{}, hasNavHeadings bool) {
