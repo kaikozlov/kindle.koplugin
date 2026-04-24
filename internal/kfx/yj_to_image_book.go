@@ -36,6 +36,44 @@ import (
 // Python: DEBUG_VARIANTS = False (yj_to_image_book.py:15)
 const DebugVariants = false
 
+// PDF page DPI constants — port of Python resources.py:32-35.
+// Python selects the best DPI from PDF_PAGE_ALLOWED_DPI that produces a page height
+// closest to PDF_PAGE_TARGET_HEIGHT (9.6 inches, typical Kindle page height).
+const (
+	pdfPageTargetHeight = 9.6 // Python: PDF_PAGE_TARGET_HEIGHT = 9.6 (resources.py:34)
+)
+
+// pdfPageAllowedDPI lists the allowed DPI values for PDF page sizing.
+// Python: PDF_PAGE_ALLOWED_DPI = [75, 100, 125, 150, 200, 250, 300, 450, 600] (resources.py:35)
+var pdfPageAllowedDPI = []int{75, 100, 125, 150, 200, 250, 300, 450, 600}
+
+// bestDPIForPageHeight selects the DPI from pdfPageAllowedDPI that produces a page height
+// closest to pdfPageTargetHeight (9.6 inches) for the given image pixel height.
+// Port of Python convert_image_to_pdf DPI selection loop (resources.py:515-519).
+func bestDPIForPageHeight(imageHeight int) int {
+	bestDPI := 72 // fallback
+	bestHeightDiff := -1.0
+
+	for _, dpi := range pdfPageAllowedDPI {
+		pageHeight := float64(imageHeight) / float64(dpi)
+		diff := abs64(pageHeight - pdfPageTargetHeight)
+		if bestHeightDiff < 0 || diff < bestHeightDiff {
+			bestHeightDiff = diff
+			bestDPI = dpi
+		}
+	}
+
+	return bestDPI
+}
+
+// abs64 returns the absolute value of a float64.
+func abs64(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
 // ---------------------------------------------------------------------------
 // ImageResource — port of Python ImageResource/PdfImageResource
 // ---------------------------------------------------------------------------
@@ -50,6 +88,10 @@ type ImageResource struct {
 	Width      int    // image width in pixels
 	PageNums   []int  // for PDF resources: page numbers to include
 	TotalPages int    // total pages in PDF resource
+	// OriginalJPEG stores the JPEG data used to build a single-page PDF via convertImageToPDF.
+	// This avoids a lossy round-trip through convertPDFPageToImage when building multi-page PDFs.
+	// Python doesn't need this because pypdf can merge PDFs directly.
+	OriginalJPEG []byte
 }
 
 // OutlineEntry represents a PDF bookmark/outline item with optional children.
@@ -572,18 +614,21 @@ func convertImageToPDF(imgRes ImageResource) *ImageResource {
 	pdfData := buildSinglePagePDF(jpegData, cfg.Width, cfg.Height)
 
 	return &ImageResource{
-		Format:     "pdf",
-		Location:   imgRes.Location,
-		RawMedia:   pdfData,
-		Height:     cfg.Height,
-		Width:      cfg.Width,
-		PageNums:   []int{1},
-		TotalPages: 1,
+		Format:       "pdf",
+		Location:     imgRes.Location,
+		RawMedia:     pdfData,
+		Height:       cfg.Height,
+		Width:        cfg.Width,
+		PageNums:     []int{1},
+		TotalPages:   1,
+		OriginalJPEG: jpegData, // preserve JPEG data to avoid round-trip loss
 	}
 }
 
 // buildSinglePagePDF creates a minimal single-page PDF with an embedded JPEG image.
-// The page dimensions match the image pixel dimensions (72 DPI implied).
+// The page dimensions use adaptive DPI from bestDPIForPageHeight to target a 9.6 inch
+// page height, matching Python's Pillow image.save(pdf, dpi=(best_dpi, best_dpi))
+// behavior in convert_image_to_pdf (resources.py:515-519).
 func buildSinglePagePDF(jpegData []byte, width, height int) []byte {
 	// Object 1: Catalog
 	// Object 2: Pages
@@ -591,8 +636,10 @@ func buildSinglePagePDF(jpegData []byte, width, height int) []byte {
 	// Object 4: Image XObject
 	// Object 5: Content stream
 
-	w := float64(width)
-	h := float64(height)
+	// Python: resources.py:515-519 — select best DPI targeting 9.6 inch page height
+	dpi := bestDPIForPageHeight(height)
+	w := float64(width) / float64(dpi) * 72.0 // convert pixel dims to PDF points (1 point = 1/72 inch)
+	h := float64(height) / float64(dpi) * 72.0
 
 	contentStream := fmt.Sprintf("q %.2f 0 0 %.2f 0 0 cm /Img1 Do Q", w, h)
 
@@ -783,6 +830,10 @@ func combineImagesIntoPDF(orderedImages []ImageResource, metadata map[string]str
 					combinedPDFImages[len(combinedPDFImages)-1].PageNums, imgRes.PageNums...)
 			} else {
 				// New PDF resource entry
+				// Python: yj_to_image_book.py:230-231 — pypdf.PdfReader to count pages
+				// Go: parse /Count from the PDF's Pages object
+				totalPages := countPDFPages(imgRes.RawMedia)
+				imgRes.TotalPages = totalPages
 				combinedPDFImages = append(combinedPDFImages, imgRes)
 			}
 		} else {
@@ -813,34 +864,65 @@ func combineImagesIntoPDF(orderedImages []ImageResource, metadata map[string]str
 		}
 
 		if pdfImg.Format == "pdf" && bytes.HasPrefix(pdfImg.RawMedia, []byte("%PDF")) {
-			// PDF resource — extract page dimensions from the PDF's MediaBox
-			// and render to JPEG for embedding.
-			//
-			// LIMITATION (VAL-M10-001): Go cannot extract individual pages from a
-			// multi-page PDF like Python's pypdf. Instead, we render each requested
-			// page via convertPDFPageToImage (placeholder for now).
-			// Python: yj_to_image_book.py:252-259 uses writer.append(pages=page_range).
-			for _, pageNum := range pdfImg.PageNums {
-				imageData, imgFmt := convertPDFPageToImage(
-					pdfImg.Location, pdfImg.RawMedia, pageNum, nil, true)
-				if len(imageData) == 0 {
-					continue
-				}
-				cfg, _, err := image.DecodeConfig(bytes.NewReader(imageData))
+			// PDF resource. Two cases:
+			// 1. Image-derived single-page PDFs (from convertImageToPDF, OriginalJPEG set):
+			//    Use the original JPEG data directly with DPI-adjusted dimensions.
+			//    This avoids the lossy round-trip through convertPDFPageToImage that would
+			//    lose the original image data and DPI information.
+			//    Python: yj_to_image_book.py:232-236 — writer.append(fileobj=raw_media)
+			// 2. Original PDF resources (no OriginalJPEG): extract pages via convertPDFPageToImage
+			//    (LIMITATION: Go cannot extract individual pages like Python's pypdf).
+			if len(pdfImg.OriginalJPEG) > 0 {
+				// Image-derived PDF — use original JPEG data with DPI-adjusted page dims
+				dpi := bestDPIForPageHeight(pdfImg.Height)
+				pageW := float64(pdfImg.Width) / float64(dpi) * 72.0
+				pageH := float64(pdfImg.Height) / float64(dpi) * 72.0
+				pages = append(pages, pdfPage{
+					imageData: pdfImg.OriginalJPEG,
+					isJPEG:    true,
+					width:     pageW,
+					height:    pageH,
+				})
+			} else if pdfImg.entireResourceUsed() {
+				// Original single-page PDF resource — use raw PDF data directly
+				// Python: yj_to_image_book.py:249 writer.append(fileobj=io.BytesIO(raw_media))
+				cfg, err := decodeImageConfigFromPDF(pdfImg.RawMedia)
 				if err != nil {
-					continue
-				}
-				// Convert to JPEG for PDF embedding
-				jpegData, jpegErr := ensureJPEG(imageData, imgFmt)
-				if jpegErr != nil {
+					log.Printf("kfx: warning: failed to parse PDF page dimensions for %s: %v", pdfImg.Location, err)
 					continue
 				}
 				pages = append(pages, pdfPage{
-					imageData: jpegData,
-					isJPEG:    true,
+					imageData: pdfImg.RawMedia,
+					isJPEG:    false,
+					isPDF:     true,
 					width:     float64(cfg.Width),
 					height:    float64(cfg.Height),
 				})
+			} else {
+				// Multi-page PDF — extract individual pages
+				// Python: yj_to_image_book.py:252-259 uses writer.append(pages=page_range).
+				for _, pageNum := range pdfImg.PageNums {
+					imageData, imgFmt := convertPDFPageToImage(
+						pdfImg.Location, pdfImg.RawMedia, pageNum, nil, true)
+					if len(imageData) == 0 {
+						continue
+					}
+					cfg, _, err := image.DecodeConfig(bytes.NewReader(imageData))
+					if err != nil {
+						continue
+					}
+					// Convert to JPEG for PDF embedding
+					jpegData, jpegErr := ensureJPEG(imageData, imgFmt)
+					if jpegErr != nil {
+						continue
+					}
+					pages = append(pages, pdfPage{
+						imageData: jpegData,
+						isJPEG:    true,
+						width:     float64(cfg.Width),
+						height:    float64(cfg.Height),
+					})
+				}
 			}
 		} else {
 			// Image-derived resource — decode image and embed directly as JPEG page
@@ -903,6 +985,7 @@ func combineImagesIntoPDF(orderedImages []ImageResource, metadata map[string]str
 type pdfPage struct {
 	imageData []byte
 	isJPEG    bool
+	isPDF     bool // true if imageData is a complete single-page PDF
 	width     float64
 	height    float64
 }
@@ -1271,6 +1354,86 @@ func decodeImageConfigFromPDF(pdfData []byte) (image.Config, error) {
 // This is used for PDFs created by convertImageToPDF (buildSinglePagePDF).
 func decodePDFPageDimensions(pdfData []byte) (image.Config, error) {
 	return decodeImageConfigFromPDF(pdfData)
+}
+
+// countPDFPages counts the number of pages in a PDF by parsing /Count from the Pages object.
+// Returns 0 if the PDF cannot be parsed.
+// Port of Python: len(pypdf.PdfReader(raw_media).pages) used in
+// combine_images_into_pdf (yj_to_image_book.py:231) and get_resource_image.
+func countPDFPages(pdfData []byte) int {
+	if len(pdfData) == 0 || !bytes.HasPrefix(pdfData, []byte("%PDF")) {
+		return 0
+	}
+
+	// Find /Type /Pages object and extract /Count value
+	// Pattern: /Type /Pages ... /Count N
+	// Search for /Type /Pages first
+	typePagesIdx := bytes.Index(pdfData, []byte("/Type /Pages"))
+	if typePagesIdx < 0 {
+		// Fallback: just look for /Count in the Pages dictionary
+		return countPDFPagesByCount(pdfData)
+	}
+
+	// Find /Count near the /Type /Pages marker (within 200 bytes)
+	searchEnd := typePagesIdx + 200
+	if searchEnd > len(pdfData) {
+		searchEnd = len(pdfData)
+	}
+	searchRegion := pdfData[typePagesIdx:searchEnd]
+
+	countIdx := bytes.Index(searchRegion, []byte("/Count"))
+	if countIdx < 0 {
+		return 1 // Default to 1 page if /Count not found
+	}
+
+	// Parse the number after /Count
+	afterCount := searchRegion[countIdx+6:]
+	// Skip whitespace
+	i := 0
+	for i < len(afterCount) && (afterCount[i] == ' ' || afterCount[i] == '\n' || afterCount[i] == '\r' || afterCount[i] == '\t') {
+		i++
+	}
+
+	var count int
+	for i < len(afterCount) && afterCount[i] >= '0' && afterCount[i] <= '9' {
+		count = count*10 + int(afterCount[i]-'0')
+		i++
+	}
+
+	if count == 0 {
+		return 1
+	}
+	return count
+}
+
+// countPDFPagesByCount is a fallback that searches for /Count N anywhere in the PDF.
+func countPDFPagesByCount(pdfData []byte) int {
+	// Find all /Count occurrences and return the one that's in a /Pages context
+	idx := 0
+	for {
+		countIdx := bytes.Index(pdfData[idx:], []byte("/Count"))
+		if countIdx < 0 {
+			return 1
+		}
+		countIdx += idx
+		afterCount := pdfData[countIdx+6:]
+		i := 0
+		for i < len(afterCount) && (afterCount[i] == ' ' || afterCount[i] == '\n' || afterCount[i] == '\r' || afterCount[i] == '\t') {
+			i++
+		}
+		var count int
+		for i < len(afterCount) && afterCount[i] >= '0' && afterCount[i] <= '9' {
+			count = count*10 + int(afterCount[i]-'0')
+			i++
+		}
+		if count > 0 {
+			return count
+		}
+		idx = countIdx + 6
+		if idx >= len(pdfData) {
+			return 1
+		}
+	}
 }
 
 // renderPDFPageToJPEG converts a single-page PDF to a JPEG image.

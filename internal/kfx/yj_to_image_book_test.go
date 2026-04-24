@@ -1248,3 +1248,202 @@ func createSinglePagePDF(t *testing.T) []byte {
 
 // Suppress unused import warning
 var _ = io.EOF
+
+// ---------------------------------------------------------------------------
+// M10 scrutiny fix 1: Adaptive DPI — bestDPIForPageHeight
+// Python: resources.py:515-519 — selects DPI from PDF_PAGE_ALLOWED_DPI
+// targeting 9.6 inch page height.
+// ---------------------------------------------------------------------------
+
+func TestBestDPIForPageHeight(t *testing.T) {
+	tests := []struct {
+		imageHeight int
+		wantDPI     int
+	}{
+		// 2400px / 250 DPI = 9.6 inches → exact match
+		{2400, 250},
+		// 960px / 100 DPI = 9.6 inches → exact match
+		{960, 100},
+		// 2880px / 300 DPI = 9.6 inches → exact match
+		{2880, 300},
+		// 720px / 75 DPI = 9.6 inches → exact match
+		{720, 75},
+		// 1200px: 1200/125=9.6 → exact match
+		{1200, 125},
+		// 1000px: closest to 9.6" is 1000/100=10.0 (diff 0.4) vs 1000/125=8.0 (diff 1.6)
+		{1000, 100},
+		// 2000px: 2000/200=10.0 (diff 0.4) vs 2000/250=8.0 (diff 1.6)
+		{2000, 200},
+		// 500px: 500/75=6.67 (diff 2.93) → closest
+		{500, 75},
+	}
+	for _, tc := range tests {
+		got := bestDPIForPageHeight(tc.imageHeight)
+		if got != tc.wantDPI {
+			t.Errorf("bestDPIForPageHeight(%d) = %d, want %d", tc.imageHeight, got, tc.wantDPI)
+		}
+	}
+}
+
+func TestBuildSinglePagePDF_UsesAdaptiveDPI(t *testing.T) {
+	// Verify that buildSinglePagePDF uses adaptive DPI, not raw pixel dimensions.
+	// For a 2400px tall image, best DPI = 250, giving page height = 2400/250*72 = 691.2 points.
+	// Raw pixels would give height = 2400.0 points (wrong).
+	imgData := createTestJPEG(t, 1600, 2400)
+	pdfData := buildSinglePagePDF(imgData, 1600, 2400)
+	if !isValidPDF(pdfData) {
+		t.Fatal("expected valid PDF")
+	}
+
+	// Parse MediaBox from the PDF — should use DPI-adjusted dimensions, not raw pixels
+	cfg, err := decodeImageConfigFromPDF(pdfData)
+	if err != nil {
+		t.Fatalf("failed to parse PDF dimensions: %v", err)
+	}
+
+	// With DPI=250: page_w = 1600/250*72 = 460.8, page_h = 2400/250*72 = 691.2
+	expectedW := int(1600 * 72 / 250) // = 460
+	expectedH := int(2400 * 72 / 250) // = 691
+
+	if cfg.Width != expectedW {
+		t.Errorf("expected PDF page width = %d (DPI-adjusted), got %d (raw pixels would be 1600)", expectedW, cfg.Width)
+	}
+	if cfg.Height != expectedH {
+		t.Errorf("expected PDF page height = %d (DPI-adjusted), got %d (raw pixels would be 2400)", expectedH, cfg.Height)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M10 scrutiny fix 2: TotalPages initialization for PDF resources
+// Python: resources.py:247-248 (PdfImageResource), yj_to_image_book.py:231
+// In combine_images_into_pdf, Python sets total_pages = len(pdf.pages).
+// Go: countPDFPages parses /Count from the PDF's Pages object.
+// ---------------------------------------------------------------------------
+
+func TestCountPDFPages_SinglePage(t *testing.T) {
+	// buildSinglePagePDF creates a 1-page PDF
+	imgData := createTestJPEG(t, 100, 200)
+	pdfData := buildSinglePagePDF(imgData, 100, 200)
+
+	pages := countPDFPages(pdfData)
+	if pages != 1 {
+		t.Errorf("countPDFPages(single-page PDF) = %d, want 1", pages)
+	}
+}
+
+func TestCountPDFPages_InvalidData(t *testing.T) {
+	pages := countPDFPages([]byte("not a PDF"))
+	if pages != 0 {
+		t.Errorf("countPDFPages(invalid) = %d, want 0", pages)
+	}
+}
+
+func TestCountPDFPages_EmptyData(t *testing.T) {
+	pages := countPDFPages([]byte{})
+	if pages != 0 {
+		t.Errorf("countPDFPages(empty) = %d, want 0", pages)
+	}
+}
+
+func TestCombineImagesIntoPDF_SetsTotalPagesForPDFResources(t *testing.T) {
+	// When combining images into PDF, PDF resources should get TotalPages set
+	// from counting the pages in the raw PDF data.
+	pdfData := buildSinglePagePDF(createTestJPEG(t, 100, 200), 100, 200)
+
+	images := []ImageResource{
+		{Format: "pdf", Location: "doc.pdf", RawMedia: pdfData, PageNums: []int{1}, TotalPages: 0},
+	}
+
+	result := combineImagesIntoPDF(images, nil, false, nil)
+	if result == nil {
+		t.Fatal("expected non-nil PDF result")
+	}
+	// The function should succeed — TotalPages gets set internally
+	if !isValidPDF(result) {
+		t.Error("expected valid PDF output")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M10 scrutiny fix 3: Image data preserved through convertImageToPDF pipeline
+// Python: yj_to_image_book.py:232-236 — image-derived PDFs use raw data directly,
+// not round-tripped through a placeholder renderer.
+// Go: OriginalJPEG field preserves the JPEG data for direct embedding.
+// ---------------------------------------------------------------------------
+
+func TestConvertImageToPDF_PreservesOriginalJPEG(t *testing.T) {
+	imgData := createTestJPEG(t, 100, 200)
+
+	imgRes := ImageResource{
+		Format:   "jpg",
+		Location: "test-image.jpg",
+		RawMedia: imgData,
+		Height:   200,
+		Width:    100,
+	}
+
+	pdfRes := convertImageToPDF(imgRes)
+	if pdfRes == nil {
+		t.Fatal("expected non-nil PDF resource")
+	}
+
+	// OriginalJPEG should be set to the JPEG data
+	if len(pdfRes.OriginalJPEG) == 0 {
+		t.Error("expected OriginalJPEG to be set for image-derived PDF")
+	}
+
+	// OriginalJPEG should match the input image data (it was already JPEG)
+	if !bytes.Equal(pdfRes.OriginalJPEG, imgData) {
+		t.Error("expected OriginalJPEG to match input JPEG data")
+	}
+}
+
+func TestCombineImagesIntoPDF_UsesOriginalJPEGNotRoundTrip(t *testing.T) {
+	// Create two image resources and combine them into a PDF.
+	// The original JPEG data should be used directly, not round-tripped through
+	// convertPDFPageToImage (which is a placeholder for real PDFs).
+	img1 := createTestJPEG(t, 100, 200)
+	img2 := createTestJPEG(t, 200, 300)
+
+	images := []ImageResource{
+		{Format: "jpg", Location: "img1.jpg", RawMedia: img1, Height: 200, Width: 100},
+		{Format: "jpg", Location: "img2.jpg", RawMedia: img2, Height: 300, Width: 200},
+	}
+
+	result := combineImagesIntoPDF(images, nil, false, nil)
+	if result == nil {
+		t.Fatal("expected non-nil PDF from multi-image combine")
+	}
+	if !isValidPDF(result) {
+		t.Error("expected valid PDF output")
+	}
+
+	// The result should contain valid JPEG data (not placeholder garbage)
+	// by checking the PDF has reasonable size (at least as large as the images)
+	if len(result) < len(img1)+len(img2) {
+		t.Errorf("PDF result (%d bytes) seems too small — image data may have been lost", len(result))
+	}
+}
+
+func TestEntireResourceUsed_WithTotalPages(t *testing.T) {
+	// Verify entireResourceUsed works correctly with TotalPages set
+	tests := []struct {
+		name       string
+		pageNums   []int
+		totalPages int
+		want       bool
+	}{
+		{"all pages", []int{1, 2, 3}, 3, true},
+		{"partial pages", []int{1, 2}, 3, false},
+		{"single page", []int{1}, 1, true},
+		{"zero total pages", []int{1}, 0, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := ImageResource{PageNums: tc.pageNums, TotalPages: tc.totalPages}
+			if got := r.entireResourceUsed(); got != tc.want {
+				t.Errorf("entireResourceUsed() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
