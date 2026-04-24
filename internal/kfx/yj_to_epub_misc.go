@@ -1255,7 +1255,7 @@ func adjustPixelValue(value float64) float64 {
 	return value
 }
 
-func processKVGShape(parent *htmlElement, shape map[string]interface{}, writingMode string) {
+func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[string]interface{}, contentList *[]interface{}, writingMode string) {
 	shapeType, _ := asString(shape["type"])
 	delete(shape, "type")
 
@@ -1279,11 +1279,70 @@ func processKVGShape(parent *htmlElement, shape map[string]interface{}, writingM
 			fmt.Fprintf(os.Stderr, "kfx: error: missing KVG container content source\n")
 			return
 		}
-		elem = &htmlElement{
-			Tag:   "text",
-			Attrs: map[string]string{},
+
+		// Python yj_to_epub_misc.py L248-268: search content_list for matching source content,
+		// pop it, call process_content(), then rename the element from <div> to <text>.
+		var matchedContent map[string]interface{}
+		matchedIndex := -1
+		if contentList != nil {
+			for i, raw := range *contentList {
+				content, ok := asMap(raw)
+				if !ok {
+					continue
+				}
+				// Python L249: if content.get("$155") == source or content.get("$598") == source
+				// $155 = "id", $598 = "kfx_id"
+				if id, _ := asString(content["id"]); id == source {
+					matchedContent = content
+					matchedIndex = i
+					break
+				}
+				if kfxID, _ := asString(content["kfx_id"]); kfxID == source {
+					matchedContent = content
+					matchedIndex = i
+					break
+				}
+			}
 		}
-		parent.Children = append(parent.Children, elem)
+		if matchedContent == nil {
+			fmt.Fprintf(os.Stderr, "kfx: error: missing KVG container content ID: %s\n", source)
+			return
+		}
+
+		// Python L253: content_list.pop(i)
+		if contentList != nil && matchedIndex >= 0 {
+			list := *contentList
+			*contentList = append(list[:matchedIndex], list[matchedIndex+1:]...)
+		}
+
+		// Python L254: self.process_content(content, parent, book_part, writing_mode)
+		// This renders the content into the parent element, creating a child element.
+		childPart := r.renderNode(matchedContent, 0)
+		if childPart != nil {
+			parent.Children = append(parent.Children, childPart)
+		}
+
+		// Python L255: elem = parent[-1]
+		if len(parent.Children) == 0 {
+			return
+		}
+		lastChild := parent.Children[len(parent.Children)-1]
+		childElem, ok := lastChild.(*htmlElement)
+		if !ok {
+			return
+		}
+
+		// Python L257-259: if elem.tag != "div": log.error(...); return
+		if childElem.Tag != "div" {
+			fmt.Fprintf(os.Stderr, "kfx: error: unexpected non-text content in KVG container: %s\n", childElem.Tag)
+			// Remove the non-div child so we don't leave unexpected content
+			parent.Children = parent.Children[:len(parent.Children)-1]
+			return
+		}
+
+		// Python L260: elem.tag = qname(SVG_NS_URI, "text")
+		childElem.Tag = "text"
+		elem = childElem
 
 	default:
 		if shapeType != "" {

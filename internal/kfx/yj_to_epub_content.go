@@ -4254,13 +4254,16 @@ func (r *storylineRenderer) renderSVGNode(node map[string]interface{}) htmlPart 
 		r.applyPositionAnchors(element, positionID, false)
 	}
 
-	// Python yj_to_epub_content.py L858: for shape in content.pop("$250", []):
-	//     self.process_kvg_shape(content_elem, shape, content_list, book_part, writing_mode)
-	// $250 = shape_list. Iterate shapes and render each into the SVG element.
+	// Python yj_to_epub_content.py L856-859:
+	//   content_list = content.pop("$146", [])
+	//   for shape in content.pop("$250", []):
+	//       self.process_kvg_shape(content_elem, shape, content_list, book_part, writing_mode)
+	// $146 = content_list, $250 = shape_list.
+	contentList, _ := asSlice(node["content_list"])
 	if shapeList, ok := asSlice(node["shape_list"]); ok {
 		for _, shape := range shapeList {
 			if shapeMap, ok := asMap(shape); ok {
-				processKVGShape(element, shapeMap, "")
+				r.processKVGShape(element, shapeMap, &contentList, "")
 			}
 		}
 	}

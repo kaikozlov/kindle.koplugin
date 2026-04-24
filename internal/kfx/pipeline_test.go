@@ -1589,6 +1589,152 @@ func isTextArchiveFile(name string) bool {
 
 var modifiedMetaPattern = regexp.MustCompile(`<meta property="dcterms:modified">.*?</meta>`)
 
+// =============================================================================
+// fix-kvg-container-shape-content: KVG container shapes must render content
+// from content_list, not create empty <text> elements.
+// Python yj_to_epub_misc.py L248-268: container shapes search content_list
+// for matching source content, pop it, call process_content(), rename to <text>.
+// =============================================================================
+
+// TestKVGContainerShapeRendersContentFromContentList verifies that a KVG container
+// shape with a matching content_list entry renders the actual text content into
+// the <text> element, matching Python yj_to_epub_misc.py L248-268.
+func TestKVGContainerShapeRendersContentFromContentList(t *testing.T) {
+	renderer := storylineRenderer{
+		contentFragments:  map[string][]string{},
+		resourceHrefByID:  map[string]string{},
+		resourceFragments: map[string]resourceFragment{},
+		anchorToFilename:  map[string]string{},
+		positionToSection: map[int]string{},
+		positionAnchors:   map[int]map[int][]string{},
+		positionAnchorID:  map[int]map[int]string{},
+		emittedAnchorIDs:  map[string]bool{},
+		styleFragments:    map[string]map[string]interface{}{},
+		styles:            newStyleCatalog(),
+	}
+
+	// content_list contains a text content item whose "id" matches the shape's "source"
+	node := renderer.renderNode(map[string]interface{}{
+		"type":          "kvg",
+		"fixed_width":  200,
+		"fixed_height": 100,
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":    "text",
+				"id":      "text-src-1",
+				"content": map[string]interface{}{"name": "content", "index": 0},
+			},
+		},
+		"shape_list": []interface{}{
+			map[string]interface{}{
+				"type":   "container",
+				"source": "text-src-1",
+			},
+		},
+	}, 0)
+
+	got := renderHTMLPart(node)
+
+	// The container shape should have rendered the text content and renamed the
+	// element from <div> to <text> (SVG namespace). Currently Go creates an empty
+	// <text> element — this test should FAIL until the fix is applied.
+	if !strings.Contains(got, "<svg") {
+		t.Fatalf("expected SVG element, got: %q", got)
+	}
+	// The <text> element should NOT be empty — it should contain rendered content
+	// from the content_list entry (the text node).
+	if strings.Contains(got, "<text></text>") || strings.Contains(got, "<text/>") {
+		t.Fatalf("KVG container shape <text> element is empty — content_list not rendered.\nGot: %q", got)
+	}
+}
+
+// TestKVGContainerShapeMatchesByKfxID verifies that container shapes can match
+// content_list entries by "kfx_id" as well as "id".
+// Python yj_to_epub_misc.py L249: content.get("$155") == source or content.get("$598") == source
+// $155 = "id", $598 = "kfx_id"
+func TestKVGContainerShapeMatchesByKfxID(t *testing.T) {
+	renderer := storylineRenderer{
+		contentFragments:  map[string][]string{},
+		resourceHrefByID:  map[string]string{},
+		resourceFragments: map[string]resourceFragment{},
+		anchorToFilename:  map[string]string{},
+		positionToSection: map[int]string{},
+		positionAnchors:   map[int]map[int][]string{},
+		positionAnchorID:  map[int]map[int]string{},
+		emittedAnchorIDs:  map[string]bool{},
+		styleFragments:    map[string]map[string]interface{}{},
+		styles:            newStyleCatalog(),
+	}
+
+	node := renderer.renderNode(map[string]interface{}{
+		"type":          "kvg",
+		"fixed_width":  200,
+		"fixed_height": 100,
+		"content_list": []interface{}{
+			map[string]interface{}{
+				"type":    "text",
+				"kfx_id":  "kfx-src-42",
+				"content": map[string]interface{}{"name": "content", "index": 0},
+			},
+		},
+		"shape_list": []interface{}{
+			map[string]interface{}{
+				"type":   "container",
+				"source": "kfx-src-42",
+			},
+		},
+	}, 0)
+
+	got := renderHTMLPart(node)
+	if !strings.Contains(got, "<svg") {
+		t.Fatalf("expected SVG element, got: %q", got)
+	}
+	if strings.Contains(got, "<text></text>") || strings.Contains(got, "<text/>") {
+		t.Fatalf("KVG container shape <text> element is empty — kfx_id matching not working.\nGot: %q", got)
+	}
+}
+
+// TestKVGContainerShapeLogsErrorOnMissingSource verifies that when no matching
+// content is found in content_list for the container shape's source, an error is
+// logged and the shape is skipped.
+// Python yj_to_epub_misc.py L251: log.error("Missing KVG container content ID: %s" % source)
+func TestKVGContainerShapeLogsErrorOnMissingSource(t *testing.T) {
+	renderer := storylineRenderer{
+		contentFragments:  map[string][]string{},
+		resourceHrefByID:  map[string]string{},
+		resourceFragments: map[string]resourceFragment{},
+		anchorToFilename:  map[string]string{},
+		positionToSection: map[int]string{},
+		positionAnchors:   map[int]map[int][]string{},
+		positionAnchorID:  map[int]map[int]string{},
+		emittedAnchorIDs:  map[string]bool{},
+		styleFragments:    map[string]map[string]interface{}{},
+		styles:            newStyleCatalog(),
+	}
+
+	node := renderer.renderNode(map[string]interface{}{
+		"type":          "kvg",
+		"fixed_width":  200,
+		"fixed_height": 100,
+		"content_list": []interface{}{},
+		"shape_list": []interface{}{
+			map[string]interface{}{
+				"type":   "container",
+				"source": "nonexistent-id",
+			},
+		},
+	}, 0)
+
+	got := renderHTMLPart(node)
+	// Should still have SVG element but no <text> child (shape was skipped)
+	if !strings.Contains(got, "<svg") {
+		t.Fatalf("expected SVG element, got: %q", got)
+	}
+	if strings.Contains(got, "<text") {
+		t.Fatalf("KVG container shape should be skipped when source not found, got: %q", got)
+	}
+}
+
 func normalizeReferenceText(name string, text string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	if strings.HasSuffix(strings.ToLower(name), "content.opf") {
