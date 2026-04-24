@@ -853,8 +853,8 @@ func combineImagesIntoPDF(orderedImages []ImageResource, metadata map[string]str
 	// If single resource using entire PDF, use its raw data directly.
 	// Otherwise, combine all resources.
 	//
-	// Go builds pages from each combined resource. For PDF resources, we embed
-	// the raw PDF data as a single page (limitation: no page extraction).
+	// Go builds pages from each combined resource. For PDF resources, we extract
+	// images via pdfcpu (equivalent to Python's pypdf page extraction).
 	// For image-derived PDFs, we use the JPEG-embedded page.
 	var pages []pdfPage
 
@@ -871,7 +871,7 @@ func combineImagesIntoPDF(orderedImages []ImageResource, metadata map[string]str
 			//    lose the original image data and DPI information.
 			//    Python: yj_to_image_book.py:232-236 — writer.append(fileobj=raw_media)
 			// 2. Original PDF resources (no OriginalJPEG): extract pages via convertPDFPageToImage
-			//    (LIMITATION: Go cannot extract individual pages like Python's pypdf).
+			//    which uses pdfcpu for embedded image extraction.
 			if len(pdfImg.OriginalJPEG) > 0 {
 				// Image-derived PDF — use original JPEG data with DPI-adjusted page dims
 				dpi := bestDPIForPageHeight(pdfImg.Height)
@@ -1437,11 +1437,8 @@ func countPDFPagesByCount(pdfData []byte) int {
 }
 
 // renderPDFPageToJPEG converts a single-page PDF to a JPEG image.
-// Since Go doesn't have pypdf's rendering capability, this uses the
-// convertPDFPageToImage pathway (which generates a placeholder for real PDFs).
-//
-// LIMITATION (VAL-M10-001): For PDF-backed books, this produces a placeholder
-// rather than the actual rendered page. None of the 6 test books use PDF resources.
+// Uses convertPDFPageToImage which extracts embedded images via pdfcpu,
+// falling back to a placeholder when extraction is not possible.
 func renderPDFPageToJPEG(pdfData []byte) ([]byte, error) {
 	imageData, _ := convertPDFPageToImage("embedded-pdf", pdfData, 1, nil, true)
 	if len(imageData) == 0 {

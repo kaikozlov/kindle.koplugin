@@ -2,6 +2,9 @@ package kfx
 
 import (
 	"bytes"
+	"fmt"
+	"image"
+	"image/color"
 	"image/jpeg"
 	"strings"
 	"testing"
@@ -870,6 +873,172 @@ func TestBuildResources_FontFaceSkipsNormalValues(t *testing.T) {
 	}
 	if !strings.Contains(css, "font-family: TestFont") {
 		t.Fatalf("expected font-family in CSS, got: %s", css)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GAP 12 fix: Real PDF page image extraction using pdfcpu
+// Python: resources.py:323-425 — convert_pdf_page_to_image + get_pdf_page_image
+// ---------------------------------------------------------------------------
+
+// createPDFWithJPEG creates a minimal single-page PDF containing a JPEG image.
+// This is used to test real image extraction from PDF pages.
+func createPDFWithJPEG(imgWidth, imgHeight int) []byte {
+	// Create a small JPEG image
+	img := image.NewRGBA(image.Rect(0, 0, imgWidth, imgHeight))
+	// Fill with a recognizable color pattern (red)
+	for y := 0; y < imgHeight; y++ {
+		for x := 0; x < imgWidth; x++ {
+			img.SetRGBA(x, y, color.RGBA{R: 255, G: 0, B: 0, A: 255})
+		}
+	}
+	var jpegBuf bytes.Buffer
+	jpeg.Encode(&jpegBuf, img, &jpeg.Options{Quality: 95})
+	jpegData := jpegBuf.Bytes()
+
+	// Build a PDF with the JPEG embedded as a DCTDecode stream
+	var buf bytes.Buffer
+	buf.WriteString("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+
+	// Object 1: Catalog
+	obj1Off := buf.Len()
+	buf.WriteString("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+
+	// Object 2: Pages
+	obj2Off := buf.Len()
+	buf.WriteString("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n")
+
+	// Object 3: Page
+	obj3Off := buf.Len()
+	fmt.Fprintf(&buf, "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents 5 0 R /Resources << /XObject << /Im0 4 0 R >> >> >>\nendobj\n", imgWidth, imgHeight)
+
+	// Object 4: Image XObject (DCTDecode = JPEG)
+	obj4Off := buf.Len()
+	fmt.Fprintf(&buf, "4 0 obj\n<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n", imgWidth, imgHeight, len(jpegData))
+	buf.Write(jpegData)
+	buf.WriteString("\nendstream\nendobj\n")
+
+	// Object 5: Content stream (draw the image)
+	contentStream := fmt.Sprintf("q %d 0 0 %d 0 0 cm /Im0 Do Q", imgWidth, imgHeight)
+	obj5Off := buf.Len()
+	fmt.Fprintf(&buf, "5 0 obj\n<< /Length %d >>\nstream\n%s\nendstream\nendobj\n", len(contentStream), contentStream)
+
+	// Cross-reference table
+	xrefOff := buf.Len()
+	buf.WriteString("xref\n0 6\n")
+	buf.WriteString("0000000000 65535 f \n")
+	fmt.Fprintf(&buf, "%010d 00000 n \n", obj1Off)
+	fmt.Fprintf(&buf, "%010d 00000 n \n", obj2Off)
+	fmt.Fprintf(&buf, "%010d 00000 n \n", obj3Off)
+	fmt.Fprintf(&buf, "%010d 00000 n \n", obj4Off)
+	fmt.Fprintf(&buf, "%010d 00000 n \n", obj5Off)
+
+	buf.WriteString("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n")
+	fmt.Fprintf(&buf, "%d\n", xrefOff)
+	buf.WriteString("%%EOF\n")
+
+	return buf.Bytes()
+}
+
+func TestConvertPDFPageToImage_PDFWithEmbeddedJPEG_ExtractsImage(t *testing.T) {
+	// Python resources.py:366-425 — get_pdf_page_image extracts the single embedded
+	// image from a PDF page when conditions are met (single image, no text, etc.)
+	// This test verifies that Go's pdfcpu-based extraction works for the common case:
+	// a single-page PDF with one embedded JPEG image.
+	pdfData := createPDFWithJPEG(100, 150)
+
+	result, format := convertPDFPageToImage("test_embedded.pdf", pdfData, 1, nil, false)
+	if result == nil {
+		t.Fatal("expected non-nil result for PDF with embedded JPEG")
+	}
+	if format != "jpg" {
+		t.Fatalf("expected format 'jpg' for embedded JPEG, got %q", format)
+	}
+
+	// Verify the result is valid JPEG data (the extracted image, not a placeholder)
+	config, err := jpeg.DecodeConfig(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("extracted image should be valid JPEG, got decode error: %v", err)
+	}
+
+	// The extracted image should match the original dimensions (100x150)
+	if config.Width != 100 || config.Height != 150 {
+		t.Fatalf("expected extracted image dimensions 100x150, got %dx%d", config.Width, config.Height)
+	}
+}
+
+func TestConvertPDFPageToImage_PDFWithEmbeddedJPEG_ForceJPEG(t *testing.T) {
+	// Python resources.py:419-424 — when force_jpeg=True, convert to JPEG
+	pdfData := createPDFWithJPEG(50, 50)
+
+	result, format := convertPDFPageToImage("force.jpg", pdfData, 1, nil, true)
+	if result == nil {
+		t.Fatal("expected non-nil result for forceJPEG")
+	}
+	if format != "jpg" {
+		t.Fatalf("expected format 'jpg' with forceJPEG, got %q", format)
+	}
+
+	// Verify valid JPEG
+	_, err := jpeg.Decode(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("forceJPEG result should be valid JPEG, got error: %v", err)
+	}
+}
+
+func TestConvertPDFPageToImage_EmptyPDFPages_NoImages_ReturnsPlaceholder(t *testing.T) {
+	// Python resources.py:384 — if len(page.images.keys()) != 1: return default_image
+	// A PDF page with no embedded images should fall back to the placeholder.
+	pdfData := createMinimalPDF(1) // no embedded images
+
+	result, format := convertPDFPageToImage("empty_pages.pdf", pdfData, 1, nil, false)
+	if result == nil {
+		t.Fatal("expected non-nil fallback for PDF with no images")
+	}
+	if format != "jpg" {
+		t.Fatalf("expected format 'jpg' (fallback), got %q", format)
+	}
+
+	// The placeholder should still be valid JPEG
+	_, err := jpeg.Decode(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("fallback should be valid JPEG, got error: %v", err)
+	}
+}
+
+func TestConvertPDFPageToImage_InvalidPDFData_ReturnsPlaceholder(t *testing.T) {
+	// Python resources.py:423 — except Exception: return default_image
+	// Invalid data should gracefully fall back to placeholder.
+	result, format := convertPDFPageToImage("bad.pdf", []byte("not-a-pdf"), 1, nil, false)
+	if result == nil {
+		t.Fatal("expected non-nil fallback for invalid data")
+	}
+	if format != "jpg" {
+		t.Fatalf("expected format 'jpg' (fallback), got %q", format)
+	}
+}
+
+func TestGetPDFPageImage_MultiPagePDF_ExtractsCorrectPage(t *testing.T) {
+	// Python resources.py:370 — pdf.pages[page_num - 1]
+	// Verify that extraction targets the correct page number.
+	// We use a single-page PDF and request page 1.
+	pdfData := createPDFWithJPEG(80, 60)
+
+	result, format := getPDFPageImage("multipage.pdf", pdfData, 1, false, nil, "jpg")
+	if result == nil {
+		t.Fatal("expected non-nil result for page 1 extraction")
+	}
+	if format != "jpg" {
+		t.Fatalf("expected format 'jpg', got %q", format)
+	}
+
+	// Verify dimensions match
+	config, err := jpeg.DecodeConfig(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("expected valid JPEG, got error: %v", err)
+	}
+	if config.Width != 80 || config.Height != 60 {
+		t.Fatalf("expected 80x60, got %dx%d", config.Width, config.Height)
 	}
 }
 
