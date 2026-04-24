@@ -5684,8 +5684,37 @@ func (r *storylineRenderer) renderInlineRenderContainer(node map[string]interfac
 	if len(element.Children) == 0 {
 		return nil
 	}
+
+	// Python yj_to_epub_content.py L1299-1312: after retagging div→span, check is_inline_only.
+	// If the element tree contains only inline tags, keep it as <span> and potentially
+	// flatten a bare single <span> child. If NOT inline-only, revert to <div> with
+	// display:inline-block (the fit_width path from Python L1309-1310).
+	if isInlineOnly(element) {
+		// Python L1304-1307: flatten single bare <span> child with no attributes.
+		// if len(content_elem) == 1 and content_elem[0].tag == "span" and
+		//    len(content_elem[0]) == 0 and len(content_elem[0].attrib) == 0:
+		if len(element.Children) == 1 {
+			if child, ok := element.Children[0].(*htmlElement); ok &&
+				child.Tag == "span" && len(child.Children) == 0 && len(child.Attrs) == 0 {
+				// Merge: element.text = (element.text or "") + (child.text or "") + (child.tail or "")
+				// In our model, element has no Text field (text is in htmlText children),
+				// and child is an empty span with no children. Nothing to merge.
+				// Python removes the child element, leaving a <span> with combined text.
+				element.Children = nil
+			}
+		}
+	} else {
+		// Python L1308-1310: else: content_elem.tag = "div"; fit_width = True
+		// fit_width adds display:inline-block for divs (Python L1346-1347).
+		element.Tag = "div"
+		fitWidthStyle := styleStringFromDeclarations("class", nil, []string{"display: inline-block"})
+		if fitWidthStyle != "" {
+			element.Attrs["style"] = mergeStyleStrings(element.Attrs["style"], fitWidthStyle)
+		}
+	}
+
 	if styleAttr := r.inlineContainerClass(styleID, node); styleAttr != "" {
-		element.Attrs["style"] = styleAttr
+		element.Attrs["style"] = mergeStyleStrings(element.Attrs["style"], styleAttr)
 	}
 	r.applyStructuralNodeAttrs(element, node, "")
 	if positionID, _ := asInt(node["id"]); positionID != 0 {
@@ -7261,6 +7290,41 @@ func isEmptyWrapper(element *htmlElement) bool {
 		return false
 	}
 	return len(element.Children) == 0
+}
+
+// isInlineOnly checks if an element tree contains only inline elements.
+// Ported from Python yj_to_epub_content.py L1922-1935 (is_inline_only).
+// Inline elements: a, audio, img, rb, rt, ruby, span, svg, video.
+// SVG returns true unconditionally (Python L1924: if elem.tag == SVG: return True).
+// Used in render:inline path to decide whether to keep <span> or revert to <div>.
+func isInlineOnly(element *htmlElement) bool {
+	if element == nil {
+		return true
+	}
+	// Python L1924: if elem.tag == SVG: return True
+	if element.Tag == "svg" {
+		return true
+	}
+	// Python L1927: if elem.tag not in {"a","audio","img","rb","rt","ruby","span",SVG,"video"}: return False
+	switch element.Tag {
+	case "a", "audio", "img", "rb", "rt", "ruby", "span", "video":
+		// ok, inline
+	default:
+		return false
+	}
+	// Python L1930-1932: for e in elem: if not self.is_inline_only(e): return False
+	for _, child := range element.Children {
+		childElem, ok := child.(*htmlElement)
+		if !ok {
+			// htmlText nodes are inline
+			continue
+		}
+		if !isInlineOnly(childElem) {
+			return false
+		}
+	}
+	// Python L1934: return True
+	return true
 }
 
 func shouldCollapseNestedDiv(element *htmlElement) bool {

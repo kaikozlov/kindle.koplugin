@@ -1735,6 +1735,137 @@ func TestKVGContainerShapeLogsErrorOnMissingSource(t *testing.T) {
 	}
 }
 
+func TestIsInlineOnly(t *testing.T) {
+	tests := []struct {
+		name     string
+		element  *htmlElement
+		expected bool
+	}{
+		{
+			name:     "span with no children is inline",
+			element:  &htmlElement{Tag: "span"},
+			expected: true,
+		},
+		{
+			name:     "a with no children is inline",
+			element:  &htmlElement{Tag: "a"},
+			expected: true,
+		},
+		{
+			name:     "img is inline",
+			element:  &htmlElement{Tag: "img"},
+			expected: true,
+		},
+		{
+			name:     "svg is inline",
+			element:  &htmlElement{Tag: "svg"},
+			expected: true,
+		},
+		{
+			name:     "ruby is inline",
+			element:  &htmlElement{Tag: "ruby"},
+			expected: true,
+		},
+		{
+			name:     "rb is inline",
+			element:  &htmlElement{Tag: "rb"},
+			expected: true,
+		},
+		{
+			name:     "rt is inline",
+			element:  &htmlElement{Tag: "rt"},
+			expected: true,
+		},
+		{
+			name:     "audio is inline",
+			element:  &htmlElement{Tag: "audio"},
+			expected: true,
+		},
+		{
+			name:     "video is inline",
+			element:  &htmlElement{Tag: "video"},
+			expected: true,
+		},
+		{
+			name:     "div is NOT inline",
+			element:  &htmlElement{Tag: "div"},
+			expected: false,
+		},
+		{
+			name:     "table is NOT inline",
+			element:  &htmlElement{Tag: "table"},
+			expected: false,
+		},
+		{
+			name:     "p is NOT inline",
+			element:  &htmlElement{Tag: "p"},
+			expected: false,
+		},
+		{
+			name: "span with inline child is inline",
+			element: &htmlElement{Tag: "span", Children: []htmlPart{
+				&htmlElement{Tag: "span"},
+			}},
+			expected: true,
+		},
+		{
+			name: "span with nested inline children is inline",
+			element: &htmlElement{Tag: "span", Children: []htmlPart{
+				&htmlElement{Tag: "a", Children: []htmlPart{
+					&htmlElement{Tag: "img"},
+				}},
+			}},
+			expected: true,
+		},
+		{
+			name: "span with block child is NOT inline",
+			element: &htmlElement{Tag: "span", Children: []htmlPart{
+				&htmlElement{Tag: "div"},
+			}},
+			expected: false,
+		},
+		{
+			name: "span with mixed children where one is block is NOT inline",
+			element: &htmlElement{Tag: "span", Children: []htmlPart{
+				&htmlElement{Tag: "span"},
+				&htmlElement{Tag: "div"},
+			}},
+			expected: false,
+		},
+		{
+			name: "ruby with rb and rt children is inline",
+			element: &htmlElement{Tag: "ruby", Children: []htmlPart{
+				&htmlElement{Tag: "rb"},
+				&htmlElement{Tag: "rt"},
+			}},
+			expected: true,
+		},
+		{
+			name: "svg with nested svg is inline (Python L1924: SVG returns True unconditionally)",
+			element: &htmlElement{Tag: "svg", Children: []htmlPart{
+				&htmlElement{Tag: "svg"},
+			}},
+			expected: true,
+		},
+		{
+			name: "svg with block child is still inline (SVG short-circuits)",
+			element: &htmlElement{Tag: "svg", Children: []htmlPart{
+				&htmlElement{Tag: "div"},
+			}},
+			expected: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isInlineOnly(tc.element)
+			if got != tc.expected {
+				t.Errorf("isInlineOnly(%+v) = %v, want %v", tc.element, got, tc.expected)
+			}
+		})
+	}
+}
+
 func normalizeReferenceText(name string, text string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	if strings.HasSuffix(strings.ToLower(name), "content.opf") {
