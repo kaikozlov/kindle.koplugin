@@ -216,7 +216,20 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	sectionOrder = promoteCoverSectionFromGuide(sectionOrder, navState.guide, positionToSectionID)
 	debugSectionMappings(sectionFragments, navTitles, sectionOrder)
 
-	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, &renderer, navTitles, symFmt)
+	// Detect book type from metadata and content features.
+	// Port of Python's set_book_type() calls in yj_to_epub_metadata.py (L59, L173, L180, L204, L223, L246, L248, L265, L268, L274, L276).
+	bt := detectBookTypeFull(book, &state.Fragments)
+	var readingOrderCfg *pageSpreadConfig
+	if bt != bookTypeNone {
+		readingOrderCfg = &pageSpreadConfig{
+			BookType:                 bt,
+			IsPdfBacked:              book.IsPDFBacked,
+			RegionMagnification:      book.RegionMagnification,
+			VirtualPanelsAllowed:     book.VirtualPanelsAllowed,
+			PageProgressionDirection: book.PageProgressionDirection,
+		}
+	}
+	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, &renderer, navTitles, symFmt, readingOrderCfg)
 	cleanupRenderedSections(book.RenderedSections)
 
 	// Stage: reading_order (capture rendered section HTML after processReadingOrder)

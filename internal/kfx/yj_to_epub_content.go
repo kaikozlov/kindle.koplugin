@@ -148,6 +148,77 @@ func detectBookType(metadata map[string]interface{}, features map[string]interfa
 	return bookTypeNone
 }
 
+// detectBookTypeFromBook derives the book type from the decodedBook flags that were set
+// by applyMetadata/applyContentFeatures/applyDocumentData. This is the Go equivalent of
+// Python's set_book_type calls scattered across process_metadata_item (yj_to_epub_metadata.py)
+// and process_document_data (yj_to_epub_metadata.py).
+//
+// Python sets book_type via set_book_type() at multiple points during metadata processing.
+// Go stores the individual flags (IsPDFBacked, RegionMagnification, etc.) and derives the
+// final book type here, matching the priority order in Python:
+//
+//   1. RegionMagnification (yj_has_text_popups) → children (Python L265)
+//   2. CDEContentType MAGZ → magazine (Python L203-204)
+//   3. FixedLayout + VirtualPanelsAllowed + !IsPrintReplica → comic (Python L171-173)
+//   4. IsPrintReplica → print_replica (Python L255, L279)
+//   5. IsPDFBacked (without PrintReplica) → none (book type not set in Python for this case)
+//   6. default → none
+//
+// Note: Python also has comic detection from yj_facing_page, yj_double_page_spread,
+// yj_publisher_panels, continuous_popup_progression (value 0), and comic_panel_view_mode ($665).
+// These are handled by detectBookType (from features/metadata) which is called first
+// in the full detection chain.
+func detectBookTypeFromBook(book *decodedBook) bookType {
+	if book == nil {
+		return bookTypeNone
+	}
+
+	// Priority 1: RegionMagnification → children (Python L265: yj_has_text_popups → set_book_type("children"))
+	if book.RegionMagnification {
+		return bookTypeChildren
+	}
+
+	// Priority 2: CDEContentType MAGZ → magazine (Python L203-204)
+	if book.CDEContentType == "MAGZ" {
+		return bookTypeMagazine
+	}
+
+	// Priority 3: Fixed layout + virtual panels + not print_replica → comic
+	// (Python L171-173: if book_type is None and fixed_layout and (virtual_panels_allowed or not is_print_replica))
+	if book.FixedLayout && (book.VirtualPanelsAllowed || !book.IsPrintReplica) {
+		// But only if it's actually a print replica — in that case, skip
+		if !book.IsPrintReplica {
+			return bookTypeComic
+		}
+	}
+
+	// Priority 4: Print replica (Python L255, L279)
+	if book.IsPrintReplica {
+		return bookTypePrintReplica
+	}
+
+	return bookTypeNone
+}
+
+// detectBookTypeFull performs the complete book type detection chain:
+// 1. Try detectBookType from content features and metadata (capability-based detection)
+// 2. If none, try detectBookTypeFromBook (flag-based detection from metadata items)
+// This matches Python's multi-source set_book_type calls.
+func detectBookTypeFull(book *decodedBook, fragments *fragmentCatalog) bookType {
+	// Step 1: Try feature/metadata-based detection first
+	var metadata map[string]interface{}
+	if fragments != nil {
+		metadata = fragments.ReadingOrderMetadata
+	}
+	bt := detectBookType(metadata, fragments.ContentFeatures)
+	if bt != bookTypeNone {
+		return bt
+	}
+
+	// Step 2: Try flag-based detection from decodedBook
+	return detectBookTypeFromBook(book)
+}
+
 // sectionHasNmdlKey checks if the section's PageTemplateValues contains the given nmdl key.
 // In Python, these are checked as keys of the section (IonStruct) directly.
 func sectionHasNmdlKey(values map[string]interface{}, key string) bool {
@@ -271,9 +342,16 @@ func processReadingOrder(
 	renderer *storylineRenderer,
 	navTitles map[string]string,
 	symFmt symType,
+	cfg *pageSpreadConfig,
 ) {
 	// Port of Python's used_sections set for deduplication (L107).
 	usedSections := map[string]bool{}
+
+	// Determine book type from config if provided, otherwise none.
+	bt := bookTypeNone
+	if cfg != nil {
+		bt = cfg.BookType
+	}
 
 	for index, sectionID := range sectionOrder {
 		if usedSections[sectionID] {
@@ -287,8 +365,20 @@ func processReadingOrder(
 		if !ok {
 			continue
 		}
-		rendered, paragraphs, ok := processSection(sectionID, section, index, storylines, contentFragments, renderer)
-		if !ok {
+
+		var rendered renderedStoryline
+		var paragraphs []string
+		var sectionOK bool
+
+		if cfg != nil {
+			// Use full dispatch when book type config is available.
+			rendered, paragraphs, sectionOK = processSectionWithType(sectionID, section, index, bt, *cfg, storylines, contentFragments, renderer)
+		} else {
+			// Fallback to simple processSection for backward compatibility.
+			rendered, paragraphs, sectionOK = processSection(sectionID, section, index, storylines, contentFragments, renderer)
+		}
+
+		if !sectionOK {
 			continue
 		}
 		if debugSection := os.Getenv("KFX_DEBUG_SECTION_CLASS"); debugSection != "" {

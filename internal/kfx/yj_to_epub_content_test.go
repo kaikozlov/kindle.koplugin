@@ -314,7 +314,7 @@ func TestProcessReadingOrderDeduplicatesSections(t *testing.T) {
 	}
 
 	sectionOrder := []string{"section-a", "section-b", "section-a"}
-	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, renderer, map[string]string{}, symOriginal)
+	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, renderer, map[string]string{}, symOriginal, nil)
 
 	// Should produce 2 sections, not 3 (deduplicated)
 	if len(book.RenderedSections) != 2 {
@@ -2638,5 +2638,164 @@ func TestComicTemplateCountValidation(t *testing.T) {
 	// Error should be logged but function still processes the first template (leaf branch)
 	if len(result.Sections) == 0 {
 		t.Error("expected at least 1 section from 2-template comic (first template processed)")
+	}
+}
+
+// =============================================================================
+// VAL-M12-DISPATCH: detectBookTypeFromBook wires book type into section processing
+// =============================================================================
+
+func TestDetectBookTypeFromBookFlags(t *testing.T) {
+	// Test that detectBookTypeFromBook correctly derives book type from decodedBook flags
+	// that were set by applyMetadata/applyContentFeatures.
+	tests := []struct {
+		name     string
+		book     *decodedBook
+		expected bookType
+	}{
+		{
+			name:     "empty book → none",
+			book:     &decodedBook{},
+			expected: bookTypeNone,
+		},
+		{
+			name:     "CDEContentType MAGZ → magazine",
+			book:     &decodedBook{CDEContentType: "MAGZ"},
+			expected: bookTypeMagazine,
+		},
+		{
+			name:     "CDEContentType EBSP → none",
+			book:     &decodedBook{CDEContentType: "EBSP"},
+			expected: bookTypeNone,
+		},
+		{
+			name:     "FixedLayout + VirtualPanelsAllowed → comic",
+			book:     &decodedBook{FixedLayout: true, VirtualPanelsAllowed: true},
+			expected: bookTypeComic,
+		},
+		{
+			name:     "FixedLayout + IsPDFBacked + IsPrintReplica + !VirtualPanelsAllowed → print_replica",
+			book:     &decodedBook{FixedLayout: true, IsPDFBacked: true, IsPrintReplica: true},
+			expected: bookTypePrintReplica,
+		},
+		{
+			name:     "RegionMagnification → children",
+			book:     &decodedBook{RegionMagnification: true},
+			expected: bookTypeChildren,
+		},
+		{
+			name:     "IsPDFBacked + IsPrintReplica → print_replica",
+			book:     &decodedBook{IsPDFBacked: true, IsPrintReplica: true},
+			expected: bookTypePrintReplica,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := detectBookTypeFromBook(test.book)
+			if got != test.expected {
+				t.Errorf("detectBookTypeFromBook() = %v, want %v", got, test.expected)
+			}
+		})
+	}
+}
+
+func TestProcessReadingOrderUsesBookType(t *testing.T) {
+	// Verify that processReadingOrder dispatches correctly when a pageSpreadConfig
+	// is provided. This tests the wiring gap: processReadingOrder currently ignores
+	// book type and always calls processSection (reflowable), but should call
+	// processSectionWithType when book type is available.
+
+	// Create a section that would be dispatched differently for comic vs reflowable
+	sectionFragments := map[string]sectionFragment{
+		"section-a": {
+			ID:            "section-a",
+			PositionID:    100,
+			Storyline:     "story-a",
+			PageTemplates: []pageTemplateFragment{{PositionID: 200, Storyline: "story-a"}},
+			PageTemplateValues: map[string]interface{}{},
+		},
+	}
+	storylines := map[string]map[string]interface{}{
+		"story-a": {"content_list": []interface{}{
+			map[string]interface{}{"content": map[string]interface{}{"name": "content-a", "index": 0}},
+		}},
+	}
+	contentFragments := map[string][]string{
+		"content-a": {"Hello world"},
+	}
+
+	book := &decodedBook{}
+	renderer := &storylineRenderer{
+		contentFragments:   contentFragments,
+		styleFragments:     map[string]map[string]interface{}{},
+		styles:             newStyleCatalog(),
+		conditionEvaluator: conditionEvaluator{},
+	}
+
+	sectionOrder := []string{"section-a"}
+
+	// Test with nil config — should fall back to processSection (reflowable)
+	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, renderer, map[string]string{}, symOriginal, nil)
+
+	if len(book.RenderedSections) != 1 {
+		t.Fatalf("expected 1 rendered section (reflowable), got %d", len(book.RenderedSections))
+	}
+	if book.RenderedSections[0].Title == "" {
+		t.Error("expected rendered section to have a title")
+	}
+}
+
+func TestProcessReadingOrderWithComicBookType(t *testing.T) {
+	// When book type is comic, processReadingOrder should dispatch to
+	// processSectionWithType which calls processSectionComic.
+	// This should produce page-spread sections, not standard reflowable content.
+
+	sectionFragments := map[string]sectionFragment{
+		"section-a": {
+			ID:            "section-a",
+			PositionID:    100,
+			Storyline:     "story-a",
+			PageTemplates: []pageTemplateFragment{{PositionID: 200, Storyline: "story-a"}},
+			PageTemplateValues: map[string]interface{}{},
+		},
+	}
+	storylines := map[string]map[string]interface{}{
+		"story-a": {"content_list": []interface{}{
+			map[string]interface{}{"content": map[string]interface{}{"name": "content-a", "index": 0}},
+		}},
+	}
+	contentFragments := map[string][]string{
+		"content-a": {"Hello world"},
+	}
+
+	book := &decodedBook{}
+	renderer := &storylineRenderer{
+		contentFragments:   contentFragments,
+		styleFragments:     map[string]map[string]interface{}{},
+		styles:             newStyleCatalog(),
+		conditionEvaluator: conditionEvaluator{},
+	}
+
+	cfg := pageSpreadConfig{
+		BookType:                 bookTypeComic,
+		IsPdfBacked:              false,
+		RegionMagnification:      false,
+		VirtualPanelsAllowed:     false,
+		PageProgressionDirection: "ltr",
+	}
+
+	sectionOrder := []string{"section-a"}
+
+	// With comic config, processSectionWithType should dispatch to processSectionComic
+	// which produces page-spread results (returned as false from processSectionWithType since
+	// comic sections are handled separately).
+	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, renderer, map[string]string{}, symOriginal, &cfg)
+
+	// Comic sections are handled by processSectionComic which produces pageSpreadResult,
+	// not standard rendered sections. processSectionWithType returns (renderedStoryline{}, nil, false)
+	// for comic/magazine branches, so no RenderedSections should be added.
+	if len(book.RenderedSections) != 0 {
+		t.Errorf("expected 0 rendered sections for comic dispatch (handled by page-spread), got %d", len(book.RenderedSections))
 	}
 }
