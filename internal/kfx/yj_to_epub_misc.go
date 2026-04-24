@@ -1344,14 +1344,59 @@ func propertyValueSVG(propName string, yjValue interface{}) string {
 	}
 }
 
+// processPath renders an SVG path "d" attribute from KFX path data.
+// Port of Python KFX_EPUB_Misc.process_path (yj_to_epub_misc.py L288-333).
+//
+// Python branch audit:
+//   L289: if ion_type(path) is IonStruct → bundle reference path
+//     L290: path_bundle_name = path.pop("name")
+//     L291: path_index = path.pop("$403")
+//     L292: self.check_empty(path, "path")
+//     L294: if "$692" not in self.book_data or path_bundle_name not in self.book_data["$692"] → error
+//     L298: return self.process_path(self.book_data["$692"][path_bundle_name]["$693"][path_index])
+//   L300: p = list(path) → direct instruction path
+//     L303-312: process_instruction closure (inst, n_args, pixels=True)
+//     L314: inst == 0 → "M" with 2 args
+//     L317: inst == 1 → "L" with 2 args
+//     L319: inst == 2 → "Q" with 4 args
+//     L321: inst == 3 → "C" with 6 args
+//     L323: inst == 4 → "Z" with 0 args
+//     L326: else → error log, break
 func processPath(path interface{}) string {
+	return processPathWithBundles(path, nil)
+}
+
+// processPathWithBundles renders an SVG path "d" attribute from KFX path data,
+// with support for path bundle lookups from $692 book data.
+// The pathBundles parameter is map[bundleName]bundleData where bundleData
+// contains a "path_list" key with the list of path instruction arrays.
+func processPathWithBundles(path interface{}, pathBundles map[string]map[string]interface{}) string {
+	// Python L289: if ion_type(path) is IonStruct → bundle reference
 	if m, ok := asMap(path); ok {
 		bundleName, _ := asString(m["name"])
 		pathIndex, _ := asInt(m["index"])
-		_ = bundleName
-		_ = pathIndex
-		fmt.Fprintf(os.Stderr, "kfx: error: path bundle lookup not yet implemented: %s\n", bundleName)
-		return ""
+
+		// Python L294: if "$692" not in self.book_data or path_bundle_name not in self.book_data["$692"]
+		if pathBundles == nil {
+			fmt.Fprintf(os.Stderr, "kfx: error: missing book path_bundle: %s\n", bundleName)
+			return ""
+		}
+
+		bundle, ok := pathBundles[bundleName]
+		if !ok {
+			fmt.Fprintf(os.Stderr, "kfx: error: missing book path_bundle: %s\n", bundleName)
+			return ""
+		}
+
+		// Python L298: self.book_data["$692"][path_bundle_name]["$693"][path_index]
+		// In Go: pathBundles[bundleName]["path_list"][pathIndex]
+		pathList, ok := asSlice(bundle["path_list"])
+		if !ok || pathIndex < 0 || pathIndex >= len(pathList) {
+			fmt.Fprintf(os.Stderr, "kfx: error: path index %d out of range in bundle %s\n", pathIndex, bundleName)
+			return ""
+		}
+
+		return processPathWithBundles(pathList[pathIndex], pathBundles)
 	}
 
 	p, ok := asSlice(path)

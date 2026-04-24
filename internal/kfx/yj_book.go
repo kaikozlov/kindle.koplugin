@@ -68,6 +68,7 @@ type fragmentCatalog struct {
 	ResourceRawData       map[string]map[string]interface{} // $164 raw fragment data keyed by resource ID (for format/location lookup).
 	FormatCapabilities    map[string]map[string]interface{} // $593 fragments keyed by fragment ID.
 	Generators            map[string]map[string]interface{} // $270 fragments keyed by fragment ID.
+	PathBundles           map[string]map[string]interface{} // $692 path_bundle fragments keyed by bundle name.
 	FontFragments         map[string]fontFragment
 	RawFragments          map[string][]byte
 	PositionAliases       map[int]string
@@ -257,6 +258,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 		ResourceRawData:   map[string]map[string]interface{}{},
 		FormatCapabilities: map[string]map[string]interface{}{},
 		Generators:        map[string]map[string]interface{}{},
+		PathBundles:       map[string]map[string]interface{}{},
 		FontFragments:     map[string]fontFragment{},
 		RawFragments:      map[string][]byte{},
 		PositionAliases:   map[int]string{},
@@ -363,7 +365,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 			categorizedData[fragmentType][summaryID] = true
 
 			switch fragmentType {
-			case "content", "style", "external_resource", "metadata", "storyline", "section", "font", "anchor", "container", "nav_container", "book_metadata", "document_data", "content_features", "format_capabilities", "structure", "section_position_id_map", "ruby_content":
+			case "content", "style", "external_resource", "metadata", "storyline", "section", "font", "anchor", "container", "nav_container", "book_metadata", "document_data", "content_features", "format_capabilities", "structure", "section_position_id_map", "ruby_content", "path_bundle":
 				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
@@ -449,6 +451,15 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 						if positionID != 0 && sectionID != "" {
 							fragments.PositionAliases[positionID] = sectionID
 						}
+					}
+				case "path_bundle":
+					// Python: self.book_data["$692"][fragment_name] = value
+					// $692=path_bundle, keyed by "name" field.
+					// Python process_path (yj_to_epub_misc.py L294-298):
+					//   self.book_data["$692"][path_bundle_name]["$693"][path_index]
+					bundleName, _ := asString(value["name"])
+					if bundleName != "" {
+						fragments.PathBundles[bundleName] = value
 					}
 				}
 			case "book_navigation":
