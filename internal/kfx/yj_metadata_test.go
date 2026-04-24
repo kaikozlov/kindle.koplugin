@@ -2351,3 +2351,185 @@ func TestCheckCoverSection_ContentListWrongLength(t *testing.T) {
 		t.Errorf("expected content_list length error, got: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// authorSortName / unsortAuthorName — Python yj_metadata.py L849-886
+//
+// author_sort_name converts "First Last" → "Last, First"
+// unsort_author_name converts "Last, First" → "First Last"
+// ---------------------------------------------------------------------------
+
+func TestAuthorSortName_SimpleTwoWords(t *testing.T) {
+	// Python: author_sort_name("Suzanne Collins") → "Collins, Suzanne"
+	result := authorSortName("Suzanne Collins")
+	if result != "Collins, Suzanne" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "Suzanne Collins", result, "Collins, Suzanne")
+	}
+}
+
+func TestAuthorSortName_ThreeNames(t *testing.T) {
+	// Python: author_sort_name("Sarah J. Maas") → "Maas, Sarah J."
+	result := authorSortName("Sarah J. Maas")
+	if result != "Maas, Sarah J." {
+		t.Errorf("authorSortName(%q) = %q, want %q", "Sarah J. Maas", result, "Maas, Sarah J.")
+	}
+}
+
+func TestAuthorSortName_SingleName(t *testing.T) {
+	// Python L856: if len(al) < 2: return author
+	result := authorSortName("Madonna")
+	if result != "Madonna" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "Madonna", result, "Madonna")
+	}
+}
+
+func TestAuthorSortName_SuffixJunior(t *testing.T) {
+	// Python L858-862: "Jr." is in PERSON_SUFFIXES, so it combines last two tokens
+	// "Martin Luther King Jr." → splits to ["Martin", "Luther", "King", "Jr."]
+	// Jr is a suffix → combine last two: ["Martin", "Luther", "King Jr."]
+	// → "King Jr., Martin Luther"
+	result := authorSortName("Martin Luther King Jr.")
+	if result != "King Jr., Martin Luther" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "Martin Luther King Jr.", result, "King Jr., Martin Luther")
+	}
+}
+
+func TestAuthorSortName_SuffixSR(t *testing.T) {
+	// Python: SR is a PERSON_SUFFIX (lowercase match after removing dots)
+	// "John Smith Sr" → splits to ["John", "Smith", "Sr"]
+	// "sr" after removing "." and lowering is in PERSON_SUFFIXES
+	// → combine last two: ["John", "Smith Sr"] → "Smith Sr, John"
+	result := authorSortName("John Smith Sr")
+	if result != "Smith Sr, John" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "John Smith Sr", result, "Smith Sr, John")
+	}
+}
+
+func TestAuthorSortName_SuffixWithComma(t *testing.T) {
+	// Python L860: if al[-2].endswith(","): al[-2] = al[-2][:-1]
+	// "John Smith, Jr." → splits to ["John", "Smith,", "Jr."]
+	// Jr is suffix → Smith, ends with comma → remove it: "Smith"
+	// → ["John", "Smith Jr."] → "Smith Jr., John"
+	result := authorSortName("John Smith, Jr.")
+	if result != "Smith Jr., John" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "John Smith, Jr.", result, "Smith Jr., John")
+	}
+}
+
+func TestAuthorSortName_AlreadyCommaSeparated(t *testing.T) {
+	// Python L864: if "," in "".join(al): return author
+	// Author already has comma → return as-is
+	result := authorSortName("Collins, Suzanne")
+	if result != "Collins, Suzanne" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "Collins, Suzanne", result, "Collins, Suzanne")
+	}
+}
+
+func TestAuthorSortName_SuffixII(t *testing.T) {
+	// Python: "ii" is in PERSON_SUFFIXES
+	// "John Smith II" → ["John", "Smith", "II"]
+	// "ii" after removing "." and lowering → in PERSON_SUFFIXES
+	// → ["John", "Smith II"] → "Smith II, John"
+	result := authorSortName("John Smith II")
+	if result != "Smith II, John" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "John Smith II", result, "Smith II, John")
+	}
+}
+
+func TestAuthorSortName_SuffixIII(t *testing.T) {
+	// Python: "iii" is in PERSON_SUFFIXES
+	result := authorSortName("John Smith III")
+	if result != "Smith III, John" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "John Smith III", result, "Smith III, John")
+	}
+}
+
+func TestAuthorSortName_SuffixIV(t *testing.T) {
+	// Python: "iv" is in PERSON_SUFFIXES
+	result := authorSortName("John Smith IV")
+	if result != "Smith IV, John" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "John Smith IV", result, "Smith IV, John")
+	}
+}
+
+func TestAuthorSortName_SuffixPHD(t *testing.T) {
+	// Python: "phd" is in PERSON_SUFFIXES
+	result := authorSortName("Jane Doe PhD")
+	if result != "Doe PhD, Jane" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "Jane Doe PhD", result, "Doe PhD, Jane")
+	}
+}
+
+func TestAuthorSortName_SuffixMD(t *testing.T) {
+	// Python: "md" is in PERSON_SUFFIXES
+	result := authorSortName("Jane Doe MD")
+	if result != "Doe MD, Jane" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "Jane Doe MD", result, "Doe MD, Jane")
+	}
+}
+
+func TestAuthorSortName_TwoNamesNoSuffix(t *testing.T) {
+	// Simple two-name case without suffix
+	result := authorSortName("Andrew Jacobson")
+	if result != "Jacobson, Andrew" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "Andrew Jacobson", result, "Jacobson, Andrew")
+	}
+}
+
+func TestAuthorSortName_EmptyString(t *testing.T) {
+	// Empty string: split gives [""] → len < 2 → return as-is
+	result := authorSortName("")
+	if result != "" {
+		t.Errorf("authorSortName(%q) = %q, want %q", "", result, "")
+	}
+}
+
+func TestUnsortAuthorName_CommaSeparated(t *testing.T) {
+	// Python L871-873: "Collins, Suzanne" → "Suzanne Collins"
+	result := unsortAuthorName("Collins, Suzanne")
+	if result != "Suzanne Collins" {
+		t.Errorf("unsortAuthorName(%q) = %q, want %q", "Collins, Suzanne", result, "Suzanne Collins")
+	}
+}
+
+func TestUnsortAuthorName_NoComma(t *testing.T) {
+	// Python L870-871: if ", " not in author → return as-is
+	result := unsortAuthorName("Suzanne Collins")
+	if result != "Suzanne Collins" {
+		t.Errorf("unsortAuthorName(%q) = %q, want %q", "Suzanne Collins", result, "Suzanne Collins")
+	}
+}
+
+func TestUnsortAuthorName_WithSuffix(t *testing.T) {
+	// "King Jr., Martin Luther" → "Martin Luther King Jr."
+	result := unsortAuthorName("King Jr., Martin Luther")
+	if result != "Martin Luther King Jr." {
+		t.Errorf("unsortAuthorName(%q) = %q, want %q", "King Jr., Martin Luther", result, "Martin Luther King Jr.")
+	}
+}
+
+func TestUnsortAuthorName_Empty(t *testing.T) {
+	result := unsortAuthorName("")
+	if result != "" {
+		t.Errorf("unsortAuthorName(%q) = %q, want %q", "", result, "")
+	}
+}
+
+func TestAuthorSortName_RoundTrip(t *testing.T) {
+	// Verify authorSortName and unsortAuthorName are inverses
+	originals := []string{
+		"Suzanne Collins",
+		"Sarah J. Maas",
+		"Jenny Lee",
+		"Patrick Carman",
+		"Andrew Jacobson",
+		"Adam Jay Epstein",
+	}
+	for _, orig := range originals {
+		sorted := authorSortName(orig)
+		unsorted := unsortAuthorName(sorted)
+		if unsorted != orig {
+			t.Errorf("round-trip failed: %q → sort → %q → unsort → %q", orig, sorted, unsorted)
+		}
+	}
+}

@@ -41,6 +41,8 @@ func applyMetadata(book *decodedBook, value map[string]interface{}) {
 			case "kindle_title_metadata/author":
 				if v, ok := asString(entry["value"]); ok && v != "" {
 					// Python uses authors.insert(0, value) — prepend, so last entry becomes first.
+					// Python does NOT apply author_sort_name in the conversion pipeline;
+					// it's only used in set_yj_metadata_to_book (Calibre metadata editing).
 					book.Authors = append([]string{v}, book.Authors...)
 				}
 			case "kindle_title_metadata/author_pronunciation":

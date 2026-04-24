@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/jpeg"
 	"log"
+	"strings"
 )
 
 // ---------------------------------------------------------------------------
@@ -647,6 +648,120 @@ func getPageCount(cat *fragmentCatalog) int {
 		}
 	}
 	return 0
+}
+
+// ---------------------------------------------------------------------------
+// checkCoverSectionAndStoryline — Python yj_metadata.py:648-791
+//
+// Validates cover section structure. Checks section template types, resolves
+// cover storyline images, validates page template layouts, and can modify the
+// cover resource. Returns (resourceName, coverEID) on success, or an error
+// describing what went wrong.
+//
+// Parameters:
+//   - expectedResource: if non-empty, verify the cover uses this resource
+//   - expectedOrigWidth/expectedOrigHeight: if non-zero, verify cover dimensions
+//   - allowPDF: if true, allow PDF cover images ($565 format)
+//
+// Python symbol mapping (Go uses real names):
+//
+//	$141 → page_templates    $159 → type           $156 → layout
+//	$140 → float             $326 → solid          $323 → overflow
+//	$325 → radial            $320 → horizontal     $68  → visibility
+//	$66  → fixed_width       $67  → fixed_height   $176 → story_name
+//	$155 → id                $171 → condition       $259 → storyline
+//	$146 → content_list      $271 → image           $270 → container
+//	$175 → resource_name     $157 → style           $56  → width
+//	$57  → height            $306 → em              $314 → mm
+//	$307 → ex                $16  → font_size       $42  → line_height
+//	$173 → style_name        $546 → jxr             $377 → padding_bounds
+// ---------------------------------------------------------------------------
+// authorSortName — Python yj_metadata.py L849-867
+//
+// Converts author name from "First [Middle] Last" to "Last, First [Middle]".
+// Handles suffixes (Jr, Sr, PhD, MD, II, III, IV, etc.) by combining them
+// with the last name token. Returns the name unchanged if it already contains
+// a comma or has fewer than 2 tokens.
+//
+// PERSON_SUFFIXES = {"phd", "md", "ba", "ma", "dds", "msts", "sr", "senior",
+//
+//	"jr", "junior", "ii", "iii", "iv"}
+//
+// Branch audit:
+//
+//	Python L853: al = author.split()                     → Go: strings.Fields
+//	Python L856: if len(al) < 2: return author           → Go: len check
+//	Python L858: if len(al) > 2 and suffix match         → Go: suffix check
+//	Python L860:   if al[-2].endswith(","): strip comma  → Go: HasSuffix check
+//	Python L862:   al = al[0:-2] + [combined last two]   → Go: slice rebuild
+//	Python L864: if "," in "".join(al): return author     → Go: strings.Contains
+//	Python L867: return al[-1] + ", " + join(al[:-1])    → Go: last + ", " + rest
+// ---------------------------------------------------------------------------
+func authorSortName(author string) string {
+	// Python L851: PERSON_SUFFIXES set
+	personSuffixes := map[string]bool{
+		"phd": true, "md": true, "ba": true, "ma": true, "dds": true,
+		"msts": true, "sr": true, "senior": true, "jr": true,
+		"junior": true, "ii": true, "iii": true, "iv": true,
+	}
+
+	// Python L853: al = author.split()
+	al := strings.Fields(author)
+
+	// Python L856: if len(al) < 2: return author
+	if len(al) < 2 {
+		return author
+	}
+
+	// Python L858: if len(al) > 2 and al[-1].replace(".", "").lower() in PERSON_SUFFIXES
+	if len(al) > 2 {
+		// Normalize last token: remove dots, lowercase
+		normalized := strings.ToLower(strings.ReplaceAll(al[len(al)-1], ".", ""))
+		if personSuffixes[normalized] {
+			// Python L860: if al[-2].endswith(","): al[-2] = al[-2][:-1]
+			if strings.HasSuffix(al[len(al)-2], ",") {
+				al[len(al)-2] = al[len(al)-2][:len(al[len(al)-2])-1]
+			}
+			// Python L862: al = al[0:-2] + ["%s %s" % (al[-2], al[-1])]
+			combined := al[len(al)-2] + " " + al[len(al)-1]
+			al = append(al[:len(al)-2], combined)
+		}
+	}
+
+	// Python L864: if "," in "".join(al): return author
+	if strings.Contains(strings.Join(al, ""), ",") {
+		return author
+	}
+
+	// Python L867: return al[-1] + ", " + " ".join(al[:-1])
+	return al[len(al)-1] + ", " + strings.Join(al[:len(al)-1], " ")
+}
+
+// ---------------------------------------------------------------------------
+// unsortAuthorName — Python yj_metadata.py L870-875
+//
+// Reverses the authorSortName transformation: "Last, First" → "First Last".
+// If the name doesn't contain ", ", returns it unchanged.
+//
+// Branch audit:
+//
+//	Python L871: if ", " in author                     → Go: strings.Contains
+//	Python L872:   last, sep, first = author.partition → Go: strings.SplitN
+//	Python L873:   author = first + " " + last         → Go: recombine
+//	Python L875: return author                          → Go: return
+// ---------------------------------------------------------------------------
+func unsortAuthorName(author string) string {
+	// Python L871: if ", " in author
+	if strings.Contains(author, ", ") {
+		// Python L872: last, sep, first = author.partition(", ")
+		parts := strings.SplitN(author, ", ", 2)
+		if len(parts) == 2 {
+			// Python L873: author = first + " " + last
+			return parts[1] + " " + parts[0]
+		}
+	}
+	// Python L875: return author
+	return author
 }
 
 // ---------------------------------------------------------------------------
