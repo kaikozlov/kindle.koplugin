@@ -696,7 +696,7 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 		if strings.EqualFold(mediaType, "image/jpg") {
 			mediaType = "image/jpeg"
 		}
-		if strings.EqualFold(mediaType, "image/jxr") {
+		if strings.EqualFold(mediaType, "image/jxr") || strings.EqualFold(mediaType, "image/vnd.ms-photo") || strings.EqualFold(mediaType, "image/vnd.jxr") || (mediaType == "" && format == "jxr") {
 			convertedData, convertedType, err := convertJXRResource(data)
 			if err == nil {
 				data = convertedData
