@@ -541,12 +541,16 @@ The project has 6 real books from a Kindle device. When comparing Go output agai
 
 | Book | Format | Primary Use |
 |------|--------|-------------|
-| **Hunger Games Trilogy** | DRMION | Primary comparison — largest, most complex, exposes heading `<a>` class, CSS dedup, spine ordering |
-| **Throne of Glass** | DRMION | Primary comparison — has JXR images, heading `<a>` class issues |
-| **Elvis and the Underdogs** | DRMION | Primary comparison — many images, exposes CSS class naming/dedup gaps |
-| **The Familiars** | DRMION | Secondary comparison — moderate complexity |
-| **Three Below (Floors #2)** | DRMION | Secondary comparison — already matches closely |
-| **Martyr** | CONT (unencrypted) | Regression only — Go output matches Calibre byte-for-byte |
+| **1984** | DRMION | Structural diffs — `<a>` class, body class naming, table cell wrapping, CSS ordering |
+| **Sunrise Reaping** | DRMION | Extra `id` attrs on image-heading divs (31 files) |
+| **Secrets Crown** | DRMION | JXR images not decoded, CSS class ordering, class index swap |
+| **Hunger Games Trilogy** | DRMION | Images only (JFIF re-encoding) |
+| **Throne of Glass** | DRMION | Images only |
+| **Elvis and the Underdogs** | DRMION | Images only |
+| **The Familiars** | DRMION | Images only |
+| **Three Below (Floors #2)** | DRMION | Images only |
+| **Heated Rivalry** | DRMION | Images only |
+| **Martyr** | CONT | Images only (byte-identical content, JFIF diff) |
 
 ### Fixture Paths
 
@@ -562,16 +566,32 @@ All test fixtures live under `REFERENCE/books/<name>/` with consistent naming:
 
 Top-level: `REFERENCE/books/drm_keys.json` — merged page keys for all 9 DRMION books.
 
-### Known Parity Gaps (ordered by difficulty)
+### Current Parity Status (April 2026)
 
-1. **`toc.ncx` `xmlns:mbp`** — ✅ Fixed
-2. **Spine ordering** — Sections in different order in `<spine>` `<itemref>` sequence
-3. **Heading `<a>` class** — Go omits class attribute on `<a>` inside headings (Python preserves it)
-4. **CSS class naming/deduplication** — Style catalog assigns different indices; image container classes especially affected
-5. **JXR images** — JPEG XR decoder exists but isn't wired into EPUB resource pipeline
-6. **JPEG encoding** — Go outputs raw baseline JPEG without JFIF headers; Calibre wraps in JFIF standard and re-compresses (affects all image-bearing books)
-7. **Extra `id` attributes on heading divs** — Go adds `id` on image-heading divs that Calibre omits
-8. **NCX page anchor fragments** — Go omits `#page_N` anchor fragments in toc.ncx page targets
+7 of 10 books have only image diffs (JPEG encoding/JFIF). 3 books have structural diffs:
+
+**1984 (15 files):**
+- `<a>` class missing — Python's `create_container()` partitions style to `<a>`, Go's `wrapNodeLink()` wraps with bare `<a>`
+- Body class naming — `class_sN` vs `figure_sN-0` for image pages
+- Table cell `<a>` wrapping — extra `<div>` inside `<td>` around `<a><img>`
+- CSS class ordering — same declarations assigned different class indices
+- TOC `<p>` vs `<span>` — navigation child entries use wrong tag
+
+**Sunrise Reaping (31 files):**
+- Extra `id` attributes on image-heading `<div>` — Go adds anchor `id` that Calibre omits
+
+**Secrets Crown (24 files):**
+- JXR images not decoded — `.jxr` files served as-is instead of converted to `.jpg`
+- CSS class ordering — `class_220-0`/`class_220-1` swapped, missing `margin-bottom/top` in some rules
+
+### Known Parity Gaps (ordered by priority)
+
+1. **`<a>` class on link-wrapped elements** — `wrapNodeLink()` doesn't partition style to `<a>` like Python's `create_container()` does. Affects 1984 heavily.
+2. **Extra `id` on image-heading divs** — Go adds position anchor `id` on `<div>` elements that contain only images in headings; Calibre omits this. Affects Sunrise Reaping.
+3. **JXR image conversion** — JPEG XR decoder exists in `internal/jxr/` but isn't wired into EPUB resource pipeline. Affects Secrets Crown.
+4. **CSS class ordering** — Style catalog assigns different class indices than Calibre; cascading effect on all class references.
+5. **Body class naming** — Image pages get `class_sN` in Go vs `figure_sN-0` in Calibre.
+6. **JPEG encoding** — Go outputs raw baseline JPEG; Calibre wraps in JFIF standard (affects all image-bearing books).
 
 ---
 
