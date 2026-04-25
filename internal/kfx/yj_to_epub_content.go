@@ -3805,7 +3805,14 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 			element.Attrs["data-kfx-heading-level"] = fmt.Sprintf("%d", hl)
 			r.applyStructuralNodeAttrs(element, node, "")
 			if positionID, _ := asInt(node["id"]); positionID != 0 {
-				r.applyPositionAnchors(element, positionID, false)
+				// Python parity: image-only heading containers should NOT receive
+				// position anchors. In Python, process_position is called on the
+				// story's parent (body), not on the heading container. When the
+				// heading div contains only images (possibly wrapped in divs),
+				// skip anchor emission to match Calibre output.
+				if !headingContainsOnlyImages(element) {
+					r.applyPositionAnchors(element, positionID, false)
+				}
 			}
 			return r.wrapNodeLink(node, element)
 		}
@@ -4857,6 +4864,35 @@ func findFirstDescendantByTag(elem *htmlElement, tag string) *htmlElement {
 		}
 	}
 	return nil
+}
+
+// headingContainsOnlyImages returns true if the heading element contains only images
+// (possibly wrapped in <div> containers). These heading divs should NOT receive
+// position anchors — matching Python's behavior where process_position runs on the
+// story's parent (body), not the heading container, and the image content processes
+// separately through process_content.
+func headingContainsOnlyImages(elem *htmlElement) bool {
+	if len(elem.Children) == 0 {
+		return false
+	}
+	for _, c := range elem.Children {
+		e, ok := c.(*htmlElement)
+		if !ok {
+			return false // text node
+		}
+		if e.Tag == "img" || e.Tag == "svg" {
+			continue
+		}
+		if e.Tag == "div" {
+			// Check if div only contains images
+			if !headingContainsOnlyImages(e) {
+				return false
+			}
+			continue
+		}
+		return false // non-image element (span, p, etc)
+	}
+	return true
 }
 
 // wrapChildInLink replaces a child element inside its parent's children list
