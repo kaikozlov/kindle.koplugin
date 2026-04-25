@@ -4680,6 +4680,26 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 		if anchorID != "" {
 			href := r.anchorHref(anchorID)
 			if href != "" {
+				// Compute link-container CSS from the annotation's style fragment.
+				// Python: self.add_style(event_elem, self.process_content_properties(style_event), replace=True)
+				// This gives the <a> link-specific CSS (e.g., text-decoration: underline).
+				var linkStyleAttr string
+				if styleID != "" {
+					style := effectiveStyle(r.styleFragments[styleID], annMap)
+					linkStyle := r.processContentProps(style, r.resolveResource)
+					filteredLinkStyle := map[string]string{}
+					for prop, val := range linkStyle {
+						if isLinkContainerProperty(prop) {
+							filteredLinkStyle[prop] = val
+						}
+					}
+					delete(filteredLinkStyle, "-kfx-style-name")
+					delete(filteredLinkStyle, "-kfx-layout-hints")
+					if len(filteredLinkStyle) > 0 {
+						linkStyleAttr = styleStringFromMap(filteredLinkStyle)
+					}
+				}
+
 				for _, tr := range ranges {
 					elem := container.Children[tr.childIdx].(*htmlElement)
 					if elem.Tag == "span" {
@@ -4718,12 +4738,15 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 							return nil
 						}
 						if p := findParent(elem); p != nil {
-							wrapChildInLink(p, target, href)
+							wrapChildInLink(p, target, href, linkStyleAttr)
 						}
 					} else {
 						linkAttrs := map[string]string{"href": href}
 						if epubType := epubTypeFromAnnotation(annMap); epubType != "" {
 							linkAttrs["epub:type"] = epubType
+						}
+						if linkStyleAttr != "" {
+							linkAttrs["style"] = linkStyleAttr
 						}
 						container.Children[tr.childIdx] = &htmlElement{
 							Tag:      "a",
@@ -4842,12 +4865,16 @@ func findFirstDescendantByTag(elem *htmlElement, tag string) *htmlElement {
 
 // wrapChildInLink replaces a child element inside its parent's children list
 // with <a href="..."><child/></a>.
-func wrapChildInLink(parent *htmlElement, target *htmlElement, href string) {
+func wrapChildInLink(parent *htmlElement, target *htmlElement, href string, linkStyleAttr string) {
 	for i, child := range parent.Children {
 		if ch, ok := child.(*htmlElement); ok && ch == target {
+			attrs := map[string]string{"href": href}
+			if linkStyleAttr != "" {
+				attrs["style"] = linkStyleAttr
+			}
 			parent.Children[i] = &htmlElement{
 				Tag:      "a",
-				Attrs:    map[string]string{"href": href},
+				Attrs:    attrs,
 				Children: []htmlPart{target},
 			}
 			return
