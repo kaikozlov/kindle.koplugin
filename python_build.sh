@@ -195,6 +195,23 @@ docker cp "$CONTAINER_ID:/build/kindle-helper" "$OUTPUT_DIR/kindle-helper"
 docker cp "$CONTAINER_ID:/build/libsyscall_wrapper.so" "$OUTPUT_DIR/libsyscall_wrapper.so"
 docker rm "$CONTAINER_ID"
 
+# Build crypto_hook.so against old glibc (Bullseye = glibc 2.31)
+# This .so is LD_PRELOADed into the Kindle's JVM, so it must not
+# require glibc symbols newer than what older Kindle devices ship.
+echo "  Building crypto_hook.so (old glibc)..."
+CRYPTO_HOOK_TAG="kindle-crypto-hook-builder"
+
+docker buildx build \
+    --platform linux/arm/v7 \
+    -t "$CRYPTO_HOOK_TAG" \
+    -f .github/Dockerfile.crypto_hook \
+    --load \
+    .
+
+CRYPTO_CID=$(docker create "$CRYPTO_HOOK_TAG")
+docker cp "$CRYPTO_CID:/build/crypto_hook.so" "$OUTPUT_DIR/crypto_hook.so"
+docker rm "$CRYPTO_CID"
+
 chmod +x "$OUTPUT_DIR/kindle-helper"
 
 # ---------------------------------------------------------------------------
@@ -215,7 +232,7 @@ cp "$OUTPUT_DIR/libsyscall_wrapper.so" "$STAGING/"
 # Copy the DRM helpers (crypto hook, Java jar) into dist/lib/
 # Python resolves plugin_dir as dist/ (where kindle_helper.py lives)
 mkdir -p "$STAGING/dist/lib"
-cp lib/crypto_hook.so "$STAGING/dist/lib/"
+cp "$OUTPUT_DIR/crypto_hook.so" "$STAGING/dist/lib/"
 cp lib/KFXVoucherExtractor.jar "$STAGING/dist/lib/"
 
 # Copy the Python dist

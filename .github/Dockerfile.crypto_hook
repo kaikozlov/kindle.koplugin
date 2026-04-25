@@ -1,0 +1,16 @@
+# Build crypto_hook.so against old glibc (Debian Bullseye = glibc 2.31)
+# This .so is LD_PRELOADed into the Kindle's JVM (cvm), so it must
+# not require glibc symbols newer than what the Kindle ships.
+#
+# The Kindle's glibc is typically ~2.20-2.35 depending on device generation.
+# Bullseye's glibc 2.31 is old enough for all Kindle models.
+
+FROM arm32v7/debian:bullseye
+
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY lib/crypto_hook.c /build/crypto_hook.c
+
+RUN gcc -shared -fPIC -O2 -o /build/crypto_hook.so /build/crypto_hook.c -ldl -lpthread && \
+    strip /build/crypto_hook.so
