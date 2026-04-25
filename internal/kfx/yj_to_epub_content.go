@@ -4680,23 +4680,19 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 		if anchorID != "" {
 			href := r.anchorHref(anchorID)
 			if href != "" {
-				// Compute link-container CSS from the annotation's style fragment.
+				// Compute link CSS from the annotation's style fragment.
 				// Python: self.add_style(event_elem, self.process_content_properties(style_event), replace=True)
-				// This gives the <a> link-specific CSS (e.g., text-decoration: underline).
+				// This gives the <a> ALL the annotation's CSS (e.g., text-decoration: underline).
+				// Note: Unlike content-level link_to (which uses create_container + LINK_CONTAINER_PROPERTIES
+				// to PARTITION properties), the style-event path adds ALL properties to the <a>.
 				var linkStyleAttr string
 				if styleID != "" {
 					style := effectiveStyle(r.styleFragments[styleID], annMap)
 					linkStyle := r.processContentProps(style, r.resolveResource)
-					filteredLinkStyle := map[string]string{}
-					for prop, val := range linkStyle {
-						if isLinkContainerProperty(prop) {
-							filteredLinkStyle[prop] = val
-						}
-					}
-					delete(filteredLinkStyle, "-kfx-style-name")
-					delete(filteredLinkStyle, "-kfx-layout-hints")
-					if len(filteredLinkStyle) > 0 {
-						linkStyleAttr = styleStringFromMap(filteredLinkStyle)
+					delete(linkStyle, "-kfx-layout-hints")
+					if len(linkStyle) > 0 {
+						baseName := r.styleBaseName(styleID)
+						linkStyleAttr = styleStringFromDeclarations(baseName, nil, cssDeclarationsFromMap(linkStyle))
 					}
 				}
 
