@@ -26,6 +26,22 @@ _SHARED_METADATA_KEY_PREFIX = "6533356635"
 # Pattern for captured keys from crypto_hook.so
 _AES_KEY_RE = re.compile(r"^EVP_256_KEY:([0-9a-f]+)\s+IV:([0-9a-f]+)")
 
+_ACSR_PATH = "/var/local/java/prefs/acsr"
+
+
+def _preflight_check():
+    """Check device prerequisites before attempting DRM key extraction.
+
+    Raises RuntimeError with a user-friendly message if a prerequisite
+    is missing (e.g. device not registered, not on a Kindle).
+    """
+    if not os.path.isfile(_ACSR_PATH):
+        raise RuntimeError(
+            "Your Kindle is not registered to an Amazon account. "
+            "Register your device, run Refresh Book Access, "
+            "then you can deregister again."
+        )
+
 
 def _find_voucher_for_kfx(kfx_path):
     """Find the voucher file for a specific KFX file.
@@ -47,6 +63,8 @@ def extract_book_key(kfx_path, plugin_dir, cache_dir):
     Runs the device JVM with just that book's voucher, captures the key,
     and updates drm_keys.json. Returns dict with success, book_id, etc.
     """
+    _preflight_check()
+
     # Step 1: Find the voucher for this specific book
     voucher_path = _find_voucher_for_kfx(kfx_path)
     if not voucher_path:
@@ -123,6 +141,8 @@ def run(documents_root, plugin_dir, cache_dir):
     if not vouchers:
         return {"books_found": 0, "keys_found": 0}
 
+    _preflight_check()
+
     # Step 2: Read device serial
     serial = _read_device_serial()
 
@@ -132,7 +152,11 @@ def run(documents_root, plugin_dir, cache_dir):
     # Step 4: Parse captured AES keys from the log
     keys = _parse_captured_keys("/mnt/us/crypto_keys.log")
     if not keys:
-        raise RuntimeError("no AES keys captured from device")
+        raise RuntimeError(
+            "No encryption keys were captured from the device. "
+            "This may indicate a problem with the DRM helper. "
+            "Try restarting your Kindle and running Refresh Book Access again."
+        )
 
     # Step 5: Decrypt vouchers and extract page keys
     cache = {
@@ -238,6 +262,19 @@ def _extract_keys_with_hook(serial, vouchers, plugin_dir):
     result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
 
     if result.returncode != 0:
+        combined = result.stderr + "\n" + result.stdout
+        # Parse for known failure modes and return user-friendly messages
+        if "NoSuchFileException" in combined and "acsr" in combined:
+            raise RuntimeError(
+                "Your Kindle is not registered to an Amazon account. "
+                "Register your device, run Refresh Book Access, "
+                "then you can deregister again."
+            )
+        if "NoSuchFileException" in combined and "/proc/usid" in combined:
+            raise RuntimeError(
+                "Device serial not found (/proc/usid). "
+                "This feature only works on Kindle devices."
+            )
         raise RuntimeError(f"cvm failed (exit {result.returncode}): {result.stderr}\n{result.stdout}")
 
     if "All vouchers attached" not in result.stdout:
