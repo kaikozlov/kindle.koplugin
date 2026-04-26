@@ -7,7 +7,11 @@ public class KFXVoucherExtractor {
     public static void main(String[] args) throws Exception {
         String acsr = new String(java.nio.file.Files.readAllBytes(
             java.nio.file.Paths.get("/var/local/java/prefs/acsr"))).trim();
-        String serial = args.length > 0 ? args[0] : "REDACTED";
+        if (args.length == 0) {
+            System.err.println("Usage: KFXVoucherExtractor <serial> [voucher ...]");
+            System.exit(1);
+        }
+        String serial = args[0];
         
         IBookSecurity sec = BookSecurity.getNativeInstance();
         sec.setAccountSecrets(acsr);
