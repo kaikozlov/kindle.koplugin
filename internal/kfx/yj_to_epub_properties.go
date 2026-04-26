@@ -130,7 +130,19 @@ func (c *styleCatalog) finalize() {
 		groupSizes[entry.baseName]++
 	}
 	sortedEntries := append([]*styleEntry(nil), usedEntries...)
+	// Python sorts styles by frequency (most common first) before assigning class indices.
+	// Ported from: sorted(style_counts.items(), key=lambda sc: -sc[1])
+	// Within each baseName group, entries with higher count get lower index numbers.
+	// Ties broken by insertion order (stable sort).
 	sort.SliceStable(sortedEntries, func(i, j int) bool {
+		if sortedEntries[i].baseName != sortedEntries[j].baseName {
+			return sortedEntries[i].baseName < sortedEntries[j].baseName
+		}
+		// Same baseName: higher count (more frequent) → lower index
+		if sortedEntries[i].count != sortedEntries[j].count {
+			return sortedEntries[i].count > sortedEntries[j].count
+		}
+		// Same count: preserve insertion order
 		return sortedEntries[i].order < sortedEntries[j].order
 	})
 	nextIndex := map[string]int{}
