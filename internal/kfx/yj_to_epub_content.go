@@ -3460,6 +3460,10 @@ type storylineRenderer struct {
 	// pendingActivateElements holds activate <a> elements created by processRegionMagnification
 	// that need to be attached to container elements.
 	pendingActivateElements []htmlElement
+	// inPromotedBody is true when rendering content nodes of a promoted body.
+	// In Python, promoted body content is rendered inline (no heading/paragraph wrappers)
+	// because the promoted style goes on <body> and children are just inline content.
+	inPromotedBody bool
 }
 
 type conditionEvaluator struct {
@@ -3472,13 +3476,15 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	result := renderedStoryline{}
 	contentNodes := nodes
 	promotedBody := false
+	promotedBodyInline := false // true when promoted body is a heading leaf node (render inline)
 	inferredBody := false
 	if bodyStyleID == "" {
-		if promotedStyleID, promotedNodes, ok := promotedBodyContainer(nodes); ok {
+		if promotedStyleID, promotedNodes, ok, inline := promotedBodyContainer(nodes); ok {
 			bodyStyleID = promotedStyleID
 			bodyStyleValues = nil
 			contentNodes = promotedNodes
 			promotedBody = true
+			promotedBodyInline = inline
 			if os.Getenv("KFX_DEBUG_PROMOTE") != "" {
 				bs := effectiveStyle(r.styleFragments[promotedStyleID], nil)
 				fmt.Fprintf(os.Stderr, "PROMOTED pos=%d styleID=%s hints=%v\n",
@@ -3549,10 +3555,68 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 		r.activeBodyDefaults = inheritedDefaultSet(bodyDeclarations)
 	}
 	bodyParts := make([]htmlPart, 0, len(contentNodes))
-	for _, node := range contentNodes {
-		rendered := r.renderNode(node, 0)
-		if rendered != nil {
-			bodyParts = append(bodyParts, rendered)
+	if promotedBodyInline {
+		// Python's promoted body content is rendered INLINE for heading leaf nodes.
+		// The promoted heading style goes on <body>, and children are just inline
+		// elements (<a>, <span>, text). No heading/paragraph wrappers are created.
+		r.inPromotedBody = true
+		for _, rawNode := range contentNodes {
+			node, ok := asMap(rawNode)
+			if !ok {
+				continue
+			}
+			node, ok = r.prepareRenderableNode(node)
+			if !ok {
+				continue
+			}
+
+			// For leaf text nodes: extract text content and render inline
+			if ref, ok := asMap(node["content"]); ok {
+				text := r.resolveText(ref)
+				if text != "" {
+					content := r.applyAnnotations(text, node)
+					for _, c := range content {
+						part := r.wrapNodeLink(node, c)
+						bodyParts = append(bodyParts, part)
+					}
+					continue
+				}
+			}
+
+			// For image nodes: render inline image
+			if imageNode := r.renderImageNode(node); imageNode != nil {
+				imageNode = r.wrapNodeLink(node, imageNode)
+				bodyParts = append(bodyParts, imageNode)
+				continue
+			}
+
+			// For container nodes: render children inline
+			if children, ok := asSlice(node["content_list"]); ok {
+				for _, child := range children {
+					rendered := r.renderInlinePart(child, 0)
+					if rendered != nil {
+						childMap, _ := asMap(child)
+						rendered = r.wrapNodeLink(childMap, rendered)
+						bodyParts = append(bodyParts, rendered)
+					}
+				}
+				continue
+			}
+
+			// Fallback: render as inline part
+			rendered := r.renderInlinePart(rawNode, 0)
+			if rendered != nil {
+				rendered = r.wrapNodeLink(node, rendered)
+				bodyParts = append(bodyParts, rendered)
+			}
+		}
+		r.inPromotedBody = false
+	} else {
+		for _, node := range contentNodes {
+			rendered := r.renderNode(node, 0)
+			if rendered != nil {
+				bodyParts = append(bodyParts, rendered)
+			}
 		}
 	}
 	root := &htmlElement{Attrs: map[string]string{}, Children: bodyParts}
@@ -5071,9 +5135,11 @@ func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPar
 			level = r.headingLevelForPosition(positionID, 0)
 		}
 		isHeading := layoutHintsInclude(r.nodeLayoutHints(node), "heading")
-		if level > 0 && isHeading {
+		if level > 0 && isHeading && !r.inPromotedBody {
 			// This node has heading properties. Delegate to renderTextNode
 			// which will create the correct <h1>-<h6> element.
+			// Skip when inPromotedBody: for promoted bodies, the heading style
+			// goes on <body> and content stays inline.
 			return r.renderTextNode(node, depth)
 		}
 		content := r.applyAnnotations(text, node)
@@ -6557,30 +6623,39 @@ func hasRenderableContainer(node map[string]interface{}) bool {
 	return hasStyle && !hasImage && !hasText && (!hasChildren || len(children) == 0)
 }
 
-func promotedBodyContainer(nodes []interface{}) (string, []interface{}, bool) {
+func promotedBodyContainer(nodes []interface{}) (string, []interface{}, bool, bool) {
 	if len(nodes) != 1 {
-		return "", nil, false
+		return "", nil, false, false
 	}
 	node, ok := asMap(nodes[0])
 	if !ok {
-		return "", nil, false
+		return "", nil, false, false
 	}
 	styleID, _ := asString(node["style"])
-	children, ok := asSlice(node["content_list"])
-	if !ok || len(children) == 0 || styleID == "" {
-		return "", nil, false
+
+	// Case 1: Container node with content_list children.
+	// Python's process_content creates a <div> that is_top_level renames to <body>.
+	if children, ok := asSlice(node["content_list"]); ok && len(children) > 0 && styleID != "" {
+		if _, ok := asMap(node["content"]); !ok {
+			if _, ok := asString(node["resource_name"]); !ok {
+				return styleID, children, true, false // container: use renderNode
+			}
+		}
 	}
-	if _, ok := asMap(node["content"]); ok {
-		return "", nil, false
+
+	// Case 2: Leaf text node with heading properties.
+	// Python's process_content creates a <div> for this node, then is_top_level
+	// renames it to <body>. The heading style goes on <body> and the text
+	// content is rendered inline inside <body>.
+	if styleID != "" {
+		if _, hasContent := asMap(node["content"]); hasContent {
+			if headingLevel(node) > 0 {
+				return styleID, nodes, true, true // leaf heading: render inline
+			}
+		}
 	}
-	if _, ok := asString(node["resource_name"]); ok {
-		return "", nil, false
-	}
-	heading := headingLevel(node)
-	if heading > 0 {
-		return "", nil, false
-	}
-	return styleID, children, true
+
+	return "", nil, false, false
 }
 
 func defaultInheritedBodyStyle() map[string]interface{} {
