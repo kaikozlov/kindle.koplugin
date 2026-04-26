@@ -1025,10 +1025,88 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 			}
 		}
 
+		if os.Getenv("KFX_DEBUG_PRESIMPLIFY") != "" {
+			fn := book.RenderedSections[i].Filename
+			if fn == "c9.xhtml" || fn == "c1K4.xhtml" {
+				var dumpPart func(htmlPart, int) string
+				dumpPart = func(p htmlPart, depth int) string {
+					indent := strings.Repeat("  ", depth)
+					switch v := p.(type) {
+					case *htmlElement:
+						s := fmt.Sprintf("%s<%s", indent, v.Tag)
+						keys := make([]string, 0, len(v.Attrs))
+						for k := range v.Attrs {
+							keys = append(keys, k)
+						}
+						sort.Strings(keys)
+						for _, k := range keys {
+							s += fmt.Sprintf(" %s=\"%s\"", k, v.Attrs[k])
+						}
+						if len(v.Children) == 0 {
+							s += ">"
+						} else {
+							s += ">\n"
+							for _, ch := range v.Children {
+								s += dumpPart(ch, depth+1)
+							}
+							s += fmt.Sprintf("%s</%s>", indent, v.Tag)
+						}
+						return s + "\n"
+					case htmlText:
+						return fmt.Sprintf("%sTEXT:%q\n", indent, v.Text)
+					case string:
+						return fmt.Sprintf("%sSTR:%q\n", indent, v)
+					default:
+						return fmt.Sprintf("%s???:%T\n", indent, p)
+					}
+				}
+				fmt.Fprintf(os.Stderr, "PRESIMPLIFY %s:\n%s\n", fn, dumpPart(bodyElem, 0))
+			}
+		}
+
 		simplifyStylesElementFull(bodyElem, catalog, bodyInherited, &simplifyState{
 			resourceDims:    book.ResourceDimensions,
 			sectionFilename: book.RenderedSections[i].Filename,
 		})
+
+		if os.Getenv("KFX_DEBUG_POSTSIMPLIFY") != "" {
+			fn := book.RenderedSections[i].Filename
+			if fn == "c9.xhtml" || fn == "c1K4.xhtml" {
+				var dumpPart func(htmlPart, int) string
+				dumpPart = func(p htmlPart, depth int) string {
+					indent := strings.Repeat("  ", depth)
+					switch v := p.(type) {
+					case *htmlElement:
+						s := fmt.Sprintf("%s<%s", indent, v.Tag)
+						keys := make([]string, 0, len(v.Attrs))
+						for k := range v.Attrs {
+							keys = append(keys, k)
+						}
+						sort.Strings(keys)
+						for _, k := range keys {
+							s += fmt.Sprintf(" %s=\"%s\"", k, v.Attrs[k])
+						}
+						if len(v.Children) == 0 {
+							s += ">"
+						} else {
+							s += ">\n"
+							for _, ch := range v.Children {
+								s += dumpPart(ch, depth+1)
+							}
+							s += fmt.Sprintf("%s</%s>", indent, v.Tag)
+						}
+						return s + "\n"
+					case htmlText:
+						return fmt.Sprintf("%sTEXT:%q\n", indent, v.Text)
+					case string:
+						return fmt.Sprintf("%sSTR:%q\n", indent, v)
+					default:
+						return fmt.Sprintf("%s???:%T\n", indent, p)
+					}
+				}
+				fmt.Fprintf(os.Stderr, "POSTSIMPLIFY %s:\n%s\n", fn, dumpPart(bodyElem, 0))
+			}
+		}
 
 		// Extract -kfx-attrib-xml-lang from body style to set xml:lang on <body>.
 		// Python does this in fixup_styles_and_classes via style.partition("-kfx-attrib-", ...)
