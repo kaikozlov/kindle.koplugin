@@ -5042,7 +5042,7 @@ func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPar
 		if styleID == "" && positionID == 0 && len(content) == 1 {
 			return content[0]
 		}
-		element := &htmlElement{Tag: "span", Attrs: map[string]string{}, Children: content}
+		element := &htmlElement{Tag: "div", Attrs: map[string]string{}, Children: content}
 		if styleAttr := r.spanClass(styleID); styleAttr != "" {
 			element.Attrs["style"] = styleAttr
 		}
@@ -5057,7 +5057,7 @@ func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPar
 		return nil
 	}
 	styleID, _ := asString(node["style"])
-	container := &htmlElement{Tag: "span", Attrs: map[string]string{}}
+	container := &htmlElement{Tag: "div", Attrs: map[string]string{}}
 	for _, child := range children {
 		if rendered := r.renderInlinePart(child, depth+1); rendered != nil {
 			container.Children = append(container.Children, rendered)
@@ -6364,9 +6364,12 @@ func (r *storylineRenderer) headingClass(styleID string) string {
 	if mapFontStyle(style["font_style"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
-	if style["text_indent"] == nil && activeTextIndentNeedsReset(r.activeBodyDefaults) {
-		declarations = append(declarations, "text-indent: 0")
-	}
+	// Note: text-indent reset is NOT added here. Python does not add text-indent: 0
+	// during rendering. Instead, simplify_styles handles it via nonHeritableDefaultProperties
+	// (which includes text-indent: 0 for <div>/<p> elements). The stripping loop in
+	// simplify_styles keeps text-indent: 0 when it differs from the inherited body text-indent.
+	// Previously Go added text-indent: 0 here, but that caused false overlaps in
+	// COMBINE_NESTED_DIVS and differed from Python's rendering pipeline.
 	if len(declarations) == 0 {
 		return ""
 	}
@@ -6415,9 +6418,7 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 	if mapFontStyle(style["font_style"]) == "normal" && bodyDefaultsInclude(r.activeBodyDefaults, "font-style: italic") {
 		declarations = append(declarations, "font-style: normal")
 	}
-	if style["text_indent"] == nil && activeTextIndentNeedsReset(r.activeBodyDefaults) {
-		declarations = append(declarations, "text-indent: 0")
-	}
+	// Note: text-indent reset is NOT added here (see comment in paragraphClass).
 	if os.Getenv("KFX_DEBUG_PARAGRAPH_STYLE") != "" {
 		fmt.Fprintf(os.Stderr, "paragraph style=%s body=%s decls=%v\n", styleID, r.activeBodyClass, declarations)
 	}

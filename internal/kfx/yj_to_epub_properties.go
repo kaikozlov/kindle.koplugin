@@ -918,6 +918,89 @@ func createCSSFiles(book *decodedBook, catalog *styleCatalog) {
 // Note: Full Python simplify_styles has additional features (reverse inheritance, composite styles,
 // ineffective property stripping, rem unit conversion) that require the style catalog to be mutable.
 // This implementation covers the most impactful transformations that can be done post-rendering.
+// combineNestedDivsPass implements Python's COMBINE_NESTED_DIVS (yj_to_epub_content.py:1409-1443).
+// Bottom-up tree walk that merges parent <div> with single child <div>/<p> when their
+// style properties don't overlap (except -kfx-style-name). Must run before simplify_styles.
+func combineNestedDivsPass(elem *htmlElement) {
+	if elem == nil {
+		return
+	}
+	for _, child := range elem.Children {
+		if ch, ok := child.(*htmlElement); ok {
+			combineNestedDivsPass(ch)
+		}
+	}
+	combineNestedDivs(elem)
+}
+
+func combineNestedDivs(elem *htmlElement) {
+	if elem == nil || elem.Tag != "div" || len(elem.Children) != 1 {
+		return
+	}
+	childHE, ok := elem.Children[0].(*htmlElement)
+	if !ok {
+		return
+	}
+	if childHE.Tag != "div" && childHE.Tag != "p" {
+		return
+	}
+	for k := range elem.Attrs {
+		if k != "id" && k != "style" {
+			return
+		}
+	}
+	for k := range childHE.Attrs {
+		if k != "id" && k != "style" {
+			return
+		}
+	}
+	parentStyle := parseDeclarationString(elem.Attrs["style"])
+	childStyle := parseDeclarationString(childHE.Attrs["style"])
+	if parentStyle["display"] != "" && parentStyle["display"] != "block" {
+		return
+	}
+	if parentStyle["position"] != "" && parentStyle["position"] != "static" {
+		return
+	}
+	if parentStyle["float"] != "" && parentStyle["float"] != "none" {
+		return
+	}
+	if childStyle["display"] != "" && childStyle["display"] != "block" {
+		return
+	}
+	if childStyle["position"] != "" && childStyle["position"] != "static" {
+		return
+	}
+	if childStyle["float"] != "" && childStyle["float"] != "none" {
+		return
+	}
+	for k := range parentStyle {
+		if k == "-kfx-style-name" {
+			continue
+		}
+		if _, ok := childStyle[k]; ok {
+			return
+		}
+	}
+	_, parentHasID := elem.Attrs["id"]
+	_, childHasID := childHE.Attrs["id"]
+	if parentHasID && childHasID {
+		return
+	}
+	// Merge: parent keeps its values, child adds non-overlapping properties
+	for k, v := range childStyle {
+		if _, ok := parentStyle[k]; !ok {
+			parentStyle[k] = v
+		}
+	}
+	if len(parentStyle) > 0 {
+		elem.Attrs["style"] = styleStringFromMap(parentStyle)
+	} else {
+		delete(elem.Attrs, "style")
+	}
+	elem.Children = childHE.Children
+}
+
 func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAddedByDefaults map[int]bool, resolvedDefaultFont string) {
 	if book == nil {
 		return
@@ -1063,6 +1146,10 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 				fmt.Fprintf(os.Stderr, "PRESIMPLIFY %s:\n%s\n", fn, dumpPart(bodyElem, 0))
 			}
 		}
+
+		// Python's COMBINE_NESTED_DIVS runs during process_content (per-node) before
+		// simplify_styles. Run it here as a pre-pass on the body element tree.
+		combineNestedDivsPass(bodyElem)
 
 		simplifyStylesElementFull(bodyElem, catalog, bodyInherited, &simplifyState{
 			resourceDims:    book.ResourceDimensions,
