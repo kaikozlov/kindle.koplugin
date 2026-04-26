@@ -4638,6 +4638,44 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 			}
 		}
 	}
+	// Python's process_content for $279 (table_row) renames each child <div> to <td>
+	// directly (yj_to_epub_content.py:813). Go creates a separate <td> and renders
+	// the child inside, producing <td><div>...</div></td>. Unwrap single-child <div>
+	// wrappers inside the cell. Keep the cell's own style (from tableCellClass) and
+	// add child-only properties (matching Python's content_style.update(child_sty, replace=False)).
+	if len(cell.Children) == 1 {
+		if div, ok := cell.Children[0].(*htmlElement); ok && div.Tag == "div" {
+			// Only unwrap if the <div> has only id/style attrs
+			divHasOnlySafeAttrs := true
+			for k := range div.Attrs {
+				if k != "id" && k != "style" {
+					divHasOnlySafeAttrs = false
+					break
+				}
+			}
+			if divHasOnlySafeAttrs {
+				// Merge child's style properties that the cell doesn't already have
+				// (matching Python's content_style.update(child_sty, replace=False))
+				if divStyle := div.Attrs["style"]; divStyle != "" {
+					cellProps := parseDeclarationString(cell.Attrs["style"])
+					childProps := parseDeclarationString(divStyle)
+					for k, v := range childProps {
+						if _, exists := cellProps[k]; !exists {
+							cellProps[k] = v
+						}
+					}
+					if len(cellProps) > 0 {
+						cell.Attrs["style"] = styleStringFromMap(cellProps)
+					}
+				}
+				if divID, ok := div.Attrs["id"]; ok && cell.Attrs["id"] == "" {
+					cell.Attrs["id"] = divID
+				}
+				cell.Children = div.Children
+			}
+		}
+	}
+
 	r.applyStructuralNodeAttrs(cell, node, "")
 	if positionID, _ := asInt(node["id"]); positionID != 0 {
 		r.applyPositionAnchors(cell, positionID, false)
