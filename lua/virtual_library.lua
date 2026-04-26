@@ -20,6 +20,9 @@ function VirtualLibrary:new(library_index)
         virtual_to_open_alias = {},
         -- Flag used by pathchooser_ext to bypass virtual library interception
         _file_chooser_bypass_active = false,
+        -- Flag set when opening a virtual library book; cleared after redirect.
+        -- Prevents explicit user navigation to cache dir from being intercepted.
+        _return_to_virtual_pending = false,
     }
     setmetatable(instance, self)
     return instance

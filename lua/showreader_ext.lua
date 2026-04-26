@@ -84,6 +84,11 @@ function ShowReaderExt:apply()
             end
         end
 
+        -- Mark that we expect to return to the virtual library when the book is
+        -- closed, so FileChooser.changeToPath knows to redirect (vs explicit
+        -- user navigation to the cache dir, which should pass through).
+        virtual_library._return_to_virtual_pending = true
+
         -- Register the alias so DocumentRegistry/closeDocument can find it
         virtual_library:registerOpenAlias(real_file, file)
 

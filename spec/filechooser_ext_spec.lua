@@ -84,6 +84,54 @@ describe("FileChooserExt", function()
             assert.is_not_nil(FileChooserExt.original_methods.changeToPath)
         end)
 
+        describe("changeToPath", function()
+            it("should redirect to virtual library when returning from a virtual book", function()
+                FileChooserExt:apply(mock_filechooser)
+
+                -- Simulate returning from a virtual library book
+                mock_virtual_library._return_to_virtual_pending = true
+
+                local redirected = false
+                mock_filechooser.showKindleVirtualLibrary = function()
+                    redirected = true
+                end
+
+                mock_filechooser:changeToPath("/cache")
+
+                assert.is_true(redirected)
+                assert.is_false(mock_virtual_library._return_to_virtual_pending)
+            end)
+
+            it("should NOT redirect when user explicitly navigates to cache dir", function()
+                FileChooserExt:apply(mock_filechooser)
+
+                -- No pending return — user is browsing explicitly
+                mock_virtual_library._return_to_virtual_pending = false
+
+                local redirected = false
+                mock_filechooser.showKindleVirtualLibrary = function()
+                    redirected = true
+                end
+
+                mock_filechooser:changeToPath("/cache")
+
+                assert.is_false(redirected)
+            end)
+
+            it("should redirect to virtual library for KINDLE_VIRTUAL:// paths", function()
+                FileChooserExt:apply(mock_filechooser)
+
+                local redirected = false
+                mock_filechooser.showKindleVirtualLibrary = function()
+                    redirected = true
+                end
+
+                mock_filechooser:changeToPath("KINDLE_VIRTUAL://")
+
+                assert.is_true(redirected)
+            end)
+        end)
+
         describe("genItemTable", function()
             it("should inject virtual folder entry at root", function()
                 G_reader_settings:saveSetting("home_dir", "/mnt/us")

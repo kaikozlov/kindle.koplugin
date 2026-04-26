@@ -200,12 +200,17 @@ function FileChooserExt:apply(FileChooser)
             return
         end
 
-        -- Intercept navigation to the cache directory (happens when closing
-        -- a book opened from the virtual library) and redirect to virtual library.
+        -- Intercept navigation to the cache directory only when returning from
+        -- a virtual library book (flag set in showreader_ext). When the flag is
+        -- false, the user explicitly navigated here and wants to see cached files.
         if cache_dir ~= "" and new_path and new_path:sub(1, #cache_dir) == cache_dir then
-            logger.info("KindlePlugin: intercepting navigation to cache dir, showing virtual library")
-            fc_self:showKindleVirtualLibrary()
-            return
+            if self.virtual_library._return_to_virtual_pending then
+                logger.info("KindlePlugin: returning from virtual library book, showing virtual library")
+                self.virtual_library._return_to_virtual_pending = false
+                fc_self:showKindleVirtualLibrary()
+                return
+            end
+            logger.dbg("KindlePlugin: explicit navigation to cache dir, not redirecting")
         end
 
         return self.original_methods.changeToPath(fc_self, new_path, ...)
