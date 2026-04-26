@@ -2095,7 +2095,7 @@ func renderHTMLElement(element *htmlElement) string {
 	attrOrder := []string{"id", "class", "href", "src", "alt"}
 	switch element.Tag {
 	case "a":
-		attrOrder = []string{"id", "href", "class"}
+		attrOrder = []string{"id", "href", "epub:type", "class"}
 	case "img":
 		attrOrder = []string{"src", "alt", "id", "class"}
 	case "col":
