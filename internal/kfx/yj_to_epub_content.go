@@ -6643,14 +6643,14 @@ func promotedBodyContainer(nodes []interface{}) (string, []interface{}, bool, bo
 		}
 	}
 
-	// Case 2: Leaf text node with heading properties.
+	// Case 2: Leaf text node with style (heading or non-heading).
 	// Python's process_content creates a <div> for this node, then is_top_level
-	// renames it to <body>. The heading style goes on <body> and the text
-	// content is rendered inline inside <body>.
+	// renames it to <body>. The style goes on <body> and the text content
+	// is rendered inline inside <body>.
 	if styleID != "" {
 		if _, hasContent := asMap(node["content"]); hasContent {
-			if headingLevel(node) > 0 {
-				return styleID, nodes, true, true // leaf heading: render inline
+			if _, hasResource := asString(node["resource_name"]); !hasResource {
+				return styleID, nodes, true, true // leaf text: render inline
 			}
 		}
 	}
