@@ -5022,9 +5022,23 @@ func (r *storylineRenderer) renderInlinePart(raw interface{}, depth int) htmlPar
 		if text == "" {
 			return nil
 		}
-		content := r.applyAnnotations(text, node)
-		styleID, _ := asString(node["style"])
+		// Check if this text node should be a heading. In Python, process_content
+		// always creates <div> for $269 content, and simplify_styles converts to <h>
+		// based on layout hints. Go's renderInlinePart creates <span>, which can't
+		// be converted to heading. Delegate to renderTextNode for heading nodes.
 		positionID, _ := asInt(node["id"])
+		styleID, _ := asString(node["style"])
+		level := headingLevel(node)
+		if level == 0 {
+			level = r.headingLevelForPosition(positionID, 0)
+		}
+		isHeading := layoutHintsInclude(r.nodeLayoutHints(node), "heading")
+		if level > 0 && isHeading {
+			// This node has heading properties. Delegate to renderTextNode
+			// which will create the correct <h1>-<h6> element.
+			return r.renderTextNode(node, depth)
+		}
+		content := r.applyAnnotations(text, node)
 		if styleID == "" && positionID == 0 && len(content) == 1 {
 			return content[0]
 		}
