@@ -133,20 +133,25 @@ describe("KindlePlugin", function()
     end)
 
     describe("addToMainMenu", function()
-        it("should not add menu items when virtual library is inactive", function()
-            -- Create a virtual library that reports inactive
-            local VirtualLibrary = require("lua/virtual_library")
-            VirtualLibrary.isActive = function()
-                return false
-            end
-
+        it("should still add menu items when virtual library is inactive", function()
+            -- Menu must always be visible so user can re-enable virtual library
             local instance = KindlePlugin:new()
+            instance:loadSettings()
+            instance.settings.enable_virtual_library = false
             instance.ui = { document = nil }
 
             local menu_items = {}
             instance:addToMainMenu(menu_items)
 
-            assert.is_nil(menu_items.kindle_plugin)
+            assert.is_not_nil(menu_items.kindle_plugin)
+            assert.is_not_nil(menu_items.kindle_plugin.sub_item_table)
+
+            -- Browse and Refresh should be disabled when virtual library is off
+            local browse_item = menu_items.kindle_plugin.sub_item_table[1]
+            assert.is_false(browse_item.enabled_func())
+
+            local refresh_item = menu_items.kindle_plugin.sub_item_table[2]
+            assert.is_false(refresh_item.enabled_func())
         end)
 
         it("should not add menu items when document is open", function()

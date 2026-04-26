@@ -645,6 +645,9 @@ end
 function KindlePlugin:createRefreshLibraryMenuItem()
     return {
         text = _("Refresh Kindle Index"),
+        enabled_func = function()
+            return self.settings.enable_virtual_library ~= false
+        end,
         callback = function()
             local _, err = virtual_library:refresh(true)
             self.settings.last_scan_at = os.time()
@@ -663,6 +666,9 @@ end
 function KindlePlugin:createBrowseLibraryMenuItem()
     return {
         text = _("Browse Kindle Library"),
+        enabled_func = function()
+            return self.settings.enable_virtual_library ~= false
+        end,
         callback = function()
             if self.ui and self.ui.file_chooser and self.ui.file_chooser.showKindleVirtualLibrary then
                 self.ui.file_chooser:showKindleVirtualLibrary()
@@ -680,10 +686,6 @@ end
 --- Adds plugin menu items to the file manager main menu.
 --- @param menu_items table: Main menu items table to populate.
 function KindlePlugin:addToMainMenu(menu_items)
-    if not virtual_library:isActive() then
-        return
-    end
-
     if self.ui.document then
         return
     end
