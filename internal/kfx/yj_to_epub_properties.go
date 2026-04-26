@@ -1079,34 +1079,13 @@ func simplifyStylesFull(book *decodedBook, catalog *styleCatalog, fontFamilyAdde
 			Children: bodyChildren,
 		}
 
-		// Python's process_content creates a <div> child in <body> for the body
-		// container, while Go's promotedBodyContainer unwraps it. When the body
-		// has a non-default style and only inline children (images, spans), wrap
-		// them in a <p> with the body's style. In Python, simplify_styles converts
-		// the body's child <div> to <p> when it contains only inline content.
-		if !book.RenderedSections[i].BodyStyleInferred && len(bodyStyleForSimplify) > 0 {
-			hasOnlyInline := true
-			for _, child := range bodyElem.Children {
-				el, ok := child.(*htmlElement)
-				if !ok {
-					continue // text nodes are inline
-				}
-				if el.Tag == "img" || el.Tag == "span" || el.Tag == "a" {
-					continue
-				}
-				hasOnlyInline = false
-				break
-			}
-			if hasOnlyInline {
-				wrapper := &htmlElement{
-					Tag:      "p",
-					Attrs:    map[string]string{"style": bodyElem.Attrs["style"]},
-					Children: bodyElem.Children,
-				}
-				bodyElem.Children = []htmlPart{wrapper}
-				delete(bodyElem.Attrs, "style")
-			}
-		}
+		// NOTE: Python's process_content creates a <div> child inside <body> that
+		// simplify_styles later converts to <p> for inline-only content. Go's
+		// promotedBodyContainer unwraps the body container, putting children
+		// directly in <body>. We do NOT wrap in <p> here because Python does NOT
+		// create a <p> wrapper either — the <div>→<body> renaming happens before
+		// simplify_styles, and <body> is never converted to <p>. The inline
+		// children stay directly inside <body>, matching Python's output.
 
 		if os.Getenv("KFX_DEBUG_PRESIMPLIFY") != "" {
 			fn := book.RenderedSections[i].Filename
