@@ -3475,40 +3475,14 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	inferredBody := false
 	if bodyStyleID == "" {
 		if promotedStyleID, promotedNodes, ok := promotedBodyContainer(nodes); ok {
-			// Check if the promoted container has figure layout hints.
-			// Python keeps figure-hinted containers as child <div> elements
-			// (the body gets only set_html_defaults). simplify_styles then
-			// converts the child <div> to <figure>. If we promote, the figure
-			// properties go on the body instead, breaking both the body class
-			// and preventing the child from becoming <figure>.
-			//
-			// Exception: when the promoted container has NO figure hints,
-			// promotion is safe and matches Python's behavior.
-			promotedStyle := effectiveStyle(r.styleFragments[promotedStyleID], nil)
-			promotedHints := extractLayoutHintsFromStyle(promotedStyle)
-			hasFigureHint := false
-			for _, h := range promotedHints {
-				if h == "figure" {
-					hasFigureHint = true
-					break
-				}
-			}
-			if !hasFigureHint {
-				bodyStyleID = promotedStyleID
-				bodyStyleValues = nil
-				contentNodes = promotedNodes
-				promotedBody = true
-			}
+			bodyStyleID = promotedStyleID
+			bodyStyleValues = nil
+			contentNodes = promotedNodes
+			promotedBody = true
 			if os.Getenv("KFX_DEBUG_PROMOTE") != "" {
-				fmt.Fprintf(os.Stderr, "PROMOTE-CHECK pos=%d styleID=%s hints=%v hasFigure=%v promoted=%v\n",
-					sectionPositionID, promotedStyleID, promotedHints, hasFigureHint, promotedBody)
-				for i, n := range promotedNodes {
-					if nm, ok := asMap(n); ok {
-						sid, _ := asString(nm["style"])
-						cs := effectiveStyle(r.styleFragments[sid], nm)
-						fmt.Fprintf(os.Stderr, "  child[%d] styleID=%s hints=%v\n", i, sid, extractLayoutHintsFromStyle(cs))
-					}
-				}
+				bs := effectiveStyle(r.styleFragments[promotedStyleID], nil)
+				fmt.Fprintf(os.Stderr, "PROMOTED pos=%d styleID=%s hints=%v\n",
+					sectionPositionID, promotedStyleID, extractLayoutHintsFromStyle(bs))
 			}
 		}
 	}
