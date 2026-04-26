@@ -3511,19 +3511,30 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	// reverse inheritance handle it — matching Python's approach.
 	// delete(bodyStyle, "text_indent")
 	bodyDeclarations := cssDeclarationsFromMap(r.processContentProps(bodyStyle, r.resolveResource))
+	// Extract layout hints from the body style fragment to include in the body's
+	// inline style string — but ONLY when the body was promoted from a container.
+	// When the body style comes from the page template (not promoted), the layout
+	// hints belong on child elements, not the body. Python's add_kfx_style copies
+	// layout_hints into whatever element the style is applied to. For promoted bodies,
+	// that element IS the body. For template bodies, it's a child container.
+	var bodyLayoutHints []string
+	if promotedBody {
+		bodyLayoutHints = extractLayoutHintsFromStyle(bodyStyle)
+	}
 	if bodyStyleID == "" && len(bodyDeclarations) == 0 {
 		bodyStyleValues = map[string]interface{}{
 			"font_family": defaultInheritedBodyStyle()["font_family"],
 		}
 		bodyStyle = effectiveStyle(r.styleFragments[bodyStyleID], bodyStyleValues)
 		bodyDeclarations = cssDeclarationsFromMap(r.processContentProps(bodyStyle, r.resolveResource))
+		bodyLayoutHints = extractLayoutHintsFromStyle(bodyStyle)
 	}
 	if len(bodyDeclarations) > 0 {
 		baseName := "class"
 		if bodyStyleID != "" {
 			baseName = r.styleBaseName(bodyStyleID)
 		}
-		result.BodyStyle = styleStringFromDeclarations(baseName, nil, bodyDeclarations)
+		result.BodyStyle = styleStringFromDeclarations(baseName, bodyLayoutHints, bodyDeclarations)
 	}
 	if os.Getenv("KFX_DEBUG_BODY") != "" {
 		fmt.Fprintf(os.Stderr, "body resolved styleID=%s decls=%v style=%s inferred=%v\n", bodyStyleID, bodyDeclarations, result.BodyStyle, inferredBody)
@@ -5875,6 +5886,43 @@ func layoutHintsInclude(hints []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// extractLayoutHintsFromStyle extracts layout hints from a YJ style map.
+// Ported from Python's nodeLayoutHints logic: reads the "layout_hints" key
+// from the style and converts to a []string suitable for styleStringFromDeclarations.
+func extractLayoutHintsFromStyle(style map[string]interface{}) []string {
+	if style == nil {
+		return nil
+	}
+	switch typed := style["layout_hints"].(type) {
+	case string:
+		if typed == "" {
+			return nil
+		}
+		if hint := layoutHintElementNames[typed]; hint != "" {
+			return []string{hint}
+		}
+		return strings.Fields(typed)
+	case []interface{}:
+		hints := make([]string, 0, len(typed))
+		for _, raw := range typed {
+			value, ok := asString(raw)
+			if !ok || value == "" {
+				continue
+			}
+			if hint := layoutHintElementNames[value]; hint != "" {
+				hints = append(hints, hint)
+			} else {
+				hints = append(hints, value)
+			}
+		}
+		if len(hints) == 0 {
+			return nil
+		}
+		return hints
+	}
+	return nil
 }
 
 func htmlPartContainsImage(part htmlPart) bool {
