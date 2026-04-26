@@ -568,30 +568,41 @@ Top-level: `REFERENCE/books/drm_keys.json` — merged page keys for all 9 DRMION
 
 ### Current Parity Status (April 2026)
 
-7 of 10 books have only image diffs (JPEG encoding/JFIF). 3 books have structural diffs:
+7 of 10 books are structurally perfect (differences only in JPEG encoding and content.opf timestamps).
+2 books have remaining structural diffs:
 
-**1984 (15 files):**
-- `<a>` class missing — Python's `create_container()` partitions style to `<a>`, Go's `wrapNodeLink()` wraps with bare `<a>`
-- Body class naming — `class_sN` vs `figure_sN-0` for image pages
-- Table cell `<a>` wrapping — extra `<div>` inside `<td>` around `<a><img>`
-- CSS class ordering — same declarations assigned different class indices
-- TOC `<p>` vs `<span>` — navigation child entries use wrong tag
+**1984 (16 structural, 7 image):**
+- Body class index offset — `estimateBodyClass()` (Go-specific) assigns class-3 vs Calibre's class-4; cascading to 7+ pages
+- Image page body class — `class_sN` vs `figure_sN-0/1/2` for image pages (c9)
+- Missing margins in stylesheet — `class_s1MY`, `class_s1N2`, `class_s1NM` missing `margin-bottom: 0; margin-top: 0`
+- Missing `heading_s1NG` class — Go keeps as `class_s1NG`, Calibre creates separate `heading_s1NG` rule
+- Table image `<div>` wrapper — extra `<div class="class_s1S6">` inside `<td>` around `<a><img>` (c1RU)
+- TOC `<span>` vs `<p>` — navigation child entries use `<span>` in Go, `<p>` in Calibre (cP)
+- Missing page anchor — `page_134` absent in Go (cDT)
+- XML attribute ordering — `epub:type` and `class` attribute order swapped on `<a>` (c3E)
 
-**Sunrise Reaping (31 files):**
-- Extra `id` attributes on image-heading `<div>` — Go adds anchor `id` that Calibre omits
+**Secrets Crown (18 structural, 11 image):**
+- HD variant selection — Go uses `-resized` images, Calibre uses `-hd-resized` (higher resolution)
+- CSS class index swap — `class_220-0`/`class_220-1` assigned in wrong order
+- Missing margins in stylesheet — `class_2326` missing `margin-bottom: 0; margin-top: 0`
+- Image page body class — `class_20` has extra `text-align: center` (xQ10)
 
-**Secrets Crown (24 files):**
-- JXR images not decoded — `.jxr` files served as-is instead of converted to `.jpg`
-- CSS class ordering — `class_220-0`/`class_220-1` swapped, missing `margin-bottom/top` in some rules
+**Fixed in this session:**
+- ✅ JXR image conversion — `mediaType` was empty for JXR resources; added `format=="jxr"` fallback
+- ✅ `<a>` class on link-wrapped elements — annotation style from style events now propagated to `<a>`
+- ✅ Image heading anchor suppression — skip position anchors on image-only heading divs
+- ✅ Sunrise Reaping — now structurally perfect (32→1, only timestamp diff)
 
 ### Known Parity Gaps (ordered by priority)
 
-1. **`<a>` class on link-wrapped elements** — `wrapNodeLink()` doesn't partition style to `<a>` like Python's `create_container()` does. Affects 1984 heavily.
-2. **Extra `id` on image-heading divs** — Go adds position anchor `id` on `<div>` elements that contain only images in headings; Calibre omits this. Affects Sunrise Reaping.
-3. **JXR image conversion** — JPEG XR decoder exists in `internal/jxr/` but isn't wired into EPUB resource pipeline. Affects Secrets Crown.
-4. **CSS class ordering** — Style catalog assigns different class indices than Calibre; cascading effect on all class references.
-5. **Body class naming** — Image pages get `class_sN` in Go vs `figure_sN-0` in Calibre.
-6. **JPEG encoding** — Go outputs raw baseline JPEG; Calibre wraps in JFIF standard (affects all image-bearing books).
+1. **CSS class ordering/dedup** — Go's `estimateBodyClass()` pre-assigns class-0/1/2/3 as static rules; Python treats ALL styles uniformly through `fixup_styles_and_classes`. The class index offset cascades to 7+ pages in 1984. Requires architectural change to body class handling.
+2. **Body/figure class naming** — Image pages get `class_sN` in Go vs `figure_sN-0/1/2` in Calibre. Related to div→figure conversion and layout hints in simplify_styles.
+3. **Missing margin stripping** — Several styles missing `margin-bottom: 0; margin-top: 0` that Calibre includes. Likely a reverse-inheritance gap in `simplifyStylesElementFull`.
+4. **HD image variant selection** — Go's variant selection doesn't pick HD (`-hd-resized`) variants that Calibre uses. May be a `USE_HIGHEST_RESOLUTION_IMAGE_VARIANT` bug or missing variant resources.
+5. **Table image div wrapper** — Extra `<div>` inside `<td>` around linked images (c1RU in 1984). Python's `find_or_create_style_event_element` doesn't wrap table cell images.
+6. **TOC container tag selection** — `<span>` vs `<p>` for navigation sub-entries (cP in 1984).
+7. **Missing page anchor** — `page_134` not generated in Go output (cDT in 1984).
+8. **XML attribute ordering** — `epub:type` and `class` attribute order differs on `<a>` elements (cosmetic).
 
 ---
 
