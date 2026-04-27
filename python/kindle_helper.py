@@ -140,6 +140,11 @@ def _decrypt_drmion(data, page_key):
 # ---------------------------------------------------------------------------
 
 SUPPORTED_EXTENSIONS = {".kfx", ".azw", ".azw3", ".mobi", ".prc", ".pdf"}
+
+# Directories to skip during scanning.  These contain Kindle system files
+# (dictionaries, active content, firmware assets) that are not user books.
+EXCLUDED_DIRS = {"dictionaries", "system"}
+
 TRAILING_ID_RE = re.compile(r"_(?:[A-Z0-9]{10}|[A-F0-9]{32})$")
 
 
@@ -185,8 +190,11 @@ def cmd_scan(args):
     root = args.root
 
     for dirpath, dirnames, filenames in os.walk(root):
-        # Skip .sdr directories
-        dirnames[:] = [d for d in dirnames if not d.lower().endswith(".sdr")]
+        # Skip .sdr sidecar directories and system directories (dictionaries, etc.)
+        dirnames[:] = [
+            d for d in dirnames
+            if not d.lower().endswith(".sdr") and d.lower() not in EXCLUDED_DIRS
+        ]
 
         for fname in sorted(filenames):
             ext = os.path.splitext(fname)[1].lower()
