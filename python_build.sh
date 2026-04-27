@@ -56,54 +56,77 @@ STAGING="$OUTPUT_DIR/kindle.koplugin"
 mkdir -p "$STAGING"
 
 # ---------------------------------------------------------------------------
-# Step 1: Download and extract CPython standalone
+# Steps 1-2: CPython + packages (cached in build-cache/)
+#
+# The cache is keyed on all version pins.  If the versions haven't changed,
+# we skip downloading and installing — just copy from the cache.
 # ---------------------------------------------------------------------------
-echo "[1/5] Downloading CPython $CPYTHON_VERSION (armv7)..."
+CACHE_DIR="build-cache"
+CACHE_KEY="cpython-${CPYTHON_VERSION}+${PYTHON_BUILD_STANDALONE_TAG}_lxml-${LXML_VERSION}_pillow-${PILLOW_VERSION}_pycrypto-${PYCRYPTODOME_VERSION}"
+CACHE_STAMP="$CACHE_DIR/$CACHE_KEY/.stamp"
 
-CPYTHON_TARBALL="$OUTPUT_DIR/cpython.tar.gz"
-CPYTHON_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_BUILD_STANDALONE_TAG}/cpython-${CPYTHON_VERSION}%2B${PYTHON_BUILD_STANDALONE_TAG}-armv7-unknown-linux-gnueabihf-install_only.tar.gz"
+if [ -f "$CACHE_STAMP" ]; then
+    echo "[1/5] CPython $CPYTHON_VERSION — cached"
+    echo "[2/5] Packages — cached"
+    cp -a "$CACHE_DIR/$CACHE_KEY/dist" "$OUTPUT_DIR/dist"
+else
+    mkdir -p "$CACHE_DIR/$CACHE_KEY"
 
-if [ ! -f "$CPYTHON_TARBALL" ]; then
-    curl -fSL --progress-bar -o "$CPYTHON_TARBALL" "$CPYTHON_URL"
+    # --- Step 1: Download CPython ---
+    echo "[1/5] Downloading CPython $CPYTHON_VERSION (armv7)..."
+
+    CPYTHON_TARBALL="$CACHE_DIR/cpython-${CPYTHON_VERSION}+${PYTHON_BUILD_STANDALONE_TAG}.tar.gz"
+    CPYTHON_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_BUILD_STANDALONE_TAG}/cpython-${CPYTHON_VERSION}%2B${PYTHON_BUILD_STANDALONE_TAG}-armv7-unknown-linux-gnueabihf-install_only.tar.gz"
+
+    if [ ! -f "$CPYTHON_TARBALL" ]; then
+        curl -fSL --progress-bar -o "$CPYTHON_TARBALL" "$CPYTHON_URL"
+    fi
+
+    echo "  Extracting..."
+    mkdir -p "$CACHE_DIR/$CACHE_KEY/dist"
+    tar xzf "$CPYTHON_TARBALL" -C "$CACHE_DIR/$CACHE_KEY/dist" --strip-components=1
+    echo "  OK: $(ls "$CACHE_DIR/$CACHE_KEY/dist/bin/python3")"
+
+    # --- Step 2: Install packages ---
+    echo "[2/5] Installing packages..."
+
+    CACHE_DIST="$CACHE_DIR/$CACHE_KEY/dist"
+    SITE_PACKAGES="$CACHE_DIST/lib/python3.11/site-packages"
+    mkdir -p "$SITE_PACKAGES"
+
+    # lxml — available on PyPI as manylinux_2_31_armv7l
+    echo "  lxml $LXML_VERSION (PyPI)..."
+    curl -fSL -o /tmp/lxml.whl "https://files.pythonhosted.org/packages/$(pip3 index versions lxml 2>/dev/null | head -1 || echo 'cp311/cp311-manylinux_2_31_armv7l')/lxml-${LXML_VERSION}-cp311-cp311-manylinux_2_31_armv7l.whl" 2>/dev/null || {
+        echo "  Trying piwheels fallback..."
+        curl -fSL -o /tmp/lxml.whl "https://archive1.piwheels.org/simple/lxml/lxml-${LXML_VERSION}-cp311-cp311-linux_armv7l.whl"
+    }
+    unzip -q -o /tmp/lxml.whl -d "$SITE_PACKAGES"
+
+    # Pillow — piwheels
+    echo "  Pillow $PILLOW_VERSION (piwheels)..."
+    curl -fSL -o /tmp/pillow.whl "https://www.piwheels.org/simple/pillow/pillow-${PILLOW_VERSION}-cp311-cp311-linux_armv7l.whl"
+    unzip -q -o /tmp/pillow.whl -d "$SITE_PACKAGES"
+
+    # pycryptodome — piwheels (archive for older versions)
+    echo "  pycryptodome $PYCRYPTODOME_VERSION (piwheels)..."
+    curl -fSL -o /tmp/pycryptodome.whl "https://archive1.piwheels.org/simple/pycryptodome/pycryptodome-${PYCRYPTODOME_VERSION}-cp311-cp311-linux_armv7l.whl"
+    unzip -q -o /tmp/pycryptodome.whl -d "$SITE_PACKAGES"
+
+    # beautifulsoup4 — pure Python, download from PyPI as universal wheel
+    echo "  beautifulsoup4..."
+    rm -rf /tmp/bs4dl && mkdir -p /tmp/bs4dl
+    pip3 download --only-binary=:all: --python-version 3.11 --no-deps --dest /tmp/bs4dl beautifulsoup4 2>/dev/null
+    unzip -q -o /tmp/bs4dl/beautifulsoup4*.whl -d "$SITE_PACKAGES"
+
+    touch "$CACHE_STAMP"
+    echo "  Cached to $CACHE_DIR/$CACHE_KEY/"
+
+    # Copy to output
+    cp -a "$CACHE_DIR/$CACHE_KEY/dist" "$OUTPUT_DIR/dist"
 fi
-
-echo "  Extracting..."
-mkdir -p "$OUTPUT_DIR/dist"
-tar xzf "$CPYTHON_TARBALL" -C "$OUTPUT_DIR/dist" --strip-components=1
-
-echo "  OK: $(ls "$OUTPUT_DIR/dist/bin/python3")"
-
-# ---------------------------------------------------------------------------
-# Step 2: Install packages
-# ---------------------------------------------------------------------------
-echo "[2/5] Installing packages..."
 
 DIST_DIR="$OUTPUT_DIR/dist"
 SITE_PACKAGES="$DIST_DIR/lib/python3.11/site-packages"
-mkdir -p "$SITE_PACKAGES"
-
-# lxml — available on PyPI as manylinux_2_31_armv7l
-echo "  lxml $LXML_VERSION (PyPI)..."
-curl -fSL -o /tmp/lxml.whl "https://files.pythonhosted.org/packages/$(pip3 index versions lxml 2>/dev/null | head -1 || echo 'cp311/cp311-manylinux_2_31_armv7l')/lxml-${LXML_VERSION}-cp311-cp311-manylinux_2_31_armv7l.whl" 2>/dev/null || {
-    echo "  Trying piwheels fallback..."
-    curl -fSL -o /tmp/lxml.whl "https://archive1.piwheels.org/simple/lxml/lxml-${LXML_VERSION}-cp311-cp311-linux_armv7l.whl"
-}
-unzip -q -o /tmp/lxml.whl -d "$SITE_PACKAGES"
-
-# Pillow — piwheels
-echo "  Pillow $PILLOW_VERSION (piwheels)..."
-curl -fSL -o /tmp/pillow.whl "https://www.piwheels.org/simple/pillow/pillow-${PILLOW_VERSION}-cp311-cp311-linux_armv7l.whl"
-unzip -q -o /tmp/pillow.whl -d "$SITE_PACKAGES"
-
-# pycryptodome — piwheels (archive for older versions)
-echo "  pycryptodome $PYCRYPTODOME_VERSION (piwheels)..."
-curl -fSL -o /tmp/pycryptodome.whl "https://archive1.piwheels.org/simple/pycryptodome/pycryptodome-${PYCRYPTODOME_VERSION}-cp311-cp311-linux_armv7l.whl"
-unzip -q -o /tmp/pycryptodome.whl -d "$SITE_PACKAGES"
-
-# beautifulsoup4 — pure Python, download from PyPI as universal wheel
-echo "  beautifulsoup4..."
-pip3 download --only-binary=:all: --python-version 3.11 --no-deps --dest /tmp/bs4dl beautifulsoup4 2>/dev/null
-unzip -q -o /tmp/bs4dl/beautifulsoup4*.whl -d "$SITE_PACKAGES"
 
 # ---------------------------------------------------------------------------
 # Step 3: Copy plugin Python source into dist
