@@ -69,7 +69,8 @@ Achieve structural parity between Go KFX→EPUB conversion pipeline and the Cali
 4. **Focus on structural over cosmetic**: CSS class ordering and attribute ordering are lower priority than missing content or incorrect HTML structure
 
 ## What's Been Tried
-_Session starting fresh. Previous work (before autoresearch) resolved:_
+
+### Pre-autoresearch (already committed before session):
 - JXR image conversion MIME type
 - `<a>` class on link-wrapped elements
 - Image heading anchor suppression
@@ -78,19 +79,29 @@ _Session starting fresh. Previous work (before autoresearch) resolved:_
 - Table cell `<div>` wrapper unwrapping
 - `<a>` attribute ordering fix
 
-_Autoresearch session progress:_
-- ✅ Fix `</body>` placement for single self-closing elements (4 diffs fixed)
-- ✅ Fix JXR image conversion: MIME type was image/jpeg instead of image/jxr (11 structural + 22 missing fixed)
-- ✅ Refine `</body>` placement: only for self-closing elements ending `/>` and SVG (fixed 1984 regression)
+### Autoresearch Session (2026-04-28): 75→53 structural diffs (-29%)
 
-### Remaining 53 structural diffs breakdown:
-- **52 are class-split diffs** (body/img get same class instead of -0/-1 split): HungerGames(17), Familiars(13), HeatedRivalry(7), Elvis(5), ThroneOfGlass(5), SecretsCrown(3), SunriseReaping(0), ThreeBelow(0)
-- **1 CSS property diff**: SunriseReaping `figure_sH` has `text-align: center` vs `width: 100%`
+1. **Fix `</body>` placement** (-4 diffs, then +7 regression, then -7 fix)
+   - `internal/epub/epub.go`: Match lxml compact serialization for single self-closing
+     elements (ending `/>`) and SVG cover pages. Non-self-closing elements keep
+     standard newline before `</body>`.
 
-### Root cause of class-split issue:
-In Python, image-only pages produce TWO different styles: body gets `text-align:center` and img gets `width:100%`. These share the same baseName and get split into `-0`/`-1` by the style catalog. In Go, the body style is either missing or merged with the img style, producing just one class with only the img properties. Fix requires ensuring body and img have separate style entries in the catalog.
+2. **Fix JXR image conversion: MIME type** (-11 structural + 22 missing = -33 total)
+   - `internal/kfx/yj_to_epub_resources.go`: `parseResourceFragment` set JXR mime
+     to `image/jpeg` instead of `image/jxr` when the mime field was empty. Fixed
+     to set correct MIME type per format (jxr→image/jxr, jpg→image/jpeg, png→image/png).
 
-### Ideas backlog:
-- CSS property diff: figure_sH gets width:100% in Go but text-align:center in Calibre. Likely a figure margin/layout hint issue in simplify_styles
-- SecretsCrown still has 4 structural diffs (class index swap, extra div wrapper, CSS property diffs)
-- Elvis has class index offset issues (different class numbers for same elements)
+### Current Status: 53 structural diffs
+
+**Per-book breakdown:**
+- Martyr: 0 ✓ | 1984: 0 ✓ | SunriseReaping: 1 | ThreeBelow: 1
+- Elvis: 5 | ThroneOfGlass: 5 | SecretsCrown: 4
+- HeatedRivalry: 7 | Familiars: 13 | HungerGames: 17
+
+**52 of 53 are body class split** — single root cause requiring architectural fix:
+- Go's promoted body style includes `width:100%` (non-heritable) from container fragment
+- Python's body gets `text-align:center` through reverse inheritance, NOT from container
+- KFX data uses `box_align` (not `text_alignment`) for image containers
+- `box_align` → `text-align` conversion happens during simplify_styles in Python
+- Fix requires converting `box_align` to `text-align` for promoted body styles
+- See `autoresearch.ideas.md` for detailed investigation
