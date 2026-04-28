@@ -3521,7 +3521,40 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	// stripped it). Now we keep text-indent in the body style and let simplify_styles'
 	// reverse inheritance handle it — matching Python's approach.
 	// delete(bodyStyle, "text_indent")
-	bodyDeclarations := cssDeclarationsFromMap(r.processContentProps(bodyStyle, r.resolveResource))
+	bodyCSS := r.processContentProps(bodyStyle, r.resolveResource)
+
+	// For promoted bodies containing only a resource (image), apply the same property
+	// transformations as Python's create_container + box-align conversion.
+	//
+	// 1. Convert -kfx-box-align → text-align (Python yj_to_epub_content.py:1335-1336).
+	//    Go's promoted body bypasses create_container, so this conversion doesn't happen
+	//    automatically. Without it, -kfx-box-align stays in the body's CSS and doesn't
+	//    get promoted through reverse inheritance.
+	//
+	// 2. Remove width from the body style. In Python, width stays on the child element
+	//    (img), not the container. When the body and img both have width:100%, the style
+	//    catalog assigns them the same class, preventing the body/img class split (-0/-1)
+	//    that Calibre produces.
+	if promotedBody && promotedBodyInline {
+		for _, rawNode := range contentNodes {
+			if node, ok := asMap(rawNode); ok {
+				if _, hasResource := asString(node["resource_name"]); hasResource {
+					// Convert -kfx-box-align → text-align
+					if boxAlign, ok := bodyCSS["-kfx-box-align"]; ok {
+						if boxAlign == "center" || boxAlign == "left" || boxAlign == "right" || boxAlign == "justify" {
+							bodyCSS["text-align"] = boxAlign
+						}
+						delete(bodyCSS, "-kfx-box-align")
+					}
+					// Remove width from body (stays on img child)
+					delete(bodyCSS, "width")
+					break
+				}
+			}
+		}
+	}
+
+	bodyDeclarations := cssDeclarationsFromMap(bodyCSS)
 	// Extract layout hints from the body style fragment to include in the body's
 	// inline style string — but ONLY when the body was promoted from a container.
 	// When the body style comes from the page template (not promoted), the layout
