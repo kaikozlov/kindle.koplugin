@@ -1551,3 +1551,132 @@ Success criterion:
 - **Dynamic RE on real hardware is the right move and should continue.**
 - The immediate objective is to turn `0x17c4fc` into a **measured black box with known inputs, outputs, and divergence points**, not to fully lift 244 KB of flattened code into readable C.
 - Once those boundaries are nailed down, we can decide whether any smaller subcomponent is worth extracting or reproducing offline.
+
+---
+
+## Phase A Results: Vtable Hook Works (2026-04-28)
+
+### Instrumentation
+
+- Deployed `phase_a_v2.so` via `LD_PRELOAD` on PW6
+- Patched vtable slot 8 at runtime: replaced function pointer `0x150c41` with `hook_slot8`
+- Hook fires on every `vtable[8]` call, dumps `this`/`this[1]`/args before and after
+- No prologue patching needed — vtable in `.data.rel.ro` can be mprotected writable
+
+### Key findings
+
+1. **vtable slot 8 fires TWICE per voucher**
+   - Call #1: HMAC key derivation (produces the 10330-byte key blob)
+   - Call #2: HMAC integrity check (same key blob, different data)
+
+2. **`this` object contains identifiable strings**
+   - `this[4:9]` = `"client_restrictions"` (ASCII, little-endian)
+   - Same string duplicated at `this[10:15]`
+
+3. **`this[1]` is a rich configuration object**
+   - `this[1]+0x44` = `"HmacSHA256"` (the HMAC algorithm)
+   - `this[1]+0x54` = `"Purchase"`
+   - `this[1]+0x80` = `"ARM.exidx"`
+   - `this[1]+0xC0` = `0x76` (the version gate)
+   - `this[1]+0x44` = `"HmacSHA256"` — confirmed SHA256 is the HMAC algorithm
+   - Multiple ELF-like section names (`.gnu.build`, `.dynstr`, `data.re`) — appears to be a serialized map/properties object
+
+4. **arg2 is the output vector**
+   - Before call: `[NULL, NULL, NULL]`
+   - After call: `[begin, end, capacity]` → std::vector layout
+   - Contains the HMAC key blob (10330 bytes for "Three Below")
+
+5. **Full vtable dump matches static analysis**
+   - vtable[5] = 0x...8201 (slot 5 = attachVoucher → 0x151200 + base + 1)
+   - vtable[8] = our hook pointer
+   - vtable[9..13] match the static vtable at 0x32f850
+
+---
+
+## Phase B Results: CLIENT_ID Differential (2026-04-28)
+
+### Method
+
+- Baseline: `GR733X1151821324` (correct device serial)
+- Wrong CID: `XXXXXXXXXXXXXXXX` (16 X's)
+- Same voucher file, same ACSR
+
+### Critical differences
+
+| Field | Baseline | Wrong CID |
+|-------|----------|------------|
+| HMAC key len | **10330** | **9690** |
+| HMAC data len | 856 | 860 |
+| HMAC result | `eb035e31...` | `1db9f17b...` |
+| `this[3]` | 0x1d (29) | **0xc0d (3085)** |
+| `this[4:9]` | `"client_restrictions"` | **0x400, 0x80, 0x6, 0x5, 0x300** |
+| `this[1]` strings | `"HmacSHA256"`, `"Purchase"` | **numeric codes** |
+| HMAC key prefix | `058b1d8b...` | **`1d7b7b6b...`** |
+| Exit code | 0 | 1 (error) |
+
+### Interpretation
+
+1. **`this` object layout is COMPLETELY different between runs**
+   - The voucher parsing produces a different internal structure when CLIENT_ID is wrong
+   - This suggests CLIENT_ID is consumed BEFORE `vtable[8]` is called — during voucher parsing, not inside the obfuscated crypto
+   - The object fields change because the parsed voucher data differs (wrong decryption of the voucher metadata)
+
+2. **The HMAC key blob is entirely different** (different prefix, different length)
+   - Wrong CID produces 9690-byte key vs 10330-byte correct key
+   - This is consistent with earlier perturbation matrix findings
+
+3. **The version gate `0x76` is present in BOTH cases** — both take the obfuscated path
+
+4. **CLIENT_ID influences the voucher parsing, not just the crypto engine**
+   - The different `this[3]` values (29 vs 3085) suggest different parsed structures
+   - The wrong CID case may be producing garbage from the voucher parsing stage
+
+### Key insight: CLIENT_ID enters BEFORE vtable[8]
+
+The `this` object is already different when `vtable[8]` is called. This means CLIENT_ID is consumed in the caller (`attachVoucher` at 0x151200) or in voucher parsing (before vtable[8] is dispatched). The obfuscated crypto at `0x17c4fc` receives already-different inputs.
+
+---
+
+## Phase D Results: Helper Call Enumeration from 0x17c4fc (2026-04-28)
+
+### Summary
+
+The 244 KB obfuscated function at `0x17c4fc` makes:
+- **164 indirect calls via `BLX R3`** — the dominant call pattern (virtual dispatch / function pointers)
+- **11 indirect calls via `BLX R2`**
+- **~200+ direct `BL` calls** to unique targets
+- **4 `BLX R4`**, **3 `BLX LR`**
+- Total: ~400+ function calls
+
+### Call classification
+
+The BLX_R (indirect register calls) dominate:
+- `BLX R3`: 164 calls — this is the primary dispatch mechanism for the obfuscated state machine
+- `BLX R2`: 11 calls — secondary dispatch
+
+Most unique `BL` targets are called only once each. Many addresses are outside the function range (> 0x1b8086), meaning they call into other library functions.
+
+### Notable local calls (within the function)
+
+Several `BL` targets are within the function body itself (subroutines):
+- `0x17c2e2`, `0x17c662`, `0x17ca40`, `0x17ca8e`, `0x17ca2e` — internal helpers near the function start
+- `0x17be2a`, `0x17e33e`, `0x17fadc` — internal helpers
+- `0x1a9852`, `0x1ae380`, `0x1ae690`, `0x1ae89e`, `0x1ae9e8`, `0x1aeb2c` — larger internal helpers
+- `0x1b016e`, `0x1b060c`, `0x1b11a4`, `0x1b2c98` — helpers near the end
+
+### Notable external calls
+
+- `0x160c1c`, `0x160ab6`, `0x164a42`, `0x1646ba`, `0x165574`, `0x1653b0` — functions in nearby library code
+- `0x1b27d4` — the shared EVP decrypt helper (not in the BL list but called via BLX)
+- `0x1847e` — very low address, possibly PLT entry or utility
+- `0x5xxxx` addresses — standard library functions (malloc, free, memcpy, etc.)
+
+### Conclusion from Phase D
+
+The function is heavily decomposed into many small sub-calls. The 164 BLX R3 calls suggest a function-pointer dispatch table (part of the control-flow flattening). The ~200 unique BL targets are a mix of:
+- Internal subroutines (math operations)
+- Container management (vector grow, string operations)
+- Library calls (crypto, memory)
+- Obfuscation noise (dead code, traps)
+
+A complete static classification would require resolving each BLX R3 target dynamically.
