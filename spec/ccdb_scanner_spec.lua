@@ -88,35 +88,30 @@ describe("CcDbScanner", function()
             assert.is_nil(book.block_reason)
         end)
 
-        it("should parse script entries correctly", function()
+        it("should block books without a local file (cloud-only)", function()
             SQ3._setMockResults({
-                p_uuid = { "script-001" },
-                p_location = { "/mnt/us/documents/KUAL.sh" },
-                p_titles_0_nominal = { "KUAL" },
-                j_credits = { '[{"name":{"display":"PEKI"},"kind":"Author"}]' },
-                p_mimeType = { "text/x-shellscript" },
-                p_cdeKey = { "*9de7fbcfe640b1c36a81b15697877c04e175cbb2" },
-                p_cdeType = { "PDOC" },
+                p_uuid = { "cloud-1" },
+                p_location = { "" },
+                p_titles_0_nominal = { "Cloud Book" },
+                j_credits = { "" },
+                p_mimeType = { "application/x-mobipocket-ebook" },
+                p_cdeKey = { "B00CLOUD" },
+                p_cdeType = { "EBOK" },
                 p_isDRMProtected = { nil },
                 p_isArchived = { "0" },
                 p_percentFinished = { nil },
-                p_thumbnail = { "/mnt/us/documents/KUAL.sh.sdr/icon.png" },
-                p_diskUsage = { "2048" },
-                p_contentSize = { "1024" },
+                p_thumbnail = { "" },
+                p_diskUsage = { "0" },
+                p_contentSize = { "0" },
                 p_modificationTime = { "1700000000" },
             }, 1)
 
             local scanner = CcDbScanner:new()
             local books = scanner:scan()
 
-            assert.is_not_nil(books)
             assert.equals(1, #books)
-
-            local book = books[1]
-            assert.equals("script", book.open_mode)
-            assert.equals("sh", book.format)
-            assert.is_nil(book.block_reason)
-            assert.equals("/mnt/us/documents/KUAL.sh.sdr/icon.png", book.thumbnail_path)
+            assert.equals("blocked", books[1].open_mode)
+            assert.equals("missing_source", books[1].block_reason)
         end)
 
         it("should block DRM-protected mobipocket books", function()
@@ -183,18 +178,18 @@ describe("CcDbScanner", function()
         it("should handle multiple entries", function()
             SQ3._setMockResults({
                 p_uuid = { "id1", "id2", "id3" },
-                p_location = { "/path/book.kfx", "/path/script.sh", "/path/book.azw" },
-                p_titles_0_nominal = { "Book One", "My Script", "Book Two" },
+                p_location = { "/path/book1.kfx", "/path/book2.kfx", "/path/book.azw" },
+                p_titles_0_nominal = { "Book One", "Book Three", "Book Two" },
                 j_credits = { "", "", "" },
-                p_mimeType = { "application/x-kfx-ebook", "text/x-shellscript", "application/x-mobipocket-ebook" },
-                p_cdeKey = { "B001", "KEY2", "B003" },
-                p_cdeType = { "EBOK", "PDOC", "PDOC" },
-                p_isDRMProtected = { "1", nil, nil },
+                p_mimeType = { "application/x-kfx-ebook", "application/x-kfx-ebook", "application/x-mobipocket-ebook" },
+                p_cdeKey = { "B001", "B002", "B003" },
+                p_cdeType = { "EBOK", "EBOK", "PDOC" },
+                p_isDRMProtected = { "1", "1", nil },
                 p_isArchived = { "0", "0", "0" },
-                p_percentFinished = { "10", nil, "0" },
-                p_thumbnail = { "", "/path/script.sh.sdr/icon.png", "" },
-                p_diskUsage = { "1000000", "2048", "500000" },
-                p_contentSize = { "900000", "1024", "400000" },
+                p_percentFinished = { "10", "0", "0" },
+                p_thumbnail = { "", "", "" },
+                p_diskUsage = { "1000000", "800000", "500000" },
+                p_contentSize = { "900000", "700000", "400000" },
                 p_modificationTime = { "1700000000", "1700000001", "1700000002" },
             }, 3)
 
@@ -203,7 +198,7 @@ describe("CcDbScanner", function()
 
             assert.equals(3, #books)
             assert.equals("convert", books[1].open_mode)
-            assert.equals("script", books[2].open_mode)
+            assert.equals("convert", books[2].open_mode)
             assert.equals("direct", books[3].open_mode)
         end)
     end)
