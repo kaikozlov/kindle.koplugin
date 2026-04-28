@@ -3576,6 +3576,28 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 
 					}
 				}
+				// Check: if BOTH the template container and the child node would
+				// get position anchor ids, Python's COMBINE_NESTED_DIVS won't merge
+				// the inner <div> into the template container (because both elements
+				// would have id attributes). In that case we must not promote inline
+				// — the template container must survive as a separate element so that
+				// simplify_styles can convert the inner <div> to <p> and split
+				// heritable/non-heritable properties between body and <p>.
+				if ok {
+					templateHasAnchor := len(r.positionAnchorID[sectionPositionID]) > 0
+					if templateHasAnchor {
+						// Also check if the child node has a position anchor
+						for _, rawNode := range promotedNodes {
+							if node, nodeOK := asMap(rawNode); nodeOK {
+								if nodePosID, posOK := asInt(node["id"]); posOK && nodePosID > 0 {
+									if len(r.positionAnchorID[nodePosID]) > 0 {
+										ok = false
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 			if ok {
 				bodyStyleID = promotedStyleID
