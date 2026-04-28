@@ -77,3 +77,20 @@ _Session starting fresh. Previous work (before autoresearch) resolved:_
 - COMBINE_NESTED_DIVS implementation
 - Table cell `<div>` wrapper unwrapping
 - `<a>` attribute ordering fix
+
+_Autoresearch session progress:_
+- ✅ Fix `</body>` placement for single self-closing elements (4 diffs fixed)
+- ✅ Fix JXR image conversion: MIME type was image/jpeg instead of image/jxr (11 structural + 22 missing fixed)
+- ✅ Refine `</body>` placement: only for self-closing elements ending `/>` and SVG (fixed 1984 regression)
+
+### Remaining 53 structural diffs breakdown:
+- **52 are class-split diffs** (body/img get same class instead of -0/-1 split): HungerGames(17), Familiars(13), HeatedRivalry(7), Elvis(5), ThroneOfGlass(5), SecretsCrown(3), SunriseReaping(0), ThreeBelow(0)
+- **1 CSS property diff**: SunriseReaping `figure_sH` has `text-align: center` vs `width: 100%`
+
+### Root cause of class-split issue:
+In Python, image-only pages produce TWO different styles: body gets `text-align:center` and img gets `width:100%`. These share the same baseName and get split into `-0`/`-1` by the style catalog. In Go, the body style is either missing or merged with the img style, producing just one class with only the img properties. Fix requires ensuring body and img have separate style entries in the catalog.
+
+### Ideas backlog:
+- CSS property diff: figure_sH gets width:100% in Go but text-align:center in Calibre. Likely a figure margin/layout hint issue in simplify_styles
+- SecretsCrown still has 4 structural diffs (class index swap, extra div wrapper, CSS property diffs)
+- Elvis has class index offset issues (different class numbers for same elements)
