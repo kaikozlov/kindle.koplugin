@@ -81,3 +81,35 @@ style BEFORE the style catalog runs. This could be done by:
 3. OR: adding `box_align` to the heritable keys list and letting simplify_styles handle it
 
 This is a significant architectural change that affects the rendering pipeline.
+
+## ThroneOfGlass Missing Figure Wrapper (5 diffs)
+**Root Cause**: For figure-hinted images (layout hints contain "figure"), Go's promotedBodyContainer promotes the container style directly to <body>, losing the inner <figure> wrapper. Python keeps the <figure> as a child element of <body>.
+
+**Evidence**:
+- Go: `<body class="figure_s4N"><img .../></body>` — no figure wrapper
+- Calibre: `<body class="class-2"><figure class="figure_s4N"><img .../></figure></body>` — has wrapper
+
+**Fix Approach**:
+1. Check if the promoted body's layout hints contain "figure"
+2. If yes, don't promote — render with normal container wrapper
+3. The <div> wrapper will be converted to <figure> by simplify_styles
+4. This requires modifying promotedBodyContainer or the inline rendering path
+
+**Related CSS Issues**:
+- figure_s4N: Go has {font-size, text-align}, Calibre has {margin-bottom:0, margin-top:0}
+- class_sU: Go has {font-style, margin-top, text-align}, Calibre has {margin-bottom:0, margin-top:3em}
+- These are simplify_styles figure conversion issues
+
+## SecretsCrown Remaining Issues (4 diffs)
+1. xQ10: Extra `<div>` wrapper around img in body. Same promoted body figure issue as ThroneOfGlass.
+2. xQ213/xQ875: class_220-0/220-1 ordering swap. This is a drop-cap style assignment order issue.
+3. CSS: class_93-0 has extra properties (font-size, height) that Calibre strips.
+
+## HeatedRivalry Whitespace (7 diffs)
+Promoted heading body text starts on next line in Go but same line in Calibre.
+This is a cosmetic whitespace issue in sectionXHTML. The text "Part One" should be
+immediately after `<body>`, not on a new line. Complex to fix because some promoted
+bodies need the newline (Martyr c56) and others don't (HeatedRivalry c83).
+
+## HungerGames Whitespace (1 diff)
+Same as HeatedRivalry: two self-closing `<img/>` elements on separate lines vs same line.
