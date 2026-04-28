@@ -7112,10 +7112,11 @@ func bodyDefaultsInclude(bodyDefaults map[string]bool, declaration string) bool 
 func (r *storylineRenderer) applyAnnotations(text string, node map[string]interface{}) []htmlPart {
 	annotations, ok := asSlice(node["style_events"])
 	type event struct {
-		start int
-		end   int
-		open  func(parent *htmlElement) *htmlElement
-		close func(opened *htmlElement)
+		start   int
+		end     int
+		open    func(parent *htmlElement) *htmlElement
+		close   func(opened *htmlElement)
+		dropcap bool // true for dropcap events that may need splitting
 	}
 	type activeEvent struct {
 		event  event
@@ -7313,8 +7314,9 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 					dropcapSpanStyle = mergeStyleStrings(dropcapDeclStyle, annotationStyle)
 				}
 				events = append(events, event{
-					start: start,
-					end:   end,
+					start:   start,
+					end:     end,
+					dropcap: true,
 					open: func(parent *htmlElement) *htmlElement {
 						element := &htmlElement{Tag: "span", Attrs: map[string]string{"style": dropcapSpanStyle}}
 						parent.Children = append(parent.Children, element)
@@ -7339,8 +7341,58 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 	if len(events) == 0 {
 		return splitTextHTMLParts(text)
 	}
+
+	// Split dropcap events at sub-event boundaries to match Python's split_span behavior.
+	// Python's find_or_create_style_event_element calls split_span when a later event
+	// overlaps a dropcap span, copying the float style to BOTH halves. This creates
+	// separate float-styled spans for each sub-segment, which increases the float
+	// style count in the catalog and determines class ordering.
+	var splitEvents []event
+	for i := range events {
+		if events[i].dropcap {
+			boundaries := map[int]bool{events[i].start: true, events[i].end: true}
+			for j := range events {
+				if j == i {
+					continue
+				}
+				if events[j].start > events[i].start && events[j].start < events[i].end {
+					boundaries[events[j].start] = true
+				}
+			}
+			pts := make([]int, 0, len(boundaries))
+			for p := range boundaries {
+				pts = append(pts, p)
+			}
+			sort.Ints(pts)
+			if len(pts) <= 2 {
+				splitEvents = append(splitEvents, events[i])
+			} else {
+				for k := 0; k < len(pts)-1; k++ {
+					openFn := events[i].open
+					splitEvents = append(splitEvents, event{
+						start:   pts[k],
+						end:     pts[k+1],
+						open:    openFn,
+						close:   events[i].close,
+						dropcap: true,
+					})
+				}
+			}
+		} else {
+			splitEvents = append(splitEvents, events[i])
+		}
+	}
+	events = splitEvents
+
 	sort.SliceStable(events, func(i, j int) bool {
 		if events[i].start == events[j].start {
+			if events[i].end == events[j].end {
+				// When two events share the same range, non-dropcap (annotation) events
+				// must open FIRST (outer wrapper) and dropcap events SECOND (inner).
+				// Python's replace_element_with_container wraps the dropcap span inside
+				// the annotation span, so annotation is always outer.
+				return !events[i].dropcap && events[j].dropcap
+			}
 			return events[i].end > events[j].end
 		}
 		return events[i].start < events[j].start
