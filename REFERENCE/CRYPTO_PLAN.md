@@ -1680,3 +1680,72 @@ The function is heavily decomposed into many small sub-calls. The 164 BLX R3 cal
 - Obfuscation noise (dead code, traps)
 
 A complete static classification would require resolving each BLX R3 target dynamically.
+
+---
+
+## Phase C Results: Differential Binary Analysis (2026-04-28)
+
+### Instrumentation
+
+Deployed `phase_c_hook.so` with enhanced binary dumps:
+- Full `this` (256 bytes) and `this[1]` (1024 bytes) to binary files
+- Stage-1 decrypt plaintext capture via `EVP_DecryptUpdate`
+- HMAC data (numeric string) capture
+- HMAC key blob capture
+
+### Key finding: stage-1 decrypt is IDENTICAL
+
+The stage-1 AES-256-CBC decrypt (hardcoded key + ACSR IV) produces **exactly the same output** regardless of CLIENT_ID:
+```
+plaintext = "54e869c4b43348062477a52df5467be8c4e08420" (hex string)
+```
+
+This confirms: **CLIENT_ID does NOT influence stage-1**.
+
+### HMAC data (numeric string) diverges at byte 5
+
+```
+baseline:   44888|614562856883288884488237601316715176972376...
+wrong_cid:  44888|8322376016192868888448814561316715176093632...
+                  ^ divergence at byte 5
+```
+
+The common prefix is only 5 characters (`44888`). This means the custom crypto's first significant computation already differs between baseline and wrong CID.
+
+### HMAC key blob diverges at byte 0
+
+```
+baseline:   05 8b 1d 8b 7a 8b 7a 8b 7a 9b 6a 9b ...
+wrong_cid:  1d 7b 7b 6b 6b 6b 6b 6b 6b 6b 6b 6b ...
+              ^^^ completely different from byte 0
+```
+
+The HMAC key blobs share no common prefix at all.
+
+### Numeric string analysis
+
+The HMAC data strings contain repeated numeric tokens:
+- `44888` appears as a common prefix
+- `15176` appears frequently (voucher version ID?)
+- `1456` appears frequently
+- `16192` appears only in wrong CID
+
+These look like parsed ION integer values or computed numeric identifiers.
+
+### Summary of divergence chain
+
+```
+Stage-1 AES (hardcoded key)  → IDENTICAL (not CLIENT_ID-dependent)
+                                  ↓
+Custom crypto (0x17c4fc)      → DIVERGES at byte 5 of output numeric string
+                                  ↓
+HMAC key blob                 → COMPLETELY DIFFERENT from byte 0
+                                  ↓
+HMAC result                   → DIFFERENT
+                                  ↓
+Stage-2 AES                   → Uses wrong key → DECRYPTION FAILS
+```
+
+### Conclusion: CLIENT_ID enters the custom crypto at the very start
+
+The divergence at byte 5 of the numeric string (which is produced by `0x17c4fc`) means CLIENT_ID is consumed within the first few operations of the obfuscated state machine. This is consistent with the `this` object being different — the object fields carry CLIENT_ID-derived data into the function.
