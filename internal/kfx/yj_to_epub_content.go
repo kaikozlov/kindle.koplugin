@@ -3563,7 +3563,7 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 			if inline && ok {
 				for _, rawNode := range promotedNodes {
 					if node, nodeOK := asMap(rawNode); nodeOK {
-						// Figure image: skip promotion if container has font-size
+									// Figure image: skip promotion if container has font-size
 						// (Python's COMBINE_NESTED_DIVS won't merge when styles overlap).
 						if _, hasResource := asString(node["resource_name"]); hasResource {
 							if layoutHintsInclude(r.nodeLayoutHints(node), "figure") {
