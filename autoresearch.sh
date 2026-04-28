@@ -90,15 +90,17 @@ for root, side in [(ref_oebps, "ref"), (go_oebps, "go")]:
     for path in sorted(root.iterdir()):
         if path.name in seen:
             continue
+        if path.is_dir():
+            continue
         seen.add(path.name)
         ref_path = ref_oebps / path.name
         go_path = go_oebps / path.name
 
-        if not ref_path.exists():
+        if not ref_path.exists() or ref_path.is_dir():
             missing += 1
             details.append(f"  {path.name}: extra in go")
             continue
-        if not go_path.exists():
+        if not go_path.exists() or go_path.is_dir():
             missing += 1
             details.append(f"  {path.name}: missing in go")
             continue
