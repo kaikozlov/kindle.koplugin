@@ -305,3 +305,33 @@ Result: 8→4 structural diffs. ToG now perfect (0 diffs).
   but Go doesn't. Likely a simplify_styles reverse-inheritance gap.
 - Investigate SC drop cap rendering: the class_220 swap may be fixable by ensuring
   Go encounters the float style before the margin style during catalog assignment.
+
+### SC class_220 ordering — ROOT CAUSE FOUND
+
+Go renders the drop cap differently from Python:
+- Go: `<span class="class_220-1">"<span class="class_2444">A</span></span>` — ONE float span
+- Cal: `<span class="class_220-0">"</span><span class="class_2444"><span class="class_220-0">A</span></span>` — TWO float spans
+
+This means:
+- Go float style count = 2 (one per drop cap section × 2 sections)
+- Calibre float style count = 4 (two per section × 2 sections)
+- Margin style count = 2 in both
+
+Python's catalog sorts by frequency (most common first), so Calibre's higher
+float count → float gets class_220-0. Go's equal counts → encounter order wins → margin gets class_220-0.
+
+**Fix**: The drop cap rendering needs to create SEPARATE spans for the quote mark
+and the first letter, each with the float style. This is a content rendering change
+in how Go processes annotation style events or text-combine elements.
+
+### Session summary (2026-04-28)
+
+**Progress**: 75 → 8 → 4 structural diffs (94.7% parity, 8/10 books perfect)
+
+**Key fix**: promotedBodyContainer position anchor check (8→4 diffs, ToG now perfect)
+
+**Remaining 4 diffs — all require architectural changes**:
+1. SC xQ213: class_220-0/1 swap (drop cap rendering — 1 span vs 2 spans)
+2. SC xQ875: same as above
+3. SC stylesheet: class_220 swap + class_93-0 extra font-size (simplify_styles gap)
+4. 1984 c9: bare div stripBareDivs vs consolidate_html logic inversion
