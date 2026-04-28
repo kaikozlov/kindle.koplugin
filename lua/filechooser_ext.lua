@@ -258,6 +258,19 @@ function FileChooserExt:apply(FileChooser)
             return true
         end
 
+        -- Handle script execution (sh_integration scripts)
+        if item.path and item.path:match("^KINDLE_VIRTUAL://") and item.kindle_open_mode == "script" then
+            local book = self.virtual_library:getBook(item.path)
+            if book and book.source_path then
+                logger.info("KindlePlugin: executing script:", book.source_path)
+                showInfo("Running: " .. (book.display_name or book.source_path))
+                os.execute("sh '" .. book.source_path .. "'")
+            else
+                showInfo("Script not found.")
+            end
+            return true
+        end
+
         if item.path and item.path:match("^KINDLE_VIRTUAL://") then
             openItem(fc_self, item)
             return true

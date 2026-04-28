@@ -614,3 +614,64 @@ if not package.preload["ui/renderimage"] then
         }
     end
 end
+
+-- Mock lua-ljsqlite3/init (required by ccdb_scanner)
+if not package.preload["lua-ljsqlite3/init"] then
+    package.preload["lua-ljsqlite3/init"] = function()
+        local SQ3 = {}
+
+        -- In-memory mock database state
+        local mock_rows = nil
+        local mock_nrow = 0
+        local mock_db_path = nil
+
+        local conn_mt = {}
+        conn_mt.__index = conn_mt
+
+        function conn_mt:exec(sql)
+            if mock_rows then
+                return mock_rows, mock_nrow
+            end
+            return nil, 0
+        end
+
+        function conn_mt:rowexec(sql)
+            if mock_rows then
+                local cols = {}
+                for k, v in pairs(mock_rows) do
+                    if type(k) == "string" then
+                        table.insert(cols, v[1])
+                    end
+                end
+                return unpack(cols)
+            end
+            return nil
+        end
+
+        function conn_mt:close() end
+
+        function SQ3.open(path, mode)
+            mock_db_path = path
+            local conn = setmetatable({}, conn_mt)
+            return conn
+        end
+
+        --- Test helper: set mock query results (columnar table)
+        function SQ3._setMockResults(rows, nrow)
+            mock_rows = rows
+            mock_nrow = nrow or 0
+        end
+
+        function SQ3._getMockDbPath()
+            return mock_db_path
+        end
+
+        function SQ3._reset()
+            mock_rows = nil
+            mock_nrow = 0
+            mock_db_path = nil
+        end
+
+        return SQ3
+    end
+end
