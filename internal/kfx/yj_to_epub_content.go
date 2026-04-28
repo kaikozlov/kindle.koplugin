@@ -3479,7 +3479,7 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	promotedBodyInline := false // true when promoted body is a heading leaf node (render inline)
 	inferredBody := false
 	if bodyStyleID == "" {
-		if promotedStyleID, promotedNodes, ok, inline := promotedBodyContainer(nodes); ok {
+		if promotedStyleID, promotedNodes, ok, inline := promotedBodyContainer(nodes, r.styleFragments); ok {
 			bodyStyleID = promotedStyleID
 			bodyStyleValues = nil
 			contentNodes = promotedNodes
@@ -3585,6 +3585,13 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 
 			// For image nodes: render inline image
 			if imageNode := r.renderImageNode(node); imageNode != nil {
+				// For promoted bodies, the image wrapper style goes on <body>.
+				// Unwrap any <div> wrapper from renderImageNode so <img> is directly in body.
+				if elem, ok := imageNode.(*htmlElement); ok && elem.Tag == "div" {
+					if len(elem.Children) == 1 {
+						imageNode = elem.Children[0]
+					}
+				}
 				imageNode = r.wrapNodeLink(node, imageNode)
 				bodyParts = append(bodyParts, imageNode)
 				continue
@@ -6623,7 +6630,39 @@ func hasRenderableContainer(node map[string]interface{}) bool {
 	return hasStyle && !hasImage && !hasText && (!hasChildren || len(children) == 0)
 }
 
-func promotedBodyContainer(nodes []interface{}) (string, []interface{}, bool, bool) {
+// hasLayoutHint checks if a node's style has a specific layout hint.
+// Uses the styleFragments catalog to resolve the node's style.
+func hasLayoutHint(node map[string]interface{}, styleFragments map[string]map[string]interface{}, want string) bool {
+	styleID, _ := asString(node["style"])
+	if styleID == "" {
+		return false
+	}
+	frag, ok := styleFragments[styleID]
+	if !ok {
+		return false
+	}
+	switch typed := frag["layout_hints"].(type) {
+	case string:
+		if hint := layoutHintElementNames[typed]; hint != "" {
+			return hint == want
+		}
+		for _, h := range strings.Fields(typed) {
+			if h == want {
+				return true
+			}
+		}
+	case []interface{}:
+		for _, raw := range typed {
+			v, _ := asString(raw)
+			if v == want || layoutHintElementNames[v] == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[string]interface{}) (string, []interface{}, bool, bool) {
 	if len(nodes) != 1 {
 		return "", nil, false, false
 	}
@@ -6651,6 +6690,27 @@ func promotedBodyContainer(nodes []interface{}) (string, []interface{}, bool, bo
 		if _, hasContent := asMap(node["content"]); hasContent {
 			if _, hasResource := asString(node["resource_name"]); !hasResource {
 				return styleID, nodes, true, true // leaf text: render inline
+			}
+		}
+	}
+
+	// Case 3: Resource node with style (image-only bodies).
+	// Python's process_content creates a <div> for resource nodes ($274 type),
+	// calls process_plugin which adds <img> inside the <div>.
+	// Then is_top_level renames <div> to <body>.
+	// Result in Python: <body class="centerImage"><img .../></body>
+	// BUT: figure-type nodes should NOT be promoted. Python keeps <figure> as a
+	// child of <body> with the figure's style. The body gets an inferred style.
+	if styleID != "" {
+		if _, hasResource := asString(node["resource_name"]); hasResource {
+			if _, hasContentList := asSlice(node["content_list"]); !hasContentList {
+				if _, hasContent := asMap(node["content"]); !hasContent {
+					// Skip nodes with figure layout hints — they should stay as body children
+					if hasLayoutHint(node, styleFragments, "figure") {
+						return "", nil, false, false
+					}
+					return styleID, nodes, true, true // resource: render inline (image directly in body)
+				}
 			}
 		}
 	}
