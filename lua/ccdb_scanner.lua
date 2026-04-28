@@ -29,7 +29,6 @@ SELECT
     p_uuid,
     p_location,
     p_titles_0_nominal,
-    p_credits_0_name_collation,
     j_titles,
     j_credits,
     p_mimeType,
@@ -47,7 +46,7 @@ WHERE p_type = 'Entry:Item'
     AND p_mimeType IN ('application/x-kfx-ebook', 'application/x-mobipocket-ebook', 'text/x-shellscript')
     AND p_isVisibleInHome = 1
     AND COALESCE(p_isArchived, 0) = 0
-ORDER BY p_titles_0_collation
+ORDER BY p_titles_0_nominal
 ]]
 
 function CcDbScanner:new()
@@ -160,7 +159,6 @@ function CcDbScanner:scan()
         local uuid = results.p_uuid[i]
         local location = results.p_location[i]
         local title = results.p_titles_0_nominal[i] or "Untitled"
-        local author_collation = results.p_credits_0_name_collation[i] or ""
         local mime_type = results.p_mimeType[i] or ""
         local cde_key = results.p_cdeKey[i] or ""
         local cde_type = results.p_cdeType[i] or ""
