@@ -113,3 +113,31 @@ bodies need the newline (Martyr c56) and others don't (HeatedRivalry c83).
 
 ## HungerGames Whitespace (1 diff)
 Same as HeatedRivalry: two self-closing `<img/>` elements on separate lines vs same line.
+
+## Figure Wrapper Investigation (ThroneOfGlass c4D)
+
+### The Problem
+ThroneOfGlass c4D: Go puts figure style on `<body>`, Calibre keeps `<figure>` as child.
+But for SunriseReaping, Go's current behavior (promote to body) IS correct.
+
+### Root Cause
+The difference is in whether the image needs a wrapper for property separation:
+- **SunriseReaping**: wrapper has only text-align:center → already on body → wrapper redundant
+- **ThroneOfGlass**: wrapper has margins → NOT on body → wrapper needed
+
+### Attempted Fix
+Tried keeping <figure> wrappers in promoted body inline path, but this incorrectly
+adds wrappers for SunriseReaping too (where they shouldn't exist).
+
+### Correct Approach (not yet implemented)
+The fix needs to detect whether the image's wrapper properties are ALREADY covered
+by the body's promoted style. If so, the wrapper is redundant → unwrap.
+If not, the wrapper is needed → keep it and clear the body's promoted style.
+
+This requires comparing the wrapper's CSS properties against the body's CSS properties
+at rendering time, which is architecturally complex.
+
+### Alternative
+Check if the imageClasses wrapper would have properties that are NOT on the body.
+This could be done by comparing imageClasses wrapperProps against the body's declarations.
+If any wrapper properties are missing from the body, keep the wrapper.
