@@ -262,6 +262,55 @@ func finalizeStylesheet(stylesheet string) string {
 		}
 		return naturalSortKey(selectorI) < naturalSortKey(selectorJ)
 	})
+	// Post-process: add margin-left: auto; margin-right: auto to figure_ rules
+	// that have text-align but don't have margin-left/margin-right.
+	// This matches Python's create_container behavior for box-align (yj_to_epub_content.py:1335-1336).
+	for i, rule := range rules {
+		if !strings.Contains(rule, ".figure_") {
+			continue
+		}
+		if !strings.Contains(rule, "text-align") {
+			continue
+		}
+		if !strings.Contains(rule, "width:") {
+			continue
+		}
+		if strings.Contains(rule, "margin-left") || strings.Contains(rule, "margin-right") {
+			continue
+		}
+		// Parse the rule, add margin auto, re-sort properties alphabetically
+		openBrace := strings.Index(rule, "{")
+		closingBrace := strings.LastIndex(rule, "}")
+		if openBrace < 0 || closingBrace < 0 || closingBrace <= openBrace {
+			continue
+		}
+		selector := rule[:openBrace+1]
+		body := rule[openBrace+1 : closingBrace]
+		// Parse existing declarations
+		decls := strings.Split(body, ";")
+		decls = append(decls, "margin-left: auto", "margin-right: auto")
+		// Clean and sort
+		sorted := make([]string, 0, len(decls))
+		for _, d := range decls {
+			d = strings.TrimSpace(d)
+			if d == "" {
+				continue
+			}
+			sorted = append(sorted, d)
+		}
+		sort.SliceStable(sorted, func(i, j int) bool {
+			pi := sorted[i]
+			pj := sorted[j]
+			if idx := strings.IndexByte(pi, ':'); idx >= 0 {
+				pi = pi[:idx]
+			}
+			if idx := strings.IndexByte(pj, ':'); idx >= 0 {
+				pj = pj[:idx]
+			}
+			return pi < pj
+		})
+		rules[i] = selector + strings.Join(sorted, "; ") + "}"
+	}
 	out := make([]string, 0, 1+len(fontFaces)+len(rules))
 	out = append(out, `@charset "UTF-8";`)
 	out = append(out, fontFaces...)
