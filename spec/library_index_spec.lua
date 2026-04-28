@@ -5,16 +5,24 @@ local helper = require("spec/test_helper")
 
 describe("LibraryIndex", function()
     local LibraryIndex
+    local lfs
 
     setup(function()
         helper.setup_complete()
         LibraryIndex = require("lua/library_index")
+        lfs = require("libs/libkoreader-lfs")
     end)
 
     before_each(function()
         package.loaded["lua/library_index"] = nil
         LibraryIndex = require("lua/library_index")
         helper.before_each()
+        -- Ensure cc.db is "not available" by default so tests use Python fallback.
+        lfs._setFileState("/var/local/cc.db", { exists = false })
+    end)
+
+    after_each(function()
+        lfs._clearFileStates()
     end)
 
     describe("initialization", function()
@@ -46,7 +54,7 @@ describe("LibraryIndex", function()
     end)
 
     describe("refresh", function()
-        it("should call helper_client:scan with documents root", function()
+        it("should call helper_client:scan as fallback when cc.db unavailable", function()
             local scanned_root = nil
             local mock_client = {
                 scan = function(self, root)

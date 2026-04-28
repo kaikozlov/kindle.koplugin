@@ -395,6 +395,59 @@ local function installModuleStubs()
 end
 
 -- =============================================================================
+-- Optional ljsqlite3 mock
+-- =============================================================================
+
+--- Install an in-memory ljsqlite3 mock for specs that exercise cc.db queries.
+--- Other specs keep the default unavailable-module stub so state sync uses its
+--- existing CLI fallback.
+function M.install_sqlite_mock()
+    local mock_rows = nil
+    local mock_nrow = 0
+    local mock_db_path = nil
+
+    local conn_mt = {}
+    conn_mt.__index = conn_mt
+
+    function conn_mt:exec()
+        if mock_rows then
+            return mock_rows, mock_nrow
+        end
+        return nil, 0
+    end
+
+    function conn_mt:close() end
+
+    local SQ3 = {}
+
+    function SQ3.open(path)
+        mock_db_path = path
+        return setmetatable({}, conn_mt)
+    end
+
+    function SQ3._setMockResults(rows, nrow)
+        mock_rows = rows
+        mock_nrow = nrow or 0
+    end
+
+    function SQ3._getMockDbPath()
+        return mock_db_path
+    end
+
+    function SQ3._reset()
+        mock_rows = nil
+        mock_nrow = 0
+        mock_db_path = nil
+    end
+
+    package.loaded["lua-ljsqlite3/init"] = SQ3
+    package.preload["lua-ljsqlite3/init"] = function()
+        return SQ3
+    end
+    return SQ3
+end
+
+-- =============================================================================
 -- Setup and teardown
 -- =============================================================================
 
