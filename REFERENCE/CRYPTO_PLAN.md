@@ -1369,30 +1369,21 @@ These are telemetry/metrics keys, confirming the SDK internally tracks exactly w
 
 ## Final RE Assessment
 
-### The custom crypto is NOT practical to reverse-engineer statically
+### Static-only RE is impractical; dynamic on-device RE is still very viable
 
-The function at `0x17c4fc` is a **244 KB control-flow-flattened state machine** with 136+ cases, anti-debugging traps, and opaque predicates. This is professional-grade obfuscation (likely from the Amazon Lab126 DRM team or a commercial DRM SDK vendor).
+The function at `0x17c4fc` is a **244 KB control-flow-flattened state machine** with 136+ cases, anti-debugging traps, and opaque predicates. That makes a pure static recovery path unattractive.
 
-To extract the algorithm would require:
-1. Symbolic execution to un-flatten the control flow (e.g., angr, Triton)
-2. Mapping 136+ state transitions to recover the original algorithm
-3. Handling anti-debug and bogus control flow
-4. Weeks of specialized RE effort
+However, we are **not limited to static RE**:
+- we can run the real SDK on-device,
+- we already control `LD_PRELOAD`,
+- we can perturb inputs (`CLIENT_ID`, voucher, ACSR context),
+- and we can observe concrete intermediate buffers at the crypto boundary.
 
-Even with the algorithm extracted, it would be:
-- A proprietary bignum math engine
-- Subject to change with every firmware update
-- Legally risky to reimplement
+So the right conclusion is **not** "stop RE". The right conclusion is:
+- **do not try to fully deobfuscate `0x17c4fc` statically first**,
+- **do use the live device as an oracle and instrument the function boundary aggressively**.
 
-### LD_PRELOAD is the correct final approach
-
-The LD_PRELOAD hooking strategy **completely bypasses** the obfuscated crypto:
-- It captures the AES keys AFTER derivation, regardless of algorithm complexity
-- It's immune to algorithm changes (hooks at the libcrypto boundary)
-- It works on any firmware version that uses OpenSSL/libcrypto
-- It requires no understanding of the custom crypto
-
-### Confirmed complete derivation pipeline
+### Confirmed derivation pipeline so far
 
 ```
 Voucher ION blob
@@ -1403,13 +1394,12 @@ VoucherDecryption::attachVoucher() [0x151200]
     ├─► Stage-1 AES-256-CBC decrypt (hardcoded key + ACSR IV)
     │      → 40-char hex string (20 bytes)
     │
-    ├─► Protocol version check (== 0x76?)
+    ├─► Protocol/version gate via vtable[8] dispatcher [0x150c40]
     │      │
-    │      └─► YES → fcn_0x17c4fc (244KB obfuscated state machine)
-    │            │  Takes: voucher cipher blob + CLIENT_ID (device serial)
-    │            │  Reads: ACSR from /var/local/java/prefs/acsr
-    │            │  Produces: HMAC key blob (variable size) + numeric string
-    │            │  Uses: custom bignum math, modular arithmetic
+    │      └─► fcn_0x17c4fc (244KB obfuscated state machine)
+    │            │  Consumes voucher-derived state + CLIENT_ID-sensitive state
+    │            │  Reads ACSR from /var/local/java/prefs/acsr
+    │            │  Produces HMAC key blob (variable size) + numeric string
     │            ▼
     │         HMAC-SHA256(hmac_key, numeric_string) → voucher_key_256
     │
@@ -1417,17 +1407,147 @@ VoucherDecryption::attachVoucher() [0x151200]
     │      → Decrypted book voucher
     │
     └─► Integrity HMAC-SHA256 check
-
-LD_PRELOAD hook captures:
-    1. EVP_DecryptInit_ex(key, iv) → stage-1 and stage-2 keys
-    2. HMAC(key, data) → voucher_key_256 directly
-    ✗ fcn_0x17c4fc → COMPLETELY BYPASSED
 ```
 
-### No further RE needed
+### Why further RE is justified
 
-The investigation has reached its conclusion:
-- **The custom crypto is a professionally obfuscated 244KB function** — reversing it is impractical
-- **LD_PRELOAD captures the output of that function** (the HMAC key) without needing to understand it
-- **The approach is robust** — immune to algorithm changes, works across firmware versions
-- **All remaining work is engineering**: armel builds for PW2, production-quality hooks, error handling
+The existing `LD_PRELOAD` hooks are enough for production decryption, but they do **not** answer the deeper questions we still care about:
+- where exactly the real `CLIENT_ID` is consumed,
+- what object layout / arguments feed `0x17c4fc`,
+- what the pre-HMAC transformation boundary looks like,
+- whether the custom path can be reduced to a much smaller black-box core,
+- and whether older firmware follows the same dynamic contract.
+
+Those are all still tractable with **dynamic, targeted, on-device instrumentation**.
+
+---
+
+## Revised RE Plan: Live On-Device First
+
+### Phase A — Lock down the real runtime ABI
+
+Goal: stop relying on imperfect decompiler guesses and capture the actual call contract.
+
+1. Instrument entry to `0x150c40` and `0x17c4fc`
+   - log `this`
+   - log `this[0]` (vtable)
+   - log `this[1]`
+   - dump `*(this[1] + 0xc0)` and nearby fields
+   - dump the relevant stack argument window on entry
+   - record return value and output vector state before/after
+2. Confirm which vtable/object instance is active for `PIDv3@1.0`
+   - dump vtable slots 0..13 for the live object
+   - correlate with static vtable `0x32f850`
+3. Recover exact output container layout
+   - identify which local / argument becomes the HMAC key vector
+   - log pointer/start/end/capacity before and after `vtable[8]`
+
+Success criterion:
+- a concrete runtime struct/argument map for `0x150c40` and `0x17c4fc`
+
+### Phase B — Isolate the CLIENT_ID ingestion point
+
+Goal: find the narrowest point where the real device identifier influences the obfuscated path.
+
+1. Correlate live inputs under controlled perturbation
+   - baseline
+   - wrong `CLIENT_ID`
+   - missing/altered lock parameters
+   - different voucher from same device
+2. Add probes around the object fields consumed by `0x150c40`
+   - especially `this[1] + 0xc0` and adjacent offsets
+   - any pointer fields later used to build the HMAC key / numeric string
+3. Intercept file reads / string construction for likely sources
+   - `/proc/usid`
+   - cached registration/device identifiers in Java prefs
+   - any JNI bridge strings passed into DRMSDK
+4. Patch the last in-memory candidate value just before `0x17c4fc`
+   - confirm whether changing that one value is sufficient to perturb the HMAC key
+
+Success criterion:
+- identify the last responsible memory location for `CLIENT_ID`-sensitive input
+
+### Phase C — Trace the obfuscated function as a black box
+
+Goal: learn the internal contract without fully decompiling 244 KB of flattened code.
+
+1. Log dispatch-state evolution at the switch hub
+   - capture the case index / state byte at the top of the dispatch loop
+   - compare traces for baseline vs wrong `CLIENT_ID`
+   - find earliest divergence point
+2. Attribute allocator activity to the call
+   - hook allocator/grow/free paths used by the vector/string containers
+   - dump new buffers associated with the `0x17c4fc` call frame
+3. Snapshot selected intermediate buffers
+   - buffers that later become HMAC key input
+   - buffers that later become numeric-string HMAC data
+   - any big integer / limb arrays with stable size patterns
+4. Use differential tracing rather than full traces when possible
+   - stop at first divergence
+   - hash large buffers instead of dumping everything every run
+   - only fully dump when a candidate boundary changes
+
+Success criterion:
+- a minimal set of intermediate states showing where baseline and wrong `CLIENT_ID` diverge
+
+### Phase D — Collapse the black box into smaller subproblems
+
+Goal: reduce `0x17c4fc` from one huge blob into a handful of meaningful subroutines or data transforms.
+
+1. Enumerate all direct calls out of `0x17c4fc`
+   - classify helpers as container management, math, parsing, or traps
+2. Correlate helper calls with captured state transitions
+   - especially helpers immediately before HMAC-key-buffer mutation
+3. Identify invariant vs varying regions of the HMAC key blob
+   - compare across books on same device
+   - compare same book with wrong `CLIENT_ID`
+   - compare books with different voucher sizes
+4. Try to isolate a smaller reusable core
+   - e.g. parser → canonicalized numeric material → obfuscated math core → output vector
+
+Success criterion:
+- a reduced graph of “inputs → helper cluster → output buffers” instead of one opaque monolith
+
+### Phase E — Cross-firmware validation
+
+Goal: determine whether PW2 and PW6 share the same dynamic contract even if the binaries differ.
+
+1. Build armel instrumentation artifacts for PW2
+2. Repeat Phase A/B on PW2 if a test device is available
+3. Compare:
+   - object layout
+   - presence/absence of the `0x76` gate analogue
+   - HMAC-key blob size patterns
+   - divergence behavior under wrong `CLIENT_ID`
+
+Success criterion:
+- know whether the live-observed contract generalizes across old/new firmware
+
+---
+
+## Concrete next experiments
+
+1. **Entry/exit hook for `0x150c40` / `0x17c4fc`**
+   - add a tiny trampoline or inline patch on device
+   - dump object pointers, key vector triple, and nearby fields
+2. **Vector-growth attribution**
+   - hook allocator/realloc used by the output vector during `vtable[8]`
+   - map which allocations become the final HMAC key blob
+3. **First-divergence tracing**
+   - record dispatch-state sequence for baseline vs wrong `CLIENT_ID`
+   - stop logging once the first differing state is found
+4. **Last-writer identification**
+   - hook writes into the final HMAC key buffer range before `HMAC()`
+   - identify which helper/function last touched each region
+5. **CLIENT_ID source patch test**
+   - replace the last candidate identifier in memory immediately before `0x17c4fc`
+   - confirm whether that alone reproduces the wrong-key behavior
+
+---
+
+## Working conclusion
+
+- **Full static deobfuscation is the wrong first move.**
+- **Dynamic RE on real hardware is the right move and should continue.**
+- The immediate objective is to turn `0x17c4fc` into a **measured black box with known inputs, outputs, and divergence points**, not to fully lift 244 KB of flattened code into readable C.
+- Once those boundaries are nailed down, we can decide whether any smaller subcomponent is worth extracting or reproducing offline.
