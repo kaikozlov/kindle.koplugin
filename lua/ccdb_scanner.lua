@@ -2,9 +2,6 @@
 --- Uses KOReader's built-in lua-ljsqlite3 to query /var/local/cc.db.
 --- Provides proper titles, authors, DRM status, thumbnails, and reading progress
 --- that the Kindle's own scanner has already indexed.
----
---- Also discovers sh_integration scripts (text/x-shellscript) registered by
---- the universal hotfix, which appear alongside books in the native library.
 
 local logger = require("logger")
 
@@ -20,9 +17,7 @@ CcDbScanner.BOOK_MIME_TYPES = {
     ["application/x-mobipocket-ebook"] = "azw",
 }
 
-CcDbScanner.SCRIPT_MIME_TYPE = "text/x-shellscript"
-
---- Query to fetch visible, non-archived book and script entries.
+--- Query to fetch visible, non-archived book entries.
 --- Filters out dictionaries and system entries by requiring p_type = 'Entry:Item'.
 local QUERY = [[
 SELECT
@@ -43,7 +38,7 @@ SELECT
     p_modificationTime
 FROM Entries
 WHERE p_type = 'Entry:Item'
-    AND p_mimeType IN ('application/x-kfx-ebook', 'application/x-mobipocket-ebook', 'text/x-shellscript')
+    AND p_mimeType IN ('application/x-kfx-ebook', 'application/x-mobipocket-ebook')
     AND p_isVisibleInHome = 1
     AND COALESCE(p_isArchived, 0) = 0
 ORDER BY p_titles_0_nominal
@@ -83,13 +78,9 @@ end
 --- @param mime_type string
 --- @param is_drm string|nil "1" or nil
 --- @param location string|nil File path (empty if archived)
---- @return string: open_mode ("convert", "direct", "script", "blocked")
+--- @return string: open_mode ("convert", "direct", "blocked")
 --- @return string|nil: block_reason (set when open_mode is "blocked")
 local function classifyBook(mime_type, is_drm, location)
-    if mime_type == CcDbScanner.SCRIPT_MIME_TYPE then
-        return "script", nil
-    end
-
     -- No local file means it's cloud-only
     if not location or location == "" then
         return "blocked", "missing_source"
@@ -120,8 +111,6 @@ local function mimeToExt(mime_type)
         return "kfx"
     elseif mime_type == "application/x-mobipocket-ebook" then
         return "azw"
-    elseif mime_type == "text/x-shellscript" then
-        return "sh"
     end
     return "bin"
 end

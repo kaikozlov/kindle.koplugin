@@ -194,8 +194,6 @@ local function createBookEntry(book)
         suffix = " [drm]"
     elseif book.open_mode == "convert" then
         suffix = " [convert]"
-    elseif book.open_mode == "script" then
-        suffix = " ⚙"
     end
 
     return {
@@ -259,11 +257,6 @@ function VirtualLibrary:resolveBookPath(book)
         return nil, book.block_reason or "unsupported_kfx_layout"
     end
 
-    -- Scripts are executed directly, not resolved to a file
-    if book.open_mode == "script" then
-        return nil, "script"
-    end
-
     if book.open_mode == "direct" then
         logger.info("KindlePlugin: direct open:", book.source_path)
         self:registerOpenAlias(book.source_path, book.virtual_path)
@@ -286,25 +279,6 @@ function VirtualLibrary:resolveBookPath(book)
 
     logger.warn("KindlePlugin: resolveBookPath failed:", err or "unknown")
     return nil, err or "conversion_failed"
-end
-
---- Execute a shell script from the virtual library.
---- @param book table: Book entry with open_mode == "script".
---- @return boolean: true if execution was attempted.
-function VirtualLibrary:executeScript(book)
-    if not book or book.open_mode ~= "script" then
-        return false
-    end
-
-    local script_path = book.source_path
-    if not script_path or script_path == "" then
-        logger.warn("KindlePlugin: script has no source path")
-        return false
-    end
-
-    logger.info("KindlePlugin: executing script:", script_path)
-    os.execute("sh '" .. script_path .. "'")
-    return true
 end
 
 return VirtualLibrary
