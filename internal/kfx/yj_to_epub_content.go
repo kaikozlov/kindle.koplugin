@@ -3603,6 +3603,8 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 					}
 					// Remove width from body (stays on img child)
 					delete(bodyCSS, "width")
+					// Remove height from body (container-specific, stays on img)
+					delete(bodyCSS, "height")
 					break
 				}
 			}
@@ -3634,6 +3636,7 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 			baseName = r.styleBaseName(bodyStyleID)
 		}
 		result.BodyStyle = styleStringFromDeclarations(baseName, bodyLayoutHints, bodyDeclarations)
+
 	}
 	if os.Getenv("KFX_DEBUG_BODY") != "" {
 		fmt.Fprintf(os.Stderr, "body resolved styleID=%s decls=%v style=%s inferred=%v\n", bodyStyleID, bodyDeclarations, result.BodyStyle, inferredBody)
