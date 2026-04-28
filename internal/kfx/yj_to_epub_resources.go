@@ -103,14 +103,10 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 	resourceFormat, _ := asString(resource["format"])
 	fixedHeight := asIntDefault(resource["fixed_height"], 0)
 	fixedWidth := asIntDefault(resource["fixed_width"], 0)
-	resourceHeight := asIntDefault(resource["resource_height"], 0)
-	if resourceHeight == 0 {
-		resourceHeight = fixedHeight
-	}
-	resourceWidth := asIntDefault(resource["resource_width"], 0)
-	if resourceWidth == 0 {
-		resourceWidth = fixedWidth
-	}
+	// Python L51-52: resource_height = resource.pop("$423", None) or fixed_height
+	// $422/$423 may not be in shared symbol catalog, check raw forms too.
+	resourceHeight := intFromAny(resource["resource_height"], resource["$423"], fixedHeight)
+	resourceWidth := intFromAny(resource["resource_width"], resource["$422"], fixedWidth)
 
 	// 5. Get location and raw media — with $636 tile support
 	var location string
@@ -303,8 +299,12 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 	}
 
 	// 15. VARIANT SELECTION — key logic (Python L170-179)
+	// $635 may not be in shared symbol catalog, check raw form too.
 	if !ignore_variants {
 		variants, _ := asSlice(resource["yj.variants"])
+		if len(variants) == 0 {
+			variants, _ = asSlice(resource["$635"])
+		}
 		for _, vr := range variants {
 			variantName, _ := asString(vr)
 			if variantName == "" {
@@ -589,19 +589,28 @@ func parseResourceFragment(fragmentID string, value map[string]interface{}) reso
 	mediaType, _ := asString(value["mime"])
 	format, _ := asString(value["format"])
 
-	// Width/height from $422/$423 (or $66/$67 fallback)
-	width, _ := asInt(value["resource_width"])
-	if width == 0 {
-		width, _ = asInt(value["fixed_width"])
-	}
-	height, _ := asInt(value["resource_height"])
-	if height == 0 {
-		height, _ = asInt(value["fixed_height"])
+	// If mime type is not present but format indicates an image,
+	// set mediaType to "image/jpeg". Known image format symbols:
+	// "jxr" = JPEG XR, "jpg" = JPEG, "png" = PNG
+	if mediaType == "" && (format == "jxr" || format == "jpg" || format == "png") {
+		mediaType = "image/jpeg"
 	}
 
+	// Width/height from $422/$423 (or $66/$67 fallback)
+	// $422/$423 may not be in shared symbol catalog, check raw forms too.
+	width := intFromAny(value["resource_width"], value["$422"], value["fixed_width"], value["$66"])
+	height := intFromAny(value["resource_height"], value["$423"], value["fixed_height"], value["$67"])
+
 	// $635 variant references
+	// $635 may not be in shared symbol catalog, check raw form too.
 	var variants []string
 	if v, ok := asSlice(value["yj.variants"]); ok {
+		for _, item := range v {
+			if name, ok := asString(item); ok && name != "" {
+				variants = append(variants, name)
+			}
+		}
+	} else if v, ok := asSlice(value["$635"]); ok {
 		for _, item := range v {
 			if name, ok := asString(item); ok && name != "" {
 				variants = append(variants, name)

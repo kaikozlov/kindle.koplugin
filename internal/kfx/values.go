@@ -82,3 +82,18 @@ func toStringSlice(value interface{}) []string {
 	}
 	return result
 }
+
+// intFromAny returns the first non-zero int from multiple candidates.
+// Used for keys that may appear under different names (translated vs raw $N).
+func intFromAny(candidates ...interface{}) int {
+	for _, c := range candidates {
+		v, _ := asInt(c)
+		if v != 0 {
+			return v
+		}
+	}
+	return 0
+}
+
+// intFromAny returns the first non-zero int from multiple candidates.
+// Used for keys that may appear under different names (translated vs raw $N).
