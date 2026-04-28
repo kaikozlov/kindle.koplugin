@@ -3666,6 +3666,11 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 					delete(bodyCSS, "width")
 					// Remove height from body (container-specific, stays on img)
 					delete(bodyCSS, "height")
+					// Remove font-size from body for image pages. Python's COMBINE_NESTED_DIVS
+					// blocks merging when both body and container have font-size. The container's
+					// font-size stays on the inner div/figure, not the body. When consolidate_html
+					// strips the bare div, the body keeps only margins/text-align (no font-size).
+					delete(bodyCSS, "font-size")
 					break
 				}
 			}
