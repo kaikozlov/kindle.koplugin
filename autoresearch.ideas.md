@@ -230,3 +230,11 @@ Possible cause: the page template structure differs (different number of contain
 3. **Figure wrapper**: Requires comparing wrapper CSS vs body CSS at render time.
 4. **stripBareDivs ambiguity**: c9 and c1K4 have identical structures but Python treats
    them differently. Root cause unknown.
+
+### Attempted: Font-size/height stripping from image bodies
+- **Status**: ❌ Reverted
+- Stripping height alone: no benefit (already handled by renderStoryline bodyCSS deletion)
+- Stripping font-size: regresses HungerGames c9 (removes legitimate font-size)
+- Stripping font-size only when height present: no effect (height already stripped before post-processing)
+- The class_93-0 font-size issue requires understanding why Python strips it from body
+  but keeps it on the img. This is a simplify_styles reverse inheritance gap.
