@@ -247,3 +247,32 @@ Possible cause: the page template structure differs (different number of contain
 - The distinguishing factor between c56 and cM is NOT margin_top.
 - Both nodes have identical structure (content=frag-ref, no content_list, no resource_name).
 - The difference must be in how Python's is_top_level or the page template handles them.
+
+### Session 2026-04-28: 75→8 structural diffs (89% reduction)
+
+#### Fixed in this session:
+- page_134 anchor: locateOffsetIn counts <br> as 1 char offset (\\n→<br> conversion)
+- Figure wrapper: skip promotion for figure+font-size containers (COMBINE_NESTED_DIVS parity)
+- normalizeHTMLWhitespace/applyPositionAnchors order swap
+
+#### Remaining 8 diffs (all hard/architectural):
+- 1984 c9: bare div ambiguity (c9 vs c1K4 have identical structure)
+- SC class_93-0: extra font-size (deep simplify_styles gap)
+- SC class_220: ordering swap (encounter order)
+- ToG class-3/4: ordering swap (encounter order)
+- ToG cM: promotedBodyContainer can't distinguish c56 from cM
+- ToG class_sU: CSS property gap (depends on cM fix)
+- ToG figure_s4N: CSS property gap (depends on simplify_styles)
+- ToG cV: class ordering (same as class-3/4)
+
+#### Key insight for cM:
+Both Martyr c56 and ToG cM have non-zero margin_top in their style fragments.
+margin_top alone cannot distinguish them. The difference must be at a higher
+level — perhaps in how Python's is_top_level handles them differently due to
+the page template structure, or how the content rendering creates the <div>/<span>.
+
+#### Key insight for SC class_93:
+Python's pipeline: body gets defaults, div gets container style, COMBINE_NESTED_DIVS
+doesn't merge (font-size overlap), simplify_styles reverse-inherits text-align to body,
+div keeps font-size+margins, then consolidate_html strips the bare div after catalog.
+The result is body with text-align+margins but NOT font-size. Go puts everything on body.
