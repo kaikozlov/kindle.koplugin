@@ -706,6 +706,54 @@ func prepareBookParts(book *decodedBook) {
 	}
 }
 
+// stripBareDivs strips <div> elements with no attributes from the body root.
+// This matches Python's consolidate_html (epub_output.py:781-804) which strips
+// empty-attribute <div> elements ONLY when the parent has exactly 1 child
+// and no text content.
+func stripBareDivs(root *htmlElement) {
+	if root == nil {
+		return
+	}
+	// Python only strips bare divs when len(parent) == 1 (single child body).
+	// Multi-child bodies keep their bare divs.
+	if len(root.Children) != 1 {
+		return
+	}
+	child := root.Children[0]
+	elem, ok := child.(*htmlElement)
+	if !ok || elem.Tag != "div" || len(elem.Attrs) > 0 {
+		return
+	}
+	// Bare <div> with no attributes, only child of body.
+	if len(elem.Children) == 0 {
+		return // Empty <div/> — keep it
+	}
+	// Check: div has no text content.
+	hasDirectText := false
+	for _, gc := range elem.Children {
+		if _, ok := gc.(*htmlText); ok {
+			hasDirectText = true
+			break
+		}
+	}
+	if hasDirectText {
+		return
+	}
+	// Check: all children are non-block.
+	blockTags := map[string]bool{
+		"aside": true, "div": true, "figure": true,
+		"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+		"hr": true, "ol": true, "p": true, "table": true, "ul": true,
+	}
+	for _, gc := range elem.Children {
+		if gcElem, ok := gc.(*htmlElement); ok && blockTags[gcElem.Tag] {
+			return
+		}
+	}
+	// Safe to strip: unwrap div's children into root.
+	root.Children = elem.Children
+}
+
 func pageTemplatesHaveConditions(templates []pageTemplateFragment) bool {
 	return hasConditionalTemplate(templates)
 }
@@ -3485,11 +3533,6 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 			contentNodes = promotedNodes
 			promotedBody = true
 			promotedBodyInline = inline
-			if os.Getenv("KFX_DEBUG_PROMOTE") != "" {
-				bs := effectiveStyle(r.styleFragments[promotedStyleID], nil)
-				fmt.Fprintf(os.Stderr, "PROMOTED pos=%d styleID=%s hints=%v\n",
-					sectionPositionID, promotedStyleID, extractLayoutHintsFromStyle(bs))
-			}
 		}
 	}
 	if promotedBody {

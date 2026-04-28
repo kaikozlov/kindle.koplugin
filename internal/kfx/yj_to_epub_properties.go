@@ -738,6 +738,14 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 		beautifyHTML(book.RenderedSections[i].Root)
 	}
 
+	// Ported from Python consolidate_html div stripping (epub_output.py:781-804):
+	// Strip bare <div> wrappers with no attributes after style catalog has converted
+	// inline styles to classes. Must run after consolidateHTML and beautifyHTML so
+	// that style catalog has already removed redundant class attributes.
+	for i := range book.RenderedSections {
+		stripBareDivs(book.RenderedSections[i].Root)
+	}
+
 	type countedStyle struct {
 		style string
 		count int
