@@ -276,3 +276,32 @@ Python's pipeline: body gets defaults, div gets container style, COMBINE_NESTED_
 doesn't merge (font-size overlap), simplify_styles reverse-inherits text-align to body,
 div keeps font-size+margins, then consolidate_html strips the bare div after catalog.
 The result is body with text-align+margins but NOT font-size. Go puts everything on body.
+
+### Session 2026-04-28: promotedBodyContainer position anchor fix
+
+**Implemented**: Check both template and child node for position anchors in
+promotedBodyContainer Case 2. If both have anchors, Python's COMBINE_NESTED_DIVS
+won't merge (both elements get id attrs). Go must not promote inline.
+Result: 8→4 structural diffs. ToG now perfect (0 diffs).
+
+**Dead ends**:
+- stripBareDivs logic fix (inverted block/non-block check): fixes 1984 c9 but
+  regresses c1K4 and SC xQ10 (net +1 diff). Root cause: Go creates extra bare
+  <div> wrappers that Python doesn't create — a rendering-level difference,
+  not a stripBareDivs issue.
+
+**Remaining 4 diffs analysis**:
+1. SC xQ213, xQ875: class_220-0/1 swap — CSS class ordering + HTML nesting difference
+   (drop cap rendering). Not just naming — Go nests quote+H in same span,
+   Calibre has separate spans. Complex rendering difference.
+2. SC stylesheet: class_220-0/1 swap + class_93-0 extra font-size (simplify_styles gap)
+3. 1984 c9: bare <div> kept by Calibre, stripped by Go. Python keeps it because
+   child <a> is non-block → consolidate_html doesn't strip. Go strips because
+   stripBareDivs logic is inverted from Python's. But fixing stripBareDivs causes
+   regressions elsewhere because Go's rendering creates different HTML structures.
+
+**Possible next experiments**:
+- Fix class_93-0 font-size: investigate why Python strips font-size from this class
+  but Go doesn't. Likely a simplify_styles reverse-inheritance gap.
+- Investigate SC drop cap rendering: the class_220 swap may be fixable by ensuring
+  Go encounters the float style before the margin style during catalog assignment.
