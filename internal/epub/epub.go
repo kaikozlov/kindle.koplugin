@@ -548,12 +548,13 @@ func sectionXHTML(book Book, section Section) string {
 	}
 	out.WriteString(`>` + "\n")
 	// Match lxml's compact serialization. When body content is a single self-closing
-	// HTML element (e.g. <img/>), lxml puts </body> on the same line with no \n before
-	// it. For all other cases (text content, multi-line HTML), the standard \n before
-	// </body> matches Calibre's output.
+	// HTML element (e.g. <img/>) or a single-line SVG, lxml puts </body> on the same
+	// line with no \n before it. For all other cases, the standard \n before </body>
+	// matches Calibre's output.
 	bodyContent := body.String()
-	isSingleSelfClosingHTML := len(bodyContent) > 0 && bodyContent[0] == '<' && !strings.Contains(bodyContent, "\n")
-	if isSingleSelfClosingHTML {
+	isSingleLine := len(bodyContent) > 0 && bodyContent[0] == '<' && !strings.Contains(bodyContent, "\n")
+	isSelfClosing := isSingleLine && strings.HasSuffix(bodyContent, "/>")
+	if isSelfClosing || (section.Properties == "svg" && isSingleLine) {
 		out.WriteString(bodyContent)
 		out.WriteString(`</body>` + "\n")
 	} else {
