@@ -498,12 +498,14 @@ func contentOPF(book Book) string {
 // Inline elements like <a>, <span>, <img> don't get trailing \n.
 func bodyEndsWithBlockElement(bodyContent string) bool {
 	// Check for closing tags of block elements at the end of content.
+	// Python's beautify_html adds trailing \n only for these block element tails:
+	// "aside", "div", "figure", "h1"-"h6", "hr", "ol", "p", "table", "ul".
+	// Inline elements like <a>, <span>, <img> don't get trailing \n.
 	blockEndTags := []string{
 		"</aside>", "</div>", "</figure>",
 		"</h1>", "</h2>", "</h3>", "</h4>", "</h5>", "</h6>",
 		"</hr>",
 		"</ol>", "</p>", "</table>", "</ul>",
-		// Also match self-closing block elements
 		"/>",
 	}
 	stripped := strings.TrimRight(bodyContent, " \t\n")
