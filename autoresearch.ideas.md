@@ -23,3 +23,61 @@ SunriseReaping's 1 remaining structural diff: Go has `width: 100%` but Calibre h
 1. Class index swap: `class_220-0`/`class_220-1` in wrong order
 2. Extra `<div>` wrapper on some image pages
 3. CSS property differences
+
+## Deep Dive: Body Class Split Root Cause (2026-04-28)
+
+### Investigation Results
+
+The body class split (52 diffs) requires understanding a 3-stage pipeline:
+
+1. **Rendering** (`renderStoryline`): Go computes bodyStyle from the promoted container's 
+   style fragment. The container style has keys: `box_align, font_family, font_weight, 
+   language, line_height, style_name, width`. Note: NO `text_alignment` key — the KFX data 
+   uses `box_align` for image containers, not `text_alignment`.
+
+2. **Simplify Styles** (`simplifyStylesFull`): Processes the body element's inline style.
+   Current body style includes `width` (non-heritable) which should only be on the img child.
+
+3. **Style Catalog** (`fixupStylesAndClasses`): Counts inline styles and assigns class names.
+   Body and img end up with the same style → same class → no -0/-1 split.
+
+### Python's Correct Behavior
+
+In Python:
+1. Body starts with NO style from content rendering
+2. `set_html_defaults` adds font-family, font-size, line-height, writing-mode
+3. `simplify_styles` processes children:
+   - Child element (div→figure) has `-kfx-box-align: center` from KFX data
+   - Python converts `-kfx-box-align` to `text-align: center` through simplify_styles
+   - Reverse inheritance promotes `text-align: center` to the body element
+   - `width: 100%` stays on the img (not reverse-heritable)
+4. `fixup_styles_and_classes` creates classes:
+   - Body: text-align:center → `class_s1G-0`
+   - Img: width:100% → `class_s1G-1`
+
+### Go's Bug
+
+Go's body style includes ALL container properties including `width:100%`.
+This is because `effectiveStyle(styleFragments[promotedStyleID], bodyStyleValues)` returns
+the full fragment style including non-heritable properties.
+
+### Attempted Fix: Filter non-heritable properties
+
+Tried filtering bodyStyle to only heritable properties. This produced empty body style
+because:
+1. The container style has `box_align` (not `text_alignment`) for image pages
+2. `box_align` is not in the heritable keys list
+3. After filtering, the body has only `font_family, font_weight, line_height` → all 
+   match inherited defaults → stripped by simplify_styles
+4. Body ends up with NO style → class_s1G-0 has no CSS properties
+
+### Correct Fix (requires deeper work)
+
+The fix requires ensuring that `box_align` gets converted to `text-align` in the body's
+style BEFORE the style catalog runs. This could be done by:
+1. Processing the body style through the same CSS property mapping that `processContentProps`
+   uses, converting `box_align` → `-kfx-box-align` → then to `text-align` when appropriate
+2. OR: running simplify_styles on the body element BEFORE computing the BodyStyle string
+3. OR: adding `box_align` to the heritable keys list and letting simplify_styles handle it
+
+This is a significant architectural change that affects the rendering pipeline.
