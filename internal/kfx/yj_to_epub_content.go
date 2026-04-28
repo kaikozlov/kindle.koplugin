@@ -1833,6 +1833,7 @@ func locateOffsetIn(elem *htmlElement, offset int) (*htmlElement, bool) {
 	if elem.Tag == "img" {
 		return elem, offset == 0
 	}
+
 	for index := 0; index < len(elem.Children); index++ {
 		switch child := elem.Children[index].(type) {
 		case htmlText:
@@ -1858,6 +1859,16 @@ func locateOffsetIn(elem *htmlElement, offset int) (*htmlElement, bool) {
 			}
 			offset -= length
 		case *htmlElement:
+			// <br> elements come from \n conversion (splitTextHTMLParts). In Python,
+			// locate_offset runs before replace_eol_with_br, so \n is still in the text
+			// and counted as 1 character. Go has already converted \n→<br>, so we must
+			// count each <br> as consuming 1 offset to match Python's offset arithmetic.
+			if child.Tag == "br" {
+				if offset > 0 {
+					offset--
+					continue
+				}
+			}
 			if offset == 0 {
 				// Port of Python locate_offset_in (yj_to_epub_content.py:1588-1589):
 				// When offset is 0, return the element directly.
@@ -3719,8 +3730,11 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 		}
 	}
 	root := &htmlElement{Attrs: map[string]string{}, Children: bodyParts}
-	normalizeHTMLWhitespace(root)
+	// Python applies position anchors BEFORE replace_eol_with_br.
+	// If we normalize whitespace (\n→<br>) first, text offsets shift and
+	// position anchors at the end of content (like page_134 in 1984) fail.
 	r.applyPositionAnchors(root, sectionPositionID, false)
+	normalizeHTMLWhitespace(root)
 	result.Root = root
 	result.BodyHTML = renderHTMLParts(root.Children, true)
 	if strings.Contains(result.BodyHTML, "<svg ") {
