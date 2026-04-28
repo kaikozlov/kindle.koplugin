@@ -79,29 +79,42 @@ Achieve structural parity between Go KFX→EPUB conversion pipeline and the Cali
 - Table cell `<div>` wrapper unwrapping
 - `<a>` attribute ordering fix
 
-### Autoresearch Session (2026-04-28): 75→53 structural diffs (-29%)
+### Autoresearch Session (2026-04-28): 75→53→17 structural diffs
 
 1. **Fix `</body>` placement** (-4 diffs, then +7 regression, then -7 fix)
    - `internal/epub/epub.go`: Match lxml compact serialization for single self-closing
-     elements (ending `/>`) and SVG cover pages. Non-self-closing elements keep
-     standard newline before `</body>`.
+     elements (ending `/>`) and SVG cover pages.
 
-2. **Fix JXR image conversion: MIME type** (-11 structural + 22 missing = -33 total)
-   - `internal/kfx/yj_to_epub_resources.go`: `parseResourceFragment` set JXR mime
-     to `image/jpeg` instead of `image/jxr` when the mime field was empty. Fixed
-     to set correct MIME type per format (jxr→image/jxr, jpg→image/jpeg, png→image/png).
+2. **Fix JXR image conversion: MIME type** (-11 structural + 22 missing)
+   - `internal/kfx/yj_to_epub_resources.go`: Set correct MIME per format when empty.
 
-### Current Status: 53 structural diffs
+3. **Fix promoted image body: box-align + width** (-36 structural = 53→17)
+   - `internal/kfx/yj_to_epub_content.go`: For promoted bodies with resource (image) nodes:
+     - Convert `-kfx-box-align` to `text-align` (Python yj_to_epub_content.py:1335-1336)
+     - Remove `width` from body style (stays on child img in Python)
+   - This enables the body/img class split (-0/-1) matching Calibre.
+
+### Current Status: 17 structural diffs
 
 **Per-book breakdown:**
-- Martyr: 0 ✓ | 1984: 0 ✓ | SunriseReaping: 1 | ThreeBelow: 1
-- Elvis: 5 | ThroneOfGlass: 5 | SecretsCrown: 4
-- HeatedRivalry: 7 | Familiars: 13 | HungerGames: 17
+- Martyr: 0 ✓ | 1984: 0 ✓ | Elvis: 0 ✓ | Familiars: 0 ✓
+- SunriseReaping: 0 ✓ | ThreeBelow: 0 ✓
+- HungerGames: 1 (whitespace)
+- SecretsCrown: 4 (class ordering + extra div)
+- ThroneOfGlass: 5 (missing figure wrapper + CSS)
+- HeatedRivalry: 7 (heading text whitespace)
 
-**52 of 53 are body class split** — single root cause requiring architectural fix:
-- Go's promoted body style includes `width:100%` (non-heritable) from container fragment
-- Python's body gets `text-align:center` through reverse inheritance, NOT from container
-- KFX data uses `box_align` (not `text_alignment`) for image containers
-- `box_align` → `text-align` conversion happens during simplify_styles in Python
-- Fix requires converting `box_align` to `text-align` for promoted body styles
-- See `autoresearch.ideas.md` for detailed investigation
+**Remaining issues:**
+- **HeatedRivalry 7 + HungerGames 1**: Whitespace — promoted heading text should be
+  immediately after `<body>`, not on next line. Cosmetic only.
+- **ThroneOfGlass 5**: Missing `<figure>` wrapper for figure-hinted images. Go's
+  promoted body puts figure style directly on `<body>`, but Calibre keeps `<figure>`
+  as child element with separate body class.
+- **SecretsCrown 4**: Extra `<div>` wrapper (same figure issue) + drop-cap class ordering swap.
+
+**Root cause of class split (FIXED in run 5):**
+- Python converts `-kfx-box-align` to `text-align` in `create_container` (yj_to_epub_content.py:1335-1336)
+- Go's promoted body bypassed this conversion
+- Python keeps `width` on child img, not body
+- Fix: convert box-align→text-align and remove width for promoted image bodies
+- See `autoresearch.ideas.md` for remaining issues (figure wrapper, whitespace, class ordering)
