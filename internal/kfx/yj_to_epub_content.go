@@ -3563,6 +3563,8 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 			if inline && ok {
 				for _, rawNode := range promotedNodes {
 					if node, nodeOK := asMap(rawNode); nodeOK {
+						// Figure image: skip promotion if container has font-size
+						// (Python's COMBINE_NESTED_DIVS won't merge when styles overlap).
 						if _, hasResource := asString(node["resource_name"]); hasResource {
 							if layoutHintsInclude(r.nodeLayoutHints(node), "figure") {
 								style := effectiveStyle(r.styleFragments[promotedStyleID], node)
@@ -3571,6 +3573,7 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 								}
 							}
 						}
+
 					}
 				}
 			}
@@ -6843,6 +6846,29 @@ func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[st
 	}
 
 	return "", nil, false, false
+}
+
+// isStyleValueZero checks if a style value represents zero (0, 0.0, "0", etc.)
+func isStyleValueZero(v interface{}) bool {
+	switch n := v.(type) {
+	case float64:
+		return n == 0
+	case *float64:
+		return n == nil || *n == 0
+	case int:
+		return n == 0
+	case *int:
+		return n == nil || *n == 0
+	case string:
+		return n == "0" || n == "0em" || n == "0px" || n == "0%"
+	case map[string]interface{}:
+		if val, ok := n["value"]; ok {
+			return isStyleValueZero(val)
+		}
+		return false // map without "value" key — not zero
+	default:
+		return false
+	}
 }
 
 func defaultInheritedBodyStyle() map[string]interface{} {
