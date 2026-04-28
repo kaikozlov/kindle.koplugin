@@ -176,3 +176,57 @@ If any wrapper properties are missing from the body, keep the wrapper.
 - SecretsCrown: 4 (xQ10 div wrapper, xQ213/xQ875 class swap, stylesheet)
 - ThroneOfGlass: 5 (c4D figure wrapper, c9/cV class swap, cM p wrapper, stylesheet)
 - HungerGames: 1 (c791 inline image whitespace)
+
+## Session 2026-04-28 (continued, 12 diffs remaining)
+
+### Remaining 12 Diffs Analysis
+
+**1984 (4 diffs):**
+- c9: stripBareDivs incorrectly strips a bare div that Calibre keeps. Same structure as c1K4
+  (which SHOULD be stripped). Net positive (+1 from xQ10, -1 from c9 regression).
+- cDT: missing page_134 anchor. Go generates page_130-133 but not 134. Position anchor
+  insertion issue specific to one page.
+- nav/toc: reference page_134 which doesn't exist. Fixed by fixing cDT page anchor.
+
+**SecretsCrown (3 diffs):**
+- xQ213/xQ875: class_220-0/1 ordering swap. Drop-cap style vs paragraph style assigned
+  in wrong order. Depends on section encounter order in rendering pipeline.
+- stylesheet class_93-0: Go has extra font-size and height properties that Calibre strips.
+  simplify_styles gap.
+
+**ThroneOfGlass (5 diffs):**
+- c4D: Missing <figure> wrapper. Go promotes image style to body, losing figure wrapper.
+  Requires property-aware wrapper decision at render time.
+- c9/cV: class-3/4 ordering swap (italic/center vs bold/uppercase). Different encounter order.
+- cM: promotedBodyContainer Case 2 treats fragment reference as inline text, but Calibre
+  renders it as <p> inside body with generic body class. Both Martyr c56 and ToG cM have
+  identical node structure (content={index,name}) — can't distinguish without resolved
+  content. Investigation showed BOTH use $146 content_list fragments, not $145 text.
+- stylesheet class_sU: has font-style: italic; text-align: center that Calibre doesn't.
+  Related to cM — if cM went through normal rendering, the <p> would absorb these properties.
+
+### Investigation: ToG cM vs Martyr c56
+
+Both sections have IDENTICAL node structure:
+- Single node with keys=[content, id, style, type]
+- content = {index: N, name: "content_X"} (fragment reference)
+- No content_list at node level
+- Fragment resolves to $146 (content_list) with multiple strings
+
+Python processes both through the SAME code path:
+- process_content creates <div>, add_content resolves $145 → <span>text</span>
+- is_top_level renames <div> to <body>
+- consolidate_html strips <span> → text directly in body
+
+But Calibre output differs: Martyr c56 = inline text in body, ToG cM = <p> inside body.
+This suggests Python's is_top_level or rendering differs between these sections.
+Possible cause: the page template structure differs (different number of container wrappers).
+
+### Hard Architectural Issues (not easily fixable)
+1. **CSS class ordering**: Determined by style encounter order. Go processes sections in
+   different order than Python. Fixing requires matching Python's exact order → risky.
+2. **promotedBodyContainer Case 2**: Both inline text and container text nodes have the
+   same fragment reference structure. Need access to resolved content to distinguish.
+3. **Figure wrapper**: Requires comparing wrapper CSS vs body CSS at render time.
+4. **stripBareDivs ambiguity**: c9 and c1K4 have identical structures but Python treats
+   them differently. Root cause unknown.
