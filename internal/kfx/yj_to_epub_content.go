@@ -1953,7 +1953,19 @@ func renderHTMLParts(parts []htmlPart, multiline bool) string {
 	var out strings.Builder
 	for index, part := range parts {
 		if index > 0 && multiline {
-			out.WriteByte('\n')
+			// Don't add \n around htmlText parts — lxml serializes text/tail
+			// without extra newlines between inline elements.
+			_, curIsText := part.(htmlText)
+			_, curIsTextPtr := part.(*htmlText)
+			if !curIsText && !curIsTextPtr {
+				// Also skip \n if the previous part was text (inline glue).
+				prev := parts[index-1]
+				_, prevIsText := prev.(htmlText)
+				_, prevIsTextPtr := prev.(*htmlText)
+				if !prevIsText && !prevIsTextPtr {
+					out.WriteByte('\n')
+				}
+			}
 		}
 		out.WriteString(renderHTMLPart(part))
 	}
