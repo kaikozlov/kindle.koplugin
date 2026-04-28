@@ -3586,8 +3586,9 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 			// For image nodes: render inline image
 			if imageNode := r.renderImageNode(node); imageNode != nil {
 				// For promoted bodies, the image wrapper style goes on <body>.
-				// Unwrap any <div> wrapper from renderImageNode so <img> is directly in body.
-				if elem, ok := imageNode.(*htmlElement); ok && elem.Tag == "div" {
+				// Unwrap any <div>/<figure> wrapper from renderImageNode so <img> is directly in body.
+				// renderImageNode creates <div>, then applyStructuralNodeAttrs may rename it to <figure>.
+				if elem, ok := imageNode.(*htmlElement); ok && (elem.Tag == "div" || elem.Tag == "figure") {
 					if len(elem.Children) == 1 {
 						imageNode = elem.Children[0]
 					}
@@ -6699,16 +6700,12 @@ func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[st
 	// calls process_plugin which adds <img> inside the <div>.
 	// Then is_top_level renames <div> to <body>.
 	// Result in Python: <body class="centerImage"><img .../></body>
-	// BUT: figure-type nodes should NOT be promoted. Python keeps <figure> as a
-	// child of <body> with the figure's style. The body gets an inferred style.
+	// This applies to ALL single-node image bodies, including figure-hinted ones.
+	// Python's is_top_level checks if tag is in ["aside", "div", "figure"] and renames to <body>.
 	if styleID != "" {
 		if _, hasResource := asString(node["resource_name"]); hasResource {
 			if _, hasContentList := asSlice(node["content_list"]); !hasContentList {
 				if _, hasContent := asMap(node["content"]); !hasContent {
-					// Skip nodes with figure layout hints — they should stay as body children
-					if hasLayoutHint(node, styleFragments, "figure") {
-						return "", nil, false, false
-					}
 					return styleID, nodes, true, true // resource: render inline (image directly in body)
 				}
 			}
