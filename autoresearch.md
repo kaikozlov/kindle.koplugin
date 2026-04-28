@@ -94,23 +94,16 @@ Achieve structural parity between Go KFX→EPUB conversion pipeline and the Cali
      - Remove `width` from body style (stays on child img in Python)
    - This enables the body/img class split (-0/-1) matching Calibre.
 
-### Current Status: 17 structural diffs
+### Current Status: 12 structural diffs (84% reduction from baseline 75)
 
-**Per-book breakdown:**
-- Martyr: 0 ✓ | 1984: 0 ✓ | Elvis: 0 ✓ | Familiars: 0 ✓
-- SunriseReaping: 0 ✓ | ThreeBelow: 0 ✓
-- HungerGames: 1 (whitespace)
-- SecretsCrown: 4 (class ordering + extra div)
-- ThroneOfGlass: 5 (missing figure wrapper + CSS)
-- HeatedRivalry: 7 (heading text whitespace)
+**Per-book breakdown (8 of 10 books at 0 structural diffs):**
+- Martyr: 0 ✓ | Elvis: 0 ✓ | SunriseReaping: 0 ✓ | ThreeBelow: 0 ✓
+- Familiars: 0 ✓ | HungerGames: 0 ✓ | HeatedRivalry: 0 ✓
 
 **Remaining issues:**
-- **HeatedRivalry 7 + HungerGames 1**: Whitespace — promoted heading text should be
-  immediately after `<body>`, not on next line. Cosmetic only.
-- **ThroneOfGlass 5**: Missing `<figure>` wrapper for figure-hinted images. Go's
-  promoted body puts figure style directly on `<body>`, but Calibre keeps `<figure>`
-  as child element with separate body class.
-- **SecretsCrown 4**: Extra `<div>` wrapper (same figure issue) + drop-cap class ordering swap.
+- **1984: 4** — c9 bare div (stripBareDivs regression), cDT page_134 anchor missing, nav/toc referencing page_134
+- **SecretsCrown: 3** — class_220-0/1 ordering swap (drop-cap vs paragraph), class_93-0 extra font-size/height
+- **ThroneOfGlass: 5** — c4D figure wrapper, c9/cV class-3/4 ordering swap, cM p wrapper vs inline, class_sU CSS differences
 
 **Root cause of class split (FIXED in run 5):**
 - Python converts `-kfx-box-align` to `text-align` in `create_container` (yj_to_epub_content.py:1335-1336)
