@@ -590,10 +590,19 @@ func parseResourceFragment(fragmentID string, value map[string]interface{}) reso
 	format, _ := asString(value["format"])
 
 	// If mime type is not present but format indicates an image,
-	// set mediaType to "image/jpeg". Known image format symbols:
-	// "jxr" = JPEG XR, "jpg" = JPEG, "png" = PNG
-	if mediaType == "" && (format == "jxr" || format == "jpg" || format == "png") {
-		mediaType = "image/jpeg"
+	// set mediaType to the correct image MIME type. Known image format symbols:
+	// "jxr" = JPEG XR, "jpg" = JPEG, "png" = PNG.
+	// JXR resources must get "image/jxr" (not "image/jpeg") so the JXR→JPEG
+	// conversion in buildResources detects and converts them correctly.
+	if mediaType == "" {
+		switch format {
+		case "jxr":
+			mediaType = "image/jxr"
+		case "jpg":
+			mediaType = "image/jpeg"
+		case "png":
+			mediaType = "image/png"
+		}
 	}
 
 	// Width/height from $422/$423 (or $66/$67 fallback)
