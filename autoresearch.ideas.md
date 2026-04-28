@@ -141,3 +141,38 @@ at rendering time, which is architecturally complex.
 Check if the imageClasses wrapper would have properties that are NOT on the body.
 This could be done by comparing imageClasses wrapperProps against the body's declarations.
 If any wrapper properties are missing from the body, keep the wrapper.
+
+## Session 2026-04-28 (continued)
+
+### Whitespace Fix: sectionXHTML block-aware trailing \n
+- **Status**: ✅ Implemented (-3 diffs in 1984)
+- `bodyEndsWithBlockElement()` checks if body content ends with a block element closing tag.
+- Only adds trailing \n before </body> for block elements (p, div, h1-h6, etc.).
+- Inline elements (<a>, <span>, <img>) don't get trailing \n, matching Python's beautify_html.
+- Self-closing tags (/>) ARE treated as block for this purpose (needed for <img/>, <hr/> pages).
+
+### Calibre Reference Regeneration
+- **Status**: ✅ Done
+- All 10 reference EPUBs regenerated from current REFERENCE/Calibre_KFX_Input code.
+- Old references were from an outdated Calibre version with different whitespace handling.
+- Fresh references are the correct source of truth.
+- Some diffs changed: 1984 went from 0→8 structural (new trailing \n diffs, div wrapper, page anchors).
+- HeatedRivalry went from 3→0 (old diffs were against stale reference).
+
+### Margin Auto for Box-Align — BLOCKED
+- **Status**: ❌ Blocked by style catalog class ordering cascade
+- Python's create_container adds margin-left/right auto for box-align.
+- Adding margin auto to body CSS changes the style string, which changes the class name
+  in the catalog. This cascades to reorder ALL generic classes, causing massive regressions.
+- The original box-align→text-align + width removal was carefully balanced.
+- Cannot add margin auto without architectural changes to the style catalog.
+- Possible approaches:
+  1. Post-process the stylesheet CSS to add margin auto to figure classes.
+  2. Separate margin auto into a different style declaration that doesn't affect class ordering.
+  3. Accept the diff and focus on other improvements.
+
+### Remaining 15 Diffs Breakdown (fresh references)
+- 1984: 5 (c1K4 div wrapper, cDT page anchor, stylesheet margin, nav/toc page anchor)
+- SecretsCrown: 4 (xQ10 div wrapper, xQ213/xQ875 class swap, stylesheet)
+- ThroneOfGlass: 5 (c4D figure wrapper, c9/cV class swap, cM p wrapper, stylesheet)
+- HungerGames: 1 (c791 inline image whitespace)
