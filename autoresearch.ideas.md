@@ -238,3 +238,12 @@ Possible cause: the page template structure differs (different number of contain
 - Stripping font-size only when height present: no effect (height already stripped before post-processing)
 - The class_93-0 font-size issue requires understanding why Python strips it from body
   but keeps it on the img. This is a simplify_styles reverse inheritance gap.
+
+### Attempted: Margin check for text node promotion (ToG cM)
+- **Status**: ❌ Reverted
+- Tried skipping promotedBodyContainer for text nodes with non-zero margin_top.
+- Both Martyr c56 and ToG cM have non-zero margin_top (2.424240lh for s5C).
+- The margin check incorrectly skips promotion for Martyr c56 (which should be promoted).
+- The distinguishing factor between c56 and cM is NOT margin_top.
+- Both nodes have identical structure (content=frag-ref, no content_list, no resource_name).
+- The difference must be in how Python's is_top_level or the page template handles them.
