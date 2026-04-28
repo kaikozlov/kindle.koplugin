@@ -546,20 +546,33 @@ func sectionXHTML(book Book, section Section) string {
 	if section.BodyClass != "" {
 		out.WriteString(` class="` + xmlEscape(section.BodyClass) + `"`)
 	}
-	out.WriteString(`>` + "\n")
-	// Match lxml's compact serialization. When body content is a single self-closing
-	// HTML element (e.g. <img/>) or a single-line SVG, lxml puts </body> on the same
-	// line with no \n before it. For all other cases, the standard \n before </body>
-	// matches Calibre's output.
+	out.WriteString(`>`)
+	// Match lxml's compact serialization:
+	// 1. When body content is plain text (doesn't start with '<'), it comes from
+	//    Python's body.text which is serialized directly after >. The text may
+	//    include leading \n (from element tree unwrapping). Put bodyContent
+	//    directly after > without adding \n.
+	// 2. When body content is a single self-closing HTML element (e.g. <img/>) or
+	//    a single-line SVG, lxml puts </body> on the same line.
+	// 3. For all other cases, the standard \n before and after body content
+	//    matches Calibre's output.
 	bodyContent := body.String()
-	isSingleLine := len(bodyContent) > 0 && bodyContent[0] == '<' && !strings.Contains(bodyContent, "\n")
-	isSelfClosing := isSingleLine && strings.HasSuffix(bodyContent, "/>")
-	if isSelfClosing || (section.Properties == "svg" && isSingleLine) {
-		out.WriteString(bodyContent)
-		out.WriteString(`</body>` + "\n")
-	} else {
+	isInlineText := len(bodyContent) > 0 && bodyContent[0] != '<'
+	if isInlineText {
+		// Plain text body content: put directly after <body>
+		// BodyHTML includes any needed leading \n from the rendering pipeline
 		out.WriteString(bodyContent + "\n")
 		out.WriteString(`</body>` + "\n")
+	} else {
+		isSingleLine := len(bodyContent) > 0 && bodyContent[0] == '<' && !strings.Contains(bodyContent, "\n")
+		isSelfClosing := isSingleLine && strings.HasSuffix(bodyContent, "/>")
+		if isSelfClosing || (section.Properties == "svg" && isSingleLine) {
+			out.WriteString("\n" + bodyContent)
+			out.WriteString(`</body>` + "\n")
+		} else {
+			out.WriteString("\n" + bodyContent + "\n")
+			out.WriteString(`</body>` + "\n")
+		}
 	}
 	out.WriteString(`</html>`)
 	return out.String()

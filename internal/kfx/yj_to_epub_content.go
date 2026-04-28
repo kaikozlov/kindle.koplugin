@@ -396,16 +396,17 @@ func processReadingOrder(
 			title = deriveSectionTitle(paragraphs, index+1)
 		}
 		book.RenderedSections = append(book.RenderedSections, renderedSection{
-			Filename:         sectionFilename(sectionID),
-			Title:            title,
-			PageTitle:        sectionID,
-			Language:         normalizeLanguage(book.Language),
-			BodyClass:        rendered.BodyClass,
-			BodyStyle:        rendered.BodyStyle,
+			Filename:          sectionFilename(sectionID),
+			Title:             title,
+			PageTitle:         sectionID,
+			Language:          normalizeLanguage(book.Language),
+			BodyClass:         rendered.BodyClass,
+			BodyStyle:         rendered.BodyStyle,
 			BodyStyleInferred: rendered.BodyStyleInferred,
-			Paragraphs:       paragraphs,
-			Properties:       rendered.Properties,
-			Root:             rendered.Root,
+			Paragraphs:        paragraphs,
+			Properties:        rendered.Properties,
+			Root:              rendered.Root,
+			BodyInlineText:    rendered.BodyInlineText,
 		})
 	}
 }
@@ -537,6 +538,15 @@ func renderSectionFragments(sectionID string, section sectionFragment, storyline
 			rendered.BodyHTML = renderHTMLParts(rendered.Root.Children, true)
 		}
 		rendered.Properties = mergeSectionProperties(rendered.Properties, overlayRendered.Properties)
+	}
+
+	// For promoted body inline text without heading hints, prepend \n to BodyHTML.
+	// Python's lxml creates body with <span> child, then simplify_styles unwraps it,
+	// leaving body.text = "\ntext\n". For headings, Python wraps <h1> in container <body>,
+	// so body.text = "text" (no \n). This \n is needed so sectionXHTML produces
+	// the correct output: <body>\ntext\n</body> for non-heading, <body>text\n</body> for heading.
+	if rendered.BodyInlineText && len(rendered.BodyHTML) > 0 && rendered.BodyHTML[0] != '<' {
+		rendered.BodyHTML = "\n" + rendered.BodyHTML
 	}
 
 	return rendered, paragraphs, len(paragraphs) > 0 || rendered.BodyHTML != ""
@@ -3665,6 +3675,29 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	r.applyPositionAnchors(root, sectionPositionID, false)
 	result.Root = root
 	result.BodyHTML = renderHTMLParts(root.Children, true)
+	// For promoted body inline text that is NOT a heading, prepend \n to BodyHTML.
+	// Python's lxml creates <body><span>text</span></body>. When simplify_styles
+	// unwraps the <span>, body.text = "\ntext\n" (the \n comes from the element
+	// tree structure). For headings, Python wraps <h1> in a container <body>, so
+	// body.text = "text" (no \n). This \n prefix is needed so that sectionXHTML
+	// produces the correct output for non-heading inline text.
+	if promotedBodyInline && len(result.BodyHTML) > 0 && result.BodyHTML[0] != '<' {
+		hasHeadingHint := false
+		for _, rawNode := range contentNodes {
+			if node, ok := asMap(rawNode); ok {
+				if layoutHintsInclude(r.nodeLayoutHints(node), "heading") {
+					hasHeadingHint = true
+					break
+				}
+			}
+		}
+		if !hasHeadingHint {
+			if os.Getenv("KFX_DEBUG_BODY") != "" {
+				fmt.Fprintf(os.Stderr, "PROMOTED-INLINE-NL: pos=%d BodyHTML=%q\n", sectionPositionID, result.BodyHTML[:min(40, len(result.BodyHTML))])
+			}
+			result.BodyInlineText = true
+		}
+	}
 	if strings.Contains(result.BodyHTML, "<svg ") {
 		result.Properties = "svg"
 	}
@@ -7568,6 +7601,15 @@ func replaceHTMLClassTokens(element *htmlElement, replacer *strings.Replacer) {
 func materializeRenderedSections(rendered []renderedSection) []epub.Section {
 	sections := make([]epub.Section, 0, len(rendered))
 	for _, section := range rendered {
+		bodyHTML := renderedSectionBodyHTML(section)
+		// For promoted body inline text without heading hints, prepend \n to BodyHTML.
+		// Python's lxml element tree has body.text = "\n" before the <span> child.
+		// After simplify_styles unwraps <span>, this \n survives in body.text.
+		// We can't add the \n to Root.Children because normalizeHTMLWhitespace
+		// would convert it to <br/>. Instead, store a flag and prepend here.
+		if section.BodyInlineText && len(bodyHTML) > 0 && bodyHTML[0] != '<' {
+			bodyHTML = "\n" + bodyHTML
+		}
 		sections = append(sections, epub.Section{
 			Filename:    section.Filename,
 			Title:       section.Title,
@@ -7576,7 +7618,7 @@ func materializeRenderedSections(rendered []renderedSection) []epub.Section {
 			BodyLanguage: section.BodyLanguage,
 			BodyClass:   section.BodyClass,
 			Paragraphs:  append([]string(nil), section.Paragraphs...),
-			BodyHTML:    renderedSectionBodyHTML(section),
+			BodyHTML:    bodyHTML,
 			Properties:  section.Properties,
 		})
 	}

@@ -154,26 +154,28 @@ type decodedBook struct {
 }
 
 type renderedStoryline struct {
-	Root             *htmlElement
-	BodyHTML         string
-	BodyClass        string
-	BodyStyle        string
+	Root              *htmlElement
+	BodyHTML          string
+	BodyClass         string
+	BodyStyle         string
 	BodyStyleInferred bool
-	Properties       string
+	Properties        string
+	BodyInlineText    bool // true when body content is promoted inline plain text (no heading hints)
 }
 
 type renderedSection struct {
-	Filename       string
-	Title          string
-	PageTitle      string
-	Language       string
-	BodyLanguage   string // xml:lang for <body> element (from -kfx-attrib-xml-lang, may differ from Language)
-	BodyClass      string
-	BodyStyle      string
-	BodyStyleInferred bool // true if body style was inferred from children (not from content rendering)
-	Paragraphs     []string
-	Properties     string
-	Root           *htmlElement
+	Filename          string
+	Title             string
+	PageTitle         string
+	Language          string
+	BodyLanguage      string // xml:lang for <body> element (from -kfx-attrib-xml-lang, may differ from Language)
+	BodyClass         string
+	BodyStyle         string
+	BodyStyleInferred bool   // true if body style was inferred from children (not from content rendering)
+	Paragraphs        []string
+	Properties        string
+	Root              *htmlElement
+	BodyInlineText    bool // true when body content is promoted inline plain text (needs \n prefix)
 }
 
 type resourceFragment struct {
