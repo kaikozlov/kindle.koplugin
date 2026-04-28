@@ -491,6 +491,34 @@ func contentOPF(book Book) string {
 	return out.String()
 }
 
+
+// bodyEndsWithBlockElement checks if the body content ends with a closing tag
+// for a block-level element. Python's beautify_html adds trailing \n only for
+// block elements ("aside", "div", "figure", "h1"-"h6", "hr", "ol", "p", "table", "ul").
+// Inline elements like <a>, <span>, <img> don't get trailing \n.
+func bodyEndsWithBlockElement(bodyContent string) bool {
+	// Check for closing tags of block elements at the end of content.
+	blockEndTags := []string{
+		"</aside>", "</div>", "</figure>",
+		"</h1>", "</h2>", "</h3>", "</h4>", "</h5>", "</h6>",
+		"</hr>",
+		"</ol>", "</p>", "</table>", "</ul>",
+		// Also match self-closing block elements
+		"/>",
+	}
+	stripped := strings.TrimRight(bodyContent, " \t\n")
+	for _, tag := range blockEndTags {
+		if strings.HasSuffix(stripped, tag) {
+			return true
+		}
+	}
+	// If content already ends with \n (from rendered block elements), treat as block
+	if strings.HasSuffix(bodyContent, "\n") {
+		return true
+	}
+	return false
+}
+
 func sectionXHTML(book Book, section Section) string {
 	var body strings.Builder
 	if section.BodyHTML != "" {
@@ -570,7 +598,16 @@ func sectionXHTML(book Book, section Section) string {
 			out.WriteString("\n" + bodyContent)
 			out.WriteString(`</body>` + "\n")
 		} else {
-			out.WriteString("\n" + bodyContent + "\n")
+			// Python's beautify_html adds trailing \n only for block elements
+			// ("aside", "div", "figure", "h1"-"h6", "hr", "ol", "p", "table", "ul").
+			// Inline elements like <a> don't get trailing \n in their tail.
+			// Match this: add trailing \n only if content ends with a block closing tag.
+			needsTrailingNewline := bodyEndsWithBlockElement(bodyContent)
+			if needsTrailingNewline {
+				out.WriteString("\n" + bodyContent + "\n")
+			} else {
+				out.WriteString("\n" + bodyContent)
+			}
 			out.WriteString(`</body>` + "\n")
 		}
 	}
