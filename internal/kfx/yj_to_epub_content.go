@@ -3551,11 +3551,36 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	inferredBody := false
 	if bodyStyleID == "" {
 		if promotedStyleID, promotedNodes, ok, inline := promotedBodyContainer(nodes, r.styleFragments); ok {
-			bodyStyleID = promotedStyleID
-			bodyStyleValues = nil
-			contentNodes = promotedNodes
-			promotedBody = true
-			promotedBodyInline = inline
+			// Python's COMBINE_NESTED_DIVS (yj_to_epub_content.py:1415-1440) checks
+			// if the container <div>'s style properties overlap with the body's style.
+			// If they share properties (e.g., font-size), the <div> is kept and later
+			// converted to <figure> by simplify_styles. If they don't overlap, the <div>
+			// is merged into <body>.
+			// Go's promotedBodyContainer always promotes. For resource nodes with figure
+			// layout hints, check if the container style has font-size (which would overlap
+			// with body defaults and prevent merging in Python). If so, skip promotion so
+			// the <div> wrapper stays and gets converted to <figure> by simplify_styles.
+			if inline && ok {
+				for _, rawNode := range promotedNodes {
+					if node, nodeOK := asMap(rawNode); nodeOK {
+						if _, hasResource := asString(node["resource_name"]); hasResource {
+							if layoutHintsInclude(r.nodeLayoutHints(node), "figure") {
+								style := effectiveStyle(r.styleFragments[promotedStyleID], node)
+								if _, hasFontSize := style["font_size"]; hasFontSize {
+									ok = false
+								}
+							}
+						}
+					}
+				}
+			}
+			if ok {
+				bodyStyleID = promotedStyleID
+				bodyStyleValues = nil
+				contentNodes = promotedNodes
+				promotedBody = true
+				promotedBodyInline = inline
+			}
 		}
 	}
 	if promotedBody {
