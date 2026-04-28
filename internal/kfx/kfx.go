@@ -160,7 +160,7 @@ type renderedStoryline struct {
 	BodyStyle         string
 	BodyStyleInferred bool
 	Properties        string
-	BodyInlineText    bool // true when body content is promoted inline plain text (no heading hints)
+
 }
 
 type renderedSection struct {
@@ -175,7 +175,7 @@ type renderedSection struct {
 	Paragraphs        []string
 	Properties        string
 	Root              *htmlElement
-	BodyInlineText    bool // true when body content is promoted inline plain text (needs \n prefix)
+
 }
 
 type resourceFragment struct {
