@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='utf-8'?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0" unique-identifier="bookid" prefix="marc: http://id.loc.gov/vocabulary/">
+  <metadata>
+    <dc:identifier id="bookid">urn:asin:B0BZZCSYXJ</dc:identifier>
+    <dc:title>Heated Rivalry (Game Changers: Heated Rivalry Book Series)</dc:title>
+    <dc:creator id="creator0">Reid, Rachel</dc:creator>
+    <meta refines="#creator0" property="role" scheme="marc:relators">aut</meta>
+    <dc:language>en</dc:language>
+    <dc:publisher>Carina Press</dc:publisher>
+    <dc:date>2023-04-18</dc:date>
+    <meta property="dcterms:modified">2026-04-28T17:41:45Z</meta>
+    <meta name="cover" content="image_rsrc5AT.jpg"/>
+  </metadata>
+  <manifest>
+    <item href="c0.xhtml" id="c0.xhtml" media-type="application/xhtml+xml" properties="svg"/>
+    <item href="c10V.xhtml" id="c10V.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c15.xhtml" id="c15.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c17D.xhtml" id="c17D.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c1AK.xhtml" id="c1AK.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c1AT.xhtml" id="c1AT.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c1F.xhtml" id="c1F.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c1H5.xhtml" id="c1H5.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c1MT.xhtml" id="c1MT.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c1P.xhtml" id="c1P.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c1UF.xhtml" id="c1UF.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c1UN.xhtml" id="c1UN.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c1W.xhtml" id="c1W.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c1YR.xhtml" id="c1YR.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c252.xhtml" id="c252.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c2B2.xhtml" id="c2B2.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c2EK.xhtml" id="c2EK.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c2K7.xhtml" id="c2K7.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c2RK.xhtml" id="c2RK.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c2WD.xhtml" id="c2WD.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c33A.xhtml" id="c33A.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c37.xhtml" id="c37.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c3AR.xhtml" id="c3AR.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c3F2.xhtml" id="c3F2.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c3JF.xhtml" id="c3JF.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c3JN.xhtml" id="c3JN.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c3VD.xhtml" id="c3VD.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c407.xhtml" id="c407.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c497.xhtml" id="c497.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c4GN.xhtml" id="c4GN.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c4MY.xhtml" id="c4MY.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c4TR.xhtml" id="c4TR.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c4TY.xhtml" id="c4TY.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c4U6.xhtml" id="c4U6.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c4UC.xhtml" id="c4UC.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c540.xhtml" id="c540.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c54J.xhtml" id="c54J.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c83.xhtml" id="c83.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c8A.xhtml" id="c8A.xhtml" media-type="application/xhtml+xml"/>
+    <item href="c9.xhtml" id="c9.xhtml" media-type="application/xhtml+xml"/>
+    <item href="cAG.xhtml" id="cAG.xhtml" media-type="application/xhtml+xml"/>
+    <item href="cCY.xhtml" id="cCY.xhtml" media-type="application/xhtml+xml"/>
+    <item href="cEZ.xhtml" id="cEZ.xhtml" media-type="application/xhtml+xml"/>
+    <item href="cPD.xhtml" id="cPD.xhtml" media-type="application/xhtml+xml"/>
+    <item href="cS.xhtml" id="cS.xhtml" media-type="application/xhtml+xml"/>
+    <item href="cU4.xhtml" id="cU4.xhtml" media-type="application/xhtml+xml"/>
+    <item href="image_rsrc5AT.jpg" id="image_rsrc5AT.jpg" media-type="image/jpeg" properties="cover-image"/>
+    <item href="image_rsrc5AU.jpg" id="image_rsrc5AU.jpg" media-type="image/jpeg"/>
+    <item href="image_rsrc5AV.jpg" id="image_rsrc5AV.jpg" media-type="image/jpeg"/>
+    <item href="image_rsrc5AW.jpg" id="image_rsrc5AW.jpg" media-type="image/jpeg"/>
+    <item href="image_rsrc5AX.jpg" id="image_rsrc5AX.jpg" media-type="image/jpeg"/>
+    <item href="image_rsrc5AY.jpg" id="image_rsrc5AY.jpg" media-type="image/jpeg"/>
+    <item href="image_rsrc5AZ.jpg" id="image_rsrc5AZ.jpg" media-type="image/jpeg"/>
+    <item href="image_rsrc5B0.jpg" id="image_rsrc5B0.jpg" media-type="image/jpeg"/>
+    <item href="nav.xhtml" id="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item href="stylesheet.css" id="stylesheet.css" media-type="text/css"/>
+    <item href="toc.ncx" id="toc.ncx" media-type="application/x-dtbncx+xml"/>
+  </manifest>
+  <spine toc="toc.ncx">
+    <itemref idref="c0.xhtml"/>
+    <itemref idref="c9.xhtml"/>
+    <itemref idref="cS.xhtml"/>
+    <itemref idref="c15.xhtml"/>
+    <itemref idref="c1F.xhtml"/>
+    <itemref idref="c1P.xhtml"/>
+    <itemref idref="c1W.xhtml"/>
+    <itemref idref="c37.xhtml"/>
+    <itemref idref="c83.xhtml"/>
+    <itemref idref="c8A.xhtml"/>
+    <itemref idref="cAG.xhtml"/>
+    <itemref idref="cCY.xhtml"/>
+    <itemref idref="cEZ.xhtml"/>
+    <itemref idref="cPD.xhtml"/>
+    <itemref idref="cU4.xhtml"/>
+    <itemref idref="c10V.xhtml"/>
+    <itemref idref="c17D.xhtml"/>
+    <itemref idref="c1AK.xhtml"/>
+    <itemref idref="c1AT.xhtml"/>
+    <itemref idref="c1H5.xhtml"/>
+    <itemref idref="c1MT.xhtml"/>
+    <itemref idref="c1UF.xhtml"/>
+    <itemref idref="c1UN.xhtml"/>
+    <itemref idref="c1YR.xhtml"/>
+    <itemref idref="c252.xhtml"/>
+    <itemref idref="c2B2.xhtml"/>
+    <itemref idref="c2EK.xhtml"/>
+    <itemref idref="c2K7.xhtml"/>
+    <itemref idref="c2RK.xhtml"/>
+    <itemref idref="c2WD.xhtml"/>
+    <itemref idref="c33A.xhtml"/>
+    <itemref idref="c3AR.xhtml"/>
+    <itemref idref="c3F2.xhtml"/>
+    <itemref idref="c3JF.xhtml"/>
+    <itemref idref="c3JN.xhtml"/>
+    <itemref idref="c3VD.xhtml"/>
+    <itemref idref="c407.xhtml"/>
+    <itemref idref="c497.xhtml"/>
+    <itemref idref="c4GN.xhtml"/>
+    <itemref idref="c4MY.xhtml"/>
+    <itemref idref="c4TR.xhtml"/>
+    <itemref idref="c4TY.xhtml"/>
+    <itemref idref="c4U6.xhtml"/>
+    <itemref idref="c4UC.xhtml"/>
+    <itemref idref="c540.xhtml"/>
+    <itemref idref="c54J.xhtml"/>
+  </spine>
+  <guide>
+    <reference type="cover" title="Cover" href="c0.xhtml"/>
+    <reference type="toc" title="Table of Contents" href="c15.xhtml"/>
+    <reference type="text" title="Beginning" href="c37.xhtml"/>
+  </guide>
+</package>
