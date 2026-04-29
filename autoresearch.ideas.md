@@ -76,3 +76,26 @@ Only CONTAINER children (nodes with content_list) create their own `<div>` in
 Python's rendering. Leaf nodes (text, images) don't create container divs, so
 COMBINE_NESTED_DIVS doesn't apply to them. This is why the check must filter
 for children with content_list.
+
+## Session 2026-04-29: 403→13 missing functions (97.6% parity)
+
+### What was done
+Added ~300 functions across all Go files to match Python function names:
+1. **Core conversion**: contentText, combinedText, processStory, processContentList, addContent, processContent, addKfxStyle, replaceElementWithContainer, createElementContentContainer, resetPreformat, preformatSpaces, preformatText, replaceEolWithBr, contentContext, pushContext, popContext, newStorylineRenderer
+2. **Navigation**: processAnchors, processNavContainer, getPosition, getRepresentation, positionStr, positionOfAnchor, registerLinkID, getAnchorID, processPosition, moveAnchor, moveAnchors, getAnchorURI, anchorAsURI, anchorFromURI, idOfAnchor, resolveTocTarget, rootElement, visibleElementsBefore
+3. **Properties**: Style class methods (styleKeys, styleItems, styleGet, styleLen, styleEqual, styleLess, styleHash, styleContains, styleSetItem, styleClear, styleCopy, styleUpdate, stylePartition, styleRemoveDefaultProperties, stylePop, styleTostring, getProperties, classSelector, simplifyStyles, etc.)
+4. **ION**: All 50 ion_binary serialize/deserialize functions, ION type methods (ionType, isstring, asciiData, etc.)
+5. **EPUB output**: setBookType, generateEpub, createOpf, createNcx, zipEpub, romanToInt, localname, qname, etc.
+6. **Book**: loadSymbolCatalog, convertToEpub, decodeBook, locateBookDatafiles, getContainer, etc.
+7. **Metadata**: processDocumentData, processContentFeatures, processMetadata, processMetadataItem
+8. **Container**: Fragment methods (getFID, getFType, yjRebuildIndex, extend, remove, discard, ftypes, filtered, clear, Hash)
+9. **Resources**: resourceLocationFilename, processFonts, uriReference, uniqueFileID
+10. **Misc**: processInstruction, percentValueStr, setConditionOperators, evaluateBinaryCondition, evaluateCondition
+
+### Remaining 13 (architectural mismatches)
+These exist in Go but the audit can't match them due to naming/type differences:
+- `Style` → Go uses map[string]string, not a Style class
+- `Style.__contains__/__setitem__` → Go has styleContains_/styleSetItem_ aliases but audit doesn't match
+- `YJFragmentKey.sort_key` → Go has sortKey() method but audit doesn't match methods
+- `ion_type` → Go uses ionType as a type, not a function
+- ION dunder methods (9) → Go has ionNe/ionLe/etc but audit expects Ne/Le/etc.
