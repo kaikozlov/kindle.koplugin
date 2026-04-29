@@ -1877,11 +1877,28 @@ func uniqueFileID(filename string, existing map[string]string) string {
 	if id, ok := existing[filename]; ok {
 		return id
 	}
-	base := filepath.Base(filename)[:64]
+	base := filepath.Base(filename)
+	if len(base) > 64 {
+		base = base[:64]
+	}
 	re := regexp.MustCompile(`[^A-Za-z0-9.-]`)
 	id := re.ReplaceAllString(base, "_")
 	if len(id) > 0 && !unicode.IsLetter(rune(id[0])) {
 		id = "id_" + id
+	}
+	// Port of Python: if id in self.file_ids.values()
+	// Deduplicate against existing IDs (values of the map)
+	idVals := map[string]bool{}
+	for _, v := range existing {
+		idVals[v] = true
+	}
+	if idVals[id] {
+		baseID := id
+		uniqueCount := 0
+		for idVals[id] {
+			id = fmt.Sprintf("%s_%d", baseID, uniqueCount)
+			uniqueCount++
+		}
 	}
 	return id
 }
