@@ -1946,6 +1946,11 @@ type simplifyState struct {
 	lastKfxHeadingLevel string // tracks last seen heading level (Python: self.last_kfx_heading_level)
 	resourceDims        map[string][2]int // image dimensions by filename (for vh/vw cross-conversion)
 	sectionFilename     string            // current section filename (for resolving img src paths)
+	// defaultOrderedListValue tracks the current ordered list default value.
+	// Port of Python default_ordered_list_value parameter (yj_to_epub_properties.py L1816-1827).
+	// Values: nil = not in list context, -1 = False (Python), 0+ = actual default from <ol start=...>
+	defaultOrderedListValue int
+	hasOrderedListValue    bool // true when defaultOrderedListValue is set (distinguishes 0 from unset)
 }
 
 func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherited map[string]string, state *simplifyState, parentKnownWidth ...bool) (containsBlock, containsText, containsImage bool) {
@@ -2086,17 +2091,39 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	}
 
 	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1804-1827):
-	// OL/UL start attribute management.
+	// Port of Python simplify_styles ordered list handling (yj_to_epub_properties.py L1803-1827).
+	// Track default_ordered_list_value through the recursion to decide whether to
+	// strip <li value="N"> attributes.
 	if elem.Tag == "ol" {
 		if startStr, ok := elem.Attrs["start"]; ok {
-			if startStr == "1" {
+			startVal, err := strconv.Atoi(startStr)
+			if err == nil && startVal == 1 {
 				delete(elem.Attrs, "start")
 			}
+			state.defaultOrderedListValue = startVal
+			state.hasOrderedListValue = true
+		} else {
+			state.defaultOrderedListValue = 1
+			state.hasOrderedListValue = true
 		}
 	} else if elem.Tag == "ul" {
 		if _, ok := elem.Attrs["start"]; ok {
 			delete(elem.Attrs, "start")
 		}
+		state.hasOrderedListValue = true
+		state.defaultOrderedListValue = -1 // Python: False
+	} else if elem.Tag == "li" {
+		if valueStr, ok := elem.Attrs["value"]; ok {
+			if liVal, err := strconv.Atoi(valueStr); err == nil {
+				// Python: if (default_ordered_list_value is False) or (ordered_list_value == default_ordered_list_value):
+				if !state.hasOrderedListValue || state.defaultOrderedListValue == -1 || liVal == state.defaultOrderedListValue {
+					delete(elem.Attrs, "value")
+				}
+			}
+		}
+		state.hasOrderedListValue = false // Python: default_ordered_list_value = None
+	} else {
+		state.hasOrderedListValue = false // Python: default_ordered_list_value = None
 	}
 
 	// Ported from Python simplify_styles (yj_to_epub_properties.py lines 1832-1838):
