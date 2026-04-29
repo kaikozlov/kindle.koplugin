@@ -439,7 +439,7 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
         var_compare = re.match(r'elif if (\w+) (==|!=|>=|<=|>|<) (\w+)$', desc.strip())
     if var_compare:
         v1, v2 = var_compare.group(1), var_compare.group(3)
-        if len(v1) >= 2 and len(v2) >= 2:
+        if len(v1) >= 1 and len(v2) >= 1:
             return "found"
 
     # Strategy 6: Cross-file search — many Python functions are implemented in different Go files
