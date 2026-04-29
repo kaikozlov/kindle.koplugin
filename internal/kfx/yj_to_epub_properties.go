@@ -5055,3 +5055,13 @@ func stylePop(style map[string]string, key string, def string) string {
 func styleContains_(style map[string]string, key string) bool { return styleContains(style, key) }
 func styleSetItem_(style map[string]string, key, value string) { styleSetItem(style, key, value) }
 
+
+// Style creates a new style map. Port of Python KFX_EPUB_Properties.Style.
+func Style(props ...string) map[string]string {
+	m := make(map[string]string)
+	for i := 0; i+1 < len(props); i += 2 {
+		m[props[i]] = props[i+1]
+	}
+	return m
+}
+

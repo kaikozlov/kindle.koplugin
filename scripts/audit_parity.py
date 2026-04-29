@@ -136,6 +136,32 @@ SHORT_NAME_MAP = {
     "remove_default_properties": ["removeDefaultProperties", "styleRemoveDefaultProperties"],
     "tostring": ["tostring", "styleTostring", "String"],
     "Style": ["Style", "newStyle"],
+    # PosData methods
+    "advance": ["advance", "posDataAdvance"],
+    "chunk": ["chunk", "posDataChunk"],
+    "at_end": ["atEnd", "posDataAtEnd"],
+    # BookPart methods
+    "head": ["head", "bookPartHead"],
+    "body": ["body", "bookPartBody"],
+    # Dunder methods — use full dunder names
+    "__hash__": ["Hash", "ionHash"],
+    "__contains__": ["Contains", "ionContains", "styleContains"],
+    "__setitem__": ["SetItem", "ionSetItem", "styleSetItem"],
+    "__new__": ["New", "ionNew"],
+    "__ne__": ["Ne", "ionNe"],
+    "__le__": ["Le", "ionLe"],
+    "__gt__": ["Gt", "ionGt"],
+    "__ge__": ["Ge", "ionGe"],
+    "__copy__": ["Copy", "ionCopy", "styleCopy"],
+    "__deepcopy__": ["Deepcopy", "ionDeepcopy"],
+    "format": ["format", "ionFormat"],
+    # Container methods
+    "deserialize": ["deserialize", "ionDeserialize", "deserializeContainer", "deserializeEntity"],
+    "serialize": ["serialize", "ionSerialize", "serializeContainer", "serializeEntity"],
+    # Other
+    "fixup": ["fixup", "epubFixup", "epubFixupNS"],
+    "ion_type": ["ionType", "detectIonType"],
+    "sort_key": ["sortKey"],
 }
 
 def expected_go_names(pf: PyFunc) -> list[str]:
