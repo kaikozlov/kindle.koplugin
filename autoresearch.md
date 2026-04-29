@@ -1,79 +1,105 @@
-# Autoresearch: Python→Go Structural Parity
+# Autoresearch: Uncertain Branches → 0 via Real Feature Implementation
 
 ## Objective
-Achieve 1:1 structural parity between every Python function in `REFERENCE/Calibre_KFX_Input/kfxlib/` and its Go counterpart in `internal/kfx/`. Every Python `def` must exist as a separate, named Go `func` — no inlining.
+Reduce uncertain branches from 26 to 0 by implementing the ACTUAL missing features in Go.
+No dead variables. No audit script modifications. No variable renames for audit matching.
+Every change must be a real feature that affects behavior or adds genuine validation.
 
-## Metrics
-- **Primary**: `missing_functions` (count, lower is better) — Python functions with no named Go counterpart
-- **Secondary**: `total_functions` — total Python functions across all audited files
-- **Secondary**: `matched_functions` — functions that have a named Go counterpart
-- **Secondary**: `parity_pct` — percentage of functions matched
+## Metric
+- **Primary**: `uncertain_branches` (count, lower is better) — branches the audit can't verify
+- **Secondary**: `branch_coverage_pct` — percentage of branches found
 
 ## How to Run
-`./autoresearch.sh` — runs `scripts/audit_parity.py --metric`
+`./autoresearch.sh` — runs `scripts/audit_missing_branches.py --metric`
 
-## Approach
+## Honest State: 26 Uncertain Branches
 
-### Priority Order (by impact on conversion correctness)
-1. **Core conversion files first** (most diffs originate here):
-   - `yj_to_epub_content.py` (31 functions, 18 missing)
-   - `yj_to_epub_properties.py` (58 functions, 45 missing)
-   - `yj_to_epub_misc.py` (17 functions, 10 missing)
-   - `yj_to_epub_navigation.py` (27 functions, 20 missing)
-   - `yj_to_epub.py` (15 functions, 12 missing)
-   - `yj_to_epub_metadata.py` (5 functions, 5 missing)
-   - `yj_to_epub_resources.py` (9 functions, 6 missing)
-2. **Supporting conversion files**:
-   - `yj_to_epub_illustrated_layout.py` (6 functions, 2 missing)
-   - `yj_to_epub_notebook.py` (9 functions, 1 missing)
-   - `yj_to_image_book.py` (10 functions, 7 missing)
-3. **Data structure files**:
-   - `yj_container.py` (31 functions, 28 missing)
-   - `yj_book.py` (17 functions, 17 missing)
-   - `yj_metadata.py` (33 functions, 12 missing)
-   - `yj_position_location.py` (32 functions, 13 missing)
-   - `yj_structure.py` (25 functions, 11 missing)
-4. **Infrastructure files**:
-   - `epub_output.py` (70 functions, 66 missing)
-   - `ion.py` (47 functions, 47 missing)
-   - `ion_binary.py` (50 functions, 50 missing)
-   - `ion_symbol_table.py` (25 functions, 23 missing)
-   - `kfx_container.py` (8 functions, 8 missing)
-   - `yj_symbol_catalog.py` (1 function, 1 missing)
-   - `yj_versions.py` (6 functions, 1 missing)
+### content (5 branches)
+1. `process_content: if do_merge` — COMBINE_NESTED_DIVS merge decision variable
+2. `process_content: if log_result` — debug logging flag (set to False, never triggers)
+3. `fix_vertical_align_properties: if set_style_if_changed and style_changed` — vertical align tracking
+4. `locate_offset_in: if scan_children` — child scanning control in offset location
+5. `preformat_text: if do_tail` — tail text handling in preformat
 
-### Process Per Function
-1. Read the Python function source (`REFERENCE/Calibre_KFX_Input/kfxlib/<file>.py`)
-2. Read the Pytago transpilation (`REFERENCE/pytago_test_new/go_output/<file>.go`) if available
-3. Check if the logic already exists in Go under a different name or inlined into another function
-4. If inlined: extract into a separate named function
-5. If missing: implement as a new function following pytago output as reference
-6. Every `if`, `elif`, `for`, `try`, ternary, and type dispatch must have a Go counterpart
-7. Run `go test ./internal/kfx/...` to verify no regressions
+### properties (11 branches)
+6. `fixup_styles_and_classes: if style_attribs` — -kfx-attrib- property extraction
+7. `fixup_styles_and_classes: if style_modified` — style modification tracking
+8. `fixup_styles_and_classes: if selector_style` — pseudo-selector CSS rules (-kfx-firstline-, etc.)
+9. `simplify_styles: ordered_list_value` (x3) — ordered list value attribute handling
+10. `add_composite_and_equivalent_styles: if ineffective_properties` — ineffective property detection
+11. `add_composite_and_equivalent_styles: if ineffective_sty` — ineffective style tracking
+12. `color_int: if m` (x2) — regex match result in color parsing
+13. `add_style: if orig_style_str` — existing style check before merge
+14. `partition: if add_prefix` — name prefix addition in style partition
+15. `zero_quantity: if num_match` — numeric value regex match
 
-### Function Naming Convention
-- Python `snake_case` → Go `camelCase` (unexported)
-- Python `Class.method` → Go standalone function (with receiver if appropriate)
-- Python `__init__` → Go `NewClass()` or part of struct init
-- Python `__repr__`/`__str__` → Go `String()` method
-- Python dunder methods → Go idiomatic equivalents
+### navigation (1 branch)
+16. `fixup_anchors_and_hrefs: if not elem_id` — generate missing element IDs
+
+### yj_to_epub (4 branches)
+17. `organize_fragments_by_type: if id not in dt` — fragment type dict lookup
+18. `organize_fragments_by_type: elif/if None in ids` (x2) — None in set check
+19. `get_fragment: if data_name and data_name != fid` — fragment name validation
+
+### illustrated_layout (2 branches)
+20. `create_conditional_page_templates: if story_id` — story ID check
+21. `create_conditional_page_templates: if css_lines` — CSS lines collection
+
+## Approach: Implement Real Features Only
+
+### Strategy
+For each uncertain branch:
+1. Read the Python source to understand WHAT the branch does
+2. Determine if Go already does this under a different name/pattern
+3. If Go doesn't do it: implement the actual feature
+4. If Go already does it but the audit can't see it: that's a legitimate gap in the audit tooling, NOT something to fix by padding code
+
+### Rules (ANTI-CHEAT)
+- **NO** `_ = variable` dead assignments
+- **NO** modifying `scripts/audit_branches.py` to add matching strategies
+- **NO** renaming Go variables purely to match Python names
+- **NO** adding constants that are never read
+- Every change must either (a) fix a real bug, (b) add real validation/logging, or (c) implement missing functionality
+
+### Implementation Priority (by real impact)
+
+**Tier 1 — Real feature gaps that could affect output:**
+- `simplify_styles` ordered list value handling (affects `<li value="">` rendering)
+- `fixup_styles_and_classes` selector_style (affects pseudo-selector CSS rules)
+- `preformat_text` do_tail (affects whitespace in preformatted text)
+- `locate_offset_in` scan_children (affects offset-based anchor placement)
+
+**Tier 2 — Real validation gaps (error logging):**
+- `fixup_anchors_and_hrefs` elem_id check
+- `get_fragment` data_name validation
+- `add_composite_and_equivalent_styles` ineffective_properties tracking
+- `fix_vertical_align_properties` set_style_if_changed
+
+**Tier 3 — Feature flags / dead code in Python itself:**
+- `process_content` log_result (always False in Python)
+- `process_content` do_merge (Go uses `ok` boolean for same logic)
+- `create_conditional_page_templates` story_id / css_lines
+
+**Tier 4 — Audit can't match existing Go code:**
+- `color_int` if m (regex match — Go uses different pattern)
+- `organize_fragments_by_type` dict/set lookups (Go uses different access patterns)
+- `partition` add_prefix (Go partition doesn't have this param)
+- `zero_quantity` num_match (Go uses MatchString instead of FindString)
 
 ## Files in Scope
-- `internal/kfx/*.go` — all Go conversion pipeline files
-- `scripts/audit_parity.py` — the parity audit tool itself
+- `internal/kfx/*.go` — Go conversion pipeline
+- `autoresearch.md` — this file
 
 ## Off Limits
+- `scripts/audit_branches.py` — no modifying the benchmark
+- `scripts/audit_missing_branches.py` — no modifying the runner
 - `REFERENCE/` — Python source is read-only
-- `scripts/` (other than audit_parity.py) — tooling is stable
 - `lua/` — frontend is separate concern
 - `internal/kfx/catalog.ion` — symbol catalog is golden data
 - `internal/kfx/testdata/` — golden test files
 
 ## Constraints
 - All Go tests must pass (`go test ./internal/kfx/...`)
+- 0 structural diffs must be maintained
 - No new external dependencies
 - Code must compile
-- Every change must map to specific Python source (file, line, branch)
-
-## What's Been Tried
-- Baseline: 403 missing functions out of 532 total (24.2% parity)
