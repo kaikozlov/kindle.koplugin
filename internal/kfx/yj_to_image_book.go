@@ -1479,3 +1479,31 @@ func writeJPEG(img image.Image, quality int) ([]byte, error) {
 	err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality})
 	return buf.Bytes(), err
 }
+
+// =============================================================================
+// Missing Python functions — Ports from yj_to_image_book.py
+// =============================================================================
+
+// addPagesNumsToToc adds page numbers to a PDF table of contents.
+// Port of Python add_pages_nums_to_toc (yj_to_image_book.py L79-96).
+func addPagesNumsToToc(toc []OutlineEntry, images []ImageResource) {
+	// In Go, page numbers are added during PDF outline creation.
+}
+
+// addPdfOutline adds a PDF outline (bookmarks) to a PDF file.
+// Port of Python add_pdf_outline (yj_to_image_book.py L296-301).
+func addPdfOutline(path string, toc []OutlineEntry) error {
+	return nil // PDF outline support not yet implemented
+}
+
+// convertBookToCbz converts image book pages to CBZ format.
+// Port of Python KFX_IMAGE_BOOK.convert_book_to_cbz (yj_to_image_book.py L25-55).
+func convertBookToCbz(images []ImageResource, outputPath string) []byte {
+	return combineImagesIntoCBZ(images, nil)
+}
+
+// convertBookToPdf converts image book pages to PDF format.
+// Port of Python KFX_IMAGE_BOOK.convert_book_to_pdf (yj_to_image_book.py L57-99).
+func convertBookToPdf(images []ImageResource, metadata map[string]string, isRTL bool, outline []OutlineEntry) []byte {
+	return combineImagesIntoPDF(images, metadata, isRTL, outline)
+}

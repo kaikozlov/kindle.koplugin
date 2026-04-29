@@ -876,3 +876,14 @@ func unreferenceResource(book *decodedBook, filename string) {
 		}
 	}
 }
+
+// findById finds an element in the layout by its ID.
+// Port of Python find_by_id (yj_to_epub_illustrated_layout.py L378-386).
+func findById(elements []map[string]interface{}, id interface{}) map[string]interface{} {
+	for _, elem := range elements {
+		if elem["id"] == id {
+			return elem
+		}
+	}
+	return nil
+}

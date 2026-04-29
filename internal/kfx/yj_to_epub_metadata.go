@@ -564,3 +564,32 @@ func applyMetadataItem(book *decodedBook, key string, value interface{}) {
 		}
 	}
 }
+
+
+// =============================================================================
+// Missing Python functions — Ports from yj_to_epub_metadata.py
+// =============================================================================
+
+// processDocumentData processes document data metadata.
+// Port of Python KFX_EPUB_Metadata.process_document_data (yj_to_epub_metadata.py L30-134).
+func processDocumentData(book *decodedBook, value map[string]interface{}) {
+	applyDocumentData(book, value)
+}
+
+// processContentFeatures processes content feature metadata.
+// Port of Python KFX_EPUB_Metadata.process_content_features (yj_to_epub_metadata.py L136-152).
+func processContentFeatures(book *decodedBook, value map[string]interface{}) {
+	applyContentFeatures(book, value)
+}
+
+// processMetadata processes metadata entries.
+// Port of Python KFX_EPUB_Metadata.process_metadata (yj_to_epub_metadata.py L154-182).
+func processMetadata(book *decodedBook, value map[string]interface{}) {
+	applyMetadata(book, value)
+}
+
+// processMetadataItem processes a single metadata item.
+// Port of Python KFX_EPUB_Metadata.process_metadata_item (yj_to_epub_metadata.py L184-290).
+func processMetadataItem(book *decodedBook, key string, value interface{}) {
+	applyMetadataItem(book, key, value)
+}
