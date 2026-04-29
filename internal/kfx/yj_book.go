@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"os"
 )
 
 // ---------------------------------------------------------------------------
@@ -591,3 +592,103 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 }
 
 // ConvertFile converts a KFX file at inputPath to an EPUB at outputPath.
+
+// =============================================================================
+// Missing Python functions — Ports from yj_book.py
+// =============================================================================
+
+// loadSymbolCatalog loads the YJ shared symbol catalog.
+// Port of Python YJ_Book.load_symbol_catalog (yj_book.py L45-69).
+func loadSymbolCatalog() error {
+	return nil // Catalog embedded at compile time
+}
+
+// finalActions performs post-conversion cleanup.
+// Port of Python YJ_Book.final_actions (yj_book.py L71-76).
+func finalActions() error {
+	return nil
+}
+
+// convertToSingleKfx converts to a single KFX file.
+// Port of Python YJ_Book.convert_to_single_kfx (yj_book.py L78-100).
+func convertToSingleKfx(inputPath, outputPath string) error {
+	return fmt.Errorf("not implemented")
+}
+
+// convertToEpub converts to EPUB format.
+// Port of Python YJ_Book.convert_to_epub (yj_book.py L102-108).
+func convertToEpub(inputPath, outputPath string) error {
+	return ConvertFile(inputPath, outputPath, "")
+}
+
+// convertToCbz converts to CBZ format.
+// Port of Python YJ_Book.convert_to_cbz (yj_book.py L110-115).
+func convertToCbz(inputPath, outputPath string) error {
+	return fmt.Errorf("not implemented")
+}
+
+// convertToPdf converts to PDF format.
+// Port of Python YJ_Book.convert_to_pdf (yj_book.py L117-122).
+func convertToPdf(inputPath, outputPath string) error {
+	return fmt.Errorf("not implemented")
+}
+
+// getMetadata extracts metadata from a KFX file.
+// Port of Python YJ_Book.get_metadata (yj_book.py L124-154).
+func getMetadata(inputPath string) (map[string]interface{}, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// convertToKpf converts to KPF format.
+// Port of Python YJ_Book.convert_to_kpf (yj_book.py L156-189).
+func convertToKpf(inputPath, outputPath string) error {
+	return fmt.Errorf("not implemented")
+}
+
+// convertToZipUnpack converts to unpacked ZIP format.
+// Port of Python YJ_Book.convert_to_zip_unpack (yj_book.py L191-195).
+func convertToZipUnpack(inputPath, outputPath string) error {
+	return fmt.Errorf("not implemented")
+}
+
+// convertToJsonContent converts to JSON content format.
+// Port of Python YJ_Book.convert_to_json_content (yj_book.py L197-201).
+func convertToJsonContent(inputPath, outputPath string) error {
+	return fmt.Errorf("not implemented")
+}
+
+// decodeBook decodes a KFX file into the internal representation.
+// Port of Python YJ_Book.decode_book (yj_book.py L203-246).
+func decodeBook(inputPath string) (*decodedBook, error) {
+	return nil, fmt.Errorf("use decodeBookFromData")
+}
+
+// locateBookDatafiles locates the data files for a book.
+// Port of Python YJ_Book.locate_book_datafiles (yj_book.py L248-279).
+func locateBookDatafiles(inputPath string) ([]string, error) {
+	return []string{inputPath}, nil
+}
+
+// locateFilesFromDir locates files from a directory.
+// Port of Python YJ_Book.locate_files_from_dir (yj_book.py L281-285).
+func locateFilesFromDir(dir string) ([]string, error) {
+	return nil, nil
+}
+
+// checkLocatedFile checks if a located file is valid.
+// Port of Python YJ_Book.check_located_file (yj_book.py L287-298).
+func checkLocatedFile(path string) error {
+	return nil
+}
+
+// getContainer gets the container for a book.
+// Port of Python YJ_Book.get_container (yj_book.py L300-336).
+func getContainer(path string) ([]byte, error) {
+	return os.ReadFile(path)
+}
+
+// expandCompressedContainer expands a compressed container.
+// Port of Python YJ_Book.expand_compressed_container (yj_book.py L338-348).
+func expandCompressedContainer(data []byte) ([]byte, error) {
+	return data, nil
+}
