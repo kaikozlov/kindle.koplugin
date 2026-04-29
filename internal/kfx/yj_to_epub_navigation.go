@@ -907,6 +907,17 @@ func replaceRenderedAnchorPlaceholders(sections []renderedSection, resolved map[
 		if sections[index].Root == nil {
 			continue
 		}
+		// Port of Python fixup_anchors_and_hrefs elem_id check (yj_to_epub_navigation.py L459-461):
+		// If the section root (body) has no ID, generate one from the filename.
+		// Python: elem_id = elem.get("id", ""); if not elem_id: elem.set("id", anchor_name)
+		if sections[index].Root.Attrs["id"] == "" {
+			// Use the filename (without .xhtml) as the ID
+			elemID := strings.TrimSuffix(sections[index].Filename, ".xhtml")
+			if sections[index].Root.Attrs == nil {
+				sections[index].Root.Attrs = map[string]string{}
+			}
+			sections[index].Root.Attrs["id"] = elemID
+		}
 		replaceAnchorPlaceholdersInParts(sections[index].Root.Children, resolved)
 	}
 }
