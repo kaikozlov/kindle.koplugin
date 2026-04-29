@@ -3724,6 +3724,9 @@ type storylineRenderer struct {
 	// declaration is encountered during style processing (Python: self.text_combine_in_use).
 	// Port of Python yj_to_epub_properties.py L1127 and yj_to_epub_content.py L103.
 	textCombineInUse bool
+	// psPriorIsTail tracks whether the last preformat_text call was for tail text.
+	// Port of Python self.ps_prior_is_tail (yj_to_epub_content.py L1678, L1725, L1742).
+	psPriorIsTail bool
 	// hasConditionalContent is set to true when any conditional page template content
 	// is encountered during rendering (Python: self.has_conditional_content).
 	// Port of Python yj_to_epub_content.py L508 and yj_to_epub_illustrated_layout.py L27.
