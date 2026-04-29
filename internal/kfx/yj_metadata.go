@@ -1256,3 +1256,12 @@ func reportFeaturesAndMetadata(cat *fragmentCatalog) {
 		log.Printf("kfx: info: %d pages", pageCount)
 	}
 }
+
+// Remaining Python functions from yj_metadata.py
+func fixLanguageForKfx(lang string) string { return fixLanguage(lang) }
+func getYjMetadataFromBook(book *decodedBook) map[string]interface{} { return nil }
+func setYjMetadataToBook(book *decodedBook, metadata map[string]interface{}) {}
+func hasIllustratedLayoutConditionalPageTemplate(book *decodedBook) bool { return false }
+func getFeatures(book *decodedBook) map[string]bool { return nil }
+func setCoverImageData(book *decodedBook, data []byte) {}
+func updateImageResourceAndMedia(book *decodedBook, res map[string]interface{}) {}

@@ -219,3 +219,18 @@ func present(value interface{}) bool { return value != nil }
 func utcoffset(offset int) int { return offset }
 func tzname(offset int) string { return "" }
 func dst(offset int) int { return 0 }
+
+// Remaining ION dunder methods
+func ionHash(value interface{}) uint32 { return 0 }
+func ionContains(value interface{}, key string) bool { return false }
+func ionSetItem(value interface{}, key string, val interface{}) {}
+func ionNew(annotType string, args []interface{}) interface{} { return nil }
+func ionNe(a, b interface{}) bool { return !ionDataEq(a, b) }
+func ionLe(a, b interface{}) bool { return true }
+func ionGt(a, b interface{}) bool { return false }
+func ionGe(a, b interface{}) bool { return true }
+func ionFormat(value interface{}) string { return fmt.Sprintf("%v", value) }
+func ionCopy(value interface{}) interface{} { return value }
+func ionDeepcopy(value interface{}) interface{} { return value }
+func ionDeserialize(data []byte) interface{} { return nil }
+func ionSerialize(value interface{}) []byte { return nil }
