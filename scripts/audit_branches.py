@@ -223,6 +223,9 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     if go_content is None:
         return "no-go-file"
 
+    _pending_symbols = []  # Symbols not found in single-file search
+    _pending_isinstance = False  # isinstance not found in single-file search
+
     desc = branch["description"].lower()
 
     # Extract key identifiers from the Python branch description
@@ -241,7 +244,9 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
             real_name = _SYMBOL_CATALOG.get(sym)
             if real_name and real_name in go_content:
                 return "found"
-        return "missing"
+        # Don't return "missing" yet — cross-file search may find it
+        # Store symbols for later cross-file check
+        _pending_symbols = symbols
 
     # Strategy 2: Look for isinstance equivalent — type assertions
     if "isinstance" in desc:
@@ -265,7 +270,7 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
                 for pattern in go_patterns:
                     if pattern in go_content:
                         return "found"
-        return "missing"
+        _pending_isinstance = True
 
     # Strategy 3: Look for string constants
     if strings:
