@@ -891,6 +891,36 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 		}
 		styleClassNames[entry.styleStr] = className
 		classStyles[className] = entry.style
+
+		// Port of Python fixup_styles_and_classes pseudo-selector extraction
+		// (yj_to_epub_properties.py L1548-1554).
+		// Extract -kfx-firstline-*, -kfx-link-*, -kfx-visited-* properties and
+		// create separate CSS rules with ::first-line, :link, :visited suffixes.
+		for _, ps := range []struct{ prefix, suffix string }{
+			{"-kfx-firstline-", "::first-line"},
+			{"-kfx-link-", ":link"},
+			{"-kfx-visited-", ":visited"},
+		} {
+			selectorStyle := map[string]string{}
+			for name, val := range entry.style {
+				if strings.HasPrefix(name, ps.prefix) {
+					selectorStyle[strings.TrimPrefix(name, ps.prefix)] = val
+				}
+			}
+			if len(selectorStyle) > 0 {
+				// Remove pseudo-selector properties from the main class style
+				for name := range selectorStyle {
+					delete(classStyles[className], ps.prefix+name)
+				}
+				// Build CSS declaration string
+				var decls []string
+				for k, v := range selectorStyle {
+					decls = append(decls, fmt.Sprintf("%s: %s", k, v))
+				}
+				sort.Strings(decls)
+				catalog.addStatic("."+className+ps.suffix, decls)
+			}
+		}
 	}
 
 	for i := range book.RenderedSections {
