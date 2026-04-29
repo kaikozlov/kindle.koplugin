@@ -2117,18 +2117,20 @@ func endAddLoc() {
 
 // posDataAdvance moves position data forward by n characters.
 // Port of Python PosData.advance (yj_position_location.py L843-857).
-func posDataAdvance(offset *int, n int) {
+// advance moves the position data forward by n characters.
+// Port of Python PosData.advance (yj_position_location.py L843-857).
+func advance(offset *int, n int) {
 	*offset += n
 }
 
-// posDataChunk returns the current content chunk index.
+// chunk returns the current content chunk index.
 // Port of Python PosData.chunk (yj_position_location.py L859-860).
-func posDataChunk(chunk int) int {
-	return chunk
+func chunk(current int) int {
+	return current
 }
 
-// posDataAtEnd checks if position data has reached the end.
+// atEnd checks if position data has reached the end.
 // Port of Python PosData.at_end (yj_position_location.py L862-863).
-func posDataAtEnd(offset, length int) bool {
+func atEnd(offset, length int) bool {
 	return offset >= length
 }

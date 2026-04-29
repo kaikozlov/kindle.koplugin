@@ -1151,3 +1151,10 @@ func walk(elem *htmlElement, visitor func(*htmlElement)) {
 	}
 }
 func epubFixupNS(html string) string { return html }
+
+func fixup(html string) string { return epubFixup(html) }
+
+
+func head(title string) string { return bookPartHead(title) }
+func body(content string) string { return content }
+

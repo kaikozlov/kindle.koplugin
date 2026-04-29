@@ -300,3 +300,7 @@ func deserializeEntity(data []byte) error {
 func serializeEntity() []byte {
 	return nil
 }
+
+func deserialize(data []byte) error { return nil }
+func serialize() []byte { return nil }
+
