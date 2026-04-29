@@ -48,3 +48,31 @@ processing order, template nesting, or side effects from processing other sectio
 - ✅ Box-align → text-align + width removal for promoted image bodies
 - ✅ JXR image MIME type
 - ✅ `</body>` placement matching lxml
+
+## Session 2026-04-28: c9 bare div fix → 0 structural diffs
+
+### Root Cause
+Python's COMBINE_NESTED_DIVS blocks merging when BOTH the outer container `<div>` 
+AND inner container `<div>` have `id` attributes (from position anchors). This happens
+when a content node AND its child container node both have position anchors.
+
+For c9 in 1984: node 1312 (container) has a position anchor, and child node 955 
+(also a container with content_list) also has a position anchor. Both get `id` attrs
+on their `<div>` elements → COMBINE_NESTED_DIVS id check at line 1434 blocks merge.
+
+The inner `<div>` survives as a bare wrapper (no style after simplify_styles).
+Python's consolidate_html keeps it because its child `<a>` is non-block.
+
+### Fix
+- Extended `promotedBodyContainer` to return the container node ID
+- Added double-anchor detection in `renderStoryline` that checks:
+  1. Container node has position anchor (outer div)
+  2. Child is a container node (has content_list) with position anchor (inner div)
+- When detected, wraps body content in bare `<div>` with temporary `data-keep` attr
+- `removeDataKeep()` strips the attr after `stripBareDivs` runs
+
+### Key Insight
+Only CONTAINER children (nodes with content_list) create their own `<div>` in
+Python's rendering. Leaf nodes (text, images) don't create container divs, so
+COMBINE_NESTED_DIVS doesn't apply to them. This is why the check must filter
+for children with content_list.
