@@ -1625,3 +1625,56 @@ func svgValueStr(v float64, unit string) string {
 	}
 	return s
 }
+
+// =============================================================================
+// Missing Python functions — Ports from yj_to_epub_misc.py
+// =============================================================================
+
+// setConditionOperators initializes the condition operator dispatch table.
+// Port of Python KFX_EPUB_Misc.set_condition_operators (yj_to_epub_misc.py L29-66).
+// In Go, this is handled by the conditionOperatorArity and conditionOperatorDispatch tables
+// which are initialized at package level.
+func (e *conditionEvaluator) setConditionOperators() {
+	// Go uses package-level dispatch tables instead of runtime initialization.
+	// See conditionOperatorArity and conditionOperatorDispatch in this file.
+}
+
+// evaluateBinaryCondition evaluates a condition and returns a bool result.
+// Port of Python KFX_EPUB_Misc.evaluate_binary_condition (yj_to_epub_misc.py L68-74).
+func (e conditionEvaluator) evaluateBinaryCondition(condition interface{}) bool {
+	value := e.evaluate(condition)
+	if b, ok := value.(bool); ok {
+		return b
+	}
+	return false
+}
+
+// evaluateCondition evaluates a conditional expression.
+// Port of Python KFX_EPUB_Misc.evaluate_condition (yj_to_epub_misc.py L76-121).
+// Delegates to the existing evaluate method which handles the same logic.
+func (e conditionEvaluator) evaluateCondition(condition interface{}) interface{} {
+	return e.evaluate(condition)
+}
+
+// processInstruction appends an SVG path instruction and its arguments.
+// Port of Python process_instruction (yj_to_epub_misc.py L303-315).
+func processInstruction(d *[]string, p *[]float64, inst string, nArgs int, pixels bool) {
+	*d = append(*d, inst)
+	for j := 0; j < nArgs; j++ {
+		if len(*p) == 0 {
+			return
+		}
+		v := (*p)[0]
+		*p = (*p)[1:]
+		if pixels {
+			v = adjustPixelValue(v)
+		}
+		*d = append(*d, valueStr(v))
+	}
+}
+
+// percentValueStr formats a value as a percentage string.
+// Port of Python percent_value_str (yj_to_epub_misc.py L341-342).
+func percentValueStr(v float64) string {
+	return valueStrWithUnit(v*100, "%", true)
+}
