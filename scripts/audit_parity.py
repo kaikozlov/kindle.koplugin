@@ -23,6 +23,7 @@ import sys
 import os
 import json
 import argparse
+from functools import lru_cache
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -128,13 +129,18 @@ def expected_go_names(pf: PyFunc) -> list[str]:
     exported = snake_to_exported(pf.name)
     names.extend([camel, exported])
     
-    # __init__ → NewClassName
+    # __init__ → NewClassName or newClassName
     if pf.name == "__init__" and pf.class_name:
-        cls_camel = snake_to_camel(pf.class_name)
         cls_exported = snake_to_exported(pf.class_name)
+        cls_camel = snake_to_camel(pf.class_name)
+        # Many Go naming variants for constructors
         names.extend([
-            f"New{snake_to_exported(pf.class_name)}",
-            f"new{snake_to_exported(pf.class_name)}",
+            f"new{cls_exported}",
+            f"New{cls_exported}",
+            f"new{cls_camel}",
+            f"New{cls_camel}",
+            cls_camel,  # Some classes just use ClassName{} directly
+            cls_exported,
         ])
     
     # __repr__, __str__ → String(), GoString()
@@ -207,6 +213,22 @@ FILES_TO_AUDIT = [
 ]
 
 
+@lru_cache(maxsize=1)
+def all_go_functions() -> dict:
+    """Build a global index of ALL Go function names across all files in internal/kfx/."""
+    result = {}
+    for f in os.listdir(GO_DIR):
+        if not f.endswith('.go') or f.endswith('_test.go'):
+            continue
+        filepath = os.path.join(GO_DIR, f)
+        for name, lines in extract_go_functions(filepath).items():
+            key = name.lower()
+            if key not in result:
+                result[key] = []
+            result[key].append((f, lines[0]))
+    return result
+
+
 def audit_file(py_name: str, go_funcs: dict = None) -> dict:
     """Audit a single Python file against its Go counterpart."""
     py_path = os.path.join(PY_DIR, py_name)
@@ -248,6 +270,24 @@ def audit_file(py_name: str, go_funcs: dict = None) -> dict:
                 })
                 found = True
                 break
+        
+        if not found:
+            # Also check ALL Go files (functions may be in a different file)
+            global_go = all_go_functions()
+            for cand in candidates:
+                cand_lower = cand.lower()
+                if cand_lower in global_go:
+                    match_file, match_line = global_go[cand_lower][0]
+                    matched.append({
+                        "py_name": pf.name,
+                        "py_class": pf.class_name,
+                        "go_name": cand,
+                        "py_line": pf.line_start,
+                        "go_line": match_line,
+                        "go_file": match_file,  # in a different file
+                    })
+                    found = True
+                    break
         
         if not found:
             # Check if it's in pytago
