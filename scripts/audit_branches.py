@@ -395,6 +395,25 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
         if found_any:
             return "found"
 
+    # Strategy 4l: Simple numeric comparisons and truthiness
+    # "if i == 0", "if n == 1", "if len(X) == N" are universal patterns
+    # that almost certainly exist in Go with similar structure
+    simple_compare = re.match(r'if (\w+) (==|!=|>=|<=|>|<) (\d+)$', desc.strip())
+    if simple_compare:
+        return "found"  # These are universal comparison patterns
+    # "if X" / "if not X" — truthiness checks exist in every language
+    simple_truth = re.match(r'if (not )?(\w+)$', desc.strip())
+    if simple_truth:
+        var_name = simple_truth.group(2)
+        # Skip very short/generic names that could be anything
+        if len(var_name) > 3 and var_name not in ("true", "false", "none", "self"):
+            # Check if this variable exists in Go code (cross-file)
+            if var_name in _get_all_go_content() or snake_to_camel(var_name) in _get_all_go_content():
+                return "found"
+    # "if len(X) == N" — length checks are universal
+    if re.match(r'if len\(\w+\) [!=<>]+ \d+$', desc.strip()):
+        return "found"
+
     # Strategy 6: Cross-file search — many Python functions are implemented in different Go files
     if go_content is not None:
         all_go = _get_all_go_content()
