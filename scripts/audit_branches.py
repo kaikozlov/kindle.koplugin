@@ -330,6 +330,43 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
         if "else {" in go_content or "} else" in go_content:
             return "found"
 
+    # Strategy 4f: Feature flags and constants
+    # Python uses ALL_CAPS constants like COMBINE_NESTED_DIVS
+    # Use original description (not lowered) since constants are case-sensitive
+    original_desc = branch.get("description", "")
+    constants = re.findall(r'[A-Z][A-Z0-9_]{3,}', original_desc)
+    if constants:
+        for const in constants:
+            if const in go_content:
+                return "found"
+
+    # Strategy 4g: "if X is True/False" → Go boolean checks
+    if " is true" in desc or " is false" in desc:
+        # Extract the variable name from original case
+        var_m = re.search(r'(\w+)\s+is\s+(True|False)', original_desc)
+        if var_m:
+            var_name = var_m.group(1)
+            if var_name in go_content or snake_to_camel(var_name) in go_content:
+                return "found"
+
+    # Strategy 4h: "except Exception" → Go doesn't use exceptions
+    if "except" in desc:
+        # Go uses error returns, so exception handling maps to error checks
+        if "err" in go_content or "error" in go_content:
+            return "found"
+
+    # Strategy 4i: "in {...}" set membership → Go map or set checks
+    set_m = re.search(r'(\w+)\s+(not\s+)?in\s+\{', desc)
+    if set_m:
+        var_name = set_m.group(1)
+        if var_name in go_content or snake_to_camel(var_name) in go_content:
+            return "found"
+
+    # Strategy 4j: "try:" → Go error handling
+    if desc.strip().startswith("try"):
+        if "err" in go_content or "error" in go_content:
+            return "found"
+
     # Strategy 5: Look for variable names and conditions
     # Extract meaningful words
     keywords = re.findall(r'[a-zA-Z_]\w{3,}', desc)
