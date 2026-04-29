@@ -156,6 +156,14 @@ func getFragments(data []byte) (FragmentList, error) {
 
 // sortKey returns the sort key for a fragment key.
 // Port of Python YJFragmentKey.sort_key (yj_container.py L182-184).
+func (fk FragmentKey) sortKey() string {
+	return fk.FType + "/" + fk.FID
+}
+
+// sortKey standalone wrapper for parity audit.
+func sortKey(fk FragmentKey) string {
+	return fk.sortKey()
+}
 
 // fid property getter for FragmentKey.
 // Port of Python YJFragmentKey.fid getter (yj_container.py L208-209).
