@@ -293,3 +293,72 @@ docker run --rm -v /tmp:/tmp arm32v7/python:3.11-slim-bookworm sh -c \
 ## Archived Material
 
 The full chronological experiment log (2325 lines of raw notes) is preserved in `REFERENCE/CRYPTO_PLAN_raw_log.md`.
+
+## Obfuscated Crypto Helpers — Decompiled (2026-04-28)
+
+### Stream Cipher Core: `func_0x00261dc4` (22 lines, UNOBFUSCATED)
+
+```c
+// THE CORE CRYPTO PRIMITIVE used by the DRM state machine
+uint32_t* fcn_0x00261dc4(void* input, void* output, int count, uint32_t seed) {
+    uint32_t key = seed * 0x94987C65;  // initial key from seed
+    uint32_t* out = output;
+    for (int i = 0; i < count; i++) {
+        uint32_t v1 = ((uint32_t*)input)[i];
+        uint32_t v2 = key ^ v1;           // XOR with running key
+        key = v1 + v2 + key;              // key update: key += v1 + (key^v1)
+        out[i] = v2;
+    }
+    return output;
+}
+```
+
+**Key update formula**: `key[i+1] = key[i] + input[i] + (key[i] ^ input[i])`
+
+This is a **custom stream cipher** — NOT AES, NOT any standard algorithm. Each 32-bit word is XORed with a running key that depends on the previous plaintext word.
+
+### Thread-Safe Init Guard: `func_0x00261e30` (34 lines)
+
+Wraps `fcn_0x00261dc4` with LDREX/STREX exclusive access to ensure single initialization.
+
+### Arithmetic Mixer: `func_0x002622ec` (69 lines)
+
+```c
+// Deepest helper — simple addition hidden behind obfuscation
+// Case 5 returns: arg2 + arg1[3] + arg1[2]  (32-bit addition)
+// Other cases do constant-mixing obfuscation
+```
+
+### Structure Processor: `func_0x00263fc8` (142 lines)
+
+16-case obfuscated switch that reads/writes fields of a data structure (arg1 as uint32_t array).
+Processes fields at offsets 0-3 with comparisons and arithmetic.
+
+### Outer Helper: `func_0x00264ac0` (300 lines, called 4× from state machine)
+
+7-case switch that:
+- **Cases 0-1**: Mix 4 constants (0x89259a5d, 0xe4300578, 0xf15c8d93, 0xebe2a8b7) via multiply/XOR/AND
+- **Case 2**: Load fresh constants (0x9633db47, 0xcf746d74, etc.)
+- **Case 3**: Call 0x263fc8 and return result
+- **Case 4**: Check *(arg1+8)==0, branch to case 3 or 6
+- **Case 6**: Process input string byte-by-byte, calling 0x263fc8 and 0x261e30 per chunk
+
+### Second Helper: `func_0x0026398c` (261 lines, called 2× from state machine)
+
+37-case switch with constants 0x023d2a8d, 0xe1029034. Calls:
+- `func_0x00262530` → `func_0x002622ec` (arithmetic)
+- `func_0x00262704` (comparison)
+- `func_0x00263fc8` (structure processor)
+
+### String Parser: `func_0x002678cc` (518 lines)
+
+Text parsing function — processes space/dash/newline-delimited hex strings. NOT crypto.
+
+### Significance
+
+The custom stream cipher at `0x261dc4` is **reproducible offline**. It requires only:
+1. The input data (from the voucher)
+2. The seed value (derived from CLIENT_ID and ACSR)
+
+If we can trace what seed value and input data are passed to this function during the
+state machine execution, we can reproduce the HMAC key blob derivation offline.
