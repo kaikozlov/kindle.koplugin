@@ -227,17 +227,24 @@ def audit_file(py_name: str, go_funcs: dict = None) -> dict:
     matched = []
     missing = []
     
+    # Build case-insensitive index of Go functions
+    go_funcs_lower = {}
+    for name, lines in go_funcs.items():
+        go_funcs_lower[name.lower()] = (name, lines)
+    
     for pf in py_funcs:
         candidates = expected_go_names(pf)
         found = False
         for cand in candidates:
-            if cand in go_funcs:
+            cand_lower = cand.lower()
+            if cand_lower in go_funcs_lower:
+                actual_name, go_lines = go_funcs_lower[cand_lower]
                 matched.append({
                     "py_name": pf.name,
                     "py_class": pf.class_name,
-                    "go_name": cand,
+                    "go_name": actual_name,
                     "py_line": pf.line_start,
-                    "go_line": go_funcs[cand][0],
+                    "go_line": go_lines[0],
                 })
                 found = True
                 break
