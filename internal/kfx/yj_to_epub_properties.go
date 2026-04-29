@@ -17,6 +17,10 @@ import (
 // Placeholders embedded in XHTML before finalize; KFX_EPUB_Properties style catalog (yj_to_epub_properties.py).
 var styleTokenPattern = regexp.MustCompile(`__STYLE_\d+__`)
 
+// Regex patterns for color_int string parsing (Python: color_int regex matches)
+var colorHexPattern = regexp.MustCompile(`(?i)^#([0-9a-f]{3,6})$`)
+var colorRgbaPattern = regexp.MustCompile(`(?i)^rgba\(([0-9]+),([0-9]+),([0-9]+),([0-9.]+)\)$`)
+
 type styleCatalog struct {
 	staticRules  map[string]string
 	entries      []*styleEntry
@@ -3163,10 +3167,18 @@ func addColorOpacity(color string, opacity float64) string {
 	if opacity >= 0.999 {
 		return color
 	}
-	r, g, b, _, ok := parseColor(color)
+	colorIntVal, ok := colorIntValue(color)
 	if !ok {
 		return color
 	}
+	// Port of Python: orig_alpha = self.int_to_alpha(color >> 24)
+	origAlpha := intToAlpha(int(colorIntVal >> 24))
+	if origAlpha != 0.0 && origAlpha != 1.0 {
+		log.Printf("kfx: error: Unexpected combination of alpha (%v) and opacity (%v) for color %s", origAlpha, opacity, color)
+	}
+	r := int((colorIntVal >> 16) & 0xFF)
+	g := int((colorIntVal >> 8) & 0xFF)
+	b := int(colorIntVal & 0xFF)
 	if opacity <= 0.001 {
 		return fmt.Sprintf("rgba(%d,%d,%d,0)", r, g, b)
 	}
@@ -3254,6 +3266,27 @@ func colorIntValue(value interface{}) (uint32, bool) {
 			return 0, false
 		}
 		return uint32(*typed), true
+	case string:
+		// Port of Python color_int regex matching (yj_to_epub_properties.py L2144-2157)
+		m := colorHexPattern.FindStringSubmatch(typed)
+		if m != nil {
+			rgb := m[1]
+			if len(rgb) == 3 {
+				rgb = string(rgb[0]) + string(rgb[0]) + string(rgb[1]) + string(rgb[1]) + string(rgb[2]) + string(rgb[2])
+			}
+			val, _ := strconv.ParseUint(rgb, 16, 32)
+			return 0xff000000 + uint32(val), true
+		}
+		m = colorRgbaPattern.FindStringSubmatch(typed)
+		if m != nil {
+			red, _ := strconv.Atoi(m[1])
+			green, _ := strconv.Atoi(m[2])
+			blue, _ := strconv.Atoi(m[3])
+			alphaFloat, _ := strconv.ParseFloat(m[4], 64)
+			alphaInt := alphaToInt(alphaFloat)
+			return (uint32(alphaInt) << 24) + (uint32(red) << 16) + (uint32(green) << 8) + uint32(blue), true
+		}
+		return 0, false
 	}
 	raw, ok := mapField(value, "text_color")
 	if !ok {
