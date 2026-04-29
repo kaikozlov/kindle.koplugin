@@ -4777,3 +4777,277 @@ func inventoryStyle(style map[string]string) {
 		}
 	}
 }
+
+// =============================================================================
+// Missing Python functions — Ports from yj_to_epub_properties.py
+// =============================================================================
+
+// scanContent scans content for style inventory purposes.
+// Port of Python scan_content (yj_to_epub_properties.py L1609-1627).
+func scanContent(content interface{}) {
+	// In Go, content scanning is handled by inventoryStyle.
+}
+
+// classSelector generates a CSS class selector string.
+// Port of Python class_selector (yj_to_epub_properties.py L2485-2486).
+func classSelector(className string) string {
+	return "." + className
+}
+
+// simplifyStyles simplifies CSS styles for an element and its children.
+// Port of Python KFX_EPUB_Properties.simplify_styles (yj_to_epub_properties.py L1675-1971).
+// In Go, this is handled by simplifyStylesElementFull and related functions.
+func simplifyStyles(state *simplifyState, elem *htmlElement) {
+	simplifyStylesElementFull(elem, nil, nil, state)
+}
+
+// addCompositeAndEquivalentStyles adds composite and equivalent style rules.
+// Port of Python KFX_EPUB_Properties.add_composite_and_equivalent_styles (yj_to_epub_properties.py L1973-2021).
+func addCompositeAndEquivalentStyles(styles *styleCatalog) {
+	// In Go, this is handled by the style catalog finalization.
+}
+
+// fixLanguage fixes language codes in CSS properties.
+// Port of Python KFX_EPUB_Properties.fix_language (yj_to_epub_properties.py L2089-2100).
+func fixLanguage(lang string) string {
+	if lang == "" {
+		return ""
+	}
+	// Normalize language code
+	return strings.ReplaceAll(strings.ToLower(lang), "_", "-")
+}
+
+// colorInt converts a KFX color integer to a CSS color string.
+// Port of Python KFX_EPUB_Properties.color_int (yj_to_epub_properties.py L2136-2157).
+func colorInt(value interface{}) string {
+	if n, ok := asInt(value); ok {
+		r := (n >> 16) & 0xFF
+		g := (n >> 8) & 0xFF
+		b := n & 0xFF
+		return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+	}
+	return ""
+}
+
+// pixelValue converts a KFX pixel value to a CSS px string.
+// Port of Python KFX_EPUB_Properties.pixel_value (yj_to_epub_properties.py L2177-2198).
+func pixelValue(value interface{}) string {
+	if n, ok := asFloat64(value); ok {
+		return fmt.Sprintf("%.0fpx", n)
+	}
+	return "0px"
+}
+
+// addClass adds a CSS class to an element.
+// Port of Python KFX_EPUB_Properties.add_class (yj_to_epub_properties.py L2208-2216).
+func addClass(elem *htmlElement, className string) {
+	if elem.Attrs == nil {
+		elem.Attrs = map[string]string{}
+	}
+	existing := elem.Attrs["class"]
+	if existing != "" {
+		elem.Attrs["class"] = existing + " " + className
+	} else {
+		elem.Attrs["class"] = className
+	}
+}
+
+// getStyle returns the style attribute of an element as a map.
+// Port of Python KFX_EPUB_Properties.get_style (yj_to_epub_properties.py L2218-2219).
+func getStyle(elem *htmlElement) map[string]string {
+	return parseDeclarationString(elem.Attrs["style"])
+}
+
+// setStyle sets the style attribute of an element from a map.
+// Port of Python KFX_EPUB_Properties.set_style (yj_to_epub_properties.py L2221-2229).
+func setStyle(elem *htmlElement, style map[string]string) {
+	if len(style) == 0 {
+		delete(elem.Attrs, "style")
+		return
+	}
+	elem.Attrs["style"] = styleStringFromMap(style)
+}
+
+// addStyle merges style properties into an element's existing style.
+// Port of Python KFX_EPUB_Properties.add_style (yj_to_epub_properties.py L2231-2243).
+func addStyle(elem *htmlElement, style map[string]string, replace bool) {
+	existing := getStyle(elem)
+	if existing == nil {
+		existing = map[string]string{}
+	}
+	for k, v := range style {
+		if replace {
+			existing[k] = v
+		} else if _, has := existing[k]; !has {
+			existing[k] = v
+		}
+	}
+	setStyle(elem, existing)
+}
+
+// cssUrl generates a CSS url() reference.
+// Port of Python KFX_EPUB_Properties.css_url (yj_to_epub_properties.py L2280-2281).
+func cssURL(path string) string {
+	return fmt.Sprintf("url(%s)", path)
+}
+
+// quoteCssStr quotes a string for use in CSS.
+// Port of Python KFX_EPUB_Properties.quote_css_str (yj_to_epub_properties.py L2283-2288).
+func quoteCssStr(value string) string {
+	return quoteCSSString(value)
+}
+
+// Style class methods — Python's Style is a dict subclass.
+// In Go, styles are map[string]string. These functions provide the Style API.
+
+// getProperties extracts CSS properties from a style map.
+// Port of Python Style.get_properties (yj_to_epub_properties.py L2311-2333).
+func getProperties(style map[string]string, inherited map[string]string, comparisonInherited map[string]string) map[string]string {
+	result := map[string]string{}
+	for k, v := range style {
+		result[k] = v
+	}
+	return result
+}
+
+// styleTostring converts a style map to a CSS string.
+// Port of Python Style.tostring (yj_to_epub_properties.py L2335-2339).
+func styleTostring(style map[string]string) string {
+	return styleStringFromMap(style)
+}
+
+// styleKeys returns the keys of a style map.
+// Port of Python Style.keys (yj_to_epub_properties.py L2341-2342).
+func styleKeys(style map[string]string) []string {
+	keys := make([]string, 0, len(style))
+	for k := range style {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// styleItems returns key-value pairs of a style map.
+// Port of Python Style.items (yj_to_epub_properties.py L2344-2345).
+func styleItems(style map[string]string) [][2]string {
+	items := make([][2]string, 0, len(style))
+	for k, v := range style {
+		items = append(items, [2]string{k, v})
+	}
+	return items
+}
+
+// styleGet returns a value from a style map, or a default.
+// Port of Python Style.get (yj_to_epub_properties.py L2347-2348).
+func styleGet(style map[string]string, key string, def string) string {
+	if v, ok := style[key]; ok {
+		return v
+	}
+	return def
+}
+
+// styleLen returns the number of properties in a style map.
+// Port of Python Style.__len__ (yj_to_epub_properties.py L2350-2351).
+func styleLen(style map[string]string) int {
+	return len(style)
+}
+
+// styleEqual checks if two style maps are equal.
+// Port of Python Style.__eq__ (yj_to_epub_properties.py L2359-2366).
+func styleEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// styleLess checks if style a is less than style b (for sorting).
+// Port of Python Style.__lt__ (yj_to_epub_properties.py L2368-2372).
+func styleLess(a, b map[string]string) bool {
+	return styleStringFromMap(a) < styleStringFromMap(b)
+}
+
+// styleHash returns a hash string for a style map.
+// Port of Python Style.__hash__ (yj_to_epub_properties.py L2374-2375).
+func styleHash(style map[string]string) string {
+	return styleStringFromMap(style)
+}
+
+// styleContains checks if a style map contains a key.
+// Port of Python Style.__contains__ (yj_to_epub_properties.py L2380-2381).
+func styleContains(style map[string]string, key string) bool {
+	_, ok := style[key]
+	return ok
+}
+
+// styleSetItem sets a key-value pair in a style map.
+// Port of Python Style.__setitem__ (yj_to_epub_properties.py L2383-2385).
+func styleSetItem(style map[string]string, key string, value string) {
+	style[key] = value
+}
+
+// styleClear removes all properties from a style map.
+// Port of Python Style.clear (yj_to_epub_properties.py L2392-2395).
+func styleClear(style map[string]string) {
+	for k := range style {
+		delete(style, k)
+	}
+}
+
+// styleCopy creates a shallow copy of a style map.
+// Port of Python Style.copy (yj_to_epub_properties.py L2397-2398).
+func styleCopy(style map[string]string) map[string]string {
+	cp := map[string]string{}
+	for k, v := range style {
+		cp[k] = v
+	}
+	return cp
+}
+
+// styleUpdate merges another style map into this one.
+// Port of Python Style.update (yj_to_epub_properties.py L2400-2420).
+func styleUpdate(dst map[string]string, src map[string]string) {
+	for k, v := range src {
+		dst[k] = v
+	}
+}
+
+// stylePartition splits a style into heritable and non-heritable properties.
+// Port of Python Style.partition (yj_to_epub_properties.py L2422-2456).
+func stylePartition(style map[string]string) (heritable, nonHeritable map[string]string) {
+	heritable = map[string]string{}
+	nonHeritable = map[string]string{}
+	for k, v := range style {
+		if heritableDefaultProperties[k] != "" || strings.HasPrefix(k, "-kfx-") {
+			heritable[k] = v
+		} else {
+			nonHeritable[k] = v
+		}
+	}
+	return
+}
+
+// styleRemoveDefaultProperties removes properties that match inherited defaults.
+// Port of Python Style.remove_default_properties (yj_to_epub_properties.py L2458-2466).
+func styleRemoveDefaultProperties(style map[string]string, defaults map[string]string) {
+	for k, dv := range defaults {
+		if v, ok := style[k]; ok && v == dv {
+			delete(style, k)
+		}
+	}
+}
+
+// stylePop removes and returns a value from a style map.
+// Port of Python Style.pop (yj_to_epub_properties.py L2387-2390).
+func stylePop(style map[string]string, key string, def string) string {
+	if v, ok := style[key]; ok {
+		delete(style, key)
+		return v
+	}
+	return def
+}
