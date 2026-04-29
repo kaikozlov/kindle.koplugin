@@ -13,10 +13,37 @@ Usage:
 
 import argparse
 import ast
+import json
 import os
 import re
 import sys
 import textwrap
+
+# Load symbol catalog: maps $N (as integer) to real name
+_SYMBOL_CATALOG = {}
+
+def _load_symbol_catalog():
+    """Load $N → real name mapping from the symbol catalog."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(script_dir)
+    catalog_path = os.path.join(repo_root, "internal", "kfx", "catalog.ion")
+    if not os.path.exists(catalog_path):
+        return
+    with open(catalog_path) as f:
+        for line in f:
+            line = line.strip().rstrip(",")
+            if line.startswith('"') and line.endswith('"'):
+                name = line[1:-1]
+            elif line.startswith("'") and line.endswith("'"):
+                name = line[1:-1]
+            else:
+                continue
+            # SID starts at $10 (after 9 ION system symbols)
+            sid = 10 + len(_SYMBOL_CATALOG)
+            _SYMBOL_CATALOG[f"${sid}"] = name
+
+_load_symbol_catalog()
+
 
 
 def configure_paths():
@@ -204,9 +231,15 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     strings = re.findall(r'"([^"]*)"', desc)
 
     # Strategy 1: Look for the same $NNN symbols in Go
+    # Translate $N to real names since Go uses catalog names, not $N placeholders
     if symbols:
         for sym in symbols:
+            # First try exact $N match
             if sym in go_content:
+                return "found"
+            # Then try translated real name
+            real_name = _SYMBOL_CATALOG.get(sym)
+            if real_name and real_name in go_content:
                 return "found"
         return "missing"
 
