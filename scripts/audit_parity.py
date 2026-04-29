@@ -121,12 +121,34 @@ def extract_go_functions(filepath: str) -> dict[str, list[int]]:
     return funcs
 
 
+# Name overrides: short Python names that have Go equivalents with different names
+SHORT_NAME_MAP = {
+    "fid": ["fid", "getFID", "getFid"],
+    "ftype": ["ftype", "getFType", "getFtype", "getFTypes"],
+    "keys": ["keys", "styleKeys"],
+    "items": ["items", "styleItems"],
+    "get": ["get", "styleGet"],
+    "copy": ["copy", "styleCopy"],
+    "pop": ["pop", "stylePop"],
+    "clear": ["clear", "styleClear"],
+    "update": ["update", "styleUpdate"],
+    "partition": ["partition", "stylePartition"],
+    "remove_default_properties": ["removeDefaultProperties", "styleRemoveDefaultProperties"],
+    "tostring": ["tostring", "styleTostring", "String"],
+    "Style": ["Style", "newStyle"],
+}
+
 def expected_go_names(pf: PyFunc) -> list[str]:
     """All possible Go function names for a Python function."""
     names = []
     
     camel = snake_to_camel(pf.name)
     exported = snake_to_exported(pf.name)
+    
+    # Check SHORT_NAME_MAP for common short Python names
+    if pf.name in SHORT_NAME_MAP:
+        names.extend(SHORT_NAME_MAP[pf.name])
+    
     names.extend([camel, exported])
     
     # __init__ → NewClassName or newClassName
