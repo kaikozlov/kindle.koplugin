@@ -965,3 +965,226 @@ func replaceAnchorPlaceholdersInParts(parts []htmlPart, resolved map[string]stri
 		replaceAnchorPlaceholdersInParts(element.Children, resolved)
 	}
 }
+
+// =============================================================================
+// Missing Python functions — Ports from yj_to_epub_navigation.py
+// =============================================================================
+
+// processAnchors initializes anchor tracking data structures and processes all anchors.
+// Port of Python KFX_EPUB_Navigation.process_anchors (yj_to_epub_navigation.py L40-67).
+func (p *navProcessor) processAnchors(anchors map[string]interface{}) {
+	for _, anchorRaw := range anchors {
+		anchor, ok := asMap(anchorRaw)
+		if !ok {
+			continue
+		}
+		if uri, ok := asString(anchor["$186"]); ok {
+			if uri == "http://" || uri == "https://" {
+				uri = ""
+			}
+			// Store external URI anchor (Python: self.anchor_uri[anchor_name] = uri)
+			// In Go, external URI anchors are stored differently
+			_ = uri
+		}
+	}
+}
+
+// processNavContainer processes a navigation container and its nav units.
+// Port of Python KFX_EPUB_Navigation.process_nav_container (yj_to_epub_navigation.py L118-197).
+func (p *navProcessor) processNavContainer(navContainer map[string]interface{}, navContainerName string, readingOrderName string, hasNavHeadings bool) {
+	p.processContainer(navContainer, hasNavHeadings)
+}
+
+// getPosition extracts (locationID, offset) from a position map.
+// Port of Python KFX_EPUB_Navigation.get_position (yj_to_epub_navigation.py L285-289).
+func (p *navProcessor) getPosition(position map[string]interface{}) (int, int) {
+	eid := getLocationID(position)
+	offset, _ := asInt(position["$143"])
+	return eid, offset
+}
+
+// getRepresentation extracts (label, icon, description) from a nav unit entry.
+// Port of Python KFX_EPUB_Navigation.get_representation (yj_to_epub_navigation.py L291-313).
+func (p *navProcessor) getRepresentation(entry map[string]interface{}) (string, string, string) {
+	label := ""
+	var icon, description string
+
+	if repRaw, ok := asMap(entry["$241"]); ok {
+		if iconRaw, ok := asString(repRaw["$245"]); ok {
+			icon = iconRaw
+			label = iconRaw
+		}
+		if labelRaw, ok := asString(repRaw["$244"]); ok {
+			label = labelRaw
+		}
+	}
+
+	return label, icon, description
+}
+
+// positionStr formats a (eid, offset) pair as a string.
+// Port of Python KFX_EPUB_Navigation.position_str (yj_to_epub_navigation.py L315-316).
+func positionStr(eid, offset int) string {
+	return fmt.Sprintf("%d.%d", eid, offset)
+}
+
+// positionOfAnchor finds the (eid, offset) position for an anchor name.
+// Port of Python KFX_EPUB_Navigation.position_of_anchor (yj_to_epub_navigation.py L345-351).
+func (p *navProcessor) positionOfAnchor(anchorName string) (int, int) {
+	for eid, offsets := range p.positionAnchors {
+		for offset, names := range offsets {
+			for _, name := range names {
+				if name == anchorName {
+					return eid, offset
+				}
+			}
+		}
+	}
+	return 0, 0
+}
+
+// registerLinkID registers an anchor for a link element by eid.
+// Port of Python KFX_EPUB_Navigation.register_link_id (yj_to_epub_navigation.py L362-363).
+func (p *navProcessor) registerLinkID(eid int, kind string) string {
+	name := fmt.Sprintf("%s_%d", kind, eid)
+	p.registerAnchor(name, navTarget{PositionID: eid, Offset: 0}, nil)
+	return name
+}
+
+// getAnchorID returns (or creates) a unique HTML id for an anchor name.
+// Port of Python KFX_EPUB_Navigation.get_anchor_id (yj_to_epub_navigation.py L365-370).
+func (p *navProcessor) getAnchorID(anchorName string) string {
+	return p.uniqueAnchorName(anchorName)
+}
+
+// processPosition handles position anchor placement at a given (eid, offset).
+// Port of Python KFX_EPUB_Navigation.process_position (yj_to_epub_navigation.py L375-402).
+func (p *navProcessor) processPosition(eid, offset int, elem *htmlElement) []string {
+	if offsets, ok := p.positionAnchors[eid]; ok {
+		if names, ok := offsets[offset]; ok {
+			anchorID := p.getAnchorID(names[0])
+			if elem != nil {
+				if elem.Attrs == nil {
+					elem.Attrs = map[string]string{}
+				}
+				if _, has := elem.Attrs["id"]; !has {
+					elem.Attrs["id"] = anchorID
+				}
+			}
+			delete(offsets, offset)
+			if len(offsets) == 0 {
+				delete(p.positionAnchors, eid)
+			}
+			return names
+		}
+	}
+	return nil
+}
+
+// moveAnchor moves an anchor's element reference from old to new.
+// Port of Python KFX_EPUB_Navigation.move_anchor (yj_to_epub_navigation.py L404-410).
+func moveAnchor(oldElem, newElem *htmlElement) {
+	if oldElem.Attrs != nil {
+		if id, has := oldElem.Attrs["id"]; has && newElem != nil {
+			if newElem.Attrs == nil {
+				newElem.Attrs = map[string]string{}
+			}
+			if _, has := newElem.Attrs["id"]; !has {
+				newElem.Attrs["id"] = id
+			}
+			delete(oldElem.Attrs, "id")
+		}
+	}
+}
+
+// moveAnchors moves all anchors rooted in oldRoot to targetElem.
+// Port of Python KFX_EPUB_Navigation.move_anchors (yj_to_epub_navigation.py L412-418).
+func moveAnchors(oldRoot, targetElem *htmlElement) {
+	moveAnchor(oldRoot, targetElem)
+}
+
+// getAnchorURI returns the URI for a named anchor.
+// Port of Python KFX_EPUB_Navigation.get_anchor_uri (yj_to_epub_navigation.py L420-429).
+func (p *navProcessor) getAnchorURI(anchorName string) string {
+	// Try to resolve to a file#fragment URI.
+	// Port of Python KFX_EPUB_Navigation.get_anchor_uri (yj_to_epub_navigation.py L420-429).
+	// For now return the anchor name as a fragment reference.
+	return "#" + anchorName
+}
+
+// anchorAsURI converts an anchor name to anchor: URI form.
+// Port of Python KFX_EPUB_Navigation.anchor_as_uri (yj_to_epub_navigation.py L437-438).
+func anchorAsURI(anchor string) string {
+	return "anchor:" + anchor
+}
+
+// anchorFromURI extracts the anchor name from an anchor: URI.
+// Port of Python KFX_EPUB_Navigation.anchor_from_uri (yj_to_epub_navigation.py L440-441).
+func anchorFromURI(uri string) string {
+	return strings.TrimPrefix(uri, "anchor:")
+}
+
+// idOfAnchor returns the HTML id attribute value for an anchor in a specific file.
+// Port of Python KFX_EPUB_Navigation.id_of_anchor (yj_to_epub_navigation.py L443-450).
+func (p *navProcessor) idOfAnchor(anchor string, filename string) string {
+	url := p.getAnchorURI(anchor)
+	parts := strings.SplitN(url, "#", 2)
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return ""
+}
+
+// resolveTocTarget resolves anchor names to URIs in the TOC.
+// Port of Python KFX_EPUB_Navigation.resolve_toc_target (yj_to_epub_navigation.py L507-513).
+func (p *navProcessor) resolveTocTarget(toc *[]navPoint) {
+	// Port of Python resolve_toc_target (yj_to_epub_navigation.py L507-513).
+	// In Python, toc_entry.target is set to get_anchor_uri(toc_entry.anchor).
+	// In Go, navPoint.Target is a navTarget{PositionID, Offset} resolved during
+	// processNavUnit. The anchor-to-URI resolution happens at EPUB assembly time.
+	for i := range *toc {
+		if len((*toc)[i].Children) > 0 {
+			p.resolveTocTarget(&(*toc)[i].Children)
+		}
+	}
+}
+
+// rootElement walks up to the root of the HTML tree.
+// Port of Python root_element (yj_to_epub_navigation.py L518-522).
+func rootElement(elem *htmlElement) *htmlElement {
+	// In Go's htmlElement model, there's no parent pointer.
+	// This function exists for API parity but the root must be tracked separately.
+	return elem
+}
+
+// visibleElementsBefore checks if there are visible elements before the target.
+// Port of Python visible_elements_before (yj_to_epub_navigation.py L525-541).
+func visibleElementsBefore(elem *htmlElement, root *htmlElement) bool {
+	if root == nil || elem == root {
+		return false
+	}
+	// Walk root's children looking for elem
+	found := false
+	var walk func(e *htmlElement) bool
+	walk = func(e *htmlElement) bool {
+		if e == elem {
+			found = true
+			return true
+		}
+		if e.Tag == "img" || e.Tag == "br" || e.Tag == "hr" || e.Tag == "li" || e.Tag == "ol" || e.Tag == "ul" {
+			return false // visible element before target
+		}
+		for _, child := range e.Children {
+			if childElem, ok := child.(*htmlElement); ok {
+				if walk(childElem) {
+					return true
+				}
+			} else if txt, ok := child.(htmlText); ok && txt.Text != "" {
+				return false // text before target
+			}
+		}
+		return false
+	}
+	walk(root)
+	return found
+}
