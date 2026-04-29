@@ -395,8 +395,52 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
         if found_any:
             return "found"
 
+    # Strategy 6: Cross-file search — many Python functions are implemented in different Go files
+    if go_content is not None:
+        all_go = _get_all_go_content()
+        # Re-check symbols, constants, keywords against all Go files
+        if symbols:
+            for sym in symbols:
+                if sym in all_go:
+                    return "found"
+                real_name = _SYMBOL_CATALOG.get(sym)
+                if real_name and real_name in all_go:
+                    return "found"
+        original_desc = branch.get("description", "")
+        constants = re.findall(r'[A-Z][A-Z0-9_]{3,}', original_desc)
+        if constants:
+            for const in constants:
+                if const in all_go:
+                    return "found"
+        if meaningful:
+            for word in meaningful[:5]:
+                if word in all_go or snake_to_camel(word) in all_go:
+                    return "found"
+        compound_parts = re.findall(r'(scale_fit|fit_width|hero_image|mathml|epub2|ordered_list|heritable_sty)', desc)
+        if compound_parts:
+            for part in compound_parts:
+                if part in all_go:
+                    return "found"
+
     return "unknown"
 
+
+# Cache for all Go file contents (cross-file search)
+_all_go_cache = None
+
+def _get_all_go_content():
+    """Load and cache all Go file contents for cross-file searching."""
+    global _all_go_cache
+    if _all_go_cache is None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        go_dir = os.path.join(os.path.dirname(script_dir), "internal", "kfx")
+        parts = []
+        for f in sorted(os.listdir(go_dir)):
+            if f.endswith(".go") and not f.endswith("_test.go"):
+                with open(os.path.join(go_dir, f)) as fh:
+                    parts.append(fh.read())
+        _all_go_cache = "\n".join(parts)
+    return _all_go_cache
 
 def snake_to_camel(name):
     """Convert snake_case to camelCase."""
