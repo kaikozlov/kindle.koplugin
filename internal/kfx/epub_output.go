@@ -1089,7 +1089,6 @@ func newBookPart(title string, filename string) {}
 
 // BookPart methods
 func bookPartHead(title string) string { return "" }
-func bookPartBody(body string) string { return body }
 
 // OPF Properties
 func isFxl(props string) bool { return false }
@@ -1143,3 +1142,12 @@ func localname(tag string) string {
 	return tag
 }
 func qname(ns, local string) string { return ns + ":" + local }
+
+// Python-parity stubs for remaining epub_output functions
+func walk(elem *htmlElement, visitor func(*htmlElement)) {
+	visitor(elem)
+	for _, child := range elem.Children {
+		if e, ok := child.(*htmlElement); ok { walk(e, visitor) }
+	}
+}
+func epubFixupNS(html string) string { return html }
