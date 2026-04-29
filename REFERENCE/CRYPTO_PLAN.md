@@ -2182,3 +2182,109 @@ Wrong CID is **faster** — the error is detected early in the derivation, befor
 **Obfuscated constants (from 0x26398c):**
 - 0x4528a1e4, 0x023d2a8d, 0xe1029034, 0x0213bff3
 - Also custom DRM values
+
+## Chosen-Input Analysis: CLIENT_ID → Numeric String Encoding (2026-04-28)
+
+### Experiment Design
+
+Ran the DRM SDK with 39 different CLIENT_ID values (varying first character) to map the
+byte-value → token-sequence encoding function. Each test used serial `<char>000000000000000`.
+
+### Key Findings
+
+**1. Decision Tree Encoding (not arithmetic)**
+
+The state machine encodes each byte of the CLIENT_ID serial using a **multi-level deterministic
+decision tree** — a pure lookup table with no secret involvement. The tree has:
+- **Level 0**: 3 branches based on byte[0] value → first ~13 digits
+- **Level 1**: 3+ sub-branches → next ~30-350 digits
+- **Level N**: deeper branches for byte[N] → ~15 digits per character
+
+**2. Three First-Level Classes**
+
+| Class | Starting Pattern | ASCII Values |
+|-------|-----------------|-------------|
+| A | `1456864488883...` | 1,4,8,A,H,L,R,V,... |
+| B | `4488861456883...` | most chars (20+ values) |
+| C | `4488883223760...` | 0,9,B,D,M,N,W,X,a,b |
+
+No simple arithmetic function (mod, XOR, multiplication) maps byte → class.
+The mapping is a **hardcoded lookup table** in the obfuscated state machine.
+
+**3. Variable-Length Token Encoding**
+
+Each character contributes a **variable number of output digits**:
+- Pattern A chars: ~13 initial digits, total ~839-846 for full serial
+- Pattern B chars: ~13 initial digits, total ~833-840 for full serial
+- Pattern C chars: ~13 initial digits, total ~845-851 for full serial
+
+**4. Sequential Processing**
+
+The serial is processed LEFT-TO-RIGHT:
+- Characters earlier in the serial affect EARLIER positions in the output
+- Changing only the LAST digit affects output from position ~251 (for a 16-char serial)
+- 15 identical characters × ~16.7 digits each ≈ 251 digits of common prefix
+
+**5. Within-Class Sub-Grouping**
+
+Pattern A has sub-groups with different common prefix lengths:
+- `{4,8,H,L}` share 348-char common prefix
+- `R` shares 347 chars with the above
+- `V` shares only 15 chars (different deep sub-class)
+
+Pattern C has sub-groups:
+- `{B,b}` share 851-char common prefix (almost identical!)
+- `{M,W,a}` share ~94 chars
+- `{9,D}` share 90 chars
+
+**6. 99.5% Variability**
+
+Despite structural constants, 99.5% of positions vary across different CLIENT_IDs.
+Only 4 isolated constant positions exist (single chars embedded in the variable stream).
+"Islands of stability" (36-char common substrings) are statistical artifacts, not boundaries.
+
+### Mechanistic Model (Updated)
+
+```
+1. ACSR read from /var/local/java/prefs/acsr (NO secret involvement in numeric encoding)
+2. setLockParameters({ACCOUNT_SECRET: acsr, CLIENT_ID: serial})
+   → JNI → std::map in RB-tree
+3. attachVoucher(voucher_file)
+   → JNI → voucher ION parsing → strategy object
+4. vtable[8] dispatch: version gate (0x76) → 0x17c4fc state machine
+5. State machine processes serial character-by-character:
+   a. For each byte: lookup in decision tree → variable-length decimal token
+   b. Concatenate all tokens + voucher-structure constants → numeric string
+   c. Derive HMAC key blob (HERE the ACSR secret enters)
+6. HMAC-SHA256(hmac_key_blob, numeric_string) → voucher_key_256
+7. AES-256-CBC(voucher_key_256) → decrypted voucher
+```
+
+### Character Mapping Table (Printable ASCII — Kindle Serial Context)
+
+```
+Char: 0 1 2 3 4 5 6 7 8 9
+Map:  C A B B A B B B A C
+
+Char: A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
+Map:  A C B C B B B A B B B A C C B B B A B B B A C C B B
+
+Char: a b c
+Map:  C C B
+```
+
+### Implications for DRM Recovery
+
+The numeric string encoding is **public** (no secret involved). It's a deterministic
+function of the CLIENT_ID serial. The ACSR secret only enters through the HMAC key blob.
+Therefore:
+- The numeric string alone reveals NO information about the ACSR
+- The HMAC key blob is the critical secret-bearing component
+- Our LD_PRELOAD approach correctly captures the POST-derivation keys
+- Offline DRM recovery would require extracting the decision tree from the state machine
+  (244KB of obfuscated code) AND the ACSR-based key blob derivation
+
+### Data Files
+
+- `/tmp/chosen_input/chosen_*.bin` — 7-case baseline/wrong-id experiment
+- `/tmp/fc2_data/chosen_fc2_*.bin` — 33-case first-character sweep
