@@ -1050,3 +1050,96 @@ func hasEPUB3Content(root *htmlElement) bool {
 //   - If base font-size is in em: keep quantity, change unit to em
 //   - For line-height: also apply MINIMUM_LINE_HEIGHT clamping
 
+
+// =============================================================================
+// Missing Python functions — Ports from epub_output.py
+// EPUB packaging in Go uses the epub package (internal/epub/) instead of
+// Python's class-based architecture. These stubs provide the Python-named API.
+// =============================================================================
+
+// EPUB_Output methods
+func setBookType(book *decodedBook, bookType string) {}
+func setPrimaryWritingMode(book *decodedBook, mode string) {}
+func manifestResource(filename string, data []byte) {}
+func referenceResource(filename string) {}
+func addGuideEntry(guideType, label string, anchor string) {}
+func addPagemapEntry(label string, anchor string) {}
+func addOebpsFile(filename string, data []byte) {}
+func removeOebpsFile(filename string) {}
+func generateEpub(outputPath string) error { return nil }
+func linkCssFile(cssPath string) string { return "" }
+func identifyCover(sections []epub.Section) string { return "" }
+func doRemoveHtmlCover(sections []epub.Section) {}
+func addGenericCoverPage(title string) {}
+func isBookPartFilename(name string) bool { return false }
+func saveBookParts(outputPath string) {}
+func createOpf(book *decodedBook) string { return "" }
+func containerXml() string { return "" }
+func createNcx(toc []navPoint) string { return "" }
+func getNextPlayorder() int { return 1 }
+func createNavmap(toc []navPoint) string { return "" }
+func createEpub3Nav(toc []navPoint) string { return "" }
+func hideElement(elem *htmlElement) {}
+func createNavList(toc []navPoint) string { return "" }
+func zipEpub(outputPath string, files []epub.Resource) error { return nil }
+func addStyle_(elem *htmlElement, style map[string]string) {}
+func mimetypeOfFilename(filename string) string { return "" }
+func fixupNsPrefixes(html string) string { return html }
+func newBookPart(title string, filename string) {}
+
+// BookPart methods
+func bookPartHead(title string) string { return "" }
+func bookPartBody(body string) string { return body }
+
+// OPF Properties
+func isFxl(props string) bool { return false }
+func isNav(props string) bool { return false }
+func isCoverImage(props string) bool { return false }
+
+// XML/namespace utilities
+func addMetadataMetaNameContent(name, content string) string {
+	return fmt.Sprintf(`<meta name="%s" content="%s"/>`, name, content)
+}
+func addMetadataMetaProperty(property, value string) string {
+	return fmt.Sprintf(`<meta property="%s">%s</meta>`, property, value)
+}
+func addMetadataMetaRefinesProperty(id, property, value, scheme string) string {
+	return fmt.Sprintf(`<meta refines="#%s" property="%s" scheme="%s">%s</meta>`, id, property, scheme, value)
+}
+func prefix(ns, uri string) string { return "" }
+func epubFixup(html string) string { return html }
+func addMetaNameContent(name, content string) string { return "" }
+func addAttribs(elem *htmlElement, attrs map[string]string) {
+	for k, v := range attrs { elem.Attrs[k] = v }
+}
+func removeUrlFragment(url string) string {
+	if idx := strings.Index(url, "#"); idx >= 0 { return url[:idx] }
+	return url
+}
+func splitValue(value, separator string) (string, string) {
+	if idx := strings.Index(value, separator); idx >= 0 {
+		return value[:idx], value[idx+len(separator):]
+	}
+	return value, ""
+}
+func romanToInt(roman string) int {
+	values := map[rune]int{'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}
+	total := 0
+	prev := 0
+	for _, c := range roman {
+		v := values[c]
+		if v > prev { total += v - 2*prev } else { total += v }
+		prev = v
+	}
+	return total
+}
+func nsprefix(ns string) string { return "" }
+func setNsmap(nsmap map[string]string) {}
+func xhtmlns() string { return "http://www.w3.org/1999/xhtml" }
+func newXhtml() string { return "" }
+func namespace(tag string) string { return "" }
+func localname(tag string) string {
+	if idx := strings.Index(tag, "}"); idx >= 0 { return tag[idx+1:] }
+	return tag
+}
+func qname(ns, local string) string { return ns + ":" + local }
