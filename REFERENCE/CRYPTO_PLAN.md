@@ -1817,6 +1817,128 @@ CLIENT_ID is consumed **before** `fcn.0015134c` is called — during the voucher
 
 ### Still open
 
-1. **What specific field in `this[1]` encodes CLIENT_ID**: the object has ~60 fields and they all differ between baseline and wrong CID (different pointers/allocations)
-2. **How `this[1]` is populated**: which voucher parsing helper writes CLIENT_ID-dependent data into `this[1]`
-3. **What `this[1]` represents**: it's a parsed voucher configuration with fields like `HmacSHA256`, `Purchase`, `AES`, but the full mapping is unclear
+1. **How `this[1]` is populated**: which voucher parsing helper writes CLIENT_ID-dependent data into `this[1]`
+2. **CLIENT_ID value storage**: the key name is at `this1[0xf4]+0x58` but the value is stored as a JNI Java String object (not a C string), making it harder to extract from C hooks
+
+---
+
+## Object Graph Analysis (2026-04-28)
+
+### Lock parameter storage structure
+
+The `this[1]` object (vtable `0x32f248`) contains parsed voucher data with the following layout:
+
+| this1 offset | Content | Details |
+|-------------|---------|--------|
+| `0xc0` | version field | `0x76` (protocol version gate) |
+| `0xc4` | voucher blob ptr | Raw voucher bytes starting with `\xe0\x01\x00\xea` (voucher magic) |
+| `0xc8` | voucher ref ptr | `atv:kin:2:<base64_token>` — Amazon device token |
+| `0xf4` | lock params ptr | Structure containing ACCOUNT_SECRET and CLIENT_ID |
+| `0xf4+0x40` | ACCOUNT_SECRET key | String "ACCOUNT_SECRET" |
+| `0xf4+0x58` | CLIENT_ID key | String "CLIENT_ID" |
+| `0xf4+0x70` | ACSR value | Base64 string (ACCOUNT_SECRET value) |
+
+### Lock params structure at this1[0xf4]
+
+```
+0x30: 00 04 00 00 3d 00 00 00 <ptr> 0e 00 00 00
+0x40: ACCOUNT_SECRET \x00\x00
+0x50: <ptr> 09 00 00 00
+0x58: CLIENT_ID \x00
+0x60: <ptr> <ptr> <ptr> <ptr> 85 00 00 00
+0x70: T1lGaDFZN2dVK1k2ZTBYTzBNSnV1L2...  (base64 ACSR value)
+```
+
+### Where CLIENT_ID VALUE is stored
+
+The CLIENT_ID **key name** is at `this1[0xf4]+0x58`, but the actual value (device serial) is NOT stored as a plain C string anywhere in the reachable object graph. The serial was not found in any of:
+- `this[1]` raw bytes (1024 bytes)
+- `this1[0xf4]` target (8192 bytes)
+- All inner pointer targets (4096 bytes each)
+- `this1[0xf0]` target (4096 bytes)
+- All pointer targets in `this1[0xf0..0x120]` range
+
+This strongly suggests the CLIENT_ID value is stored as a **JNI Java String object** in the JVM heap, not as a C string. The native code accesses it via JNI call or through the Java string's internal byte array.
+
+### Voucher reference string
+
+Found at `this1[0xc8]`:
+```
+atv:kin:2:GEyx9Sg/VHuLK0zs2pVe33rWhA2v6nZxG8SO5dZn+hIefVrQMB...
+```
+
+This is the Amazon device token (DRM voucher reference) containing a base64-encoded identity credential.
+
+### Allocation tracing for HMAC key blob
+
+- HMAC key output vector = last `std::vector` realloc (16384 bytes)
+- Growth pattern: 128→256→512→1024→2048→4096→8192→16384 (classic doubling)
+- 20 allocations total during SLOT8, all from `libstdc++.so.6` vector internals
+- Baseline: output 10330 bytes; wrong CID: output 9690 bytes (same allocation count)
+- `__builtin_return_address(1)` = unresolved (obfuscated BLX R3 calls break frame chain)
+
+### Internal helper classification
+
+| Address | Type | Notes |
+|---------|------|-------|
+| `0x17ca40` | Switch case handler | Named "case.0x17c5ec.123" — part of the state machine dispatch |
+| `0x17e33e` | Helper function | Similar structure to case handlers |
+| `0x1ae690` | Trap | `halt_baddata()` — dead code / anti-debug |
+| `0x1ae89e` | Unknown | r2 couldn't analyze |
+| `0x17be2a` | Unknown | r2 couldn't analyze |
+| `0x1825d6` | Unknown | r2 couldn't analyze |
+
+### Summary of mechanistic understanding
+
+```
+Voucher ION blob + atv:kin device token
+    │
+    ▼
+fcn.00151200 (voucher parsing loop)
+    │  Reads CLIENT_ID and ACCOUNT_SECRET from lock params
+    │  Builds this[1] config object (vtable 0x32f248)
+    │  Stores: version, voucher blob, device token, lock params
+    │
+    ▼
+fcn.0015134c (bridge function)
+    │  arg1 = strategy object (from parsed voucher)
+    │  strategy->vtable[8]() → dispatches to crypto
+    │
+    ▼
+0x150c40 (version gate)
+    │  if *(this[1]+0xc0) == 0x76 → 0x17c4fc (obfuscated engine)
+    │  else → vtable[9]/[10] (legacy path)
+    │
+    ▼
+0x17c4fc (244KB obfuscated state machine)
+    │  Reads this[1] config (contains CLIENT_ID via JNI)
+    │  Reads this[1]+0xc4 voucher blob
+    │  Reads this[1]+0xc8 device token
+    │  Internal state machine (136+ cases, BLX R3 dispatch)
+    │  Writes to output vector via std::vector (20 reallocs)
+    │  Produces: HMAC key blob + numeric string
+    │
+    ▼
+HMAC-SHA256(hmac_key, numeric_string) → voucher_key_256
+    │
+    ▼
+Stage-2 AES-256-CBC(voucher_key_256) → decrypted voucher
+    │
+    ▼
+HMAC-SHA256 integrity check
+```
+
+### What we now fully understand
+
+1. ✅ **Where lock parameters are stored**: `this1[0xf4]` structure with ACCOUNT_SECRET and CLIENT_ID keys
+2. ✅ **The voucher reference format**: `atv:kin:2:<base64>` at `this1[0xc8]`
+3. ✅ **The version gate**: `this1+0xc0 == 0x76` determines which crypto path
+4. ✅ **The allocation pattern**: std::vector doubling, 20 reallocs, last one = output
+5. ✅ **The full call chain**: parsing → bridge → gate → state machine → HMAC → AES
+
+### What remains unclear
+
+1. **How CLIENT_ID value is accessed inside 0x17c4fc**: stored as JNI Java String, not directly readable from C
+2. **Which specific fields in this[1] are read by the state machine**: all 60 fields differ, unclear which matter
+3. **The internal structure of the state machine**: 136 cases, BLX R3 dispatch, needs runtime tracing
+4. **What the numeric string represents**: diverges at byte 5, contains repeated tokens like 44888, 15176, 1456
