@@ -5051,3 +5051,7 @@ func stylePop(style map[string]string, key string, def string) string {
 	}
 	return def
 }
+
+func styleContains_(style map[string]string, key string) bool { return styleContains(style, key) }
+func styleSetItem_(style map[string]string, key, value string) { styleSetItem(style, key, value) }
+
