@@ -4912,6 +4912,9 @@ func (r *storylineRenderer) renderSVGNode(node map[string]interface{}) htmlPart 
 }
 
 func (r *storylineRenderer) renderTableNode(node map[string]interface{}, depth int) htmlPart {
+	// Consume table-specific metadata properties (Python: process_content L766-794)
+	consumeTableProperties(node, r.contentContext())
+
 	table := &htmlElement{Tag: "table", Attrs: map[string]string{}}
 	if styleAttr := r.tableClass(node); styleAttr != "" {
 		table.Attrs["style"] = styleAttr
@@ -6003,6 +6006,18 @@ func (r *storylineRenderer) prepareRenderableNode(node map[string]interface{}) (
 		}
 	}
 	delete(working, "ignore")
+
+	// Consume content metadata properties (Python: process_content L439-442, L563-568)
+	// $605 = word_iteration_type — warn if unexpected value
+	if wtype, ok := asString(working["word_iteration_type"]); ok {
+		if wtype != "model" {
+			log.Printf("WARN: %s has unexpected word_iteration_type: %s", r.contentContext(), wtype)
+		}
+	}
+	delete(working, "word_iteration_type")
+
+	// $432 = blank — just consume, no rendering needed
+	delete(working, "blank")
 
 	return working, true
 }
@@ -8112,4 +8127,78 @@ func shouldCollapseNestedDiv(element *htmlElement) bool {
 		return false
 	}
 	return true
+}
+
+// consumeTableProperties consumes and validates table-specific properties from a content node.
+// Port of Python process_content table property handling (yj_to_epub_content.py L766-794).
+// These properties are metadata that don't affect rendering but should be consumed
+// to avoid leaving them as unknown content.
+func consumeTableProperties(content map[string]interface{}, context string) {
+	// $700 = important_cells — just consume, no rendering needed
+	if _, ok := content["important_cells"]; ok {
+		delete(content, "important_cells")
+	}
+
+	// $630 = yj.table_selection_mode — validate expected value
+	if mode, ok := asString(content["yj.table_selection_mode"]); ok {
+		delete(content, "yj.table_selection_mode")
+		if mode != "yj.regional" {
+			log.Printf("WARN: %s table has unexpected table_selection_mode: %s", context, mode)
+		}
+	}
+
+	// $629 = yj.table_features — validate known features
+	if features, ok := asSlice(content["yj.table_features"]); ok {
+		delete(content, "yj.table_features")
+		knownFeatures := map[string]bool{
+			"pan_zoom": true, "scale_fit": true, "yj.disable_stacking": true,
+		}
+		for _, raw := range features {
+			if f, ok := asString(raw); ok && !knownFeatures[f] {
+				log.Printf("WARN: %s table has unexpected table_feature: %s", context, f)
+			}
+		}
+	}
+
+	// $821 = table_metadata — validate known metadata names
+	if metadata, ok := asMap(content["table_metadata"]); ok {
+		delete(content, "table_metadata")
+		knownNames := map[string]bool{
+			"table_cell_count": true, "table_character_count": true,
+			"table_column_count": true, "table_row_count": true,
+		}
+		for name, val := range metadata {
+			if !knownNames[name] {
+				log.Printf("WARN: %s table has unexpected table_metadata: %s=%v", context, name, val)
+			}
+		}
+	}
+
+	// $755 = truncated_bounds — validate known sides
+	if sides, ok := asSlice(content["truncated_bounds"]); ok {
+		delete(content, "truncated_bounds")
+		knownSides := map[string]bool{"top": true, "bottom": true, "left": true, "right": true}
+		for _, raw := range sides {
+			if s, ok := asString(raw); ok && !knownSides[s] {
+				log.Printf("WARN: %s table has unexpected truncated_bounds side: %s", context, s)
+			}
+		}
+	}
+}
+
+// consumeContentMetadata consumes and validates content metadata properties.
+// Port of Python process_content property consumption (yj_to_epub_content.py L439-442, L563-568).
+func consumeContentMetadata(content map[string]interface{}, context string) {
+	// $605 = word_iteration_type — validate expected values
+	if wtype, ok := asString(content["word_iteration_type"]); ok {
+		delete(content, "word_iteration_type")
+		if wtype != "model" { // $604 = model (was "bmp" in catalog)
+			log.Printf("WARN: %s has unexpected word_iteration_type: %s", context, wtype)
+		}
+	}
+
+	// $432 = blank — consume, no action needed
+	if _, ok := content["blank"]; ok {
+		delete(content, "blank")
+	}
 }
