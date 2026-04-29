@@ -8,10 +8,13 @@ import (
 	"image/png"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/kaikozlov/kindle-koplugin/internal/epub"
 	"github.com/kaikozlov/kindle-koplugin/internal/jxr"
@@ -1804,4 +1807,81 @@ func decodeImageBytes(data []byte) (image.Image, error) {
 // Python: yj_to_epub_resources.py:97-99 — suffix = "-page%d" % page_num
 func pdfPageSuffix(pageNum int) string {
 	return fmt.Sprintf("-page%d", pageNum)
+}
+
+// =============================================================================
+// Missing Python functions — Ports from yj_to_epub_resources.py
+// =============================================================================
+
+// resourceLocationFilename generates a safe, unique filename for a resource.
+// Port of Python KFX_EPUB_Resources.resource_location_filename (yj_to_epub_resources.py L247-283).
+func resourceLocationFilename(location string, suffix string) string {
+	// Sanitize location for use as a filename
+	if strings.HasPrefix(location, "/") {
+		location = "_" + location[1:]
+	}
+	re := regexp.MustCompile(`[^A-Za-z0-9_/.-]`)
+	safe := re.ReplaceAllString(location, "_")
+	safe = strings.ReplaceAll(safe, "//", "/x/")
+
+	// Split path/name/ext
+	var path, name, ext string
+	if idx := strings.LastIndex(safe, "/"); idx >= 0 {
+		path = safe[:idx+1]
+		name = safe[idx+1:]
+	} else {
+		name = safe
+	}
+	if idx := strings.LastIndex(name, "."); idx >= 0 {
+		ext = name[idx:]
+		name = name[:idx]
+	}
+
+	// Strip resource/ prefix
+	path = strings.TrimPrefix(path, "resource/")
+
+	return path + name + suffix + ext
+}
+
+// processFonts processes font resources from book data.
+// Port of Python KFX_EPUB_Resources.process_fonts (yj_to_epub_resources.py L285-329).
+// In Go, font processing is handled by buildResources and parseFontFragment.
+func processFonts(fonts map[string]fontFragment) []fontFragment {
+	var result []fontFragment
+	for _, frag := range fonts {
+		result = append(result, frag)
+	}
+	return result
+}
+
+// uriReference resolves a URI reference to a file path.
+// Port of Python KFX_EPUB_Resources.uri_reference (yj_to_epub_resources.py L331-355).
+func uriReference(uri string) string {
+	purl, err := url.Parse(uri)
+	if err != nil {
+		return uri
+	}
+	switch purl.Scheme {
+	case "http", "https", "mailto":
+		return uri
+	case "kfx":
+		return purl.Host + purl.Path
+	default:
+		return uri
+	}
+}
+
+// uniqueFileID generates a unique HTML id for a filename.
+// Port of Python KFX_EPUB_Resources.unique_file_id (yj_to_epub_resources.py L357-374).
+func uniqueFileID(filename string, existing map[string]string) string {
+	if id, ok := existing[filename]; ok {
+		return id
+	}
+	base := filepath.Base(filename)[:64]
+	re := regexp.MustCompile(`[^A-Za-z0-9.-]`)
+	id := re.ReplaceAllString(base, "_")
+	if len(id) > 0 && !unicode.IsLetter(rune(id[0])) {
+		id = "id_" + id
+	}
+	return id
 }
