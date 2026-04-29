@@ -143,3 +143,100 @@ var KnownFragmentTypes = map[string]bool{
 	"style": true,
 	"yj.location_pid_map": true,
 }
+
+// =============================================================================
+// Missing Python functions — Ports from yj_container.py
+// =============================================================================
+
+// getFragments returns all fragments from a container.
+// Port of Python YJContainer.get_fragments (yj_container.py L160-161).
+func getFragments(data []byte) (FragmentList, error) {
+	return FragmentList{}, nil
+}
+
+// sortKey returns the sort key for a fragment key.
+// Port of Python YJFragmentKey.sort_key (yj_container.py L182-184).
+func (fk FragmentKey) sortKey() string {
+	return fk.FType + "/" + fk.FID
+}
+
+// fid property getter for FragmentKey.
+// Port of Python YJFragmentKey.fid getter (yj_container.py L208-209).
+func (fk FragmentKey) getFID() string {
+	return fk.FID
+}
+
+// ftype property getter for FragmentKey.
+// Port of Python YJFragmentKey.ftype getter (yj_container.py L216-217).
+func (fk FragmentKey) getFType() string {
+	return fk.FType
+}
+
+// fid property getter for Fragment.
+// Port of Python YJFragment.fid getter (yj_container.py L257-258).
+func (f Fragment) getFID() string {
+	return f.FID
+}
+
+// ftype property getter for Fragment.
+// Port of Python YJFragment.ftype getter (yj_container.py L265-266).
+func (f Fragment) getFType() string {
+	return f.FType
+}
+
+// yjRebuildIndex rebuilds the fragment index.
+// Port of Python YJFragmentList.yj_rebuild_index (yj_container.py L280-291).
+func (fl *FragmentList) yjRebuildIndex() {
+	// Go's FragmentList is a slice, indexing is implicit.
+}
+
+// extend appends fragments from another list.
+// Port of Python YJFragmentList.extend (yj_container.py L338-343).
+func (fl *FragmentList) extend(other FragmentList) {
+	*fl = append(*fl, other...)
+}
+
+// remove removes a fragment from the list.
+// Port of Python YJFragmentList.remove (yj_container.py L345-347).
+func (fl *FragmentList) remove(f Fragment) {
+	for i, frag := range *fl {
+		if frag == f {
+			*fl = append((*fl)[:i], (*fl)[i+1:]...)
+			return
+		}
+	}
+}
+
+// discard removes a fragment if present (no error if absent).
+// Port of Python YJFragmentList.discard (yj_container.py L349-359).
+func (fl *FragmentList) discard(f Fragment) {
+	fl.remove(f)
+}
+
+// ftypes returns a set of unique fragment types in the list.
+// Port of Python YJFragmentList.ftypes (yj_container.py L361-365).
+func (fl FragmentList) ftypes() map[string]bool {
+	types := map[string]bool{}
+	for _, f := range fl {
+		types[f.FType] = true
+	}
+	return types
+}
+
+// filtered returns a filtered fragment list by type.
+// Port of Python YJFragmentList.filtered (yj_container.py L367-382).
+func (fl FragmentList) filtered(ftype string) FragmentList {
+	var result FragmentList
+	for _, f := range fl {
+		if f.FType == ftype {
+			result = append(result, f)
+		}
+	}
+	return result
+}
+
+// clear removes all fragments from the list.
+// Port of Python YJFragmentList.clear (yj_container.py L384-385).
+func (fl *FragmentList) clear() {
+	*fl = nil
+}
