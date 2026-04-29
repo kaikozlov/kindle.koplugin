@@ -99,3 +99,28 @@ These exist in Go but the audit can't match them due to naming/type differences:
 - `YJFragmentKey.sort_key` → Go has sortKey() method but audit doesn't match methods
 - `ion_type` → Go uses ionType as a type, not a function
 - ION dunder methods (9) → Go has ionNe/ionLe/etc but audit expects Ne/Le/etc.
+
+## Session 2026-04-29: Branch-level parity audit
+
+### Baseline: 804 missing branches → 261 after $N→real name fix → most are false positives
+
+### Findings
+1. **$N translation fix** reduced missing from 804→261 (543 false positives from $N→real name mismatch)
+2. **243 of 261 remaining** are in `process_content` — mostly property cleanup/logging (no functional impact):
+   - `important_cells` ($700): just `pass` in Python
+   - `table_selection_mode` ($630): just log.error
+   - `table_features` ($629): just log.error for unknown features
+   - `table_metadata` ($821): just log.error for unknown metadata
+   - `truncated_bounds` ($755): just log.error for unknown sides
+   - `word_iteration_type` ($605): just log.warning
+   - `blank` ($432): just pass
+3. **21 non-process_content missing** are branches in Go but in different files:
+   - `organize_fragments_by_type`: branches are in `organizeFragments()` in yj_book.go
+   - `ruby_content`, `nav_unit`, etc.: handled in different Go functions
+4. **0 structural diffs** confirms these branches don't affect actual output
+
+### Conclusion
+The branch-level metric has diminishing returns because:
+- False positives from per-file auditing (branches exist in different Go files)
+- Missing branches are no-ops (logging/pass) that don't affect output
+- Output quality is already at 0 structural diffs
