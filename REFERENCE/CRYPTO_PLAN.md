@@ -2006,3 +2006,87 @@ Java: sec.setLockParameters(Map.of("ACCOUNT_SECRET", acsr, "CLIENT_ID", serial))
   ↓ ReleaseStringUTFChars, DeleteLocalRef
 0xdecc: stack check + return
 ```
+
+## HMAC Numeric Data Analysis (2026-04-28)
+
+### The HMAC input is a DECIMAL DIGIT STRING
+
+The 856/860-byte "numeric string" passed to HMAC-SHA256 is purely decimal digits.
+
+**Token frequency analysis:**
+| Token | Baseline count | Wrong CID count | Interpretation |
+|-------|---------------|-----------------|----------------|
+| `44888` | prefix | prefix | Common ION/voucher structure prefix |
+| `1456` | 10 | 9 | **Symbol/value from correct CLIENT_ID** |
+| `16192` | 1 | 16 | **Symbol/value from wrong CLIENT_ID** |
+| `15176` | appears | appears | Common voucher field |
+| `3760` | appears | appears | Common voucher field |
+
+### The state machine produces different numeric strings depending on CLIENT_ID
+
+The divergence happens at byte 5:
+- Baseline: `44888|6|14562856883288884488...`
+- Wrong CID: `44888|8|3223760161928688884...`
+
+This suggests the state machine converts the voucher ION structure into a decimal digit sequence, and the CLIENT_ID value influences how certain ION symbols are encoded.
+
+### BLX R3 dispatch analysis
+
+43 `BLX R3` instructions identified in the state machine (0x17c4fc-0x1a1000):
+
+| Address | Address | Address | Address |
+|---------|---------|---------|---------|
+| 0x17c74e | 0x17c77e | 0x17e168 | 0x17ee04 |
+| 0x18029a | 0x180354 | 0x18137e | 0x182b94 |
+| 0x184030 | 0x1840e8 | 0x184b78 | 0x184b8e |
+| 0x185fa8 | 0x186168 | 0x186a28 | 0x186a3e |
+| 0x186d7a | 0x1885f8 | 0x188762 | 0x188d60 |
+| 0x188d76 | 0x18a7da | 0x18a940 | 0x18ada8 |
+| 0x18adbe | 0x18b0e6 | 0x18b3f8 | 0x18e604 |
+| 0x18e864 | 0x18e87a | ... | (43 total) |
+
+Runtime resolution requires trampoline patching — deferred to future work.
+
+### Complete mechanistic model (as understood)
+
+```
+INPUT STAGE:
+  1. Java: setLockParameters({ACCOUNT_SECRET: acsr, CLIENT_ID: serial})
+     → JNI bridge at 0xdc9c calls GetStringUTFChars
+     → Stores as std::map<string,string> in RB-tree
+     
+  2. Java: attachVoucher(voucher_file)
+     → JNI bridge at 0xd88c calls vtable[5] = 0x151200
+     → Voucher parsing loop constructs strategy object
+     → this[1] populated with:
+       +0xc0: version (0x76)
+       +0xc4: raw voucher blob pointer
+       +0xc8: atv:kin device token pointer
+       +0xf4: lock params map pointer
+
+DERIVATION STAGE:
+  3. fcn.0015134c bridges to vtable[8] = 0x150c40
+  4. 0x150c40 checks version gate → calls 0x17c4fc (244KB state machine)
+  5. 0x17c4fc reads this[1] config:
+     - Reads CLIENT_ID from RB-tree at f4-0x50 (std::string, 16 chars)
+     - Reads ACCOUNT_SECRET from RB-tree
+     - Reads voucher blob from this[1]+0xc4
+     - Reads device token from this[1]+0xc8
+  6. State machine produces:
+     (a) HMAC key blob: 10330 bytes (baseline) / 9690 bytes (wrong CID)
+         → written to output std::vector (arg2)
+     (b) Numeric string: 856/860 decimal digits
+         → token "1456" vs "16192" is the CLIENT_ID fingerprint
+
+CRYPTO STAGE:
+  7. HMAC-SHA256(hmac_key_blob, numeric_string) → voucher_key_256
+  8. AES-256-CBC(voucher_key_256, inner_IV) → decrypted voucher
+  9. HMAC-SHA256 integrity check (SLOT8 fires second time)
+
+KEY OBSERVATIONS:
+  - CLIENT_ID value enters at step 5 (state machine reads it from RB-tree)
+  - The state machine encodes CLIENT_ID into the numeric string as token 1456/16192
+  - Different CLIENT_ID → different numeric string → different HMAC → different voucher key → ErrorCode 48
+  - The stage-1 decrypt (hardcoded key + ACSR IV) is IDENTICAL regardless of CLIENT_ID
+  - The entire derivation is inside the 244KB obfuscated state machine
+```
