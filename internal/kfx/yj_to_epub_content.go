@@ -758,6 +758,27 @@ func pageTemplatesHaveConditions(templates []pageTemplateFragment) bool {
 	return hasConditionalTemplate(templates)
 }
 
+// removeDataKeep removes temporary data-keep attributes from <div> elements.
+// These attributes were added during rendering to prevent stripBareDivs from
+// removing <div> wrappers that Python's consolidate_html keeps.
+func removeDataKeep(root *htmlElement) {
+	if root == nil {
+		return
+	}
+	for i, child := range root.Children {
+		if elem, ok := child.(*htmlElement); ok {
+			if _, has := elem.Attrs["data-keep"]; has {
+				delete(elem.Attrs, "data-keep")
+				if len(elem.Attrs) == 0 {
+					elem.Attrs = nil
+				}
+			}
+			removeDataKeep(elem)
+		}
+		_ = i
+	}
+}
+
 // =============================================================================
 // process_page_spread_page_template — Port of yj_to_epub_content.py:210-344
 // =============================================================================
@@ -3549,8 +3570,9 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 	promotedBody := false
 	promotedBodyInline := false // true when promoted body is a heading leaf node (render inline)
 	inferredBody := false
+	needsBareDivWrap := false // set when container node and child both have position anchors
 	if bodyStyleID == "" {
-		if promotedStyleID, promotedNodes, ok, inline := promotedBodyContainer(nodes, r.styleFragments); ok {
+		if promotedStyleID, promotedNodes, ok, inline, containerNodeID := promotedBodyContainer(nodes, r.styleFragments); ok {
 			// Python's COMBINE_NESTED_DIVS (yj_to_epub_content.py:1415-1440) checks
 			// if the container <div>'s style properties overlap with the body's style.
 			// If they share properties (e.g., font-size), the <div> is kept and later
@@ -3576,23 +3598,39 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 
 					}
 				}
-				// Check: if BOTH the template container and the child node would
-				// get position anchor ids, Python's COMBINE_NESTED_DIVS won't merge
-				// the inner <div> into the template container (because both elements
-				// would have id attributes). In that case we must not promote inline
-				// — the template container must survive as a separate element so that
-				// simplify_styles can convert the inner <div> to <p> and split
-				// heritable/non-heritable properties between body and <p>.
-				if ok {
-					templateHasAnchor := len(r.positionAnchorID[sectionPositionID]) > 0
-					if templateHasAnchor {
-						// Also check if the child node has a position anchor
-						for _, rawNode := range promotedNodes {
-							if node, nodeOK := asMap(rawNode); nodeOK {
-								if nodePosID, posOK := asInt(node["id"]); posOK && nodePosID > 0 {
-									if len(r.positionAnchorID[nodePosID]) > 0 {
-										ok = false
-									}
+			}
+			// Check: if the container node AND a child container node both have
+			// position anchor ids, Python's COMBINE_NESTED_DIVS won't merge them
+			// (both <div> elements would have id attributes — yj_to_epub_content.py:1434).
+			// The inner div survives as a bare wrapper that consolidate_html keeps
+			// (child is non-block, e.g. <a>).
+			//
+			// We still promote the style (ok stays true) but set needsBareDivWrap
+			// so the body content gets wrapped in a <div> after rendering.
+			// Only check CONTAINER children (have content_list) since leaf nodes
+			// (text, images) don't create their own container divs.
+			if ok && containerNodeID > 0 && len(r.positionAnchorID[containerNodeID]) > 0 {
+				for _, rawNode := range promotedNodes {
+					if node, nodeOK := asMap(rawNode); nodeOK {
+						if _, hasCL := asSlice(node["content_list"]); hasCL {
+							if nodePosID, posOK := asInt(node["id"]); posOK && nodePosID > 0 {
+								if len(r.positionAnchorID[nodePosID]) > 0 {
+									needsBareDivWrap = true
+								}
+							}
+						}
+					}
+				}
+			}
+			// Also check for inline bodies with section template anchor
+			if ok && !needsBareDivWrap {
+				templateHasAnchor := len(r.positionAnchorID[sectionPositionID]) > 0
+				if templateHasAnchor {
+					for _, rawNode := range promotedNodes {
+						if node, nodeOK := asMap(rawNode); nodeOK {
+							if nodePosID, posOK := asInt(node["id"]); posOK && nodePosID > 0 {
+								if len(r.positionAnchorID[nodePosID]) > 0 {
+									ok = false
 								}
 							}
 						}
@@ -3783,6 +3821,14 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 				bodyParts = append(bodyParts, rendered)
 			}
 		}
+	}
+	// If the double-id condition was met, wrap body content in a bare <div>.
+	// Python's COMBINE_NESTED_DIVS keeps this div because the child is non-block.
+	// Use data-keep attribute to prevent stripBareDivs from removing it.
+	if needsBareDivWrap && len(bodyParts) > 0 {
+		wrapper := &htmlElement{Tag: "div", Attrs: map[string]string{"data-keep": "true"}}
+		wrapper.Children = bodyParts
+		bodyParts = []htmlPart{wrapper}
 	}
 	root := &htmlElement{Attrs: map[string]string{}, Children: bodyParts}
 	// Python applies position anchors BEFORE replace_eol_with_br.
@@ -6823,22 +6869,23 @@ func hasLayoutHint(node map[string]interface{}, styleFragments map[string]map[st
 	return false
 }
 
-func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[string]interface{}) (string, []interface{}, bool, bool) {
+func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[string]interface{}) (string, []interface{}, bool, bool, int) {
 	if len(nodes) != 1 {
-		return "", nil, false, false
+		return "", nil, false, false, 0
 	}
 	node, ok := asMap(nodes[0])
 	if !ok {
-		return "", nil, false, false
+		return "", nil, false, false, 0
 	}
 	styleID, _ := asString(node["style"])
+	nodeID, _ := asInt(node["id"])
 
 	// Case 1: Container node with content_list children.
 	// Python's process_content creates a <div> that is_top_level renames to <body>.
 	if children, ok := asSlice(node["content_list"]); ok && len(children) > 0 && styleID != "" {
 		if _, ok := asMap(node["content"]); !ok {
 			if _, ok := asString(node["resource_name"]); !ok {
-				return styleID, children, true, false // container: use renderNode
+				return styleID, children, true, false, nodeID // container: use renderNode
 			}
 		}
 	}
@@ -6850,7 +6897,7 @@ func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[st
 	if styleID != "" {
 		if _, hasContent := asMap(node["content"]); hasContent {
 			if _, hasResource := asString(node["resource_name"]); !hasResource {
-				return styleID, nodes, true, true // leaf text: render inline
+				return styleID, nodes, true, true, nodeID // leaf text: render inline
 			}
 		}
 	}
@@ -6866,13 +6913,13 @@ func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[st
 		if _, hasResource := asString(node["resource_name"]); hasResource {
 			if _, hasContentList := asSlice(node["content_list"]); !hasContentList {
 				if _, hasContent := asMap(node["content"]); !hasContent {
-					return styleID, nodes, true, true // resource: render inline (image directly in body)
+					return styleID, nodes, true, true, nodeID // resource: render inline (image directly in body)
 				}
 			}
 		}
 	}
 
-	return "", nil, false, false
+	return "", nil, false, false, 0
 }
 
 // isStyleValueZero checks if a style value represents zero (0, 0.0, "0", etc.)
