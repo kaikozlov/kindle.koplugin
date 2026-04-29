@@ -8202,3 +8202,11 @@ func consumeContentMetadata(content map[string]interface{}, context string) {
 		delete(content, "blank")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Feature flags matching Python constants (yj_to_epub_content.py L14-25)
+// ---------------------------------------------------------------------------
+
+// includeHeroImageProperties controls whether hero image properties are included
+// in conditional property processing. Port of Python INCLUDE_HERO_IMAGE_PROPERTIES.
+const includeHeroImageProperties = true
