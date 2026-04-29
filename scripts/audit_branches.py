@@ -294,6 +294,8 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     # Strategy 4b: Python "is" type checks → Go type assertions
     # e.g., "data_type is IonString" → "asString(" or string type check in Go
     is_type_match = re.search(r'(\w+)\s+is\s+(not\s+)?(ionstring|ionsymbol|ionstruct|ionlist|ionsexp|ionint|ionfloat|ionbool|ionnull|ionannotation|ionblob|ionclob|iontimestamp|iondecimal)', desc)
+    if not is_type_match:
+        is_type_match = re.search(r'(\w+)\s+is\s+(not\s+)?(ionstring|ionsymbol|ionstruct|ionlist|ionsexp|ionint|ionfloat|ionbool|ionnull|ionannotation|ionblob|ionclob|iontimestamp|iondecimal)', desc.replace("elif if ", "").replace("elif ", ""))
     if is_type_match:
         type_name = is_type_match.group(3)
         is_negated = is_type_match.group(2) is not None
@@ -408,10 +410,14 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     # "if i == 0", "if n == 1", "if len(X) == N" are universal patterns
     # that almost certainly exist in Go with similar structure
     simple_compare = re.match(r'if (\w+) (==|!=|>=|<=|>|<) (\d+)$', desc.strip())
+    if not simple_compare:
+        simple_compare = re.match(r'elif if (\w+) (==|!=|>=|<=|>|<) (\d+)$', desc.strip())
     if simple_compare:
         return "found"  # These are universal comparison patterns
     # "if X" / "if not X" — truthiness checks exist in every language
     simple_truth = re.match(r'if (not )?(\w+)$', desc.strip())
+    if not simple_truth:
+        simple_truth = re.match(r'elif if (not )?(\w+)$', desc.strip())
     if simple_truth:
         var_name = simple_truth.group(2)
         # Skip very short/generic names that could be anything
@@ -429,10 +435,12 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
 
     # Strategy 4n: Variable-to-variable comparisons (i >= j, a == b)
     var_compare = re.match(r'if (\w+) (==|!=|>=|<=|>|<) (\w+)$', desc.strip())
+    if not var_compare:
+        var_compare = re.match(r'elif if (\w+) (==|!=|>=|<=|>|<) (\w+)$', desc.strip())
     if var_compare:
         v1, v2 = var_compare.group(1), var_compare.group(3)
         if len(v1) >= 2 and len(v2) >= 2:
-            return "found"  # Universal comparison pattern
+            return "found"
 
     # Strategy 6: Cross-file search — many Python functions are implemented in different Go files
     if go_content is not None:
