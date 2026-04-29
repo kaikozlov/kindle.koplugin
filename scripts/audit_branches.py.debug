@@ -370,10 +370,12 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     # Strategy 4k: Compound variable name substring matching
     # Python uses long compound names like "is_scale_fit_layout" which Go splits differently
     # Extract the core meaningful parts (skip short prefixes like "is_", "has_", "not_")
-    compound_parts = re.findall(r'(scale_fit|fit_width|hero_image|mathml|epub2|ordered_list|heritable_sty)', desc)
-    import sys as _sys
+    compound_parts = re.findall(r'(scale_fit|fit_width|hero_image|mathml|epub2|ordered_list|heritable_sty)\b', desc)
     if compound_parts:
         for part in compound_parts:
+            import sys
+            if "scale_fit" in part:
+                print(f"4K CHECK: part={part} in_go={part in go_content}", file=sys.stderr)
             if part in go_content:
                 return "found"
 

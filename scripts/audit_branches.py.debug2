@@ -224,6 +224,8 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
         return "no-go-file"
 
     _pending_symbols = []  # Symbols not found in single-file search
+    _orig_desc = branch.get("description", "")
+    _debug = "scale_fit_layout" in _orig_desc.lower()
     _pending_isinstance = False  # isinstance not found in single-file search
 
     desc = branch["description"].lower()
@@ -239,11 +241,11 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
         for sym in symbols:
             # First try exact $N match
             if sym in go_content:
-                return "found"
+                if _debug: import sys; print(f"FOUND-S1: {_orig_desc[:60]}", file=sys.stderr); return "found"
             # Then try translated real name
             real_name = _SYMBOL_CATALOG.get(sym)
             if real_name and real_name in go_content:
-                return "found"
+                if _debug: import sys; print(f"FOUND-S1: {_orig_desc[:60]}", file=sys.stderr); return "found"
         # Don't return "missing" yet — cross-file search may find it
         # Store symbols for later cross-file check
         _pending_symbols = symbols
@@ -269,14 +271,14 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
             if py_type in py_types:
                 for pattern in go_patterns:
                     if pattern in go_content:
-                        return "found"
+                        if _debug: import sys; print(f"FOUND-S1: {_orig_desc[:60]}", file=sys.stderr); return "found"
         _pending_isinstance = True
 
     # Strategy 3: Look for string constants
     if strings:
         for s in strings:
             if s in go_content:
-                return "found"
+                if _debug: import sys; print(f"FOUND-S1: {_orig_desc[:60]}", file=sys.stderr); return "found"
 
     # Strategy 4: Look for method/function names
     method_calls = re.findall(r'self\.(\w+)', desc)
@@ -285,7 +287,7 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
             # Convert snake_case to camelCase
             go_name = snake_to_camel(method)
             if go_name in go_content:
-                return "found"
+                if _debug: import sys; print(f"FOUND-S1: {_orig_desc[:60]}", file=sys.stderr); return "found"
 
     # Strategy 4b: Python "is" type checks → Go type assertions
     # e.g., "data_type is IonString" → "asString(" or string type check in Go
@@ -311,7 +313,7 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
         }
         for pattern in type_patterns.get(type_name, []):
             if pattern in go_content:
-                return "found"
+                if _debug: import sys; print(f"FOUND-S1: {_orig_desc[:60]}", file=sys.stderr); return "found"
 
     # Strategy 4c: "is None" / "is not None" → Go nil checks
     if "is none" in desc or "is not none" in desc:
@@ -338,7 +340,7 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     if constants:
         for const in constants:
             if const in go_content:
-                return "found"
+                if _debug: import sys; print(f"FOUND-S1: {_orig_desc[:60]}", file=sys.stderr); return "found"
 
     # Strategy 4g: "if X is True/False" → Go boolean checks
     if " is true" in desc or " is false" in desc:
@@ -347,7 +349,7 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
         if var_m:
             var_name = var_m.group(1)
             if var_name in go_content or snake_to_camel(var_name) in go_content:
-                return "found"
+                if _debug: import sys; print(f"FOUND-S1: {_orig_desc[:60]}", file=sys.stderr); return "found"
 
     # Strategy 4h: "except Exception" → Go doesn't use exceptions
     if "except" in desc:
@@ -370,12 +372,11 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     # Strategy 4k: Compound variable name substring matching
     # Python uses long compound names like "is_scale_fit_layout" which Go splits differently
     # Extract the core meaningful parts (skip short prefixes like "is_", "has_", "not_")
-    compound_parts = re.findall(r'(scale_fit|fit_width|hero_image|mathml|epub2|ordered_list|heritable_sty)', desc)
-    import sys as _sys
+    compound_parts = re.findall(r'(scale_fit|fit_width|hero_image|mathml|epub2|ordered_list|heritable_sty)\b', desc)
     if compound_parts:
         for part in compound_parts:
             if part in go_content:
-                return "found"
+                if _debug: import sys; print(f"FOUND-S1: {_orig_desc[:60]}", file=sys.stderr); return "found"
 
     # Strategy 5: Look for variable names and conditions
     # Extract meaningful words
