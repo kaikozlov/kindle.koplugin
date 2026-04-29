@@ -206,7 +206,8 @@ type navProcessor struct {
 	guide              []guideEntry
 	pages              []pageEntry
 	pageLabelAnchorID  map[string]string // label → anchor_id (Python page_label_anchor_id)
-	orientationLock    string            // Python: self.orientation_lock — used for $248 entry_set filtering
+	orientationLock       string // Python: self.orientation_lock — used for $248 entry_set filtering
+	approximatePagesRemoved bool  // Python: self.approximate_pages_removed (yj_to_epub_navigation.py L38)
 }
 
 func processNavigation(navRoots []map[string]interface{}, navContainers map[string]map[string]interface{}, orientationLock string, readingOrderNames []string, isScribeNotebook bool) navProcessor {
@@ -302,7 +303,8 @@ func (p *navProcessor) processContainer(container map[string]interface{}, hasNav
 		case "landmarks":
 			p.processGuideUnit(entry)
 		case "page_list":
-			p.processPageUnit(entry)
+			navContainerName, _ := asString(container["$239"])
+			p.processPageUnit(entry, navContainerName)
 		}
 	}
 }
@@ -344,7 +346,7 @@ func (p *navProcessor) processGuideUnit(entry map[string]interface{}) {
 
 // processPageUnit handles nav units from a page_list ($237) nav container.
 // Port of Python process_nav_container page_list branch (yj_to_epub_navigation.py L167-198).
-func (p *navProcessor) processPageUnit(entry map[string]interface{}) {
+func (p *navProcessor) processPageUnit(entry map[string]interface{}, navContainerName string) {
 	label := parseNavTitle(entry)
 	if debug := os.Getenv("KFX_DEBUG_PAGES"); debug != "" {
 		fmt.Fprintf(os.Stderr, "page unit label=%q entry=%#v\n", label, entry)
@@ -357,6 +359,17 @@ func (p *navProcessor) processPageUnit(entry map[string]interface{}) {
 	if navUnitName != "page_list_entry" {
 		log.Printf("kfx: warning: Unexpected page_list nav_unit_name: %s", navUnitName)
 	}
+	// Port of Python approximate page list handling (yj_to_epub_navigation.py L168-171):
+	// Skip page entries from APPROXIMATE_PAGE_LIST containers.
+	// Python: if nav_container_name == APPROXIMATE_PAGE_LIST and not KEEP_APPROX_PG_NUMS:
+	if navContainerName == "APPROXIMATE_PAGE_LIST" {
+		if !p.approximatePagesRemoved {
+			log.Printf("kfx: warning: Removing approximate page numbers previously produced by KFX Output")
+			p.approximatePagesRemoved = true
+		}
+		return
+	}
+
 	if label == "" {
 		return
 	}
