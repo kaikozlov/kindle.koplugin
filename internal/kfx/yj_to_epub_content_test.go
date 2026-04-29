@@ -2924,7 +2924,7 @@ func TestResolveContentText_FiltersControlChars(t *testing.T) {
 		"name":  "test_frag",
 		"index": int64(0),
 	}
-	result := resolveContentText(contentFragments, ref)
+	result := contentText(contentFragments, ref)
 	expected := "Hello?World?End"
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)

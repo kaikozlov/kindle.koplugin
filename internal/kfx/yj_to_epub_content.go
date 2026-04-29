@@ -2026,11 +2026,15 @@ type preformatState struct {
 	priorText        *htmlText
 }
 
-func (s *preformatState) reset() {
+func (s *preformatState) resetPreformat() {
 	s.firstInBlock = true
 	s.previousChar = 0
 	s.previousReplaced = false
 	s.priorText = nil
+}
+
+func (s *preformatState) reset() {
+	s.resetPreformat()
 }
 
 func (s *preformatState) setMediaBoundary() {
@@ -2136,6 +2140,29 @@ func preformatHTMLText(text string, state *preformatState) htmlPart {
 	part := &htmlText{Text: string(out)}
 	state.priorText = part
 	return part
+}
+
+// preformatSpaces normalizes whitespace for an element and its children.
+// Port of Python KFX_EPUB_Content.preformat_spaces (yj_to_epub_content.py L1681-1708).
+// Delegates to normalizeHTMLChildren which handles the same logic.
+func preformatSpaces(tag string, children []htmlPart, state *preformatState) []htmlPart {
+	return normalizeHTMLChildren(tag, children, state)
+}
+
+// preformatText normalizes whitespace in text content.
+// Port of Python KFX_EPUB_Content.preformat_text (yj_to_epub_content.py L1710-1743).
+// Delegates to preformatHTMLText which handles the same character-level logic.
+func preformatText(text string, state *preformatState) htmlPart {
+	return preformatHTMLText(text, state)
+}
+
+// replaceEolWithBr replaces end-of-line characters with <br> elements in body content.
+// Port of Python KFX_EPUB_Content.replace_eol_with_br (yj_to_epub_content.py L1745-1783).
+// In Go, EOL→<br> conversion is handled at render time by splitTextHTMLParts
+// rather than as a post-processing pass. This function exists for parity with Python's
+// API and delegates to the equivalent rendering-time processing.
+func replaceEolWithBr(text string) []htmlPart {
+	return splitTextHTMLParts(text)
 }
 
 func replaceLastRune(text string, replacement rune) string {
@@ -2295,6 +2322,76 @@ func escapeHTML(text string) string {
 		">", "&gt;",
 	)
 	return replacer.Replace(cleaned)
+}
+
+// replaceElementWithContainer replaces elem with a new container element wrapping elem.
+// Port of Python KFX_EPUB_Content.replace_element_with_container (yj_to_epub_content.py L1821-1829).
+//
+// Python:
+//   parent = elem.getparent()
+//   elem_index = parent.index(elem)
+//   parent.remove(elem)
+//   new_elem = etree.Element(tag)
+//   new_elem.append(elem)
+//   parent.insert(elem_index, new_elem)
+//   return new_elem
+func replaceElementWithContainer(parent *htmlElement, elem *htmlElement, tag string) *htmlElement {
+	// Find elem's index in parent's children
+	idx := -1
+	for i, child := range parent.Children {
+		if child == elem {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return elem // not found, should not happen
+	}
+
+	newElem := &htmlElement{Tag: tag, Attrs: map[string]string{}}
+	newElem.Children = []htmlPart{elem}
+
+	// Replace elem with newElem in parent
+	parent.Children[idx] = newElem
+
+	return newElem
+}
+
+// createElementContentContainer creates a new element, moves elem's text and children
+// into it, then appends the new element as elem's only child.
+// Port of Python KFX_EPUB_Content.create_element_content_container (yj_to_epub_content.py L1831-1842).
+//
+// Python:
+//   new_elem = etree.Element(tag)
+//   new_elem.text = elem.text
+//   elem.text = ""
+//   while len(elem):
+//       e = elem[0]
+//       elem.remove(e)
+//       new_elem.append(e)
+//   elem.append(new_elem)
+//   return new_elem
+func createElementContentContainer(elem *htmlElement, tag string) *htmlElement {
+	newElem := &htmlElement{Tag: tag, Attrs: map[string]string{}}
+
+	// Move text content (Python: new_elem.text = elem.text; elem.text = "")
+	for i, child := range elem.Children {
+		if txt, ok := child.(htmlText); ok {
+			newElem.Children = append(newElem.Children, txt)
+			elem.Children = append(elem.Children[:i], elem.Children[i+1:]...)
+			break // Python's elem.text is the first text node
+		}
+	}
+
+	// Move all remaining children to newElem
+	remaining := elem.Children
+	elem.Children = nil
+	newElem.Children = append(newElem.Children, remaining...)
+
+	// Append newElem as elem's only child
+	elem.Children = []htmlPart{newElem}
+
+	return newElem
 }
 
 // ---------------------------------------------------------------------------
@@ -3098,7 +3195,7 @@ func cloneStyleMap(style map[string]string) map[string]string {
 	return cloned
 }
 
-func resolveContentText(contentFragments map[string][]string, ref map[string]interface{}) string {
+func contentText(contentFragments map[string][]string, ref map[string]interface{}) string {
 	name, _ := asString(ref["name"])
 	index, ok := asInt(ref["index"])
 	if !ok {
@@ -3152,7 +3249,7 @@ func accumulateContentLanguageMerits(nodes []interface{}, currentLanguage string
 			language = languageKey(rawLanguage)
 		}
 		if ref, ok := asMap(node["content"]); ok && language != "" {
-			merits[language] += len([]rune(resolveContentText(contentFragments, ref)))
+			merits[language] += len([]rune(contentText(contentFragments, ref)))
 		}
 		if children, ok := asSlice(node["content_list"]); ok {
 			accumulateContentLanguageMerits(children, language, merits, contentFragments, styleFragments)
@@ -3500,6 +3597,91 @@ func quoteCSSString(value string) string {
 // tracks textCombineInUse. Port of Python's self.text_combine_in_use tracking
 // in convert_yj_properties (yj_to_epub_properties.py L1127).
 // The resolve parameter is kept for API compatibility but uses r.resolveResource internally.
+// contentContext returns the current processing context as a string for error messages.
+// Port of Python KFX_EPUB_Content.content_context (yj_to_epub_content.py L1940-1941).
+func (r *storylineRenderer) contentContext() string {
+	return strings.Join(r.context_, ", ")
+}
+
+// pushContext adds a context level for error messages.
+// Port of Python KFX_EPUB_Content.push_context (yj_to_epub_content.py L1943-1944).
+func (r *storylineRenderer) pushContext(context string) {
+	r.context_ = append(r.context_, context)
+}
+
+// popContext removes the most recent context level.
+// Port of Python KFX_EPUB_Content.pop_context (yj_to_epub_content.py L1946-1947).
+func (r *storylineRenderer) popContext() {
+	if len(r.context_) > 0 {
+		r.context_ = r.context_[:len(r.context_)-1]
+	}
+}
+
+// addKfxStyle merges KFX style properties into a content map without overwriting existing keys.
+// Port of Python KFX_EPUB_Content.add_kfx_style (yj_to_epub_content.py L1796-1808).
+//
+// Python:
+//   kfx_styles = self.book_data.get("$157", {})
+//   if kfx_style_name in kfx_styles:
+//       for k, v in kfx_styles[kfx_style_name].items():
+//           if k not in content: content[k] = copy.deepcopy(v) ...
+//   else: log.error(...)
+func (r *storylineRenderer) addKfxStyle(content map[string]interface{}, kfxStyleName string) {
+	if kfxStyleName == "" {
+		return
+	}
+	kfxStyles := r.styleFragments
+	styleDef, found := kfxStyles[kfxStyleName]
+	if !found {
+		// Python logs error on first occurrence only (missing_kfx_styles set)
+		return
+	}
+	for k, v := range styleDef {
+		if _, exists := content[k]; !exists {
+			content[k] = v
+		}
+	}
+}
+
+// processContentList iterates a content_list and processes each content item.
+// Port of Python KFX_EPUB_Content.process_content_list (yj_to_epub_content.py L382-388).
+//
+// Python:
+//   for content in content_list:
+//       self.process_content(content, parent, book_part, writing_mode, ...)
+func (r *storylineRenderer) processContentList(contentList []interface{}, parent *htmlElement, depth int) {
+	for _, child := range contentList {
+		part := r.addContent(child, parent, depth)
+		if part != nil {
+			parent.Children = append(parent.Children, part)
+		}
+	}
+}
+
+// addContent dispatches content processing based on content type.
+// Port of Python KFX_EPUB_Content.add_content (yj_to_epub_content.py L362-380).
+//
+// Python dispatches:
+//   if "$145" in content: → text element (span with content_text)
+//   elif "$146" in content: → process_content_list
+//   elif "$176" in content: → process_story (named fragment lookup)
+//
+// Go delegates to renderContentChild which handles the same dispatch.
+func (r *storylineRenderer) addContent(child interface{}, parent *htmlElement, depth int) htmlPart {
+	return r.renderContentChild(child, depth)
+}
+
+// processContent renders a single content node (the main content renderer).
+// Port of Python KFX_EPUB_Content.process_content (yj_to_epub_content.py L390-1463).
+//
+// This is the largest function in the Python codebase (1073 lines). In Go,
+// the equivalent logic is split across renderNode, renderTextNode, renderImageNode,
+// applyAnnotations, and related functions. This method provides the Python-named
+// entry point that delegates to the existing Go rendering pipeline.
+func (r *storylineRenderer) processContent(content map[string]interface{}, parent *htmlElement, depth int) htmlPart {
+	return r.renderContentChild(content, depth)
+}
+
 func (r *storylineRenderer) processContentProps(content map[string]interface{}, resolveResource ResourceResolver) map[string]string {
 	css, combineInUse := processContentPropertiesWithCombineFlag(content, r.resolveResource)
 	if combineInUse {
@@ -3556,6 +3738,18 @@ type storylineRenderer struct {
 	// In Python, promoted body content is rendered inline (no heading/paragraph wrappers)
 	// because the promoted style goes on <body> and children are just inline content.
 	inPromotedBody bool
+
+	// context_ tracks the current processing context for error messages.
+	// Port of Python KFX_EPUB_Content.context_ (yj_to_epub_content.py L99, L1940-1947).
+	context_ []string
+}
+
+// newStorylineRenderer creates a new storylineRenderer with default values.
+// Port of Python KFX_EPUB_Content.__init__ (yj_to_epub_content.py L98-103).
+func newStorylineRenderer() *storylineRenderer {
+	return &storylineRenderer{
+		context_: []string{},
+	}
 }
 
 type conditionEvaluator struct {
@@ -4359,7 +4553,7 @@ func (r *storylineRenderer) processAltContentAnnotation(annotation map[string]in
 		//         self.process_story(alt_content_story, alt_content_elem, book_part, writing_mode)
 		//         content_elem = alt_content_elem[0]
 		altElem := &htmlElement{Tag: "div", Attrs: map[string]string{}}
-		r.renderStoryIntoElement(altContentStory, altElem)
+		r.processStory(altContentStory, altElem)
 		if len(altElem.Children) > 0 {
 			if first, ok := altElem.Children[0].(*htmlElement); ok {
 				fmt.Fprintf(os.Stderr, "kfx: warning: table alt_content was included\n")
@@ -4378,7 +4572,7 @@ func (r *storylineRenderer) processAltContentAnnotation(annotation map[string]in
 	// In Go, resource saving is handled differently (resources are collected during rendering).
 	// We process the story into a throwaway element to trigger any side effects.
 	discard := &htmlElement{Tag: "div", Attrs: map[string]string{}}
-	r.renderStoryIntoElement(altContentStory, discard)
+	r.processStory(altContentStory, discard)
 
 	return element
 }
@@ -4424,10 +4618,10 @@ func isValidAltContentCondition(condition interface{}) bool {
 	return feature == "yj.in_page" || feature == "yj.table_viewer"
 }
 
-// renderStoryIntoElement renders a storyline's content_list into a parent element.
+// processStory renders a storyline's content_list into a parent element.
 // Equivalent to Python's process_story which pops story_name, processes position,
 // then calls process_content_list.
-func (r *storylineRenderer) renderStoryIntoElement(storyline map[string]interface{}, parent *htmlElement) {
+func (r *storylineRenderer) processStory(storyline map[string]interface{}, parent *htmlElement) {
 	// Python: story.pop("$176") → pop story_name
 	delete(storyline, "story_name")
 
@@ -4993,7 +5187,7 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 			ranges = append(ranges, textRange{childIdx: i, startOffset: offset, length: 1})
 			offset++
 		case "span":
-			text := htmlElementText(elem, r.textCombineInUse)
+			text := combinedText(elem, r.textCombineInUse)
 			ranges = append(ranges, textRange{childIdx: i, startOffset: offset, length: len([]rune(text))})
 			offset += len([]rune(text))
 		}
@@ -5104,7 +5298,7 @@ func (r *storylineRenderer) applyContainerStyleEvents(node map[string]interface{
 			if elem.Tag != "span" {
 				continue
 			}
-			text := htmlElementText(elem, r.textCombineInUse)
+			text := combinedText(elem, r.textCombineInUse)
 			runes := []rune(text)
 			trEnd := tr.startOffset + tr.length
 			annEnd := eventStart + eventLen
@@ -5246,7 +5440,7 @@ func wrapChildInLink(parent *htmlElement, target *htmlElement, href string, link
 	}
 }
 
-// htmlElementText extracts the combined text content of an htmlElement by recursively
+// combinedText extracts the combined text content of an htmlElement by recursively
 // descending into child elements, matching Python's combined_text (yj_to_epub_content.py L1534-1554).
 // When textCombineInUse is true and the element has text-combine-upright: all,
 // returns " " (single space) matching Python behavior for CJK vertical text.
@@ -5259,7 +5453,7 @@ func wrapChildInLink(parent *htmlElement, target *htmlElement, href string, link
 //	for e in elem.iterfind("*"): texts.append(self.combined_text(e))
 //	if elem.tail: texts.append(elem.tail)
 //	return "".join(texts)
-func htmlElementText(elem *htmlElement, textCombineInUse bool) string {
+func combinedText(elem *htmlElement, textCombineInUse bool) string {
 	// Python L1536-1537: if elem.tag in {"img", SVG, MATH}: return " "
 	// In Go, SVG and MATH tags are lowercase without namespace prefix.
 	switch elem.Tag {
@@ -5294,7 +5488,7 @@ func htmlElementText(elem *htmlElement, textCombineInUse bool) string {
 			buf.WriteString(typed.Text)
 		case *htmlElement:
 			// Python L1547: texts.append(self.combined_text(e))
-			buf.WriteString(htmlElementText(typed, textCombineInUse))
+			buf.WriteString(combinedText(typed, textCombineInUse))
 		}
 	}
 	return buf.String()
@@ -6826,7 +7020,7 @@ func (r *storylineRenderer) annotationSpanClass(styleID string, annotationMap ma
 }
 
 func (r *storylineRenderer) resolveText(ref map[string]interface{}) string {
-	return resolveContentText(r.contentFragments, ref)
+	return contentText(r.contentFragments, ref)
 }
 
 func hasRenderableContainer(node map[string]interface{}) bool {
