@@ -2090,3 +2090,95 @@ KEY OBSERVATIONS:
   - The stage-1 decrypt (hardcoded key + ACSR IV) is IDENTICAL regardless of CLIENT_ID
   - The entire derivation is inside the 244KB obfuscated state machine
 ```
+
+## Numeric String Differential Analysis (2026-04-28)
+
+### Common prefix: 604 chars
+
+The first 604 characters of the HMAC numeric string are **IDENTICAL** between baseline and wrong CID. This means ~70% of the derivation is CLIENT_ID-independent.
+
+### Tail divergence (positions 604+)
+
+After the common prefix, differences are scattered in small clusters (1-27 chars):
+- Baseline tail: `448815176538844592440404187362...`
+- Wrong CID tail: `53001517615176180323080...`
+
+### Token frequency
+
+| Token | Baseline | Wrong CID | Delta |
+|-------|----------|-----------|-------|
+| `1456` | 10 | 9 | -1 |
+| `16192` | 1 | **16** | **+15** |
+
+### Digit frequency shift
+
+| Digit | Baseline | Wrong CID | Delta |
+|-------|----------|-----------|-------|
+| `1` | 118 | 144 | +26 |
+| `2` | 75 | 94 | +19 |
+| `9` | 50 | 66 | +16 |
+| `0` | 120 | 106 | -14 |
+| `4` | 95 | 82 | -13 |
+
+The shift from `1456` to `16192` increases digits 1, 2, 9 while decreasing 0, 4.
+
+### Voucher ION structure (decoded fields)
+
+The voucher contains these ION-encoded fields:
+
+| Offset | Field | Value |
+|--------|-------|-------|
+| 0x038 | ACCOUNT_SECRET | (lock parameter key) |
+| 0x047 | CLIENT_ID | (lock parameter key) |
+| 0x052 | AES | (encryption algorithm) |
+| 0x052 | AES/CBC/PKCS5Padding | (cipher spec) |
+| 0x06e | HmacSHA256 | (MAC algorithm) |
+| 0x329 | Purchase | (license type) |
+| 0x335 | atv:kin:2:1YMxUy/... | (device identity token) |
+| 0x400 | client_restrictions | (container struct) |
+| 0x41a | ClippingLimit | 30 |
+| 0x430 | TextToSpeechDisabled | false |
+
+### Interpretation
+
+The "1456"/"16192" tokens likely represent a **numeric encoding of the CLIENT_ID value** — some function of the device serial that produces a short integer. With the correct serial, this function yields ~1456 (or "14" "56" as separate values), while with a wrong serial it yields ~16192.
+
+The state machine:
+1. Parses the voucher ION structure
+2. Extracts lock parameters (ACCOUNT_SECRET, CLIENT_ID)
+3. Computes a numeric value from CLIENT_ID (the "1456"/"16192" token)
+4. Constructs the full numeric string by encoding all voucher fields as decimal tokens
+5. If the token doesn't match the expected value → error (wrong CID → ErrorCode 48)
+
+### State machine timing
+
+| Case | Duration | Exit Code |
+|------|----------|-----------|
+| Baseline | 1376 μs | 0 (success) |
+| Wrong CID | 1116 μs | 1 (error) |
+
+Wrong CID is **faster** — the error is detected early in the derivation, before completing the full computation.
+
+### Static call graph from 0x17c4fc
+
+25 unique direct BL targets, 43 BLX R3 indirect targets:
+
+**Hottest direct targets:**
+| Address | Calls | Function |
+|---------|-------|----------|
+| 0x1818e0 | 8 | std::vector::insert (realloc) |
+| 0x181b50 | 5 | std::vector (nested indexing) |
+| 0x264ac0 | 4 | **Obfuscated helper** (movw/movt constants) |
+| 0x26398c | 2 | **Obfuscated helper** (movw/movt constants) |
+| 0x181a78 | 2 | std::vector allocation (operator new) |
+| 0x1819bc | 2 | std::vector element cleanup |
+| 0x15fc58 | 2 | std::vector::push_back (byte vector) |
+
+**Obfuscated constants (from 0x264ac0):**
+- 0x89259a5d, 0xe4300578, 0xf15c8d93, 0xebe2a8b7
+- Not matching SHA-256, SHA-1, MD5, MT19937, or any standard crypto constants
+- Custom DRM-specific values
+
+**Obfuscated constants (from 0x26398c):**
+- 0x4528a1e4, 0x023d2a8d, 0xe1029034, 0x0213bff3
+- Also custom DRM values
