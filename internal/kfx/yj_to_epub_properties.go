@@ -793,6 +793,9 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 	// that style catalog has already removed redundant class attributes.
 	for i := range book.RenderedSections {
 		stripBareDivs(book.RenderedSections[i].Root)
+		// Remove temporary data-keep markers used to preserve bare <div> wrappers
+		// that Python's consolidate_html keeps (non-block children).
+		removeDataKeep(book.RenderedSections[i].Root)
 	}
 
 	type countedStyle struct {
