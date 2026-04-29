@@ -1885,3 +1885,10 @@ func uniqueFileID(filename string, existing map[string]string) string {
 	}
 	return id
 }
+
+// ---------------------------------------------------------------------------
+// Debug/test flags matching Python constants
+// ---------------------------------------------------------------------------
+
+// reportPdfMargins enables PDF margin reporting. Port of Python REPORT_PDF_MARGINS (yj_to_epub_resources.py L19).
+const reportPdfMargins = false

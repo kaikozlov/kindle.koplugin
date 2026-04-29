@@ -808,3 +808,10 @@ func progressCountdown(count *int) {
 func updateProgress(current, total int) {
 	// Progress reporting not needed in Go CLI.
 }
+
+// ---------------------------------------------------------------------------
+// Debug/test flags matching Python constants
+// ---------------------------------------------------------------------------
+
+// retainUsedFragments keeps used fragments for debugging. Port of Python RETAIN_USED_FRAGMENTS (yj_to_epub.py L26).
+const retainUsedFragments = false
