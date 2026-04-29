@@ -2288,3 +2288,38 @@ Therefore:
 
 - `/tmp/chosen_input/chosen_*.bin` — 7-case baseline/wrong-id experiment
 - `/tmp/fc2_data/chosen_fc2_*.bin` — 33-case first-character sweep
+
+## HMAC Key Blob Differential Analysis (2026-04-28)
+
+### Structure
+
+The HMAC key blob (variable size, 10330 bytes for baseline) is derived from
+**both** CLIENT_ID serial and ACSR account secret via a one-way function.
+
+### Baseline vs Off-by-1 (differ only in last serial digit)
+
+| Region | Bytes | Match? |
+|--------|-------|--------|
+| 0-383 | 384 | ✅ IDENTICAL (encodes first 15 chars + ACSR) |
+| 384-7835 | 7450 | ❌ 99%+ different (cascading effect from char[15]) |
+| 7836-9043 | 1207 | ✅ IDENTICAL (encodes first 15 chars) |
+| 9044-9214 | 170 | ❌ Different (transition zone) |
+| 9215-10330 | 1115 | ✅ IDENTICAL (final constant) |
+
+Total: 3265/10330 bytes match (31.6%), 7065 differ (68.4%)
+
+### Baseline vs Completely Different Serial
+
+| Comparison | Differing Bytes |
+|-----------|----------------|
+| vs wrong_x (XXXXXXXXXXXXXXXX) | 99.4% |
+| vs zeros (0000000000000000) | 99.5% |
+| vs all_a (AAAAAAAAAAAAAAAA) | 99.5% |
+| vs numeric16 (1234567890123456) | 99.6% |
+
+### Implications
+
+1. **No pure ACSR region exists** — the entire blob depends on both inputs
+2. **Cascading sensitivity** — changing 1 serial character affects 68% of output
+3. **One-way function** — likely PRF/hash-based, making inversion infeasible
+4. **LD_PRELOAD is the correct approach** — captures post-derivation keys, immune to algorithm changes
