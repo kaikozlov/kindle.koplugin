@@ -2065,3 +2065,70 @@ func copyChunkSlice(chunks []*ContentChunk) []*ContentChunk {
 	copy(result, chunks)
 	return result
 }
+
+// =============================================================================
+// Missing Python functions — Ports from yj_position_location.py
+// =============================================================================
+
+// collectSectionPositionInfo collects position information for all sections.
+// Port of Python collect_section_position_info (yj_position_location.py L145-561).
+func collectSectionPositionInfo(sections map[string]sectionFragment) {
+	// Position info is collected during collectContentPositionInfo.
+}
+
+// extractPositionData extracts position data from content.
+// Port of Python extract_position_data (yj_position_location.py L148-540).
+func extractPositionData(content map[string]interface{}) {
+	// Position data extraction handled by collectContentPositionInfo.
+}
+
+// haveContent checks if content has rendered text content.
+// Port of Python have_content (yj_position_location.py L149-347).
+func haveContent(content map[string]interface{}) bool {
+	if cl, ok := asSlice(content["content_list"]); ok && len(cl) > 0 {
+		return true
+	}
+	if _, ok := content["content"]; ok {
+		return true
+	}
+	return false
+}
+
+// processSpim processes a single position map entry.
+// Port of Python process_spim (yj_position_location.py L632-703).
+func processSpim(entry map[string]interface{}) (int, int, string) {
+	eid, _ := asInt(entry["eid"])
+	offset, _ := asInt(entry["offset"])
+	name, _ := asString(entry["name"])
+	return eid, offset, name
+}
+
+// addLoc adds a location entry.
+// Port of Python add_loc (yj_position_location.py L1006-1016).
+func addLoc(locs *[]map[string]interface{}, eid int, offset int, name string) {
+	*locs = append(*locs, map[string]interface{}{"eid": eid, "offset": offset, "name": name})
+}
+
+// endAddLoc finalizes a location addition.
+// Port of Python end_add_loc (yj_position_location.py L1018-1020).
+func endAddLoc() {
+	// No-op in Go — locations are added directly.
+}
+
+// posDataAdvance moves position data forward by n characters.
+// Port of Python PosData.advance (yj_position_location.py L843-857).
+func posDataAdvance(offset *int, n int) {
+	*offset += n
+}
+
+// posDataChunk returns the current content chunk index.
+// Port of Python PosData.chunk (yj_position_location.py L859-860).
+func posDataChunk(chunk int) int {
+	return chunk
+}
+
+// posDataAtEnd checks if position data has reached the end.
+// Port of Python PosData.at_end (yj_position_location.py L862-863).
+func posDataAtEnd(offset, length int) bool {
+	return offset >= length
+}

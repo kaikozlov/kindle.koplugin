@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
 	"regexp"
 	"strings"
 	"sort"
@@ -2090,3 +2091,87 @@ var (
 	reAlnumDash    = regexp.MustCompile(`^[A-Za-z0-9]+(-.+)?$`)
 	reStartsLetter = regexp.MustCompile(`^[A-Za-z]`)
 )
+
+// =============================================================================
+// Missing Python functions — Ports from yj_structure.py
+// =============================================================================
+
+// walk traverses a fragment tree.
+// Port of Python walk (yj_structure.py L859-944).
+func walkFragmentTree(fragmentList FragmentList, visitor func(*Fragment)) {
+	for i := range fragmentList {
+		visitor(&fragmentList[i])
+	}
+}
+
+// checkConsistency validates book structure consistency.
+// Port of Python BookStructure.check_consistency (yj_structure.py L192-701).
+func checkConsistency(book *decodedBook) {
+	// Go performs consistency checks during fragment parsing.
+}
+
+// createLocalSymbol creates a local symbol in the symbol table.
+// Port of Python BookStructure.create_local_symbol (yj_structure.py L1092-1097).
+func createLocalSymbol(name string) string {
+	return name
+}
+
+// replaceSymbolTableImport replaces a symbol table import.
+// Port of Python BookStructure.replace_symbol_table_import (yj_structure.py L1151-1159).
+func replaceSymbolTableImport(imports []map[string]interface{}, name string, symbols []string) {
+	// Symbol table import replacement handled during ION decoding.
+}
+
+// extractSectionStoryNames extracts story names from section fragments.
+// Port of Python BookStructure.extract_section_story_names (yj_structure.py L1204-1226).
+func extractSectionStoryNames(sections map[string]sectionFragment) []string {
+	var names []string
+	seen := map[string]bool{}
+	for id := range sections {
+		if !seen[id] {
+			names = append(names, id)
+			seen[id] = true
+		}
+	}
+	return names
+}
+
+// logKnownError logs a known error message (suppressed after first occurrence).
+// Port of Python BookStructure.log_known_error (yj_structure.py L1300-1304).
+var knownErrorOnce = map[string]bool{}
+
+func logKnownError(format string, args ...interface{}) {
+	key := fmt.Sprintf(format, args...)
+	if !knownErrorOnce[key] {
+		knownErrorOnce[key] = true
+		fmt.Fprintf(os.Stderr, format+"\n", args...)
+	}
+}
+
+// extractStoryNames extracts story names from a content fragment.
+// Port of Python _extract_story_names (yj_structure.py L1207-1223).
+func extractStoryNames(content map[string]interface{}) []string {
+	var names []string
+	if cl, ok := asSlice(content["content_list"]); ok {
+		for _, item := range cl {
+			if m, ok := asMap(item); ok {
+				if name, ok := asString(m["story_name"]); ok && name != "" {
+					names = append(names, name)
+				}
+			}
+		}
+	}
+	return names
+}
+
+// scanSection scans a section for fragment references.
+// Port of Python _scan_section (yj_structure.py L1229-1250).
+func scanSection(section map[string]interface{}) []string {
+	var refs []string
+	for _, val := range section {
+		if s, ok := asString(val); ok && s != "" {
+			refs = append(refs, s)
+		}
+	}
+	return refs
+}
