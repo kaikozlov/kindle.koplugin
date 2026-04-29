@@ -5065,3 +5065,10 @@ func Style(props ...string) map[string]string {
 	return m
 }
 
+
+// ---------------------------------------------------------------------------
+// Debug/test flags matching Python constants
+// ---------------------------------------------------------------------------
+
+// styleTest enables style testing mode. Port of Python STYLE_TEST (yj_to_epub_properties.py L17).
+const styleTest = false
