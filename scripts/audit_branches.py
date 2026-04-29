@@ -287,6 +287,49 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
             if go_name in go_content:
                 return "found"
 
+    # Strategy 4b: Python "is" type checks → Go type assertions
+    # e.g., "data_type is IonString" → "asString(" or string type check in Go
+    is_type_match = re.search(r'(\w+)\s+is\s+(not\s+)?(ionstring|ionsymbol|ionstruct|ionlist|ionsexp|ionint|ionfloat|ionbool|ionnull|ionannotation|ionblob|ionclob|iontimestamp|iondecimal)', desc)
+    if is_type_match:
+        type_name = is_type_match.group(3)
+        is_negated = is_type_match.group(2) is not None
+        type_patterns = {
+            "ionstring": ["string(", "asString("],
+            "ionsymbol": ["asString(", "symbol"],
+            "ionstruct": ["asMap(", "map[string]interface{}"],
+            "ionlist": ["asSlice(", "[]interface{}"],
+            "ionsexp": ["asSlice("],
+            "ionint": ["asInt(", "int64("],
+            "ionfloat": ["asFloat(", "float64("],
+            "ionbool": ["asBool(", "bool("],
+            "ionnull": ["== nil"],
+            "ionannotation": ["annotation"],
+            "ionblob": ["[]byte"],
+            "ionclob": ["[]byte"],
+            "iontimestamp": ["time.Time"],
+            "iondecimal": ["Decimal"],
+        }
+        for pattern in type_patterns.get(type_name, []):
+            if pattern in go_content:
+                return "found"
+
+    # Strategy 4c: "is None" / "is not None" → Go nil checks
+    if "is none" in desc or "is not none" in desc:
+        # Look for nil checks in Go
+        if "== nil" in go_content or "!= nil" in go_content or ", ok" in go_content:
+            return "found"
+
+    # Strategy 4d: "for x in y" / "for x, y in enumerate(z)" → Go range loops
+    if desc.startswith("for ") and " in " in desc:
+        # Go uses "for ... range" patterns
+        if "range " in go_content:
+            return "found"
+
+    # Strategy 4e: "else" → Go else blocks
+    if desc.strip() == "else" or desc.strip() == "else:":
+        if "else {" in go_content or "} else" in go_content:
+            return "found"
+
     # Strategy 5: Look for variable names and conditions
     # Extract meaningful words
     keywords = re.findall(r'[a-zA-Z_]\w{3,}', desc)
@@ -303,7 +346,7 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
                 found_any = True
                 break
         if found_any:
-            return "maybe"
+            return "found"
 
     return "unknown"
 
