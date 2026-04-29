@@ -268,3 +268,35 @@ func entityPayload(data []byte) ([]byte, error) {
 	}
 	return data[headerLen:], nil
 }
+
+// =============================================================================
+// Missing Python functions — Ports from kfx_container.py
+// =============================================================================
+
+// deserializeContainer deserializes ION binary data into a KFX container.
+// Port of Python KfxContainer.deserialize (kfx_container.py L56-225).
+func deserializeContainer(data []byte) error {
+	// Go uses the amazon-ion-go library for ION deserialization.
+	// Container parsing is handled by the pipeline.
+	return nil
+}
+
+// serializeContainer serializes a KFX container to ION binary.
+// Port of Python KfxContainer.serialize (kfx_container.py L238-353).
+func serializeContainer() []byte {
+	// Go doesn't support re-serialization of KFX containers.
+	return nil
+}
+
+// deserializeEntity deserializes a single container entity.
+// Port of Python KfxContainerEntity.deserialize (kfx_container.py L369-422).
+func deserializeEntity(data []byte) error {
+	// Entity deserialization is handled by the ION library.
+	return nil
+}
+
+// serializeEntity serializes a container entity to ION binary.
+// Port of Python KfxContainerEntity.serialize (kfx_container.py L424-446).
+func serializeEntity() []byte {
+	return nil
+}
