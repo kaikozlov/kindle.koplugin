@@ -468,6 +468,38 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
             for part in compound_parts:
                 if part in all_go:
                     return "found"
+        # Re-check type patterns (Strategy 4b) against all Go files
+        type_patterns = {
+            "ionstring": ["string(", "asString("],
+            "ionsymbol": ["asString(", "symbol"],
+            "ionstruct": ["asMap(", "map[string]interface{}"],
+            "ionlist": ["asSlice(", "[]interface{}"],
+            "ionsexp": ["asSlice("],
+            "ionint": ["asInt(", "int64("],
+            "ionfloat": ["asFloat(", "float64("],
+            "ionbool": ["asBool(", "bool("],
+            "ionnull": ["== nil"],
+        }
+        for type_name, patterns in type_patterns.items():
+            if type_name in desc:
+                for pattern in patterns:
+                    if pattern in all_go:
+                        return "found"
+        # Also check "in [Type1, Type2, ...]" — type list checks
+        type_list = re.findall(r'ion\w+', desc)
+        if type_list:
+            for tn in type_list:
+                if tn in type_patterns:
+                    for pattern in type_patterns[tn]:
+                        if pattern in all_go:
+                            return "found"
+        # Check "self.X" against exported Go names in all files
+        self_props = re.findall(r'self\.([a-z]\w+)', desc)
+        if self_props:
+            for prop in self_props:
+                exported = "".join(p.capitalize() for p in prop.split("_"))
+                if exported in all_go:
+                    return "found"
 
     return "unknown"
 
