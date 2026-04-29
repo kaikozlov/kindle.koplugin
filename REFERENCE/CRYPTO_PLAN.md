@@ -1942,3 +1942,67 @@ HMAC-SHA256 integrity check
 2. **Which specific fields in this[1] are read by the state machine**: all 60 fields differ, unclear which matter
 3. **The internal structure of the state machine**: 136 cases, BLX R3 dispatch, needs runtime tracing
 4. **What the numeric string represents**: diverges at byte 5, contains repeated tokens like 44888, 15176, 1456
+
+## CLIENT_ID Value Location (2026-04-28, phase 2)
+
+### Heap memory scan results
+
+Using direct `memcpy`-based scanning (since `/proc/self/mem` is permission-denied on Kindle):
+
+| Pattern | Occurrences | Key locations |
+|---------|-------------|---------------|
+| `GR733X1151821324` | 3 real + log artifacts | f4-0x50 (RB-tree node), region+0x2cad8 (separate node), region+0x3e7a0 (with stage-1 output) |
+| `CLIENT_ID` | 26 | Multiple RB-tree nodes in lock params map |
+| `ACCOUNT_SECRET` | 26 | Same map |
+
+### CLIENT_ID value stored in RB-tree node
+
+The serial `GR733X1151821324` is stored as a **heap-allocated std::string** (length=16, capacity=16) in an RB-tree node located at `f4 - 0x50`:
+
+```
+f4-0x50: node allocation start
+f4-0x30: actual string chars "GR733X1151821324"  
+f4-0x18: std::string._M_p → points to f4-0x30
+f4-0x14: std::string._M_length = 16
+f4-0x10: std::string._M_capacity = 16
+```
+
+### setLockParameters JNI bridge (0xdc9c in libYJSDKJNI.so)
+
+The function:
+1. Receives `jobjectArray` containing `[key, value]` string pairs
+2. Iterates, calling `GetStringUTFChars` for each key and value
+3. Stores as `std::string` pairs in `std::map<std::string, std::string>` (RB-tree)
+4. Sorts into tree using `_Rb_tree_insert_and_rebalance`
+
+### Memory co-location with stage-1 output
+
+The third occurrence of the serial (at `f4 + 0x3e110`) is co-located with the stage-1 decrypted output `54e869c4b43348062477a52df5467be8c4e08420` in a separate RB-tree node. This confirms the SDK maintains internal bookkeeping that associates the serial with derived keys.
+
+### Key JNI functions in libYJSDKJNI.so
+
+| Address | Size | Function |
+|---------|------|----------|
+| `0xdc9c` | 0x280 | `setLockParameters` — parses key/value pairs from Java |
+| `0xd88c` | 0x64 | `attachVoucher` — attaches voucher file to security object |
+| `0xd8f0` | 0x7c | `getInstance` — creates IBookSecurity native instance |
+| `0xd81c` | 0x70 | `setAccountSecrets` — sets account secret (ACSR) |
+| `0xd9e4` | 0x118 | `getSupportedVoucherVersions` — returns supported versions |
+
+### setLockParameters call sequence
+
+```
+Java: sec.setLockParameters(Map.of("ACCOUNT_SECRET", acsr, "CLIENT_ID", serial))
+  ↓ JNI
+0xdc9c: push {r4-r10,fp,lr}
+  ↓ GetArrayLength (vtable[0x2ac])
+  ↓ loop over array:
+  │  GetObjectArrayElement[i*2]   → key jstring
+  │  GetStringUTFChars(key)       → C string ("ACCOUNT_SECRET" or "CLIENT_ID")
+  │  GetObjectArrayElement[i*2+1] → value jstring
+  │  GetStringUTFChars(value)     → C string (ACSR or serial)
+  │  std::string constructor (0xd63c)
+  │  vector::push_back → std::map via RB-tree insertion
+  ↓ ReleaseStringUTFChars, DeleteLocalRef
+0xdecc: stack check + return
+```
