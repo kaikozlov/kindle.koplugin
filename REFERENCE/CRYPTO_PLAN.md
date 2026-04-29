@@ -1749,3 +1749,74 @@ Stage-2 AES                   → Uses wrong key → DECRYPTION FAILS
 ### Conclusion: CLIENT_ID enters the custom crypto at the very start
 
 The divergence at byte 5 of the numeric string (which is produced by `0x17c4fc`) means CLIENT_ID is consumed within the first few operations of the obfuscated state machine. This is consistent with the `this` object being different — the object fields carry CLIENT_ID-derived data into the function.
+
+---
+
+## Ingestion Site Analysis (2026-04-28)
+
+### Call order discovery
+
+The actual call order is **NOT** vtable[5] then vtable[8]:
+
+```
+1. DEC_256 (stage-1 AES, hardcoded key)
+2. SLOT8 #1 (vtable[8] — custom crypto + HMAC derivation)
+3. HMAC (derives voucher_key_256)
+4. SLOT5 #1 (vtable[5] — attachVoucher, stage-2 decrypt)
+5. DEC_256 (stage-2 AES, uses voucher_key_256)
+```
+
+**vtable[8] fires BEFORE vtable[5]** — the crypto dispatch happens during voucher parsing, not during attachVoucher.
+
+### The strategy object
+
+`fcn.0015134c` (inner function at offset `0x15134c`) is the bridge:
+
+```asm
+0x15134c: push.w {r4-r10, lr}   ; function prologue
+0x15135c: ldr r3, [r0]          ; load vtable from strategy object (r0 = arg1)
+0x151368: ldr r3, [r3, #0x20]   ; load vtable[8]
+0x151370: blx r3                ; call crypto dispatch
+```
+
+The strategy object is passed as `r0` (first argument). Its vtable is at `0x32f850`.
+
+### Strategy object is IDENTICAL between baseline and wrong CID
+
+```
+baseline:  506809a4 4893d0b5 c88fdb5 0d0c0000 00040000 80000000 06000000 05000000
+wrong_cid: 506809a4 001cd9b5 9890dfb5 0d0c0000 00040000 80000000 06000000 05000000
+                       ^^^^^^^^^^^^^^^^^ only pointer fields differ (ASLR)
+```
+
+Bytes 12+ are **byte-identical**. Only `this[1]` and `this[2]` (pointer fields) differ due to ASLR.
+
+### this[1] is the same class but different instance data
+
+- Both have vtable at file offset `0x32f248` (same class)
+- Baseline instance: small numeric tag values (`0x00080700`, `0x00740500`)
+- Wrong CID instance: different values at the same offsets
+- The `this[1]+0xC0` = `0x76` in both cases (version gate passes)
+
+### this[2] sub-object
+
+- `this[2]` contains a `"false"` string at offset `0x30` in both cases
+- Differs at the end: baseline has zeros, wrong CID has `0x05000000`
+- Likely contains voucher parsing results (booleans, flags)
+
+### Allocation tracing
+
+- HMAC key output vector matches the last `std::vector` realloc (16384 bytes, doubling from 128)
+- All 20 allocations come from `libstdc++.so.6` vector growth
+- The `__builtin_return_address(1)` parent is unresolved — the obfuscated code uses `BLX R3` indirect calls without proper frame chains
+- Same allocation pattern in both baseline (10330-byte output) and wrong CID (9690-byte output)
+
+### Key conclusion
+
+CLIENT_ID is consumed **before** `fcn.0015134c` is called — during the voucher parsing loop in `fcn.00151200`. The strategy object's static fields are identical, but `this[1]` (the instance configuration object) contains different values that encode the CLIENT_ID-dependent state. The obfuscated function at `0x17c4fc` then processes this `this[1]` data, producing the different HMAC key blob and numeric string.
+
+### Still open
+
+1. **What specific field in `this[1]` encodes CLIENT_ID**: the object has ~60 fields and they all differ between baseline and wrong CID (different pointers/allocations)
+2. **How `this[1]` is populated**: which voucher parsing helper writes CLIENT_ID-dependent data into `this[1]`
+3. **What `this[1]` represents**: it's a parsed voucher configuration with fields like `HmacSHA256`, `Purchase`, `AES`, but the full mapping is unclear
