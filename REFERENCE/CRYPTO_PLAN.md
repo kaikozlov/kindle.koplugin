@@ -377,3 +377,108 @@ The custom stream cipher at `0x261dc4` is **reproducible offline**. It requires 
 
 If we can trace what seed value and input data are passed to this function during the
 state machine execution, we can reproduce the HMAC key blob derivation offline.
+
+---
+
+## Session Findings (2026-04-29)
+
+### End-to-End Pipeline Verified
+
+The entire DRM pipeline works on the Kindle PW6 (firmware 5.18.5, serial `GR733X1151821324`):
+
+| Step | Command | Result |
+|------|---------|--------|
+| Key extraction | `kindle-helper drm-init` | 4 page keys extracted → `drm_keys.json` |
+| Conversion | `kindle-helper convert` | DRMION → EPUB (784KB for Three Below) |
+| Tests | `./scripts/test` | 276/276 Lua tests pass |
+| Deploy | Plugin installed | `/mnt/us/koreader/plugins/kindle.koplugin/` |
+
+Voucher keys captured for all 4 DRMION books:
+
+| Book | Voucher Key (first 16) | Page Key |
+|------|----------------------|----------|
+| Three Below | `eb035e311e4b3222...` | `b657e308f0620e6b...` |
+| Elvis | `3a21e0e3644fc09e...` | `ecade64636590677...` |
+| Familiars | `ca6d4c81164481da...` | `5006ef325860bfdd...` |
+| Hunger Games | `6c82dda5dbf75505...` | `643a9a76c80cd685...` |
+
+All 4 vouchers are `@10005.0` with lock params `ACCOUNT_SECRET + CLIENT_ID`.
+
+### Critical Discovery: State Machine Implements Custom Crypto Internally
+
+**The 244KB state machine does NOT use libcrypto's HMAC for key derivation.**
+
+Evidence:
+1. `crypto_hook.so` hooks `HMAC()`, `HMAC_Init_ex()`, `HMAC_Update()`, `HMAC_Final()` — none fire during voucher key derivation
+2. Only `EVP_DecryptInit_ex()` fires (twice: stage-1 metadata key + stage-2 voucher key)
+3. The HMAC calls captured by `phase_chosen.so` are from the **post-derivation integrity check**, not the key derivation itself
+4. The voucher key (`eb035e31...`) is produced entirely within the state machine and fed directly to AES
+
+This means:
+- The "HMAC key blob" (10330 bytes) and "numeric string" (940 bytes) we captured are inputs to the **verification HMAC**, not the derivation
+- There is no `HMAC-SHA256(key_blob, data) → voucher_key` to reproduce offline
+- The state machine IS the entire derivation — it produces the 32-byte voucher key directly
+- Offline reproduction requires running the ARM binary (QEMU or on-device)
+
+### Stream Cipher is Just a Table Initializer
+
+The custom stream cipher at `0x261dc4` (XOR + key feedback) was confirmed to only
+initialize a small lookup table (480 bytes at `0x2fbc24` → BSS at `0x339898`).
+It is NOT used to produce the HMAC key blob. The count parameter resolves to 1 word
+with the computed seed, confirming it's a minor initialization step, not the core crypto.
+
+### Static Table at `0x2fbc24`
+
+The input table in `.rodata` is 480 bytes (120 uint32 words) of pre-computed constant data:
+```
+3c7eae30 5c470421 bc9e8afe 15c5e661 df883c95 6a5c4d7a d0cfb296 9c280919 ...
+```
+This is decoded once via the stream cipher into a BSS table, then used by the state
+machine for further processing. The table does not contain standard crypto constants
+(SHA-256 K, MD5 init, MT19937).
+
+### HMAC Data Differential
+
+| Case | Key blob size | Data | Data type |
+|------|--------------|------|-----------|
+| baseline (correct serial) | 10330 | 940 | Raw voucher bytes (ION) |
+| off_by_1 | 10330 | 853 | Numeric string (ASCII digits) |
+| wrong_x | 9690 | 860 | Numeric string |
+| all_a | 9034 | 827 | Numeric string |
+| zeros | 9364 | 840 | Numeric string |
+
+Only the **success path** uses raw voucher bytes as HMAC data. All failure paths produce
+a numeric string. This confirms the success path uses the actual voucher for verification,
+while failure paths fall through to an error-checking code path.
+
+### Call Chain Confirmed
+
+```
+Java: attachVoucher()
+  → JNI 0xd88c → vtable[5] = 0x151200 (voucher parsing)
+    → vtable[8] = 0x150c40 (crypto dispatcher)
+      → 0x17c4fc (state machine)
+        → Internally produces 32-byte voucher key
+        → Calls AES-256-CBC via libcrypto (stage-2 decrypt)
+        → State machine also calls internal HMAC-SHA256 for verification
+      ← Returns to 0x150c40
+    ← Returns to 0x151200
+  ← Back to JNI
+→ HMAC() via libcrypto (post-derivation integrity check)
+→ AES() via libcrypto (voucher decrypt with captured key)
+```
+
+### Conclusion
+
+The derivation is fully contained within the 244KB obfuscated state machine.
+No standard crypto API is used for the key derivation step. Further reverse-engineering
+of this function is infeasible — it contains 136+ switch cases, control-flow flattening,
+anti-debug measures, and custom crypto primitives hidden behind obfuscated dispatch.
+
+**Pragmatic options for offline decryption:**
+1. **On-device**: LD_PRELOAD approach (already working in the plugin)
+2. **Off-device**: Standalone ARM binary that `dlopen`s `libYJSDK-shared.so` and calls
+   vtable[8] directly, runnable via `qemu-arm-static` on any x86 host
+3. **DeDRM integration**: Option 2 could be packaged as a helper binary for DeDRM
+
+The CRYPTO_PLAN research is complete. The plugin is functional.
