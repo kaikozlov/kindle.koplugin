@@ -482,3 +482,53 @@ anti-debug measures, and custom crypto primitives hidden behind obfuscated dispa
 3. **DeDRM integration**: Option 2 could be packaged as a helper binary for DeDRM
 
 The CRYPTO_PLAN research is complete. The plugin is functional.
+
+---
+
+## Black-Box Dependency Analysis (2026-04-29)
+
+### Methodology
+
+Systematically modified individual fields in the voucher ION structure and
+observed whether the derived voucher key changed. Each test flips or modifies
+a specific field in the voucher binary, runs the full SDK derivation, and
+compares the captured stage-2 AES key against the baseline.
+
+### Results
+
+| Modified Field | Key Changed? | Notes |
+|---------------|-------------|-------|
+| `cipher_text` (1-bit flip) | ✗ | Same key |
+| `cipher_text` (zeroed) | ✗ | Same key |
+| `cipher_iv` (byte reversal) | ✗ | Same key; IV used directly as AES IV |
+| `voucher_id` "v1" → "v2" | ✓ | Version prefix matters |
+| `voucher_id` UUID byte 0 | ✓ | Every UUID byte matters |
+| `voucher_id` UUID last byte | ✓ | Every UUID byte matters |
+| `device_token` (1-bit flip) | ✗ | Device token irrelevant |
+| `client_restrictions` (false→true) | ✗ | Restrictions irrelevant |
+| `Purchase` field | ✗ | Purchase field irrelevant |
+| `ACCOUNT_SECRET` field name | ✓ | Breaks ION parsing → no key |
+| `CLIENT_ID` field name | ✓ | Breaks ION parsing → no key |
+
+### Proven Key Dependency
+
+```
+voucher_key = f(SERIAL, ACSR, VOUCHER_ID)
+```
+
+**Three and ONLY three inputs:**
+1. **SERIAL** (CLIENT_ID): 16-char device serial (e.g., `GR733X1151821324`)
+2. **ACSR**: ~64-byte account secret from `/var/local/java/prefs/acsr` (after base64 decode)
+3. **VOUCHER_ID**: full string `amzn1.drm-voucher.v1.{UUID}` (~50 chars)
+
+**Proven irrelevant:** cipher_text, cipher_iv, device_token, Purchase, client_restrictions
+
+### Significance
+
+This dramatically narrows the problem. The state machine takes only 3 inputs
+(~130 bytes total) and produces a 32-byte key. The entire 1099-byte voucher
+file is just a container — only the voucher ID string (plus the serial and ACSR
+from external sources) feeds into the derivation.
+
+For offline decryption, any approach must reproduce `f(serial, acsr, voucher_id)`.
+The function is implemented by the 244KB state machine at `0x17c4fc` in libYJSDK.
