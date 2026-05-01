@@ -53,6 +53,12 @@ type decodedBook struct {
 	IllustratedLayout        bool
 	HasConditionalContent    bool // set during content rendering when conditional page templates are found
 
+	// fragmentMaps is a generic fragment-type → id → fragment view retained for parity
+	// helpers like getFragment/organizeFragmentsByType. Go's main pipeline uses typed
+	// maps, but keeping this view enables Python-equivalent validation flows.
+	fragmentMaps            map[string]map[string]map[string]interface{}
+	usedFragmentAccess     map[string]bool
+
 	// OriginalWidth and OriginalHeight are the most common viewport dimensions across
 	// all fixed-layout book parts. Set by compareFixedLayoutViewports when the book is
 	// fixed-layout and dimensions haven't been determined yet.
