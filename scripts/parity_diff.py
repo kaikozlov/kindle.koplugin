@@ -13,6 +13,8 @@ Usage:
   scripts/parity_diff.py --all --diff             # Full diffs for every book
   scripts/parity_diff.py --keep                   # Keep extracted EPUBs in /tmp
   scripts/parity_diff.py --css                    # CSS property-level diff
+  scripts/parity_diff.py --generate-goldens       # Regenerate calibre.epub from Python
+  scripts/parity_diff.py --generate-goldens --book martyr
 """
 import argparse
 import difflib
@@ -56,11 +58,22 @@ def find_input(book_dir):
 # Conversion
 # ---------------------------------------------------------------------------
 
-def convert_book(input_path, output_path):
+def convert_go(input_path, output_path):
     """Run Go conversion. Returns (success, stderr)."""
     result = subprocess.run(
         ["go", "run", "./cmd/kindle-helper", "convert",
          "-input", input_path, "-output", output_path],
+        capture_output=True, text=True, timeout=120,
+        cwd=REPO_ROOT,
+    )
+    return result.returncode == 0, result.stderr
+
+
+def convert_python(input_path, output_path):
+    """Run Python (Calibre) conversion. Returns (success, stderr)."""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "convert_kfx_python.py")
+    result = subprocess.run(
+        [sys.executable, script, "--input", input_path, "--output", output_path],
         capture_output=True, text=True, timeout=120,
         cwd=REPO_ROOT,
     )
@@ -281,6 +294,41 @@ def parse_css(css_text):
 
 
 # ---------------------------------------------------------------------------
+# Golden generation
+# ---------------------------------------------------------------------------
+
+def generate_goldens(books):
+    """Regenerate calibre.epub reference files from Python pipeline."""
+    generated = 0
+    failed = 0
+
+    for book in books:
+        book_dir = os.path.join(BOOKS_DIR, book)
+        cal_epub = os.path.join(book_dir, "calibre.epub")
+        input_kfx = find_input(book_dir)
+
+        if not input_kfx:
+            print(f"  {book}: SKIP (no input KFX)")
+            continue
+
+        print(f"  {book}: converting with Python...", end="", file=sys.stderr)
+        ok, stderr = convert_python(input_kfx, cal_epub)
+        if ok:
+            size = os.path.getsize(cal_epub)
+            print(f" OK ({fmt_bytes(size)})", file=sys.stderr)
+            generated += 1
+        else:
+            print(f" FAILED", file=sys.stderr)
+            if stderr:
+                for line in stderr.strip().split("\n")[-5:]:
+                    print(f"    {line}", file=sys.stderr)
+            failed += 1
+
+    print(f"\nGenerated {generated} goldens, {failed} failed", file=sys.stderr)
+    return 0 if failed == 0 else 1
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -307,6 +355,7 @@ Examples:
     parser.add_argument("--metric", action="store_true", help="Machine-readable METRIC lines (for autoresearch)")
     parser.add_argument("--keep", action="store_true", help="Keep extracted EPUBs in /tmp for inspection")
     parser.add_argument("--skip-convert", action="store_true", help="Skip Go conversion, use existing EPUB at /tmp/<book>_go.epub")
+    parser.add_argument("--generate-goldens", action="store_true", help="Regenerate calibre.epub reference files from Python pipeline")
     args = parser.parse_args()
 
     # Determine which books to process
@@ -324,6 +373,11 @@ Examples:
     show_images = args.images
     show_css = args.css
     metric_mode = args.metric
+    gen_goldens = args.generate_goldens
+
+    # Golden generation mode — separate flow
+    if gen_goldens:
+        return generate_goldens(selected)
 
     # Keep temp files if requested
     tmpdir_obj = None
@@ -363,7 +417,7 @@ Examples:
         if not args.skip_convert:
             if verbose and not metric_mode:
                 print(f"Converting {book}...", file=sys.stderr)
-            ok, stderr = convert_book(input_kfx, go_epub)
+            ok, stderr = convert_go(input_kfx, go_epub)
             if not ok:
                 if metric_mode:
                     print(f"METRIC {book}=FAIL", file=sys.stderr)
