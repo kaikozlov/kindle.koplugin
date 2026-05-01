@@ -1567,28 +1567,39 @@ func createSpanSubcontainer(contentElem *htmlElement, contentStyle map[string]st
 	return subcontainerElem
 }
 
-func fixVerticalAlignProperties(contentElem *htmlElement, contentStyle map[string]string) map[string]string {
+func fixVerticalAlignProperties(contentElem *htmlElement, contentStyle map[string]string, setStyleIfChanged bool) map[string]string {
+	styleChanged := false
 	for _, prop := range []string{"-kfx-baseline-shift", "-kfx-baseline-style", "-kfx-table-vertical-align"} {
 		outerVerticalAlign, ok := contentStyle[prop]
 		if !ok {
 			continue
 		}
 		delete(contentStyle, prop)
+		styleChanged = true
 
 		existingVA, hasVA := contentStyle["vertical-align"]
 		if !hasVA {
 			contentStyle["vertical-align"] = outerVerticalAlign
 		} else if existingVA != outerVerticalAlign {
 			subcontainerElem := createSpanSubcontainer(contentElem, contentStyle)
-			if subcontainerElem.Attrs == nil {
-				subcontainerElem.Attrs = map[string]string{}
-			}
-			subcontainerElem.Attrs["style"] = "vertical-align: " + existingVA
+			addStyle(subcontainerElem, map[string]string{"vertical-align": existingVA}, true)
 			delete(contentStyle, "vertical-align")
 			contentStyle["vertical-align"] = outerVerticalAlign
 		}
 	}
 
+	if setStyleIfChanged && styleChanged && contentElem != nil {
+		if len(contentStyle) == 0 {
+			if contentElem.Attrs != nil {
+				delete(contentElem.Attrs, "style")
+			}
+		} else {
+			if contentElem.Attrs == nil {
+				contentElem.Attrs = map[string]string{}
+			}
+			contentElem.Attrs["style"] = styleStringFromMap(contentStyle)
+		}
+	}
 	return contentStyle
 }
 

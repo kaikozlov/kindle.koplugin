@@ -4798,6 +4798,15 @@ func normalizeLanguageTag(lang string) string {
 
 // cssColorNames is the set of CSS named color keywords, used by zeroQuantity.
 // Ported from Python COLOR_NAMES (yj_to_epub_properties.py L678).
+// colorHex maps CSS named colors to their hex representation, ported from Python COLOR_HEX.
+var colorHex = func() map[string]string {
+	m := map[string]string{}
+	for hex, name := range colorName {
+		m[name] = hex
+	}
+	return m
+}()
+
 var cssColorNames = map[string]bool{
 	"black": true, "navy": true, "blue": true, "green": true, "teal": true,
 	"lime": true, "cyan": true, "maroon": true, "purple": true, "olive": true,
@@ -4901,16 +4910,40 @@ func fixLanguage(lang string) string {
 	return strings.ReplaceAll(strings.ToLower(lang), "_", "-")
 }
 
-// colorInt converts a KFX color integer to a CSS color string.
+// colorInt parses a CSS color string into packed ARGB integer form.
 // Port of Python KFX_EPUB_Properties.color_int (yj_to_epub_properties.py L2136-2157).
-func colorInt(value interface{}) string {
-	if n, ok := asInt(value); ok {
-		r := (n >> 16) & 0xFF
-		g := (n >> 8) & 0xFF
-		b := n & 0xFF
-		return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+func colorInt(color interface{}) uint32 {
+	if colorStr, ok := asString(color); ok {
+		colorStr = strings.ToLower(colorStr)
+		if hex, ok := colorHex[colorStr]; ok {
+			colorStr = hex
+		}
+		m := colorHexPattern.FindStringSubmatch(colorStr)
+		if m != nil {
+			rgb := m[1]
+			if len(rgb) == 3 {
+				rgb = string(rgb[0]) + string(rgb[0]) + string(rgb[1]) + string(rgb[1]) + string(rgb[2]) + string(rgb[2])
+			}
+			val, err := strconv.ParseUint(rgb, 16, 32)
+			if err == nil {
+				return 0xff000000 + uint32(val)
+			}
+		}
+		m = colorRgbaPattern.FindStringSubmatch(colorStr)
+		if m != nil {
+			red, _ := strconv.Atoi(m[1])
+			green, _ := strconv.Atoi(m[2])
+			blue, _ := strconv.Atoi(m[3])
+			alphaFloat, _ := strconv.ParseFloat(m[4], 64)
+			alphaInt := alphaToInt(alphaFloat)
+			return (uint32(alphaInt) << 24) + (uint32(red) << 16) + (uint32(green) << 8) + uint32(blue)
+		}
+		panic(fmt.Sprintf("cannot parse color value: %s", colorStr))
 	}
-	return ""
+	if n, ok := colorIntValue(color); ok {
+		return n
+	}
+	return 0
 }
 
 // pixelValue converts a KFX pixel value to a CSS px string.
