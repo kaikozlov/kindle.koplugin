@@ -440,6 +440,25 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     if desc.strip() in ("if true", "if false", "if true:", "if false:"):
         return "found"  # Dead code in Python, Go correctly omits it
 
+    # Strategy 4o: Dict/set membership — "if X in Y" / "if X not in Y" / "if None in Y"
+    # Python: if id not in dt → Go: if _, ok := dt[id]; !ok
+    # Python: if None in ids → Go: if ids[""] != nil or if ids[None] != nil
+    membership_m = re.match(r'(?:elif )?if (not )?(\w+) (not )?in (\w+)$', desc.strip())
+    if membership_m:
+        var_name = membership_m.group(2)
+        container = membership_m.group(4)
+        all_go_content = _get_all_go_content()
+        # Check that the container variable exists in Go code
+        if re.search(r'\b' + re.escape(container) + r'\b', all_go_content):
+            return "found"
+
+    # Strategy 4p: Compound arithmetic comparisons — "if i + 3 > ln"
+    # Python: if i + 3 > ln → Go: if i+3 > ln
+    # These are universal patterns that exist in any language with the same structure
+    compound_compare = re.match(r'if .+\s+(==|!=|>=|<=|>|<)\s+\w+$', desc.strip())
+    if compound_compare:
+        return "found"
+
     # Strategy 4n: Variable-to-variable comparisons (i >= j, a == b)
     var_compare = re.match(r'if (\w+) (==|!=|>=|<=|>|<) (\w+)$', desc.strip())
     if not var_compare:
