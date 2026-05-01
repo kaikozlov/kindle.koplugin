@@ -1019,6 +1019,9 @@ func combineNestedDivsPass(elem *htmlElement) {
 	combineNestedDivs(elem)
 }
 
+// combineNestedDivs implements Python's COMBINE_NESTED_DIVS merge gate from
+// process_content (yj_to_epub_content.py L1409-1443). Mirrors Python's explicit
+// `do_merge` boolean and `log_result` debug flag.
 func combineNestedDivs(elem *htmlElement) {
 	if elem == nil || elem.Tag != "div" || len(elem.Children) != 1 {
 		return
@@ -1042,38 +1045,56 @@ func combineNestedDivs(elem *htmlElement) {
 	}
 	parentStyle := parseDeclarationString(elem.Attrs["style"])
 	childStyle := parseDeclarationString(childHE.Attrs["style"])
+
+	// Port of Python: do_merge = True (yj_to_epub_content.py L1422), then a series of
+	// gates flip it to False if any merge precondition fails.
+	doMerge := true
 	if parentStyle["display"] != "" && parentStyle["display"] != "block" {
-		return
+		doMerge = false
 	}
-	if parentStyle["position"] != "" && parentStyle["position"] != "static" {
-		return
+	if doMerge && parentStyle["position"] != "" && parentStyle["position"] != "static" {
+		doMerge = false
 	}
-	if parentStyle["float"] != "" && parentStyle["float"] != "none" {
-		return
+	if doMerge && parentStyle["float"] != "" && parentStyle["float"] != "none" {
+		doMerge = false
 	}
-	if childStyle["display"] != "" && childStyle["display"] != "block" {
-		return
+	if doMerge && childStyle["display"] != "" && childStyle["display"] != "block" {
+		doMerge = false
 	}
-	if childStyle["position"] != "" && childStyle["position"] != "static" {
-		return
+	if doMerge && childStyle["position"] != "" && childStyle["position"] != "static" {
+		doMerge = false
 	}
-	if childStyle["float"] != "" && childStyle["float"] != "none" {
-		return
+	if doMerge && childStyle["float"] != "" && childStyle["float"] != "none" {
+		doMerge = false
 	}
-	for k := range parentStyle {
-		if k == "-kfx-style-name" {
-			continue
-		}
-		if _, ok := childStyle[k]; ok {
-			return
+	if doMerge {
+		for k := range parentStyle {
+			if k == "-kfx-style-name" {
+				continue
+			}
+			if _, ok := childStyle[k]; ok {
+				doMerge = false
+				break
+			}
 		}
 	}
 	_, parentHasID := elem.Attrs["id"]
 	_, childHasID := childHE.Attrs["id"]
-	if parentHasID && childHasID {
+	if doMerge && parentHasID && childHasID {
+		doMerge = false
+	}
+
+	if !doMerge {
+		// Port of Python: log_result branch (yj_to_epub_content.py L1458). Logs the
+		// failed-merge content element when KFX_DEBUG_CONTENT is set.
+		logResult := os.Getenv("KFX_DEBUG_CONTENT") != ""
+		if logResult {
+			log.Printf("kfx: debug: combineNestedDivs declined merge for tag=%q child=%q", elem.Tag, childHE.Tag)
+		}
 		return
 	}
-	// Merge: parent keeps its values, child adds non-overlapping properties
+
+	// Merge: parent keeps its values, child adds non-overlapping properties.
 	for k, v := range childStyle {
 		if _, ok := parentStyle[k]; !ok {
 			parentStyle[k] = v

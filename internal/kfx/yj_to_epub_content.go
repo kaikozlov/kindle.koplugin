@@ -2077,17 +2077,25 @@ func normalizeHTMLChildren(tag string, children []htmlPart, state *preformatStat
 		state.reset()
 	}
 	normalized := make([]htmlPart, 0, len(children))
+	// Port of Python preformat_text/preformat_spaces tail handling
+	// (yj_to_epub_content.py L1681-1742). Python iterates children, processing
+	// each element's text via preformat_text(elem) and its trailing text via
+	// preformat_text(elem, do_tail=True). Go's flat htmlPart list models that
+	// boundary by switching doTail to true after the first child element so
+	// subsequent text segments behave like an lxml `tail`.
+	doTail := false
 	for _, child := range children {
 		switch typed := child.(type) {
 		case nil:
 			continue
 		case htmlText:
-			normalized = append(normalized, normalizeHTMLTextParts(typed.Text, state)...)
+			normalized = append(normalized, normalizeHTMLTextParts(typed.Text, state, doTail)...)
 		case *htmlText:
-			normalized = append(normalized, normalizeHTMLTextParts(typed.Text, state)...)
+			normalized = append(normalized, normalizeHTMLTextParts(typed.Text, state, doTail)...)
 		case *htmlElement:
 			typed.Children = normalizeHTMLChildren(typed.Tag, typed.Children, state)
 			normalized = append(normalized, typed)
+			doTail = true
 		default:
 			normalized = append(normalized, child)
 		}
@@ -2095,9 +2103,15 @@ func normalizeHTMLChildren(tag string, children []htmlPart, state *preformatStat
 	return normalized
 }
 
-func normalizeHTMLTextParts(text string, state *preformatState) []htmlPart {
+func normalizeHTMLTextParts(text string, state *preformatState, doTail bool) []htmlPart {
 	if text == "" {
 		return nil
+	}
+	// Port of Python preformat_text(do_tail=True) (yj_to_epub_content.py L1737-1742):
+	// trailing text after a closed tag never starts a new block, so the leading
+	// firstInBlock flag must be cleared before processing the tail segment.
+	if doTail {
+		state.firstInBlock = false
 	}
 	parts := []htmlPart{}
 	var segment []rune
@@ -2162,8 +2176,16 @@ func preformatSpaces(tag string, children []htmlPart, state *preformatState) []h
 
 // preformatText normalizes whitespace in text content.
 // Port of Python KFX_EPUB_Content.preformat_text (yj_to_epub_content.py L1710-1743).
-// Delegates to preformatHTMLText which handles the same character-level logic.
-func preformatText(text string, state *preformatState) htmlPart {
+// When doTail is true, the text is treated as the trailing text after a closing
+// tag (lxml's `elem.tail`), matching Python's `preformat_text(elem, do_tail=True)`.
+func preformatText(text string, state *preformatState, doTail bool) htmlPart {
+	if state == nil {
+		state = &preformatState{}
+		state.reset()
+	}
+	if doTail {
+		state.firstInBlock = false
+	}
 	return preformatHTMLText(text, state)
 }
 
