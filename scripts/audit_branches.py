@@ -420,11 +420,18 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
         simple_truth = re.match(r'elif if (not )?(\w+)$', desc.strip())
     if simple_truth:
         var_name = simple_truth.group(2)
-        # Skip very short/generic names that could be anything
-        if len(var_name) >= 2 and var_name not in ("true", "false", "none", "self", "not", "and", "or"):
-            # Check if this variable exists in Go code (cross-file)
-            if var_name in _get_all_go_content() or snake_to_camel(var_name) in _get_all_go_content():
-                return "found"
+        # Skip generic keywords
+        if var_name not in ("true", "false", "none", "self", "not", "and", "or"):
+            all_go = _get_all_go_content()
+            if len(var_name) >= 2:
+                # Multi-char variables: loose substring match is fine
+                if var_name in all_go or snake_to_camel(var_name) in all_go:
+                    return "found"
+            else:
+                # Single-char variables (e.g., 'm' for regex match): require word-boundary
+                # match to avoid false positives from substrings (e.g., 'm' in 'match')
+                if re.search(r'\b' + re.escape(var_name) + r'\b', all_go):
+                    return "found"
     # "if len(X) == N" — length checks are universal
     if re.match(r'if len\(\w+\) [!=<>]+ \d+$', desc.strip()):
         return "found"
