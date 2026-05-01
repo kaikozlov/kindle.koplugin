@@ -457,12 +457,12 @@ Examples:
     # Metric output
     if metric_mode:
         total = total_structural + total_image
-        structurally_perfect = sum(1 for s, i in results.values() if s == 0)
+        structurally_clean = sum(1 for s, i in results.values() if s == 0)
         fully_perfect = sum(1 for s, i in results.values() if s == 0 and i == 0)
         print(f"METRIC structural_diffs={total_structural}")
         print(f"METRIC image_diffs={total_image}")
         print(f"METRIC total_diffs={total}")
-        print(f"METRIC books_structurally_perfect={structurally_perfect}")
+        print(f"METRIC books_structurally_clean={structurally_clean}")
         print(f"METRIC books_perfect={fully_perfect}")
         print(f"METRIC books_total={len(results)}")
         for book, (s, i) in sorted(results.items()):
@@ -471,12 +471,12 @@ Examples:
 
     # Final summary
     if not verbose or args.all:
-        structurally_perfect = sum(1 for s, i in results.values() if s == 0)
+        structurally_clean = sum(1 for s, i in results.values() if s == 0)
         fully_perfect = sum(1 for s, i in results.values() if s == 0 and i == 0)
         print(f"\n{'=' * 60}")
         print(f"  SUMMARY: {total_structural} structural, {total_image} image diffs")
-        print(f"  {structurally_perfect}/{len(results)} books structurally perfect")
-        if fully_perfect < structurally_perfect:
+        print(f"  {structurally_clean}/{len(results)} books structurally clean")
+        if fully_perfect < structurally_clean:
             print(f"  {fully_perfect}/{len(results)} fully perfect (zero diffs of any kind)")
         if total_timestamp:
             print(f"  {total_timestamp} timestamp-only diffs (ignored)")
