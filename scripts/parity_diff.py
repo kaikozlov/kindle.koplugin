@@ -39,13 +39,20 @@ STRUCTURAL_EXTS = {".html", ".xhtml", ".css", ".opf", ".ncx", ".xml"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".svg", ".jxr"}
 TEXT_EXTS = STRUCTURAL_EXTS  # same set
 
-# Maximum per-channel pixel difference allowed when comparing re-encoded images.
-# JXR→JPEG conversion uses different DCT implementations (Go integer vs libjpeg float)
-# which cause tiny pixel differences even with identical quantization tables.
-# Most images differ by at most ±5 from DCT rounding. Images with larger differences
-# (>5) indicate genuine JXR decoding issues (e.g., grayscale-only decoder limitations)
-# and should be reported as real diffs.
-PIXEL_TOLERANCE = 5
+# Maximum per-channel pixel difference allowed when comparing JPEG-encoded images.
+#
+# Go's image/jpeg encoder uses a different fixed-point FDCT implementation than
+# libjpeg (used by PIL/Calibre). Both are standard-compliant but produce slightly
+# different quantized DCT coefficients at quality=95, resulting in pixel differences
+# of up to 6 after decode. Even PIL's own JPEG round-trip at quality=95 produces
+# max_diff=4. The JXR decoder itself produces 100% identical pixel values.
+#
+# Evidence (secrets_crown 782x533, the worst case across all 196 images):
+#   - JXR decoder: 0 pixel diffs (verified against Python's jxr_container)
+#   - JPEG encoder: max_diff=6 (2 pixels out of 416,806)
+#   - Diff histogram: 92% identical, 7% diff=1, 0.9% diff=2, 0.1% diff=3+
+#   - Quantization tables: identical between Go and Calibre
+PIXEL_TOLERANCE = 6
 
 MODIFIED_RE = re.compile(r'<meta property="dcterms:modified">.*?</meta>', re.DOTALL)
 
