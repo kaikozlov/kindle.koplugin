@@ -229,10 +229,18 @@ User opens book in KOReader
 │
 ├── scripts/                   ← Dev/CI scripts
 │   ├── test                   ← Busted runner under luajit
+│   ├── parity_diff.py         ← PRIMARY TOOL: generate goldens, diff, trace comparison
+│   ├── convert_kfx_python.py  ← Python EPUB conversion (called by parity_diff.py)
+│   ├── trace_python.py        ← Python pipeline trace dumper
+│   ├── compare_traces.py      ← Trace comparison engine
 │   ├── export_yj_symbol_catalog.py ← Export golden from ION catalog
 │   ├── export_yj_versions.py  ← Export KNOWN_FEATURES golden from Python
-│   ├── kfx_reference_snapshot.py ← Run Calibre Python, translate $N → real names
-│   └── replace_symbol_names.py ← Mechanical $N → real name replacement tool
+│   ├── kfx_reference_snapshot.py ← Fragment analysis from Python pipeline
+│   ├── replace_symbol_names.py ← Mechanical $N → real name replacement tool
+│   ├── audit_parity.py        ← Function-level Python→Go parity audit
+│   ├── audit_branches.py      ← Branch-level parity audit within a function
+│   ├── audit_branches_batch.py ← Batch branch audit across all files
+│   └── audit_missing_branches.py ← Count missing branches across core files
 │
 ├── REFERENCE/                 ← NOT tracked in git — local reference only
 │   ├── kobo.koplugin/         ← Sister plugin (Kobo) — architectural reference
@@ -403,6 +411,44 @@ busted --lua=lua
 
 **Always use `./scripts/test` for CI/validation** — KOReader runs LuaJIT on-device, so we test against it. The `scripts/test` wrapper sets `LUA_PATH`/`LUA_CPATH` so busted's modules are findable under luajit.
 
+### Parity Diff Workflow
+
+All Go↔Python EPUB parity checking uses **one script**: `scripts/parity_diff.py`.
+
+Three workflows:
+
+```sh
+# 1. Generate Python (Calibre) reference EPUBs
+scripts/parity_diff.py --generate-goldens              # all books
+scripts/parity_diff.py --generate-goldens --book 1984  # one book
+
+# 2. Convert with Go and diff against Calibre reference
+scripts/parity_diff.py                                # summary for all books
+scripts/parity_diff.py --book 1984                    # detail for one book
+scripts/parity_diff.py --book 1984 --diff             # full text diffs
+scripts/parity_diff.py --book 1984 --images           # image metadata comparison
+scripts/parity_diff.py --book 1984 --css              # CSS property-level diff
+scripts/parity_diff.py --all --diff                   # full diffs for every book
+
+# 3. Stage-by-stage pipeline trace comparison (for debugging internals)
+scripts/parity_diff.py --traces                       # all books
+scripts/parity_diff.py --traces --book martyr         # one book
+scripts/parity_diff.py --traces --keep                # keep trace JSON files
+
+# Machine-readable output (for autoresearch)
+scripts/parity_diff.py --metric
+
+# Keep generated EPUBs around for inspection
+scripts/parity_diff.py --keep
+```
+
+**Exit codes:** 0 = perfect, 1 = structurally clean (image diffs only), 2 = divergent (structural diffs).
+
+**Status states:**
+- **divergent** — structural diffs exist, work needed
+- **structurally clean** — no structural diffs, only image diffs remain
+- **perfect** — zero diffs of any kind
+
 ### Golden-File Tests
 
 Go has golden-file parity tests that compare embedded symbol data against the Calibre Python reference:
@@ -533,24 +579,46 @@ The Go binary is statically compiled (`CGO_ENABLED=0`) for Linux ARM. No shared 
 
 ---
 
+## Scripts
+
+All development scripts live in `scripts/`. The main entry point for parity work is `parity_diff.py`.
+
+| Script | Purpose |
+|--------|---------|
+| `parity_diff.py` | **Primary tool** — generate goldens, diff EPUBs, trace comparison. See "Parity Diff Workflow" above. |
+| `convert_kfx_python.py` | Convert KFX→EPUB via Calibre Python pipeline. Called by `parity_diff.py --generate-goldens`. |
+| `trace_python.py` | Dump Python pipeline intermediate state as JSON. Called by `parity_diff.py --traces`. |
+| `compare_traces.py` | Compare Python vs Go trace JSONs stage-by-stage. Called by `parity_diff.py --traces`. |
+| `export_yj_symbol_catalog.py` | Export YJ symbol catalog to JSON for Go golden tests. |
+| `export_yj_versions.py` | Export KNOWN_FEATURES to JSON for Go golden tests. |
+| `kfx_reference_snapshot.py` | Fragment analysis snapshot from Python pipeline. |
+| `replace_symbol_names.py` | Mechanical `$N` → real name replacement utility. |
+| `audit_parity.py` | Audit Python→Go function-level parity (function names, signatures). |
+| `audit_branches.py` | Audit branch-level parity within a single function. |
+| `audit_branches_batch.py` | Run audit_branches.py across all core conversion files. |
+| `audit_missing_branches.py` | Count confirmed-missing branches across core files. |
+| `test` | Lua test runner (busted under luajit). |
+
+---
+
 ## Test Fixtures & Comparison Books
 
-The project has 6 real books from a Kindle device. When comparing Go output against Calibre reference EPUBs, **always use the DRMION books as primary comparison targets**. Martyr is an unencrypted (CONT) book that produces byte-identical output — it is only useful for regression testing.
+10 real books from a Kindle device, used for Go↔Python parity verification.
 
 ### Book Inventory
 
-| Book | Format | Primary Use |
-|------|--------|-------------|
-| **1984** | DRMION | Structural diffs — `<a>` class, body class naming, table cell wrapping, CSS ordering |
-| **Sunrise Reaping** | DRMION | Extra `id` attrs on image-heading divs (31 files) |
-| **Secrets Crown** | DRMION | JXR images not decoded, CSS class ordering, class index swap |
-| **Hunger Games Trilogy** | DRMION | Images only (JFIF re-encoding) |
-| **Throne of Glass** | DRMION | Images only |
-| **Elvis and the Underdogs** | DRMION | Images only |
-| **The Familiars** | DRMION | Images only |
-| **Three Below (Floors #2)** | DRMION | Images only |
-| **Heated Rivalry** | DRMION | Images only |
-| **Martyr** | CONT | Images only (byte-identical content, JFIF diff) |
+| Book | Format | Status |
+|------|--------|--------|
+| **Martyr** | CONT | Structurally clean (5 image) |
+| **1984** | DRMION | Structurally clean (7 image) |
+| **Elvis and the Underdogs** | DRMION | Structurally clean (30 image) |
+| **The Familiars** | DRMION | Structurally clean (28 image) |
+| **Heated Rivalry** | DRMION | Structurally clean (7 image) |
+| **Hunger Games Trilogy** | DRMION | Structurally clean (46 image) |
+| **Secrets Crown** | DRMION | Structurally clean (11 image) |
+| **Sunrise Reaping** | DRMION | Structurally clean (39 image) |
+| **Three Below (Floors #2)** | DRMION | Structurally clean (16 image) |
+| **Throne of Glass** | DRMION | Structurally clean (7 image) |
 
 ### Fixture Paths
 
