@@ -399,11 +399,11 @@ Examples:
         # Report
         if verbose:
             if n_structural == 0 and n_image == 0:
-                status = "✓ PERFECT"
+                status = "✓ perfect"
             elif n_structural == 0:
-                status = f"~ {n_image} image diffs only"
+                status = "~ structurally clean"
             else:
-                status = f"✗ {n_structural} structural, {n_image} image"
+                status = f"✗ divergent ({n_structural} structural, {n_image} image)"
             print(f"\n{'=' * 60}")
             print(f"  {book}: {status}")
             print(f"{'=' * 60}")
@@ -448,22 +448,24 @@ Examples:
         else:
             # Summary line
             if n_structural == 0 and n_image == 0:
-                print(f"  {book}: PERFECT")
+                print(f"  {book}: perfect")
             elif n_structural == 0:
-                print(f"  {book}: {n_image} image diffs only")
+                print(f"  {book}: structurally clean ({n_image} image)")
             else:
-                print(f"  {book}: {n_structural} structural, {n_image} image")
+                print(f"  {book}: divergent ({n_structural} structural, {n_image} image)")
 
     # Metric output
     if metric_mode:
         total = total_structural + total_image
-        structurally_clean = sum(1 for s, i in results.values() if s == 0)
-        fully_perfect = sum(1 for s, i in results.values() if s == 0 and i == 0)
+        n_perfect = sum(1 for s, i in results.values() if s == 0 and i == 0)
+        n_clean = sum(1 for s, i in results.values() if s == 0) - n_perfect
+        n_divergent = sum(1 for s, i in results.values() if s > 0)
         print(f"METRIC structural_diffs={total_structural}")
         print(f"METRIC image_diffs={total_image}")
         print(f"METRIC total_diffs={total}")
-        print(f"METRIC books_structurally_clean={structurally_clean}")
-        print(f"METRIC books_perfect={fully_perfect}")
+        print(f"METRIC books_perfect={n_perfect}")
+        print(f"METRIC books_structurally_clean={n_clean}")
+        print(f"METRIC books_divergent={n_divergent}")
         print(f"METRIC books_total={len(results)}")
         for book, (s, i) in sorted(results.items()):
             print(f"METRIC {book}={s}+{i}")
@@ -471,18 +473,17 @@ Examples:
 
     # Final summary
     if not verbose or args.all:
-        structurally_clean = sum(1 for s, i in results.values() if s == 0)
-        fully_perfect = sum(1 for s, i in results.values() if s == 0 and i == 0)
+        n_perfect = sum(1 for s, i in results.values() if s == 0 and i == 0)
+        n_clean = sum(1 for s, i in results.values() if s == 0) - n_perfect
+        n_divergent = sum(1 for s, i in results.values() if s > 0)
         print(f"\n{'=' * 60}")
         print(f"  SUMMARY: {total_structural} structural, {total_image} image diffs")
-        print(f"  {structurally_clean}/{len(results)} books structurally clean")
-        if fully_perfect < structurally_clean:
-            print(f"  {fully_perfect}/{len(results)} fully perfect (zero diffs of any kind)")
+        print(f"  {n_perfect} perfect · {n_clean} structurally clean · {n_divergent} divergent")
         if total_timestamp:
             print(f"  {total_timestamp} timestamp-only diffs (ignored)")
         print(f"{'=' * 60}")
 
-    # Exit code: 0 if perfect, 1 if only images, 2 if structural
+    # Exit code: 0 if perfect, 1 if structurally clean, 2 if divergent
     if total_structural > 0:
         sys.exit(2)
     if total_image > 0:
