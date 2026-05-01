@@ -1311,6 +1311,44 @@ func fontMediaType(filename string) string {
 	}
 }
 
+// encodeJPEGWithJFIF encodes an image as JPEG with a JFIF APP0 marker prepended.
+// Go's image/jpeg.Encode doesn't produce JFIF markers, but Python's PIL always adds
+// one when saving JPEG. We insert it after the SOI marker to match PIL's output.
+func encodeJPEGWithJFIF(img image.Image, quality int) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+		return nil, err
+	}
+	return addJFIFMarker(buf.Bytes())
+}
+
+// addJFIFMarker inserts a JFIF APP0 marker after the SOI marker in raw JPEG bytes.
+// No-op if the data already starts with a JFIF APP0 marker.
+func addJFIFMarker(jpegData []byte) ([]byte, error) {
+	if len(jpegData) < 4 || jpegData[0] != 0xFF || jpegData[1] != 0xD8 {
+		return jpegData, nil // not a JPEG
+	}
+	// Already has APP0 after SOI?
+	if len(jpegData) > 4 && jpegData[2] == 0xFF && jpegData[3] == 0xE0 {
+		return jpegData, nil
+	}
+	jfifAPP0 := []byte{
+		0xFF, 0xE0, // APP0 marker
+		0x00, 0x10, // Length (16 bytes including length itself)
+		0x4A, 0x46, 0x49, 0x46, 0x00, // "JFIF\0"
+		0x01, 0x01, // Version 1.1
+		0x00, // Density units: no units
+		0x00, 0x01, // X density: 1
+		0x00, 0x01, // Y density: 1
+		0x00, 0x00, // No thumbnail
+	}
+	result := make([]byte, 0, len(jpegData)+len(jfifAPP0))
+	result = append(result, jpegData[:2]...)   // SOI
+	result = append(result, jfifAPP0...)      // JFIF APP0
+	result = append(result, jpegData[2:]...)  // Rest of JPEG
+	return result, nil
+}
+
 // convertJXRResource is a pragmatic subset of resources.convert_jxr_to_jpeg_or_png (resources.py);
 // full color JXR decode parity is Phase E backlog.
 func convertJXRResource(data []byte) ([]byte, string, error) {
@@ -1318,11 +1356,11 @@ func convertJXRResource(data []byte) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	var encoded bytes.Buffer
-	if err := jpeg.Encode(&encoded, img, &jpeg.Options{Quality: 95}); err != nil {
+	encoded, err := encodeJPEGWithJFIF(img, 95)
+	if err != nil {
 		return nil, "", err
 	}
-	return encoded.Bytes(), "image/jpeg", nil
+	return encoded, "image/jpeg", nil
 }
 
 // ---------------------------------------------------------------------------
@@ -1471,9 +1509,14 @@ func combineImageTiles(
 	}
 
 	if resourceFormat == "jpg" {
-		// JPEG: optimize quality
+		// JPEG: optimize quality, then add JFIF marker
 		desiredCombinedSize := max(int(float64(separateTilesSize)*COMBINED_TILE_SIZE_FACTOR), 1024)
 		rawMedia := optimizeJPEGImageQuality(fullImage, desiredCombinedSize)
+		// Add JFIF APP0 marker to match PIL's output
+		jfifMedia, err := addJFIFMarker(rawMedia)
+		if err == nil {
+			return jfifMedia, resourceFormat
+		}
 		return rawMedia, resourceFormat
 	}
 
@@ -1581,10 +1624,12 @@ func convertJXRToJpegOrPNG(imageData []byte, resourceName string) ([]byte, strin
 	// Try JXR decode first
 	img, err := jxr.DecodeGray8(imageData)
 	if err == nil && img != nil {
-		// JXR decoded successfully — convert to JPEG
-		var buf bytes.Buffer
-		jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95})
-		return buf.Bytes(), "jpg"
+		// JXR decoded successfully — convert to JPEG with JFIF marker
+		encoded, err := encodeJPEGWithJFIF(img, 95)
+		if err == nil {
+			return encoded, "jpg"
+		}
+		return nil, "jxr"
 	}
 
 	// Fallback: try standard image decode (for non-JXR data passed to this function)
@@ -1602,9 +1647,11 @@ func convertJXRToJpegOrPNG(imageData []byte, resourceName string) ([]byte, strin
 		return buf.Bytes(), "png"
 	}
 
-	var buf bytes.Buffer
-	jpeg.Encode(&buf, img2, &jpeg.Options{Quality: 95})
-	return buf.Bytes(), "jpg"
+	encoded, err := encodeJPEGWithJFIF(img2, 95)
+	if err != nil {
+		return imageData, "jxr"
+	}
+	return encoded, "jpg"
 }
 
 // convertJXRToJpegOrPNG_RGBA handles RGBA images specifically → PNG output.
@@ -1666,9 +1713,11 @@ func makePlaceholderJPEG(location string, pageNum int) ([]byte, string) {
 		pageNum = 1
 	}
 	img := image.NewGray(image.Rect(0, 0, 612, 792))
-	var buf bytes.Buffer
-	jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95})
-	return buf.Bytes(), "jpg"
+	encoded, err := encodeJPEGWithJFIF(img, 95)
+	if err != nil {
+		return nil, "jpg"
+	}
+	return encoded, "jpg"
 }
 
 // getPDFPageImage implements Python get_pdf_page_image (resources.py:373-425).
@@ -1774,11 +1823,11 @@ func convertImageToJPEG(imgData []byte, location string, pageNum int, defaultIma
 		return defaultImage, defaultFormat
 	}
 
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err != nil {
+	encoded, err := encodeJPEGWithJFIF(img, 95)
+	if err != nil {
 		return defaultImage, defaultFormat
 	}
-	return buf.Bytes(), "jpg"
+	return encoded, "jpg"
 }
 
 // convertTIFFToPNG converts TIFF image data to PNG format.

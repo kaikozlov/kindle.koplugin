@@ -499,35 +499,7 @@ func reencodeJPEG(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var buf bytes.Buffer
-	err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95})
-	if err != nil {
-		return nil, err
-	}
-
-	// Go's encoder doesn't write JFIF APP0 marker. Prepend one.
-	// JFIF APP0 marker: FF E0 [length_hi length_lo] 4A 46 49 46 00 [version_major version_minor] [density units] [x_density_hi x_density_lo] [y_density_hi y_density_lo] [thumbnail_w] [thumbnail_h]
-	encoded := buf.Bytes()
-	if len(encoded) >= 4 && encoded[0] == 0xFF && encoded[1] == 0xD8 {
-		// Insert JFIF APP0 marker after SOI (FF D8)
-		jfifAPP0 := []byte{
-			0xFF, 0xE0, // APP0 marker
-			0x00, 0x10, // Length (16 bytes including length itself)
-			0x4A, 0x46, 0x49, 0x46, 0x00, // "JFIF\0"
-			0x01, 0x01, // Version 1.1
-			0x00, // Density units: no units
-			0x00, 0x01, // X density: 1
-			0x00, 0x01, // Y density: 1
-			0x00, 0x00, // No thumbnail
-		}
-		result := make([]byte, 0, len(encoded)+len(jfifAPP0))
-		result = append(result, encoded[:2]...) // SOI
-		result = append(result, jfifAPP0...)    // JFIF APP0
-		result = append(result, encoded[2:]...) // Rest of JPEG
-		return result, nil
-	}
-
-	return encoded, nil
+	return encodeJPEGWithJFIF(img, 95)
 }
 
 // jpegType returns a description of the JPEG header type for logging.
