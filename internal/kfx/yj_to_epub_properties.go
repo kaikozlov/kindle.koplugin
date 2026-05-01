@@ -2479,13 +2479,13 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 	display := sty["display"]
 	isInline := display == "inline" || (inlineElementTags[elem.Tag] && display != "block" && display != "inline-block")
 	if isInline {
-		var ineffectiveProps []string
+		var ineffectiveProperties []string
 		for _, name := range []string{
 			"list-style-image", "list-style-position", "list-style-type",
 			"column-count", "text-align", "text-align-last", "text-indent",
 		} {
 			if _, ok := sty[name]; ok {
-				ineffectiveProps = append(ineffectiveProps, name)
+				ineffectiveProperties = append(ineffectiveProperties, name)
 			}
 		}
 		if elem.Tag != "img" {
@@ -2494,26 +2494,27 @@ func simplifyStylesElementFull(elem *htmlElement, catalog *styleCatalog, inherit
 				"-amzn-page-align", "-amzn-page-footer", "-amzn-page-header",
 			} {
 				if _, ok := sty[name]; ok {
-					ineffectiveProps = append(ineffectiveProps, name)
+					ineffectiveProperties = append(ineffectiveProperties, name)
 				}
 			}
 			if sty["white-space"] != "nowrap" {
 				if _, ok := sty["overflow"]; ok {
-					ineffectiveProps = append(ineffectiveProps, "overflow")
+					ineffectiveProperties = append(ineffectiveProperties, "overflow")
 				}
 			}
 		}
-		if len(ineffectiveProps) > 0 {
+		if len(ineffectiveProperties) > 0 {
+			ineffectiveSet := map[string]bool{}
+			for _, name := range ineffectiveProperties {
+				ineffectiveSet[name] = true
+			}
+			ineffectiveSty := stylePartitionDetailed(styleCopy(sty), ineffectiveSet, "", false, false, false, false, false)
 			styleName := sty["-kfx-style-name"]
 			if styleName == "" {
 				styleName = "?"
 			}
-			var propParts []string
-			for _, name := range ineffectiveProps {
-				propParts = append(propParts, name+": "+sty[name])
-			}
 			fmt.Fprintf(os.Stderr, "kfx: warning: ineffective properties in %s element for kfx-style %s: %s\n",
-				elem.Tag, styleName, strings.Join(propParts, "; "))
+				elem.Tag, styleName, styleStringFromMap(ineffectiveSty))
 		}
 	}
 
