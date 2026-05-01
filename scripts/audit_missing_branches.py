@@ -26,7 +26,7 @@ CORE_FILES = [
 
 
 def get_functions(py_name):
-    """Extract all function defs from a Python file."""
+    """Extract all function defs from a Python file, including nested functions."""
     py_path = os.path.join(PY_DIR, py_name)
     with open(py_path) as f:
         tree = ast.parse(f.read())
@@ -35,11 +35,17 @@ def get_functions(py_name):
     def visit(node, class_name=None):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             funcs.append({"name": node.name, "class": class_name})
-            for child in node.body:
+            # Recurse into all child nodes (body, orelse, handlers, etc.)
+            for child in ast.iter_child_nodes(node):
                 visit(child, class_name)
         elif isinstance(node, ast.ClassDef):
-            for child in node.body:
+            for child in ast.iter_child_nodes(node):
                 visit(child, node.name)
+        else:
+            # Recurse into control flow nodes (If, For, While, Try, With, etc.)
+            # so nested functions inside conditionals/loops are found
+            for child in ast.iter_child_nodes(node):
+                visit(child, class_name)
 
     for node in tree.body:
         visit(node)
