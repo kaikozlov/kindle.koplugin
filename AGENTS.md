@@ -568,7 +568,7 @@ Top-level: `REFERENCE/books/drm_keys.json` — merged page keys for all 9 DRMION
 
 ### Current Parity Status (May 2026)
 
-**All 10 books are structurally perfect.** Zero structural diffs across all fixtures.
+**All 10 books are structurally clean.** Zero structural diffs across all fixtures.
 All remaining differences are image-only (JPEG re-encoding: Go outputs plain JPEG without JFIF header,
 Calibre adds JFIF metadata; dimensions and pixel content are identical).
 
