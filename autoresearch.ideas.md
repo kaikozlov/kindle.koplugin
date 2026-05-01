@@ -124,3 +124,30 @@ The branch-level metric has diminishing returns because:
 - False positives from per-file auditing (branches exist in different Go files)
 - Missing branches are no-ops (logging/pass) that don't affect output
 - Output quality is already at 0 structural diffs
+
+## Session 2026-05-01: Image Encoding Parity (196→4 diffs)
+
+### Completed
+- ✅ Pixel-level image comparison in parity_diff.py (196→4 diffs)
+- ✅ JFIF APP0 marker added to all JPEG encoding paths
+- ✅ Shared helpers: encodeJPEGWithJFIF, addJFIFMarker
+
+### Deferred: Huffman Optimization
+- Go's image/jpeg uses fixed standard Huffman tables; PIL uses optimize=True
+- Huffman optimization would reduce file sizes by ~7-16%
+- Options:
+  1. Fork Go's image/jpeg/writer.go (~300 lines of additional code for two-pass encoding)
+  2. Use gen2brain/jpegli (WASM-based, no CGo, adds ~3MB binary size)
+  3. Write a standalone Huffman optimizer that rewrites DHT + scan data
+- Not urgent: the 4 remaining image diffs are JXR decoder bugs, not JPEG encoding
+
+### Remaining 4 Image Diffs (JXR Decoder Bugs)
+4 images have systematic ~111 pixel offset — Go's grayscale-only JXR decoder
+produces wrong values for certain complex JXR formats:
+- heated_rivalry/image_rsrc5AY.jpg (1428×3 separator image)
+- secrets_crown/image_665-resized-782-533.jpg
+- sunrise_reaping/image_rsrc3Z7.jpg (1428×3 separator image)
+- throne_of_glass/image_rsrc43M.jpg (1428×3 separator image)
+
+3 of 4 are tiny 1428×3 separator/decorative images. Fix requires extending the
+JXR decoder beyond grayscale-only (DecodeGray8) to handle these specific formats.
