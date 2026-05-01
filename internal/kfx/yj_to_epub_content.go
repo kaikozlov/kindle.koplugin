@@ -2455,21 +2455,13 @@ func locateOffsetInFull(root *htmlElement, elem *htmlElement, offset int, splitA
 		return nil, offset
 	}
 
+	scanChildren := false
 	if elem.Tag == "span" {
 		textLen := elementTextLen(elem)
 
 		// Port of Python text_combine_in_use optimization (yj_to_epub_content.py L1587-1594):
 		// When text_len > 1 and text-combine-upright has been used in this book,
 		// walk up the ancestor chain checking for text-combine-upright: all.
-		// If found, treat this span's text as a single character (text_len = 1)
-		// for offset calculation. This affects CJK vertical-text (tate-chu-yoko) content.
-		// Python: if text_len > 1 and self.text_combine_in_use:
-		//             e = elem
-		//             while e is not None:
-		//                 if self.get_style(e).get("text-combine-upright") == "all":
-		//                     text_len = 1
-		//                     break
-		//                 e = e.getparent()
 		if textLen > 1 && textCombineInUse && hasTextCombineUprightAll(root, elem) {
 			textLen = 1
 		}
@@ -2493,40 +2485,32 @@ func locateOffsetInFull(root *htmlElement, elem *htmlElement, offset int, splitA
 					return elem, -1
 				}
 			}
-
 			offset -= textLen
 		}
-
-		for _, child := range elem.Children {
-			if ce, ok := child.(*htmlElement); ok {
-				result, remaining := locateOffsetInFull(root, ce, offset, splitAfter, zeroLen, isDropcap, textCombineInUse)
-				if remaining < 0 {
-					return result, remaining
-				}
-				offset = remaining
-			}
-		}
-
-		return nil, offset
-	}
-
-	if isDropcap {
+		scanChildren = true
+	} else {
 		style := parseDeclarationString(elem.Attrs["style"])
-		if style["float"] != "" {
-			return nil, offset
+		if isDropcap && style["float"] != "" {
+			scanChildren = false
+		} else if elem.Tag == "img" || elem.Tag == "svg" || elem.Tag == "math" || style["-kfx-render"] == "inline" {
+			scanChildren = false
+			if offset == 0 {
+				return elem, -1
+			}
+			offset--
+		} else {
+			switch elem.Tag {
+			case "a", "aside", "div", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ruby", "rb":
+				scanChildren = true
+			case "rt":
+				scanChildren = false
+			default:
+				scanChildren = false
+			}
 		}
 	}
 
-	if elem.Tag == "img" || elem.Tag == "svg" || elem.Tag == "math" {
-		if offset == 0 {
-			return elem, -1
-		}
-		offset--
-		return nil, offset
-	}
-
-	switch elem.Tag {
-	case "a", "aside", "div", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ruby", "rb":
+	if scanChildren {
 		for _, child := range elem.Children {
 			if ce, ok := child.(*htmlElement); ok {
 				result, remaining := locateOffsetInFull(root, ce, offset, splitAfter, zeroLen, isDropcap, textCombineInUse)
@@ -2536,14 +2520,8 @@ func locateOffsetInFull(root *htmlElement, elem *htmlElement, offset int, splitA
 				offset = remaining
 			}
 		}
-		return nil, offset
-
-	case "rt":
-		return nil, offset
-
-	default:
-		return nil, offset
 	}
+	return nil, offset
 }
 
 func elementTextLen(elem *htmlElement) int {
