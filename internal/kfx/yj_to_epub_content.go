@@ -16,6 +16,10 @@ import (
 )
 
 
+// pxValueRegex matches pixel value strings like "123" or "123px".
+// Port of Python: re.match("^([0-9]+)(px)?$", val)
+var pxValueRegex = regexp.MustCompile(`^([0-9]+)(px)?$`)
+
 // Port of LIST_STYLE_TYPES / list marker → HTML list tag (yj_to_epub_content.py top; used from storyline emit).
 var listTagByMarker = map[string]string{
 	"alpha_lower": "ol",
@@ -642,25 +646,74 @@ func processSectionMagazine(section sectionFragment, renderer *storylineRenderer
 		// Python L167: layout = page_template["layout"]
 		layout, _ := asString(working["layout"])
 
-		if layout == "overflow" || layout == "vertical" {
-			// Python L169-178: inline content processing
-			// page_template.pop("type"); page_template.pop("layout")
+		if layout == "overflow" {
+			// Python L624: elif layout == "$325" (overflow):
+			// Magazine overflow layout with viewport meta and pixel value extraction.
 			delete(working, "type")
 			delete(working, "layout")
 
-			// Python creates a book_part, adds content, links CSS, processes position.
-			// In Go, we record this as a leaf section in the result.
+			// Python L625-629: validation logging for magazine overflow
+			log.Printf("kfx: overflow container in section %s (magazine layout)", section.ID)
+
+			// Python L631-644: def get_px_value(prop_name, expect_zero=False)
+			// Extracts pixel values from content properties with validation.
+			getPxValue := func(propName string, expectZero bool) int {
+				intVal := 0
+				var val interface{}
+				m := false
+				if data, exists := working[propName]; exists {
+					val = data
+					delete(working, propName)
+					valStr := valueStr(val)
+					m = pxValueRegex.MatchString(valStr)
+					if m {
+						submatch := pxValueRegex.FindStringSubmatch(valStr)
+						parsed, _ := strconv.Atoi(submatch[1])
+						intVal = parsed
+					}
+				}
+				if !m || (intVal == 0) != expectZero {
+					log.Printf("WARN: overflow container has unexpected value %v for %s", val, propName)
+				}
+				return intVal
+			}
+
+			// Python L646-647: get_px_value("$58", expect_zero=True) / get_px_value("$59", expect_zero=True)
+			getPxValue("top", true)
+			getPxValue("left", true)
+
+			// Python L649-650: fixed_width = get_px_value("$66") / fixed_height = get_px_value("$67")
+			_ = getPxValue("fixed_width", false)
+			_ = getPxValue("fixed_height", false)
+
 			locID := getLocationID(working)
-			section := pageSpreadSection{
-				PageTitle:    section.ID,
-				Properties:   "",
+			s := pageSpreadSection{
+				PageTitle:      section.ID,
+				Properties:     "",
 				PositionOffset: 0,
-				TemplateData: working,
+				TemplateData:   working,
 			}
 			if locID != 0 {
-				section.ParentPositionID = locID
+				s.ParentPositionID = locID
 			}
-			result.Sections = append(result.Sections, section)
+			result.Sections = append(result.Sections, s)
+
+		} else if layout == "vertical" {
+			// Python L169-178: inline content processing for vertical layout
+			delete(working, "type")
+			delete(working, "layout")
+
+			locID := getLocationID(working)
+			s := pageSpreadSection{
+				PageTitle:      section.ID,
+				Properties:     "",
+				PositionOffset: 0,
+				TemplateData:   working,
+			}
+			if locID != 0 {
+				s.ParentPositionID = locID
+			}
+			result.Sections = append(result.Sections, s)
 
 		} else if layout == "page_spread" {
 			// Python L180: self.process_page_spread_page_template(page_template, section_name)
