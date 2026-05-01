@@ -765,8 +765,19 @@ func organizeFragmentsByType(book *decodedBook) {
 	}
 	categorizedData := map[string]map[string]map[string]interface{}{}
 	for category, fragments := range book.fragmentMaps {
+		// Python: dt = categorized_data.setdefault(fragment.ftype, {})
+		dt := categorizedData[category]
+		if dt == nil {
+			dt = map[string]map[string]interface{}{}
+			categorizedData[category] = dt
+		}
 		for id, data := range fragments {
-			addCategorizedFragment(categorizedData, category, id, data)
+			// Python: if id not in dt: dt[id] = self.replace_ion_data(fragment.value)
+			if _, ok := dt[id]; !ok {
+				dt[id] = data
+			} else {
+				log.Printf("kfx: book contains multiple %s fragments", category)
+			}
 		}
 	}
 	for category, ids := range categorizedData {
@@ -780,19 +791,6 @@ func organizeFragmentsByType(book *decodedBook) {
 		} else if ids[""] != nil || ids["\x00"] != nil {
 			log.Printf("kfx: fragment list contains mixed null/non-null ids of type %q", category)
 		}
-	}
-}
-
-func addCategorizedFragment(categorizedData map[string]map[string]map[string]interface{}, category string, id string, data map[string]interface{}) {
-	dt := categorizedData[category]
-	if dt == nil {
-		dt = map[string]map[string]interface{}{}
-		categorizedData[category] = dt
-	}
-	if _, ok := dt[id]; !ok {
-		dt[id] = data
-	} else {
-		log.Printf("kfx: book contains multiple %s fragments", category)
 	}
 }
 
