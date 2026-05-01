@@ -69,6 +69,20 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	sectionOrder := append([]string(nil), state.Fragments.SectionOrder...)
 	symFmt := state.BookSymbolFormat
 
+	book.fragmentMaps = map[string]map[string]map[string]interface{}{
+		"style":             styleFragments,
+		"storyline":         storylines,
+		"nav_container":     navContainers,
+		"external_resource": state.Fragments.ResourceRawData,
+		"format_capabilities": state.Fragments.FormatCapabilities,
+		"container":         state.Fragments.Generators,
+		"path_bundle":       state.Fragments.PathBundles,
+		"structure":         rubyContents,
+		"ruby_content":      rubyGroups,
+	}
+	book.usedFragmentAccess = map[string]bool{}
+	organizeFragmentsByType(book)
+
 	fontFixer := newFontNameFixer()
 	fontFixer.registerFontFamilies(fontFragments)
 	fontFixer.setDefaultFontFamily(book.DefaultFontFamily)
@@ -746,7 +760,40 @@ func decompileToEpub(inputPath, outputPath string) error {
 // organizeFragmentsByType organizes decoded fragments by their type.
 // Port of Python KFX_EPUB.organize_fragments_by_type (yj_to_epub.py L181-215).
 func organizeFragmentsByType(book *decodedBook) {
-	// Fragment organization is done during decodeBook.
+	if book == nil || len(book.fragmentMaps) == 0 {
+		return
+	}
+	categorizedData := map[string]map[string]map[string]interface{}{}
+	for category, fragments := range book.fragmentMaps {
+		for id, data := range fragments {
+			addCategorizedFragment(categorizedData, category, id, data)
+		}
+	}
+	for category, ids := range categorizedData {
+		if len(ids) == 1 {
+			for id := range ids {
+				if id == category {
+					// Python collapses singleton {category: {category: data}} to {category: data}.
+					// Go's typed pipeline doesn't need the collapse; validation only.
+				}
+			}
+		} else if ids[""] != nil || ids["\x00"] != nil {
+			log.Printf("kfx: fragment list contains mixed null/non-null ids of type %q", category)
+		}
+	}
+}
+
+func addCategorizedFragment(categorizedData map[string]map[string]map[string]interface{}, category string, id string, data map[string]interface{}) {
+	dt := categorizedData[category]
+	if dt == nil {
+		dt = map[string]map[string]interface{}{}
+		categorizedData[category] = dt
+	}
+	if _, ok := dt[id]; !ok {
+		dt[id] = data
+	} else {
+		log.Printf("kfx: book contains multiple %s fragments", category)
+	}
 }
 
 // replaceIonData replaces ION data values in fragment content.
@@ -760,7 +807,38 @@ func replaceIonData(data map[string]interface{}, replacements map[string]interfa
 // getFragment retrieves a fragment by type and ID.
 // Port of Python KFX_EPUB.get_fragment (yj_to_epub.py L294-328).
 func getFragment(book *decodedBook, ftype string, fid string) map[string]interface{} {
-	return nil // Fragment access handled through decodedBook fields
+	if book == nil {
+		return nil
+	}
+	fragmentContainer := book.fragmentMaps[ftype]
+	if fragmentContainer == nil && ftype == "nav_unit" {
+		fragmentContainer = book.fragmentMaps["nav_container"]
+	}
+	if fragmentContainer == nil {
+		fragmentContainer = map[string]map[string]interface{}{}
+	}
+	data := fragmentContainer[fid]
+	if data == nil {
+		key := ftype + "\x00" + fid
+		if book.usedFragmentAccess[key] {
+			if retainUsedFragments {
+				log.Printf("kfx: warning: book fragment used multiple times: %s %s", ftype, fid)
+			} else {
+				log.Printf("kfx: error: book fragment used multiple times: %s %s", ftype, fid)
+				data = map[string]interface{}{}
+			}
+		} else {
+			log.Printf("kfx: error: book is missing fragment: %s %s", ftype, fid)
+			data = map[string]interface{}{}
+		}
+	} else {
+		book.usedFragmentAccess[ftype+"\x00"+fid] = true
+	}
+	dataName := getFragmentNameForType(data, ftype)
+	if dataName != "" && dataName != fid {
+		log.Printf("kfx: error: Expected %s named %s but found %s", ftype, fid, dataName)
+	}
+	return data
 }
 
 // getNamedFragment retrieves a fragment by name.
@@ -778,7 +856,40 @@ func checkFragmentName(fragment map[string]interface{}, expectedType string, nam
 // getFragmentName extracts the name from a fragment.
 // Port of Python KFX_EPUB.get_fragment_name (yj_to_epub.py L338-339).
 func getFragmentName(fragment map[string]interface{}) string {
-	name, _ := asString(fragment["$239"])
+	return getFragmentNameForType(fragment, "")
+}
+
+func getFragmentNameForType(fragment map[string]interface{}, ftype string) string {
+	if fragment == nil {
+		return ""
+	}
+	field := ""
+	switch ftype {
+	case "anchor":
+		field = "anchor_name"
+	case "external_resource":
+		field = "resource_name"
+	case "nav_container":
+		field = "nav_container_name"
+	case "nav_unit":
+		field = "nav_unit_name"
+	case "section":
+		field = "section_name"
+	case "structure":
+		field = "kfx_id"
+	case "storyline":
+		field = "story_name"
+	case "style":
+		field = "style_name"
+	default:
+		for _, candidate := range []string{"anchor_name", "resource_name", "nav_container_name", "nav_unit_name", "section_name", "kfx_id", "story_name", "style_name", "name"} {
+			if s, _ := asString(fragment[candidate]); s != "" {
+				return s
+			}
+		}
+		return ""
+	}
+	name, _ := asString(fragment[field])
 	return name
 }
 
