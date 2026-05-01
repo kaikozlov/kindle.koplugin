@@ -374,14 +374,21 @@ func createConditionalPageTemplates(book *decodedBook, sections []renderedSectio
 			continue
 		}
 		body := section.Root
-		processConditionalTemplatesForSection(book, body, section.Filename)
+		cssLines := processConditionalTemplatesForSection(book, body, section.Filename)
+		if len(cssLines) > 0 {
+			if book.Stylesheet != "" {
+				book.Stylesheet += "\n"
+			}
+			book.Stylesheet += strings.Join(cssLines, "\n")
+		}
 	}
 }
 
 // processConditionalTemplatesForSection processes one section's body for
 // conditional page templates.
 // Port of the per-book_part loop in create_conditional_page_templates (L134-375).
-func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement, filename string) {
+func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement, filename string) []string {
+	cssLines := []string{}
 	// Python: for template_elem in body.findall("div")
 	// Iterate body's direct children. Use index since we modify the slice.
 	for ti := 0; ti < len(body.Children); ti++ {
@@ -408,7 +415,7 @@ func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement,
 		if len(condParts) < 2 {
 			continue
 		}
-		_ = condParts[0] // condOper — used only in EMIT_PAGE_TEMPLATES path
+		condOper := condParts[0]
 		targetID := condParts[1]
 
 		// Pop known unused keys from template style (Python L155-156)
@@ -452,6 +459,7 @@ func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement,
 
 		// Process template children (Python L172-323)
 		inlineContent := false
+		peLines := []string{}
 
 		// Python: template_children = template_elem.findall("*")
 		// This takes a snapshot of the child elements. Python iterates over this
@@ -581,16 +589,20 @@ func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement,
 				}
 
 				if emitPageTemplates {
-					// EXCLUDED: EMIT_PAGE_TEMPLATES=true path (Python L234-248).
-					// See the emitPageTemplates constant documentation above for
-					// the full rationale. This path handles inline_content detection,
-					// epub_types management (amzn:full-page, amzn:kindle-illustrated,
-					// amzn:non-decorative, amzn:decorative), and float/collision
-					// validation. Not needed since emitPageTemplates is always false.
-					_ = isFloat
-					_ = collision
-					_ = inlineContent
-					_ = idx
+					if !isFloat && collision == "queue" && len(templateChildren) == 1 && condOper == "anchor-id" {
+						inlineContent = true
+						epubTypes["amzn:full-page"] = true
+						epubTypes["amzn:kindle-illustrated"] = true
+					} else if !(isFloat && (collision == "" || collision == "always queue")) {
+						fmt.Fprintf(os.Stderr, "kfx: error: Conditional element %s has conflicting float/collision styles: %s\n",
+							context, serializeStyleMap(origCondStyle))
+					}
+					if epubTypes["amzn:decorative"] {
+						delete(epubTypes, "amzn:decorative")
+						delete(epubTypes, "amzn:kindle-illustrated")
+					} else {
+						epubTypes["amzn:non-decorative"] = true
+					}
 				} else {
 					// Inline mode (EMIT_PAGE_TEMPLATES=false) — Python default (L249-277)
 					if templateChild.Tag == "div" ||
@@ -614,35 +626,72 @@ func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement,
 						delete(epubTypes, "amzn:kindle-illustrated")
 					}
 
-					// Rebuild epub types string (Python L262-264)
-					var types []string
-					for k := range epubTypes {
-						types = append(types, k)
-					}
-					if len(types) > 0 {
-						for i := 0; i < len(types); i++ {
-							for j := i + 1; j < len(types); j++ {
-								if types[i] > types[j] {
-									types[i], types[j] = types[j], types[i]
-								}
+				// Rebuild epub types string (Python L262-264 / L247-248)
+				var types []string
+				for k := range epubTypes {
+					types = append(types, k)
+				}
+				if len(types) > 0 {
+					for i := 0; i < len(types); i++ {
+						for j := i + 1; j < len(types); j++ {
+							if types[i] > types[j] {
+								types[i], types[j] = types[j], types[i]
 							}
 						}
-						mergedStyle["-kfx-attrib-epub-type"] = strings.Join(types, " ")
 					}
+					mergedStyle["-kfx-attrib-epub-type"] = strings.Join(types, " ")
+				}
 
-					// Python L265-267: div gets display:inline and text cleared
-					if templateChild.Tag == "div" {
-						mergedStyle["display"] = "inline"
-						// Python: template_child.text = ""
-						// Clear text children in the div
-						clearTextChildren(templateChild)
+				// Python L265-267: div gets display:inline and text cleared
+				if templateChild.Tag == "div" {
+					mergedStyle["display"] = "inline"
+					clearTextChildren(templateChild)
+				}
+
+				if removeChildFlag {
+					removeChild(templateElem, templateChild)
+				} else if inlineContent {
+					inlineStyle := make(map[string]string)
+					for k, v := range templateStyle {
+						inlineStyle[k] = v
 					}
-
-					if removeChildFlag {
-						// Python L269-270: template_elem.remove(template_child)
-						removeChild(templateElem, templateChild)
+					for k, v := range mergedStyle {
+						inlineStyle[k] = v
+					}
+					templateStyle = nil
+					if s := serializeStyleMap(inlineStyle); s != "" {
+						templateChild.Attrs["style"] = s
 					} else {
-						// Python L274-275: self.set_style(template_child, template_child_style)
+						delete(templateChild.Attrs, "style")
+					}
+				} else if len(mergedStyle) > 0 || emitEmptyConditions {
+					if emitPageTemplates {
+						elementID := templateChild.Attrs["id"]
+						if elementID == "" {
+							for idIndex := 0; ; idIndex++ {
+								elementID = fmt.Sprintf("%s_element_%d", targetID, idIndex)
+								if findElementByID(body, elementID) == nil {
+									break
+								}
+							}
+							if templateChild.Attrs == nil {
+								templateChild.Attrs = map[string]string{}
+							}
+							templateChild.Attrs["id"] = elementID
+						}
+						targetProps := map[string]bool{"-kfx-attrib-epub-type": true, "background-color": true, "display": true}
+						targetStyle := stylePartitionDetailed(mergedStyle, targetProps, "", false, false, false, false, true)
+						if s := serializeStyleMap(targetStyle); s != "" {
+							templateChild.Attrs["style"] = s
+						} else {
+							delete(templateChild.Attrs, "style")
+						}
+						peLines = append(peLines, fmt.Sprintf("    @-amzn-page-element %s {", elementID))
+						if len(mergedStyle) > 0 {
+							peLines = append(peLines, fmt.Sprintf("      %s", serializeStyleMap(mergedStyle)))
+						}
+						peLines = append(peLines, "    }")
+					} else {
 						if s := serializeStyleMap(mergedStyle); s != "" {
 							templateChild.Attrs["style"] = s
 						} else {
@@ -650,6 +699,7 @@ func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement,
 						}
 					}
 				}
+			}
 
 			} else if idx == numTemplateChildren &&
 				templateChild.Tag == "div" {
@@ -663,12 +713,12 @@ func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement,
 					(collisionVal == "" || collisionVal == "always queue" || collisionVal == "queue") &&
 					len(childStyleMap) == 0 {
 
-					storyID := templateChild.Attrs["id"]
-					if storyID != "" {
+					storyId := templateChild.Attrs["id"]
+					if storyId != "" {
 						// Python L310-313: create id div at body start
 						idDiv := &htmlElement{
 							Tag:   "div",
-							Attrs: map[string]string{"id": storyID},
+							Attrs: map[string]string{"id": storyId},
 						}
 						body.Children = append([]htmlPart{idDiv}, body.Children...)
 						ti++ // adjust for the new element we just inserted
@@ -726,26 +776,36 @@ func processConditionalTemplatesForSection(book *decodedBook, body *htmlElement,
 				delete(templateElem.Attrs, "style")
 			}
 
-			// Python L341: while target.tag not in ["div", "li", "td"]:
-			//     target = target.getparent()
-			// In Go's flat DOM, walk up to a block parent.
 			insertTarget := findBlockParent(target)
 			if insertTarget != nil {
 				if len(templateElem.Children) > 0 || len(templateElem.Attrs) > 0 || emitEmptyConditions {
 					insertChild(insertTarget, 0, templateElem)
 				}
 			}
+		} else if len(peLines) > 0 || len(templateStyle) > 0 || emitEmptyConditions {
+			cssLines = append(cssLines, "@-amzn-master-page {")
+			cssLines = append(cssLines, fmt.Sprintf("  @-amzn-condition(%s) {", amznCondition))
+			if len(templateStyle) > 0 {
+				cssLines = append(cssLines, fmt.Sprintf("    %s;", serializeStyleMap(templateStyle)))
+			}
+			cssLines = append(cssLines, peLines...)
+			cssLines = append(cssLines, "  }")
+			cssLines = append(cssLines, "}")
+
+			delete(templateElem.Attrs, "style")
+			insertTarget := findMasterPageParent(target)
+			if insertTarget != nil {
+				if len(templateElem.Children) > 0 || len(templateElem.Attrs) > 0 || elementHasText(templateElem) || emitEmptyConditions {
+					if templateElem.Attrs == nil {
+						templateElem.Attrs = map[string]string{}
+					}
+					templateElem.Attrs["style"] = "-kfx-media-query: not amzn-mobi; display: none"
+					insertChild(insertTarget, 0, templateElem)
+				}
+			}
 		}
-		// EXCLUDED: EMIT_PAGE_TEMPLATES=true path (Python L347-375).
-		// See the emitPageTemplates constant documentation for rationale.
-		// This path would generate CSS @-amzn-master-page rules with
-		// @-amzn-condition blocks, collect pe_lines for @-amzn-page-element
-		// CSS, call inventory_style for deduplication, set media-query
-		// hiding styles (-kfx-media-query: not amzn-mobi; display: none),
-		// walk up to block-level parents (div, figure, h1-h6, p), and write
-		// the CSS to a layout resource file via LAYOUT_CSS_FILEPATH with
-		// "text/amzn+css" mimetype. None of this is needed for KOReader.
 	}
+	return cssLines
 }
 
 // =============================================================================
@@ -800,6 +860,17 @@ func isBlockParent(tag string) bool {
 	return false
 }
 
+// isMasterPageParent returns true if the tag is a valid block-level parent for
+// EMIT_PAGE_TEMPLATES master-page insertion.
+// Port of Python: target.tag in ["div", "figure", "h1", ..., "p"] (L359-364).
+func isMasterPageParent(tag string) bool {
+	switch tag {
+	case "div", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "p":
+		return true
+	}
+	return false
+}
+
 // isInlineParent returns true if the tag is a valid inline parent for
 // inline conditional content insertion.
 // Port of Python: target.tag in ["div", "li", "td", "span", "a"] (L330).
@@ -835,6 +906,18 @@ func findInlineParent(target *htmlElement) *htmlElement {
 		return nil
 	}
 	if isInlineParent(target.Tag) {
+		return target
+	}
+	return nil
+}
+
+// findMasterPageParent walks up to find a valid block parent for master-page insertion.
+// Go lacks parent pointers, so this returns the target when already suitable.
+func findMasterPageParent(target *htmlElement) *htmlElement {
+	if target == nil {
+		return nil
+	}
+	if isMasterPageParent(target.Tag) {
 		return target
 	}
 	return nil
