@@ -8,8 +8,7 @@ import sys
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    plugin_dir = os.path.dirname(script_dir)
-    repo_root = os.path.dirname(plugin_dir)
+    repo_root = os.path.dirname(script_dir)
     ref_root = os.path.join(repo_root, "REFERENCE", "Calibre_KFX_Input")
     sys.path.insert(0, ref_root)
     sys.path.insert(0, os.path.join(ref_root, "kfxlib", "calibre-plugin-modules"))
@@ -21,7 +20,10 @@ def main():
     parser.add_argument("--output", required=True, help="Output EPUB path")
     args = parser.parse_args()
 
-    book = YJ_Book(args.input)
+    # Load symbol catalog for $N -> real name translation
+    catalog_path = os.path.join(repo_root, "REFERENCE", "kfx_symbol_catalog.ion")
+
+    book = YJ_Book(args.input, symbol_catalog_filename=catalog_path)
     epub_data = book.convert_to_epub()
     with open(args.output, "wb") as f:
         f.write(epub_data)
