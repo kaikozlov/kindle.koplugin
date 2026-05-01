@@ -254,7 +254,8 @@ func (d *grayDecoder) parseHeaderAndPlane() (Header, int, int, int, error) {
 	if _, err := br.readBits(3); err != nil { // internal_clr_fmt
 		return Header{}, 0, 0, 0, err
 	}
-	if _, err := br.readBits(1); err != nil { // scaled_flag
+	scaledFlag, err := br.readBits(1) // scaled_flag
+	if err != nil {
 		return Header{}, 0, 0, 0, err
 	}
 	if _, err := br.readBits(4); err != nil { // bands_present
@@ -267,7 +268,7 @@ func (d *grayDecoder) parseHeaderAndPlane() (Header, int, int, int, error) {
 	}
 	var dcScale int
 	if dcUniform == 1 {
-		dcScale, err = readSingleComponentQP(br, true, bandDC)
+		dcScale, err = readSingleComponentQP(br, scaledFlag == 1, bandDC)
 		if err != nil {
 			return Header{}, 0, 0, 0, err
 		}
@@ -282,7 +283,7 @@ func (d *grayDecoder) parseHeaderAndPlane() (Header, int, int, int, error) {
 	}
 	var lpScale int
 	if lpUniform == 1 {
-		lpScale, err = readSingleComponentQP(br, true, bandLP)
+		lpScale, err = readSingleComponentQP(br, scaledFlag == 1, bandLP)
 		if err != nil {
 			return Header{}, 0, 0, 0, err
 		}
@@ -297,7 +298,7 @@ func (d *grayDecoder) parseHeaderAndPlane() (Header, int, int, int, error) {
 	}
 	var hpScale int
 	if hpUniform == 1 {
-		hpScale, err = readSingleComponentQP(br, true, bandHP)
+		hpScale, err = readSingleComponentQP(br, scaledFlag == 1, bandHP)
 		if err != nil {
 			return Header{}, 0, 0, 0, err
 		}
@@ -526,14 +527,19 @@ func (d *grayDecoder) outputFormatting() {
 }
 
 func (d *grayDecoder) addBias() {
-	bias := 1 << 7
-	bias <<= 3
+	bias := 1 << 7 // BD8 bias
+	if d.header.Plane.Scaled == 1 {
+		bias <<= 3 // scaled: shift left by 3
+	}
 	for i := range d.imagePlane {
 		d.imagePlane[i] += bias
 	}
 }
 
 func (d *grayDecoder) computeScaling() {
+	if d.header.Plane.Scaled != 1 {
+		return // no scaling for non-scaled images
+	}
 	for i := range d.imagePlane {
 		d.imagePlane[i] = (d.imagePlane[i] + 3) >> 3
 	}
