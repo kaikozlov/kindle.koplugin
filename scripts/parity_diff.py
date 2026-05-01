@@ -15,6 +15,7 @@ Usage:
   scripts/parity_diff.py --css                    # CSS property-level diff
   scripts/parity_diff.py --generate-goldens       # Regenerate calibre.epub from Python
   scripts/parity_diff.py --generate-goldens --book martyr
+  scripts/parity_diff.py --traces                 # Stage-by-stage pipeline trace comparison
 """
 import argparse
 import difflib
@@ -329,6 +330,108 @@ def generate_goldens(books):
 
 
 # ---------------------------------------------------------------------------
+# Trace comparison
+# ---------------------------------------------------------------------------
+
+def run_python_trace(input_path, trace_path):
+    """Run Python trace. Returns (success, stderr)."""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trace_python.py")
+    result = subprocess.run(
+        [sys.executable, script, "--input", input_path, "--output", trace_path],
+        capture_output=True, text=True, timeout=120,
+        cwd=REPO_ROOT,
+    )
+    return result.returncode == 0, result.stderr
+
+
+def run_go_trace(input_path, epub_path, trace_path):
+    """Run Go trace. Returns (success, stderr)."""
+    result = subprocess.run(
+        ["go", "run", "./cmd/kindle-helper", "trace",
+         "--input", input_path, "--output", epub_path, "--trace", trace_path],
+        capture_output=True, text=True, timeout=120,
+        cwd=REPO_ROOT,
+    )
+    return result.returncode == 0, result.stderr
+
+
+def compare_traces(books, keep=False):
+    """Run Python and Go traces, compare stage-by-stage."""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "compare_traces.py")
+    passed = 0
+    failed = 0
+    skipped = 0
+
+    tmpdir_obj = None
+    if keep:
+        tmpdir = tempfile.mkdtemp(prefix="parity_traces_")
+        print(f"Keeping traces in: {tmpdir}", file=sys.stderr)
+    else:
+        tmpdir_obj = tempfile.TemporaryDirectory(prefix="parity_traces_")
+        tmpdir = tmpdir_obj.name
+
+    for book in books:
+        book_dir = os.path.join(BOOKS_DIR, book)
+        input_kfx = find_input(book_dir)
+
+        if not input_kfx:
+            print(f"  {book}: SKIP (no input KFX)")
+            skipped += 1
+            continue
+
+        print(f"\n  {book}:", file=sys.stderr)
+
+        py_trace = os.path.join(tmpdir, f"{book}_python.json")
+        go_trace = os.path.join(tmpdir, f"{book}_go.json")
+        go_epub = os.path.join(tmpdir, f"{book}_go.epub")
+
+        # Python trace
+        print(f"    Python trace...", end="", file=sys.stderr)
+        ok, stderr = run_python_trace(input_kfx, py_trace)
+        if not ok:
+            print(f" FAILED", file=sys.stderr)
+            if stderr:
+                for line in stderr.strip().split("\n")[-3:]:
+                    print(f"      {line}", file=sys.stderr)
+            failed += 1
+            continue
+        print(f" OK", file=sys.stderr)
+
+        # Go trace
+        print(f"    Go trace...", end="", file=sys.stderr)
+        ok, stderr = run_go_trace(input_kfx, go_epub, go_trace)
+        if not ok:
+            print(f" FAILED", file=sys.stderr)
+            if stderr:
+                for line in stderr.strip().split("\n")[-3:]:
+                    print(f"      {line}", file=sys.stderr)
+            failed += 1
+            continue
+        print(f" OK", file=sys.stderr)
+
+        # Compare
+        print(f"    Comparing...", end="", file=sys.stderr)
+        result = subprocess.run(
+            [sys.executable, script, py_trace, go_trace],
+            capture_output=True, text=True, timeout=30,
+            cwd=REPO_ROOT,
+        )
+        if result.returncode == 0:
+            print(f" ✓ PASS", file=sys.stderr)
+            passed += 1
+        else:
+            print(f" ✗ DIVERGENT", file=sys.stderr)
+            # Print comparison details
+            if result.stdout:
+                for line in result.stdout.strip().split("\n"):
+                    print(f"      {line}")
+            failed += 1
+
+    print(f"\n  Traces: {passed} pass, {failed} fail, {skipped} skip", file=sys.stderr)
+    return 0 if failed == 0 else 1
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -345,6 +448,9 @@ Examples:
   scripts/parity_diff.py --metric                 # Machine-readable output
   scripts/parity_diff.py --all --diff             # Full diffs for every book
   scripts/parity_diff.py --book 1984 --css        # CSS property-level diff
+  scripts/parity_diff.py --generate-goldens       # Regenerate calibre.epub from Python
+  scripts/parity_diff.py --traces                 # Stage-by-stage pipeline trace comparison
+  scripts/parity_diff.py --traces --keep          # Keep trace JSON files
 """,
     )
     parser.add_argument("--book", help="Single book to diff (e.g. '1984', 'martyr')")
@@ -356,6 +462,7 @@ Examples:
     parser.add_argument("--keep", action="store_true", help="Keep extracted EPUBs in /tmp for inspection")
     parser.add_argument("--skip-convert", action="store_true", help="Skip Go conversion, use existing EPUB at /tmp/<book>_go.epub")
     parser.add_argument("--generate-goldens", action="store_true", help="Regenerate calibre.epub reference files from Python pipeline")
+    parser.add_argument("--traces", action="store_true", help="Compare pipeline traces (Python vs Go stage-by-stage)")
     args = parser.parse_args()
 
     # Determine which books to process
@@ -374,10 +481,15 @@ Examples:
     show_css = args.css
     metric_mode = args.metric
     gen_goldens = args.generate_goldens
+    trace_mode = args.traces
 
     # Golden generation mode — separate flow
     if gen_goldens:
         return generate_goldens(selected)
+
+    # Trace comparison mode — separate flow
+    if trace_mode:
+        return compare_traces(selected, keep=args.keep)
 
     # Keep temp files if requested
     tmpdir_obj = None
