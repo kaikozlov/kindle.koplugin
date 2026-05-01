@@ -566,43 +566,33 @@ All test fixtures live under `REFERENCE/books/<name>/` with consistent naming:
 
 Top-level: `REFERENCE/books/drm_keys.json` — merged page keys for all 9 DRMION books.
 
-### Current Parity Status (April 2026)
+### Current Parity Status (May 2026)
 
-7 of 10 books are structurally perfect (differences only in JPEG encoding and content.opf timestamps).
-2 books have remaining structural diffs:
+**All 10 books are structurally perfect.** Zero structural diffs across all fixtures.
+All remaining differences are image-only (JPEG re-encoding: Go outputs plain JPEG without JFIF header,
+Calibre adds JFIF metadata; dimensions and pixel content are identical).
 
-**1984 (16 structural, 7 image):**
-- Body class index offset — `estimateBodyClass()` (Go-specific) assigns class-3 vs Calibre's class-4; cascading to 7+ pages
-- Image page body class — `class_sN` vs `figure_sN-0/1/2` for image pages (c9)
-- Missing margins in stylesheet — `class_s1MY`, `class_s1N2`, `class_s1NM` missing `margin-bottom: 0; margin-top: 0`
-- Missing `heading_s1NG` class — Go keeps as `class_s1NG`, Calibre creates separate `heading_s1NG` rule
-- Table image `<div>` wrapper — extra `<div class="class_s1S6">` inside `<td>` around `<a><img>` (c1RU)
-- TOC `<span>` vs `<p>` — navigation child entries use `<span>` in Go, `<p>` in Calibre (cP)
-- Missing page anchor — `page_134` absent in Go (cDT)
-- XML attribute ordering — `epub:type` and `class` attribute order swapped on `<a>` (c3E)
+| Book | Structural | Image | Notes |
+|------|-----------|-------|-------|
+| Martyr | 0 | 5 | Image re-encoding only |
+| 1984 | 0 | 7 | Image re-encoding only |
+| Elvis | 0 | 30 | Image re-encoding only |
+| Familiars | 0 | 28 | Image re-encoding only |
+| Heated Rivalry | 0 | 7 | Image re-encoding only |
+| Hunger Games | 0 | 46 | Image re-encoding only |
+| Secrets Crown | 0 | 11 | Image re-encoding only |
+| Sunrise Reaping | 0 | 39 | Image re-encoding only |
+| Three Below | 0 | 16 | Image re-encoding only |
+| Throne of Glass | 0 | 7 | Image re-encoding only |
 
-**Secrets Crown (18 structural, 11 image):**
-- HD variant selection — Go uses `-resized` images, Calibre uses `-hd-resized` (higher resolution)
-- CSS class index swap — `class_220-0`/`class_220-1` assigned in wrong order
-- Missing margins in stylesheet — `class_2326` missing `margin-bottom: 0; margin-top: 0`
-- Image page body class — `class_20` has extra `text-align: center` (xQ10)
+**Image diff nature:** Go's JPEG encoder writes plain JPEG without JFIF APP0 marker. Calibre's PIL/Pillow
+encoder adds JFIF metadata (version 1.01, resolution). Image dimensions and pixel content are identical.
+Go files are slightly larger due to different quality settings.
 
-**Fixed in this session:**
-- ✅ JXR image conversion — `mediaType` was empty for JXR resources; added `format=="jxr"` fallback
-- ✅ `<a>` class on link-wrapped elements — annotation style from style events now propagated to `<a>`
-- ✅ Image heading anchor suppression — skip position anchors on image-only heading divs
-- ✅ Sunrise Reaping — now structurally perfect (32→1, only timestamp diff)
+### Known Parity Gaps (all image-level, no structural)
 
-### Known Parity Gaps (ordered by priority)
-
-1. **CSS class ordering/dedup** — Go's `estimateBodyClass()` pre-assigns class-0/1/2/3 as static rules; Python treats ALL styles uniformly through `fixup_styles_and_classes`. The class index offset cascades to 7+ pages in 1984. Requires architectural change to body class handling.
-2. **Body/figure class naming** — Image pages get `class_sN` in Go vs `figure_sN-0/1/2` in Calibre. Related to div→figure conversion and layout hints in simplify_styles.
-3. **Missing margin stripping** — Several styles missing `margin-bottom: 0; margin-top: 0` that Calibre includes. Likely a reverse-inheritance gap in `simplifyStylesElementFull`.
-4. **HD image variant selection** — Go's variant selection doesn't pick HD (`-hd-resized`) variants that Calibre uses. May be a `USE_HIGHEST_RESOLUTION_IMAGE_VARIANT` bug or missing variant resources.
-5. **Table image div wrapper** — Extra `<div>` inside `<td>` around linked images (c1RU in 1984). Python's `find_or_create_style_event_element` doesn't wrap table cell images.
-6. **TOC container tag selection** — `<span>` vs `<p>` for navigation sub-entries (cP in 1984).
-7. **Missing page anchor** — `page_134` not generated in Go output (cDT in 1984).
-8. **XML attribute ordering** — `epub:type` and `class` attribute order differs on `<a>` elements (cosmetic).
+1. **JFIF header missing** — Go outputs raw JPEG without JFIF APP0 marker; Calibre includes it. Cosmetic only — all EPUB readers handle both.
+2. **JPEG quality/encoding** — Go uses different JPEG quality settings than Calibre's Pillow, producing slightly different file sizes. Pixel content is identical.
 
 ---
 
