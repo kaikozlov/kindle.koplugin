@@ -616,33 +616,25 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 				return
 			}
 			style := parseDeclarationString(elem.Attrs["style"])
-			modified := false
-			for name, value := range style {
-				if !strings.HasPrefix(name, "-kfx-attrib-") {
-					continue
+			styleAttribs := stylePartitionDetailed(style, nil, "-kfx-attrib-", true, false, false, false, true)
+			styleModified := len(styleAttribs) > 0
+			if len(styleAttribs) > 0 {
+				for attrName, value := range styleAttribs {
+					var xmlAttr string
+					if strings.HasPrefix(attrName, "epub-") {
+						xmlAttr = "epub:type"
+					} else if strings.HasPrefix(attrName, "xml-") {
+						xmlAttr = "xml:lang"
+					} else {
+						xmlAttr = attrName
+					}
+					if elem.Attrs == nil {
+						elem.Attrs = map[string]string{}
+					}
+					elem.Attrs[xmlAttr] = value
 				}
-				// Strip prefix: -kfx-attrib-xml-lang → xml-lang
-				attrName := name[len("-kfx-attrib-"):]
-				var xmlAttr string
-				if strings.HasPrefix(attrName, "epub-") {
-					// -kfx-attrib-epub-type → {http://www.idpf.org/2007/ops}type
-					// Stored as "epub:type" in the attribute map.
-					xmlAttr = "epub:type"
-				} else if strings.HasPrefix(attrName, "xml-") {
-					// -kfx-attrib-xml-lang → xml:lang
-					xmlAttr = "xml:lang"
-				} else {
-					// colspan, rowspan, valign, etc. — use as-is
-					xmlAttr = attrName
-				}
-				if elem.Attrs == nil {
-					elem.Attrs = map[string]string{}
-				}
-				elem.Attrs[xmlAttr] = value
-				delete(style, name)
-				modified = true
 			}
-			if modified {
+			if styleModified {
 				if len(style) == 0 {
 					delete(elem.Attrs, "style")
 				} else {
@@ -4827,8 +4819,9 @@ func zeroQuantity(val string) string {
 	if cssColorNames[val] {
 		return "#0"
 	}
-	// Check for numeric value with optional unit
-	if isNumericValue.MatchString(val) {
+	// Port of Python: num_match = re.match(...)
+	numMatch := isNumericValue.FindString(val)
+	if numMatch != "" {
 		return "0"
 	}
 	return val
@@ -4961,18 +4954,26 @@ func setStyle(elem *htmlElement, style map[string]string) {
 // addStyle merges style properties into an element's existing style.
 // Port of Python KFX_EPUB_Properties.add_style (yj_to_epub_properties.py L2231-2243).
 func addStyle(elem *htmlElement, style map[string]string, replace bool) {
-	existing := getStyle(elem)
-	if existing == nil {
-		existing = map[string]string{}
+	if len(style) == 0 {
+		return
 	}
-	for k, v := range style {
-		if replace {
-			existing[k] = v
-		} else if _, has := existing[k]; !has {
-			existing[k] = v
+	origStyleStr := ""
+	if elem != nil && elem.Attrs != nil {
+		origStyleStr = elem.Attrs["style"]
+	}
+	if origStyleStr != "" {
+		existing := parseDeclarationString(origStyleStr)
+		for k, v := range style {
+			if replace {
+				existing[k] = v
+			} else if _, has := existing[k]; !has {
+				existing[k] = v
+			}
 		}
+		setStyle(elem, existing)
+		return
 	}
-	setStyle(elem, existing)
+	setStyle(elem, styleCopy(style))
 }
 
 // cssUrl generates a CSS url() reference.
@@ -5120,6 +5121,51 @@ func stylePartition(style map[string]string) (heritable, nonHeritable map[string
 		}
 	}
 	return
+}
+
+// stylePartitionDetailed ports Python Style.partition semantics for callers that need
+// prefix extraction/addition and optional in-place modification.
+func stylePartitionDetailed(style map[string]string, propertyNames map[string]bool, namePrefix string, removePrefix bool, addPrefix bool, keep bool, keepAll bool, modify bool) map[string]string {
+	matchProps := map[string]string{}
+	otherProps := map[string]string{}
+	for name, value := range style {
+		match := false
+		resultName := name
+		if namePrefix != "" {
+			if addPrefix {
+				resultName = namePrefix + "-" + name
+				match = true
+			} else {
+				match = strings.HasPrefix(name, namePrefix)
+			}
+			if match && removePrefix {
+				resultName = resultName[len(namePrefix):]
+			}
+		} else if propertyNames != nil {
+			match = propertyNames[name]
+		}
+		if match {
+			matchProps[resultName] = value
+		} else {
+			otherProps[name] = value
+		}
+	}
+	if modify {
+		styleClear(style)
+		if keep {
+			for k, v := range matchProps {
+				style[k] = v
+			}
+		} else {
+			for k, v := range otherProps {
+				style[k] = v
+			}
+		}
+	}
+	if keep || keepAll {
+		return otherProps
+	}
+	return matchProps
 }
 
 // styleRemoveDefaultProperties removes properties that match inherited defaults.
