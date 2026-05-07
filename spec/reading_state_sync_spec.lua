@@ -3,6 +3,9 @@
 -- PULL/PUSH scenarios, both-sides-complete skip, timestamp decisions,
 -- status sync, unopened book handling, and edge cases.
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 local SYNC_DIRECTION = { PROMPT = 1, SILENT = 2, NEVER = 3 }
 
 --- Helper: create a mock doc_settings with tracked saves.
@@ -92,7 +95,7 @@ describe("ReadingStateSync", function()
     local readhistory_orig
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
     end)
 
     before_each(function()
@@ -189,7 +192,7 @@ describe("ReadingStateSync", function()
         end
 
         ReadingStateSync = require("lua/reading_state_sync")
-        resetAllMocks()
+        helper.before_each()
     end)
 
     teardown(function()

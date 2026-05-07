@@ -1,11 +1,14 @@
 -- Tests for SessionFlags module
 -- NOTE: SessionFlags writes to /tmp, so these tests create real temp files.
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("SessionFlags", function()
     local SessionFlags
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
     end)
 
     before_each(function()

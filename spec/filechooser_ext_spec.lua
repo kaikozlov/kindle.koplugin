@@ -1,11 +1,14 @@
 -- Tests for FileChooserExt module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("FileChooserExt", function()
     local FileChooserExt
     local VirtualLibrary
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
         FileChooserExt = require("lua/filechooser_ext")
         VirtualLibrary = require("lua/virtual_library")
     end)
@@ -15,7 +18,7 @@ describe("FileChooserExt", function()
         package.loaded["lua/virtual_library"] = nil
         FileChooserExt = require("lua/filechooser_ext")
         VirtualLibrary = require("lua/virtual_library")
-        resetAllMocks()
+        helper.before_each()
     end)
 
     describe("initialization", function()

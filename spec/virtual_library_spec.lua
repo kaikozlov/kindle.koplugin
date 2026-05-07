@@ -1,17 +1,20 @@
 -- Tests for VirtualLibrary module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("VirtualLibrary", function()
     local VirtualLibrary
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
         VirtualLibrary = require("lua/virtual_library")
     end)
 
     before_each(function()
         package.loaded["lua/virtual_library"] = nil
         VirtualLibrary = require("lua/virtual_library")
-        resetAllMocks()
+        helper.before_each()
     end)
 
     describe("initialization", function()

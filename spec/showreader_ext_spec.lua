@@ -2,13 +2,16 @@
 -- Covers: initialization, showReader interception, blocked books,
 -- PULL sync before open, alias registration, direct mode bypass.
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("ShowReaderExt", function()
     local ShowReaderExt
     local readerui_module
     local original_showReader_calls
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
 
         -- Mock ReaderUI module with a trackable showReader
         original_showReader_calls = {}

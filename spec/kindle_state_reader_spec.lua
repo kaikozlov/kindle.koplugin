@@ -1,15 +1,19 @@
 -- Tests for KindleStateReader module
 -- These tests mock the sqlite3 CLI since we don't have ljsqlite3 in the test env
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("KindleStateReader", function()
     local KindleStateReader
     local original_popen
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
     end)
 
     before_each(function()
+        helper.before_each()
         package.loaded["lua/lib/kindle_state_reader"] = nil
         KindleStateReader = require("lua/lib/kindle_state_reader")
         original_popen = io.popen

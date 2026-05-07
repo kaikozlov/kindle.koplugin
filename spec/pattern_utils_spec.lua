@@ -1,10 +1,13 @@
 -- Tests for PatternUtils module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("PatternUtils", function()
     local PatternUtils
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
         PatternUtils = require("lua/lib/pattern_utils")
     end)
 

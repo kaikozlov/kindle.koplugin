@@ -1,14 +1,18 @@
 -- Tests for KindleStateWriter module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("KindleStateWriter", function()
     local KindleStateWriter
     local original_execute
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
     end)
 
     before_each(function()
+        helper.before_each()
         package.loaded["lua/lib/kindle_state_writer"] = nil
         KindleStateWriter = require("lua/lib/kindle_state_writer")
         original_execute = os.execute

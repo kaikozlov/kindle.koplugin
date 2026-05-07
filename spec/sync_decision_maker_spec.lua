@@ -1,16 +1,19 @@
 -- Tests for SyncDecisionMaker module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("SyncDecisionMaker", function()
     local SyncDecisionMaker
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
     end)
 
     before_each(function()
         package.loaded["lua/lib/sync_decision_maker"] = nil
         SyncDecisionMaker = require("lua/lib/sync_decision_maker")
-        resetAllMocks()
+        helper.before_each()
     end)
 
     describe("areBothSidesComplete", function()

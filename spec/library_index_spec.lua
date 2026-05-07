@@ -1,17 +1,20 @@
 -- Tests for LibraryIndex module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("LibraryIndex", function()
     local LibraryIndex
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
         LibraryIndex = require("lua/library_index")
     end)
 
     before_each(function()
         package.loaded["lua/library_index"] = nil
         LibraryIndex = require("lua/library_index")
-        resetAllMocks()
+        helper.before_each()
     end)
 
     describe("initialization", function()

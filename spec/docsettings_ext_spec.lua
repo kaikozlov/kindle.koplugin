@@ -1,17 +1,20 @@
 -- Tests for DocSettingsExt module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("DocSettingsExt", function()
     local DocSettingsExt
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
         DocSettingsExt = require("lua/docsettings_ext")
     end)
 
     before_each(function()
         package.loaded["lua/docsettings_ext"] = nil
         DocSettingsExt = require("lua/docsettings_ext")
-        resetAllMocks()
+        helper.before_each()
     end)
 
     describe("apply", function()

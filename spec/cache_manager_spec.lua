@@ -1,11 +1,14 @@
 -- Tests for CacheManager module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("CacheManager", function()
     local CacheManager
     local io_mocker
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
         CacheManager = require("lua/cache_manager")
     end)
 
@@ -14,7 +17,7 @@ describe("CacheManager", function()
         CacheManager = require("lua/cache_manager")
         io_mocker = createIOOpenMocker()
         io_mocker.install()
-        resetAllMocks()
+        helper.before_each()
     end)
 
     after_each(function()

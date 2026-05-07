@@ -1,10 +1,13 @@
 -- Tests for StatusConverter module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("StatusConverter", function()
     local StatusConverter
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
     end)
 
     before_each(function()

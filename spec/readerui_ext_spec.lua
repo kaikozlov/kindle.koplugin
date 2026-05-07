@@ -2,11 +2,14 @@
 -- Covers: initialization, onClose sync triggers, both-sides-complete skip,
 -- auto-sync disabled, virtual path resolution, book list cache update.
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("ReaderUIExt", function()
     local ReaderUIExt
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
     end)
 
     before_each(function()

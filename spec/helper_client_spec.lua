@@ -1,17 +1,20 @@
 -- Tests for HelperClient module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("HelperClient", function()
     local HelperClient
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
         HelperClient = require("lua/helper_client")
     end)
 
     before_each(function()
         package.loaded["lua/helper_client"] = nil
         HelperClient = require("lua/helper_client")
-        resetAllMocks()
+        helper.before_each()
     end)
 
     describe("initialization", function()

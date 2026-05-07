@@ -1,18 +1,21 @@
 -- Tests for FilesystemExt module
 
+require('busted.runner')()
+local helper = require("spec/test_helper")
+
 describe("FilesystemExt", function()
     local FilesystemExt
     local VirtualLibrary
 
     setup(function()
-        require("spec/helper")
+        helper.setup_complete()
         FilesystemExt = require("lua/filesystem_ext")
     end)
 
     before_each(function()
         package.loaded["lua/filesystem_ext"] = nil
         FilesystemExt = require("lua/filesystem_ext")
-        resetAllMocks()
+        helper.before_each()
     end)
 
     describe("initialization", function()
