@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-lua:
+    name: Lua Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Pull koplugin-dev image
+        run: docker pull ghcr.io/kaikozlov/koplugin-dev:v2026.03_2
+
+      - name: Run Lua tests
+        run: |
+          docker run --rm \
+            -e SDL_VIDEODRIVER=dummy \
+            -v "$PWD":/opt/plugin \
+            -e PLUGIN_NAME=kindle \
+            ghcr.io/kaikozlov/koplugin-dev:v2026.03_2 \
+            busted-koreader --verbose \
+              --helper=/opt/koplugin-dev/commonrequire.lua \
+              --exclude-tags=e2e \
+              /opt/plugin/spec/
