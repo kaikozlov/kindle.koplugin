@@ -3,3 +3,7 @@ build/
 *.zip
 __pycache__/
 REFERENCE/kfx_new/parity_traces/
+
+# Unzipped-EPUB artifacts that leak into repo root — never track
+META-INF/
+OEBPS/
