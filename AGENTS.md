@@ -1,13 +1,5 @@
 # AGENTS.md — kindle.koplugin Project Instructions
 
-> **Read this file at the start of every session.** It contains hard rules, architectural context, and reference material required to work on this project correctly.
-
-- Commit after every step — success OR failure, there must always be a commit
-- Never accumulate more than one step of uncommitted changes
-- If a change introduces new UNEXPECTED test failures or *unexpected* diffs: revert immediately, commit the revert, then figure out why. Regressions are only allowed as temporary artifacts if they are part of a refactor that makes progress on the task.
-
----
-
 ## Project Overview
 
 **kindle.koplugin** is a [KOReader](https://koreader.rocks/) plugin that lets Kindle device owners browse and read their Kindle-native library books inside KOReader. It does this by:
