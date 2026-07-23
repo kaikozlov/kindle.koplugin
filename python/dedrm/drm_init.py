@@ -30,17 +30,25 @@ _ACSR_PATH = "/var/local/java/prefs/acsr"
 
 
 def _preflight_check():
-    """Check device prerequisites before attempting DRM key extraction.
+    """Warn when the account secret is unavailable, but allow extraction.
 
-    Raises RuntimeError with a user-friendly message if a prerequisite
-    is missing (e.g. device not registered, not on a Kindle).
+    Older Kindle firmware derives book access from the device serial alone and
+    legitimately has no ACSR file. Newer firmware supplies ACSR as an additional
+    lock parameter, so a populated file remains supported without a warning.
     """
-    if not os.path.isfile(_ACSR_PATH):
-        raise RuntimeError(
-            "Your Kindle is not registered to an Amazon account. "
-            "Register your device, run Refresh Book Access, "
-            "then you can deregister again."
-        )
+    try:
+        with open(_ACSR_PATH, "rb") as acsr_file:
+            if acsr_file.read().strip():
+                return
+    except OSError:
+        pass
+
+    print(
+        "drm-init: WARNING: Account secret is missing or empty; "
+        "continuing with device serial only (expected on older Kindle firmware).",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def _find_voucher_for_kfx(kfx_path):

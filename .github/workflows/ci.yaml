@@ -27,3 +27,21 @@ jobs:
               --helper=/opt/koplugin-dev/commonrequire.lua \
               --exclude-tags=e2e \
               /opt/plugin/spec/
+
+  test-drm-compatibility:
+    name: DRM Compatibility Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Run DRM compatibility tests
+        run: python3 -m unittest discover -s python/tests -p 'test_*.py' -v

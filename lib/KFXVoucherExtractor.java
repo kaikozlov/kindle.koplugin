@@ -4,20 +4,34 @@ import java.io.*;
 import java.util.*;
 
 public class KFXVoucherExtractor {
-    public static void main(String[] args) throws Exception {
-        String acsrPath = "/var/local/java/prefs/acsr";
-        if (!new File(acsrPath).exists()) {
-            System.err.println("ERROR: Account secret not found at " + acsrPath);
-            System.err.println("Your Kindle must be registered to an Amazon account to access DRM-protected books.");
-            System.err.println("Register your device, run Refresh Book Access, then you can deregister again.");
-            System.exit(1);
+    private static final String ACSR_PATH = "/var/local/java/prefs/acsr";
+
+    static String readAccountSecret(String acsrPath) {
+        File acsrFile = new File(acsrPath);
+        if (acsrFile.isFile()) {
+            try {
+                String acsr = new String(java.nio.file.Files.readAllBytes(
+                    java.nio.file.Paths.get(acsrPath))).trim();
+                if (!acsr.isEmpty()) {
+                    return acsr;
+                }
+            } catch (IOException e) {
+                System.err.println("WARNING: Could not read account secret at " + acsrPath + ": " + e.getMessage());
+            }
         }
-        String acsr = new String(java.nio.file.Files.readAllBytes(
-            java.nio.file.Paths.get(acsrPath))).trim();
+
+        System.err.println("WARNING: Account secret is missing or empty; continuing with device serial only.");
+        System.err.println("This is expected on older Kindle firmware.");
+        return "";
+    }
+
+    public static void main(String[] args) throws Exception {
         if (args.length == 0) {
             System.err.println("Usage: KFXVoucherExtractor <serial> [voucher ...]");
             System.exit(1);
         }
+
+        String acsr = readAccountSecret(ACSR_PATH);
         String serial = args[0];
         
         IBookSecurity sec = BookSecurity.getNativeInstance();
