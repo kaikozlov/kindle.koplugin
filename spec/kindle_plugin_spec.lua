@@ -30,9 +30,16 @@ describe("KindlePlugin", function()
         }
     end
 
+    local function newPlugin(plugin_class, ui)
+        local instance = plugin_class:new()
+        instance.ui = ui or mockUI()
+        instance:init()
+        return instance
+    end
+
     describe("init", function()
         it("should initialize plugin with default settings", function()
-            local instance = KindlePlugin:new({ ui = mockUI() })
+            local instance = newPlugin(KindlePlugin)
 
             assert.is_not_nil(instance.settings)
             assert.is_true(instance.settings.enable_virtual_library)
@@ -58,7 +65,7 @@ describe("KindlePlugin", function()
                 flush = function(self) end,
             }
 
-            local instance = KindlePlugin:new({ ui = mockUI() })
+            local instance = newPlugin(KindlePlugin)
 
             assert.is_false(instance.settings.enable_virtual_library)
             assert.is_true(instance.settings.drm_initialized)
@@ -89,7 +96,7 @@ describe("KindlePlugin", function()
             package.loaded["lua/reading_state_sync"] = nil
             local KindlePlugin2 = require("main")
 
-            local instance = KindlePlugin2:new({ ui = mockUI() })
+            local instance = newPlugin(KindlePlugin2)
 
             -- The init should have set sync_reading_state in settings
             assert.is_true(instance.settings.sync_reading_state)
@@ -105,7 +112,7 @@ describe("KindlePlugin", function()
                 },
             }
 
-            local instance = KindlePlugin:new({ ui = ui })
+            local instance = newPlugin(KindlePlugin, ui)
             assert.is_true(registered)
         end)
     end)
@@ -125,7 +132,7 @@ describe("KindlePlugin", function()
                 flush = function(self) end,
             }
 
-            local instance = KindlePlugin:new({ ui = mockUI() })
+            local instance = newPlugin(KindlePlugin)
 
             instance.settings.documents_root = "/mnt/us/test-docs"
             instance:saveSettings()
@@ -138,7 +145,7 @@ describe("KindlePlugin", function()
     describe("addToMainMenu", function()
         it("should still add menu items when virtual library is inactive", function()
             -- Menu must always be visible so user can re-enable virtual library
-            local instance = KindlePlugin:new({ ui = mockUI() })
+            local instance = newPlugin(KindlePlugin)
             instance.settings.enable_virtual_library = false
             instance.ui = { document = nil }
 
@@ -157,7 +164,7 @@ describe("KindlePlugin", function()
         end)
 
         it("should not add menu items when document is open", function()
-            local instance = KindlePlugin:new({ ui = mockUI() })
+            local instance = newPlugin(KindlePlugin)
             instance.ui = { document = { file = "test.epub" } }
 
             local menu_items = {}
@@ -167,7 +174,7 @@ describe("KindlePlugin", function()
         end)
 
         it("should create menu with all expected items when active", function()
-            local instance = KindlePlugin:new({ ui = mockUI() })
+            local instance = newPlugin(KindlePlugin)
             instance.ui = { document = nil }
 
             -- Ensure virtual library is active
@@ -198,7 +205,7 @@ describe("KindlePlugin", function()
                 flush = function(self) end,
             }
 
-            local instance = KindlePlugin:new({ ui = mockUI() })
+            local instance = newPlugin(KindlePlugin)
 
             -- Default sync directions should be set
             assert.is_not_nil(instance.settings.sync_from_kindle_newer)
