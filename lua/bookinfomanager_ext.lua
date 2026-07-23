@@ -248,7 +248,7 @@ end
 --- conversion status. Much faster than sidecar extraction — just load a JPEG.
 --- @param bookinfo table: BookInfo table to update in-place.
 --- @param thumbnail_path string: Path to the thumbnail JPEG.
-function BookInfoManagerExt:tryLoadKindleThumbnail(bookinfo, thumbnail_path)
+function BookInfoManagerExt.tryLoadKindleThumbnail(_, bookinfo, thumbnail_path)
     local attr = lfs.attributes(thumbnail_path, "mode")
     if attr ~= "file" then
         logger.dbg("KindlePlugin: Kindle thumbnail not found:", thumbnail_path)

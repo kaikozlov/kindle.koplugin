@@ -30,7 +30,6 @@ SELECT
     p_cdeKey,
     p_cdeType,
     p_isDRMProtected,
-    p_isArchived,
     p_percentFinished,
     p_thumbnail,
     p_diskUsage,
@@ -152,7 +151,6 @@ function CcDbScanner:scan()
         local cde_key = results.p_cdeKey[i] or ""
         local cde_type = results.p_cdeType[i] or ""
         local is_drm = results.p_isDRMProtected[i]
-        local is_archived = results.p_isArchived[i]
         local percent_finished = results.p_percentFinished[i]
         local thumbnail = results.p_thumbnail[i]
         local disk_usage = results.p_diskUsage[i]
