@@ -1,9 +1,0 @@
-return {
-  default = {
-    verbose = true,
-    pattern = "_spec",
-    helper = "spec/helper.lua",
-    ROOT = {"spec/"},
-    lua = "luajit"
-  }
-}

@@ -159,7 +159,7 @@ User opens book in KOReader
 ### 2. Every Change Must Be Tested
 
 - Python: `python3 python/kindle_helper.py convert --input <kfx> --output <epub>`
-- Lua: `./scripts/test` (busted under luajit)
+- Lua: `make test` or `./scripts/test` (koplugin-dev Docker image with real headless KOReader)
 - ARM binary: Docker build via `./python_build.sh`
 - Some tests require KFX fixture files not in the repo — these auto-skip
 - New Lua modules **must** include a corresponding `spec/*_spec.lua`
@@ -237,7 +237,9 @@ The plugin extends KOReader by monkey-patching core classes at runtime. Each `*_
 ### Running Tests
 
 ```sh
-# Lua tests (busted under luajit — matches KOReader's runtime)
+# Lua tests (real headless KOReader in the pinned koplugin-dev image)
+make test
+# Compatibility wrapper using the same image:
 ./scripts/test
 
 # Python local test
@@ -247,25 +249,27 @@ python3 python/kindle_helper.py convert --input <kfx> --output <epub>
 ./scripts/test spec/virtual_library_spec.lua
 ```
 
-**Always use `./scripts/test` for CI/validation** — KOReader runs LuaJIT on-device.
+**Always use `make test` or `./scripts/test` for validation.** Both run the same pinned
+koplugin-dev image and `/opt/koplugin-dev/commonrequire.lua`; there is no separate host-only
+Busted runtime.
 
 ### Test Structure
 
-Follows `REFERENCE/kobo.koplugin/spec/` patterns:
-
 ```
 spec/
-├── helper.lua                    # Mock setup (loaded before every spec)
-├── virtual_library_spec.lua      # 48 tests
-├── cache_manager_spec.lua        # 16 tests
-├── library_index_spec.lua        #  9 tests
-├── helper_client_spec.lua        # 12 tests
-├── pattern_utils_spec.lua        # 15 tests
-├── session_flags_spec.lua        #  5 tests
-├── filesystem_ext_spec.lua       # 10 tests
-├── docsettings_ext_spec.lua      #  4 tests
-└── filechooser_ext_spec.lua      #  7 tests
+├── 00_koreader_native_lifecycle_spec.lua # Real PluginLoader + FileManager smoke test
+├── test_helper.lua                       # Kindle-specific controls layered on commonrequire
+├── virtual_library_spec.lua
+├── cache_manager_spec.lua
+├── library_index_spec.lua
+├── helper_client_spec.lua
+└── *_spec.lua                            # Module and integration coverage
 ```
+
+Prefer real KOReader modules from `commonrequire.lua`. Mock only narrow filesystem, process,
+or database boundaries that cannot be reproduced safely in the headless container. Keep the
+native lifecycle smoke test free of `test_helper.lua` so whole-module stubs cannot mask plugin
+construction failures.
 
 ---
 

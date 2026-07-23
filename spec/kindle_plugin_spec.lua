@@ -31,10 +31,9 @@ describe("KindlePlugin", function()
     end
 
     local function newPlugin(plugin_class, ui)
-        local instance = plugin_class:new()
-        instance.ui = ui or mockUI()
-        instance:init()
-        return instance
+        return plugin_class:new({
+            ui = ui or mockUI(),
+        })
     end
 
     describe("init", function()
@@ -112,7 +111,7 @@ describe("KindlePlugin", function()
                 },
             }
 
-            local instance = newPlugin(KindlePlugin, ui)
+            newPlugin(KindlePlugin, ui)
             assert.is_true(registered)
         end)
     end)

@@ -1,7 +1,29 @@
-#!/bin/sh
-# Run busted under luajit with correct luarocks 5.1 paths
-# KOReader runs LuaJIT on-device, so we test against it.
-exec env \
-  LUA_PATH="$HOME/.luarocks/share/lua/5.1/?.lua;$HOME/.luarocks/share/lua/5.1/?/init.lua;;" \
-  LUA_CPATH="$HOME/.luarocks/lib/lua/5.1/?.so;;" \
-  luajit "$HOME/.luarocks/lib/luarocks/rocks-5.1/busted/2.3.0-1/bin/busted" "$@"
+#!/usr/bin/env bash
+# Run Lua specs against the same real KOReader runtime used by make test and CI.
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="ghcr.io/kaikozlov/koplugin-dev:v2026.03_7"
+
+args=()
+if (( $# == 0 )); then
+    args=(/opt/plugin/spec/)
+else
+    for arg in "$@"; do
+        if [[ "$arg" == spec/* ]]; then
+            args+=("/opt/plugin/$arg")
+        else
+            args+=("$arg")
+        fi
+    done
+fi
+
+exec docker run --rm \
+    -e SDL_VIDEODRIVER=dummy \
+    -v "$ROOT_DIR:/opt/plugin" \
+    -e PLUGIN_NAME=kindle \
+    "$IMAGE" \
+    busted-koreader --verbose \
+        --helper=/opt/koplugin-dev/commonrequire.lua \
+        --exclude-tags=e2e \
+        "${args[@]}"
