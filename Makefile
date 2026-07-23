@@ -9,7 +9,7 @@
 #   make shell     # drop into the container
 
 PLUGIN_NAME := kindle
-KOPLUGIN_DEV_VERSION := v2026.03_2
+KOPLUGIN_DEV_VERSION := v2026.03_7
 IMAGE := ghcr.io/kaikozlov/koplugin-dev:$(KOPLUGIN_DEV_VERSION)
 
 # SDL dummy driver for headless KOReader
