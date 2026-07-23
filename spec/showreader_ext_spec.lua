@@ -9,6 +9,7 @@ describe("ShowReaderExt", function()
     local ShowReaderExt
     local readerui_module
     local original_showReader_calls
+    local original_readerui_show_reader
     local Trapper
     local original_trapper_methods
     local trapper_info_calls
@@ -17,25 +18,8 @@ describe("ShowReaderExt", function()
     setup(function()
         helper.setup_complete()
 
-        -- Mock ReaderUI module with a trackable showReader
-        original_showReader_calls = {}
-        package.preload["apps/reader/readerui"] = function()
-            return {
-                showReader = function(self, file, provider, seamless, is_provider_forced, after_open_callback)
-                    table.insert(original_showReader_calls, {
-                        file = file,
-                        provider = provider,
-                    })
-                    return true
-                end,
-            }
-        end
-
-        -- Mock credocument provider
-        package.preload["document/credocument"] = function()
-            return { is_cre = true }
-        end
-
+        readerui_module = require("apps/reader/readerui")
+        original_readerui_show_reader = readerui_module.showReader
         Trapper = require("ui/trapper")
         original_trapper_methods = {
             wrap = Trapper.wrap,
@@ -47,8 +31,14 @@ describe("ShowReaderExt", function()
     before_each(function()
         helper.before_each()
         package.loaded["lua/showreader_ext"] = nil
-        package.loaded["apps/reader/readerui"] = nil
         original_showReader_calls = {}
+        readerui_module.showReader = function(_, file, provider)
+            table.insert(original_showReader_calls, {
+                file = file,
+                provider = provider,
+            })
+            return true
+        end
         trapper_info_calls = {}
         trapper_clear_calls = 0
         Trapper.wrap = function(_, fn) return fn() end
@@ -60,7 +50,11 @@ describe("ShowReaderExt", function()
             trapper_clear_calls = trapper_clear_calls + 1
         end
         ShowReaderExt = require("lua/showreader_ext")
-        readerui_module = require("apps/reader/readerui")
+    end)
+
+    after_each(function()
+        ShowReaderExt:unapply()
+        readerui_module.showReader = original_readerui_show_reader
     end)
 
     teardown(function()
@@ -220,17 +214,13 @@ describe("ShowReaderExt", function()
                 end,
             }
 
-            -- Mock DocSettings before requiring
-            package.loaded["docsettings"] = nil
-            package.preload["docsettings"] = function()
+            local DocSettings = require("docsettings")
+            local original_open = DocSettings.open
+            DocSettings.open = function()
                 return {
-                    open = function(self, path)
-                        return {
-                            readSetting = function() return nil end,
-                            saveSetting = function() end,
-                            flush = function() end,
-                        }
-                    end,
+                    readSetting = function() return nil end,
+                    saveSetting = function() end,
+                    flush = function() end,
                 }
             end
 
@@ -242,6 +232,7 @@ describe("ShowReaderExt", function()
             assert.is_true(sync_tracker.called)
             assert.equals("B001", sync_tracker.cde_key)
             assert.equals("/mnt/us/documents/book_B001.kfx", sync_tracker.source_path)
+            DocSettings.open = original_open
 
             ShowReaderExt:unapply()
         end)

@@ -14,17 +14,18 @@ describe("KindleStateReader", function()
 
     before_each(function()
         helper.before_each()
+        helper.install_sqlite_unavailable()
         package.loaded["lua/lib/kindle_state_reader"] = nil
         KindleStateReader = require("lua/lib/kindle_state_reader")
         original_popen = io.popen
     end)
 
     after_each(function()
-        io.popen = original_popen
+        rawset(io, "popen", original_popen)
     end)
 
     local function mockPopen(output, should_fail)
-        io.popen = function(cmd, mode)
+        rawset(io, "popen", function(cmd, mode)
             if should_fail then
                 return nil
             end
@@ -56,7 +57,7 @@ describe("KindleStateReader", function()
                 table.insert(mock_handle._lines, line)
             end
             return mock_handle
-        end
+        end)
     end
 
     describe("readByPath", function()

@@ -83,7 +83,7 @@ describe("CacheManager", function()
             local cm = CacheManager:new({}, {})
             local book = { id = "book/with:special" }
 
-            local epub_path, meta_path = cm:getCachePaths(book)
+            local epub_path = cm:getCachePaths(book)
 
             -- The id gets sanitized (non-word chars replaced with _)
             assert.is_true(epub_path:match("book_with_special") ~= nil)
@@ -179,14 +179,11 @@ describe("CacheManager", function()
                 close = function() end,
             })
 
-            -- NOTE: This test relies on the real json module being available.
-            -- If json mock is in play, isFresh may not parse correctly.
-            -- We verify the boolean return is consistent with file existence.
             local fresh, ret_epub, ret_meta = cm:isFresh(book)
 
-            -- If json decoding works, we get true; if not, we get false.
-            -- Either way, we verify the function runs without error.
-            assert.is_boolean(fresh)
+            assert.is_true(fresh)
+            assert.equals(epub_path, ret_epub)
+            assert.equals(meta_path, ret_meta)
         end)
     end)
 

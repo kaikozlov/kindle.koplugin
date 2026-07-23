@@ -5,20 +5,29 @@ local helper = require("spec/test_helper")
 
 describe("FileChooserExt", function()
     local FileChooserExt
-    local VirtualLibrary
+    local FileManager
+    local original_update_title_bar_path
+    local original_on_path_changed
 
     setup(function()
         helper.setup_complete()
+        FileManager = require("apps/filemanager/filemanager")
+        original_update_title_bar_path = FileManager.updateTitleBarPath
+        original_on_path_changed = FileManager.onPathChanged
         FileChooserExt = require("lua/filechooser_ext")
-        VirtualLibrary = require("lua/virtual_library")
     end)
 
     before_each(function()
         package.loaded["lua/filechooser_ext"] = nil
-        package.loaded["lua/virtual_library"] = nil
         FileChooserExt = require("lua/filechooser_ext")
-        VirtualLibrary = require("lua/virtual_library")
         helper.before_each()
+        FileManager.updateTitleBarPath = original_update_title_bar_path
+        FileManager.onPathChanged = original_on_path_changed
+    end)
+
+    after_each(function()
+        FileManager.updateTitleBarPath = original_update_title_bar_path
+        FileManager.onPathChanged = original_on_path_changed
     end)
 
     describe("initialization", function()
@@ -268,7 +277,8 @@ describe("FileChooserExt", function()
                 end
                 assert.is_false(has_go_up)
 
-                G_reader_settings._settings = {}
+                G_reader_settings:delSetting("home_dir")
+                G_reader_settings:delSetting("lock_home_folder")
             end)
         end)
     end)

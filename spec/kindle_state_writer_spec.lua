@@ -13,14 +13,24 @@ describe("KindleStateWriter", function()
 
     before_each(function()
         helper.before_each()
+        helper.install_sqlite_unavailable()
         package.loaded["lua/lib/kindle_state_writer"] = nil
         KindleStateWriter = require("lua/lib/kindle_state_writer")
         original_execute = os.execute
     end)
 
     after_each(function()
-        os.execute = original_execute
+        rawset(os, "execute", original_execute)
     end)
+
+    local function captureExecute(result)
+        local executed_cmd
+        rawset(os, "execute", function(cmd)
+            executed_cmd = cmd
+            return result
+        end)
+        return function() return executed_cmd end
+    end
 
     describe("writeByPath", function()
         it("should return false for nil path", function()
@@ -32,11 +42,7 @@ describe("KindleStateWriter", function()
         end)
 
         it("should execute sqlite3 UPDATE via CLI", function()
-            local executed_cmd = nil
-            os.execute = function(cmd)
-                executed_cmd = cmd
-                return 0
-            end
+            local get_executed_cmd = captureExecute(0)
 
             local ok = KindleStateWriter.writeByPath(
                 "/mnt/us/documents/test.kfx",
@@ -45,6 +51,7 @@ describe("KindleStateWriter", function()
                 "reading"
             )
 
+            local executed_cmd = get_executed_cmd()
             assert.is_true(ok)
             assert.is_not_nil(executed_cmd)
             assert.is_true(executed_cmd:match("UPDATE Entries") ~= nil)
@@ -54,9 +61,7 @@ describe("KindleStateWriter", function()
         end)
 
         it("should return false when sqlite3 fails", function()
-            os.execute = function(cmd)
-                return 1
-            end
+            captureExecute(1)
 
             local ok = KindleStateWriter.writeByPath(
                 "/mnt/us/documents/test.kfx",
@@ -75,11 +80,7 @@ describe("KindleStateWriter", function()
         end)
 
         it("should write by ASIN with correct WHERE clause", function()
-            local executed_cmd = nil
-            os.execute = function(cmd)
-                executed_cmd = cmd
-                return 0
-            end
+            local get_executed_cmd = captureExecute(0)
 
             local ok = KindleStateWriter.writeByCdeKey(
                 "B007N6JEII",
@@ -88,6 +89,7 @@ describe("KindleStateWriter", function()
                 "reading"
             )
 
+            local executed_cmd = get_executed_cmd()
             assert.is_true(ok)
             assert.is_not_nil(executed_cmd)
             assert.is_true(executed_cmd:match("B007N6JEII") ~= nil)
@@ -97,11 +99,7 @@ describe("KindleStateWriter", function()
 
     describe("percent formatting", function()
         it("should floor the percent value", function()
-            local executed_cmd = nil
-            os.execute = function(cmd)
-                executed_cmd = cmd
-                return 0
-            end
+            local get_executed_cmd = captureExecute(0)
 
             KindleStateWriter.writeByPath(
                 "/mnt/us/documents/test.kfx",
@@ -110,7 +108,7 @@ describe("KindleStateWriter", function()
                 "reading"
             )
 
-            -- Should contain 56, not 56.7
+            local executed_cmd = get_executed_cmd()
             assert.is_true(executed_cmd:match("p_percentFinished = 56") ~= nil)
         end)
     end)

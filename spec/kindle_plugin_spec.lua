@@ -11,6 +11,12 @@ describe("KindlePlugin", function()
     setup(function()
         helper.setup_complete()
         UIManager = require("ui/uimanager")
+        -- Requiring main.lua applies virtual-library monkey patches at module
+        -- load time. Keep them disabled in this unit spec; the native lifecycle
+        -- spec covers real PluginLoader construction separately.
+        G_reader_settings:saveSetting("kindle_plugin", {
+            enable_virtual_library = false,
+        })
         KindlePlugin = require("main")
     end)
 
@@ -47,22 +53,11 @@ describe("KindlePlugin", function()
         end)
 
         it("should preserve existing settings over defaults", function()
-            _G.G_reader_settings = {
-                _settings = {
-                    kindle_plugin = {
-                        enable_virtual_library = false,
-                        drm_initialized = true,
-                        custom_setting = "preserved",
-                    },
-                },
-                readSetting = function(self, key)
-                    return self._settings[key]
-                end,
-                saveSetting = function(self, key, value)
-                    self._settings[key] = value
-                end,
-                flush = function(self) end,
-            }
+            G_reader_settings:saveSetting("kindle_plugin", {
+                enable_virtual_library = false,
+                drm_initialized = true,
+                custom_setting = "preserved",
+            })
 
             local instance = newPlugin(KindlePlugin)
 
@@ -75,20 +70,10 @@ describe("KindlePlugin", function()
         end)
 
         it("should enable reading state sync when setting is true", function()
-            _G.G_reader_settings = {
-                _settings = {
-                    kindle_plugin = {
-                        sync_reading_state = true,
-                    },
-                },
-                readSetting = function(self, key)
-                    return self._settings[key]
-                end,
-                saveSetting = function(self, key, value)
-                    self._settings[key] = value
-                end,
-                flush = function(self) end,
-            }
+            G_reader_settings:saveSetting("kindle_plugin", {
+                enable_virtual_library = false,
+                sync_reading_state = true,
+            })
 
             -- Reload main to pick up new settings and create fresh sync instance
             package.loaded["main"] = nil
@@ -119,22 +104,17 @@ describe("KindlePlugin", function()
     describe("saveSettings", function()
         it("should persist settings via G_reader_settings", function()
             local saved_key, saved_value
-            _G.G_reader_settings = {
-                _settings = {},
-                readSetting = function(self, key)
-                    return self._settings[key]
-                end,
-                saveSetting = function(self, key, value)
-                    saved_key = key
-                    saved_value = value
-                end,
-                flush = function(self) end,
-            }
+            local original_save_setting = G_reader_settings.saveSetting
+            G_reader_settings.saveSetting = function(self, key, value)
+                saved_key = key
+                saved_value = value
+                return original_save_setting(self, key, value)
+            end
 
             local instance = newPlugin(KindlePlugin)
-
             instance.settings.documents_root = "/mnt/us/test-docs"
             instance:saveSettings()
+            G_reader_settings.saveSetting = original_save_setting
 
             assert.are.equal("kindle_plugin", saved_key)
             assert.are.equal("/mnt/us/test-docs", saved_value.documents_root)
@@ -193,17 +173,6 @@ describe("KindlePlugin", function()
         it("should have PROMPT, SILENT, and NEVER constants", function()
             -- Access the SYNC_DIRECTION from the main module environment
             -- The constants are used in settings, verify they work via settings
-            _G.G_reader_settings = {
-                _settings = {},
-                readSetting = function(self, key)
-                    return self._settings[key]
-                end,
-                saveSetting = function(self, key, value)
-                    self._settings[key] = value
-                end,
-                flush = function(self) end,
-            }
-
             local instance = newPlugin(KindlePlugin)
 
             -- Default sync directions should be set

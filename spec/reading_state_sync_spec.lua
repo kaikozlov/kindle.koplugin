@@ -90,118 +90,112 @@ end
 
 describe("ReadingStateSync", function()
     local ReadingStateSync
-    local kindle_state_reader_orig
-    local kindle_state_writer_orig
-    local readhistory_orig
+    local KindleStateReader
+    local KindleStateWriter
+    local ReadHistory
+    local RealDocSettings
+    local originals = {}
 
     setup(function()
         helper.setup_complete()
+        KindleStateReader = require("lua/lib/kindle_state_reader")
+        KindleStateWriter = require("lua/lib/kindle_state_writer")
+        ReadHistory = require("readhistory")
+        RealDocSettings = require("docsettings")
+        originals.reader_by_key = KindleStateReader.readByCdeKey
+        originals.reader_by_path = KindleStateReader.readByPath
+        originals.reader_all = KindleStateReader.readAllProgress
+        originals.writer_by_key = KindleStateWriter.writeByCdeKey
+        originals.writer_by_path = KindleStateWriter.writeByPath
+        originals.history = ReadHistory.hist
+        originals.has_sidecar = RealDocSettings.hasSidecarFile
+        originals.open_docsettings = RealDocSettings.open
     end)
 
     before_each(function()
-        -- Clear all loaded modules
+        helper.before_each()
         package.loaded["lua/reading_state_sync"] = nil
-        package.loaded["lua/lib/kindle_state_reader"] = nil
-        package.loaded["lua/lib/kindle_state_writer"] = nil
         package.loaded["lua/lib/sync_decision_maker"] = nil
         package.loaded["lua/lib/status_converter"] = nil
-        package.loaded["readhistory"] = nil
-        package.loaded["docsettings"] = nil
 
-        -- Mock KindleStateReader with controllable data
-        kindle_state_reader_orig = package.preload["lua/lib/kindle_state_reader"]
-        package.preload["lua/lib/kindle_state_reader"] = function()
-            local mock_reader_data = {}
-            local mock_reader_data_by_key = {}
-            local mock_all_books = {}
-            return {
-                readByCdeKey = function(cde_key)
-                    return mock_reader_data_by_key[cde_key]
-                end,
-                readByPath = function(path)
-                    return mock_reader_data[path]
-                end,
-                readAllProgress = function()
-                    return mock_all_books
-                end,
-                -- Test helpers
-                _setMockStateByPath = function(path, state)
-                    mock_reader_data[path] = state
-                end,
-                _setMockStateByKey = function(key, state)
-                    mock_reader_data_by_key[key] = state
-                end,
-                _setMockAllBooks = function(books)
-                    mock_all_books = books
-                end,
-                _clear = function()
-                    mock_reader_data = {}
-                    mock_reader_data_by_key = {}
-                    mock_all_books = {}
-                end,
-            }
+        local reader_data = {}
+        local reader_data_by_key = {}
+        local all_books = {}
+        KindleStateReader.readByCdeKey = function(cde_key)
+            return reader_data_by_key[cde_key]
+        end
+        KindleStateReader.readByPath = function(path)
+            return reader_data[path]
+        end
+        KindleStateReader.readAllProgress = function()
+            return all_books
+        end
+        KindleStateReader._setMockStateByPath = function(path, state)
+            reader_data[path] = state
+        end
+        KindleStateReader._setMockStateByKey = function(key, state)
+            reader_data_by_key[key] = state
+        end
+        KindleStateReader._setMockAllBooks = function(books)
+            all_books = books
+        end
+        KindleStateReader._clear = function()
+            reader_data = {}
+            reader_data_by_key = {}
+            all_books = {}
         end
 
-        -- Mock KindleStateWriter
-        kindle_state_writer_orig = package.preload["lua/lib/kindle_state_writer"]
-        package.preload["lua/lib/kindle_state_writer"] = function()
-            local write_log = {}
-            return {
-                writeByCdeKey = function(cde_key, percent, timestamp, status)
-                    table.insert(write_log, { method = "cdeKey", key = cde_key, percent = percent, timestamp = timestamp, status = status })
-                    return true
-                end,
-                writeByPath = function(path, percent, timestamp, status)
-                    table.insert(write_log, { method = "path", path = path, percent = percent, timestamp = timestamp, status = status })
-                    return true
-                end,
-                -- Test helper
-                _getWriteLog = function() return write_log end,
-                _clearWriteLog = function() write_log = {} end,
-            }
+        local write_log = {}
+        KindleStateWriter.writeByCdeKey = function(cde_key, percent, timestamp, status)
+            table.insert(write_log, { method = "cdeKey", key = cde_key, percent = percent, timestamp = timestamp, status = status })
+            return true
         end
-
-        -- Mock ReadHistory
-        package.preload["readhistory"] = function()
-            return {
-                hist = {
-                    { file = "/mnt/us/documents/Throne of Glass_B007N6JEII.kfx", time = 1762685677 },
-                    { file = "/mnt/us/documents/Other Book_B008PL1YQ0.kfx", time = 1762628755 },
-                },
-            }
+        KindleStateWriter.writeByPath = function(path, percent, timestamp, status)
+            table.insert(write_log, { method = "path", path = path, percent = percent, timestamp = timestamp, status = status })
+            return true
         end
+        KindleStateWriter._getWriteLog = function() return write_log end
+        KindleStateWriter._clearWriteLog = function() write_log = {} end
 
-        -- Mock DocSettings with sidecar tracking
-        package.preload["docsettings"] = function()
-            local sidecar_files = {}
-            return {
-                hasSidecarFile = function(self, path)
-                    return sidecar_files[path] == true
-                end,
-                open = function(self, path)
-                    return createMockDocSettings(path, { percent_finished = 0.5 })
-                end,
-                -- Test helpers (use colon syntax in tests)
-                _setSidecarFile = function(self, path, exists)
-                    sidecar_files[path] = exists
-                end,
-                _clearSidecars = function(self)
-                    sidecar_files = {}
-                end,
-            }
+        ReadHistory.hist = {
+            { file = "/mnt/us/documents/Throne of Glass_B007N6JEII.kfx", time = 1762685677 },
+            { file = "/mnt/us/documents/Other Book_B008PL1YQ0.kfx", time = 1762628755 },
+        }
+
+        local sidecar_files = {}
+        RealDocSettings.hasSidecarFile = function(_, path)
+            return sidecar_files[path] == true
+        end
+        RealDocSettings.open = function(_, path)
+            return createMockDocSettings(path, { percent_finished = 0.5 })
+        end
+        RealDocSettings._setSidecarFile = function(_, path, exists)
+            sidecar_files[path] = exists
+        end
+        RealDocSettings._clearSidecars = function()
+            sidecar_files = {}
         end
 
         ReadingStateSync = require("lua/reading_state_sync")
-        helper.before_each()
     end)
 
-    teardown(function()
-        if kindle_state_reader_orig then
-            package.preload["lua/lib/kindle_state_reader"] = kindle_state_reader_orig
-        end
-        if kindle_state_writer_orig then
-            package.preload["lua/lib/kindle_state_writer"] = kindle_state_writer_orig
-        end
+    after_each(function()
+        KindleStateReader.readByCdeKey = originals.reader_by_key
+        KindleStateReader.readByPath = originals.reader_by_path
+        KindleStateReader.readAllProgress = originals.reader_all
+        KindleStateReader._setMockStateByPath = nil
+        KindleStateReader._setMockStateByKey = nil
+        KindleStateReader._setMockAllBooks = nil
+        KindleStateReader._clear = nil
+        KindleStateWriter.writeByCdeKey = originals.writer_by_key
+        KindleStateWriter.writeByPath = originals.writer_by_path
+        KindleStateWriter._getWriteLog = nil
+        KindleStateWriter._clearWriteLog = nil
+        ReadHistory.hist = originals.history
+        RealDocSettings.hasSidecarFile = originals.has_sidecar
+        RealDocSettings.open = originals.open_docsettings
+        RealDocSettings._setSidecarFile = nil
+        RealDocSettings._clearSidecars = nil
     end)
 
     -- ========================================================================
@@ -894,7 +888,7 @@ describe("ReadingStateSync", function()
 
             -- Kindle is unopened → executePullFromKindle returns false
             -- executePushToKindle may run if kr_timestamp > 0
-            local result = sync:syncBidirectional("B001", "/path/book.kfx", ds)
+            sync:syncBidirectional("B001", "/path/book.kfx", ds)
             -- Either way, we should NOT overwrite KOReader with Kindle's 0%
             local saved_pf = ds:readSetting("percent_finished")
             if saved_pf == 0.5 then
@@ -944,7 +938,7 @@ describe("ReadingStateSync", function()
                 kindle_status = 1,
             })
 
-            local orig_write, write_log = mockWriteKindleState(sync)
+            local orig_write = mockWriteKindleState(sync)
             local orig_update = sync.updateYjrPosition
             sync.updateYjrPosition = function() end
 

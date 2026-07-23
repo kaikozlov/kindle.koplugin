@@ -31,15 +31,16 @@ describe("BookInfoManagerExt", function()
                 exists = true,
                 attributes = { mode = "file" },
             })
-            package.loaded["ui/renderimage"] = {
-                renderImageFile = function(_, path)
-                    rendered_path = path
-                    return cover
-                end,
-            }
+            local RenderImage = require("ui/renderimage")
+            local original_render_image_file = RenderImage.renderImageFile
+            RenderImage.renderImageFile = function(_, path)
+                rendered_path = path
+                return cover
+            end
 
             local bookinfo = {}
             BookInfoManagerExt:tryLoadKindleThumbnail(bookinfo, thumbnail_path)
+            RenderImage.renderImageFile = original_render_image_file
 
             assert.equals(thumbnail_path, rendered_path)
             assert.equals("Y", bookinfo.has_cover)

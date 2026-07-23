@@ -27,6 +27,20 @@ describe("KindlePlugin native KOReader lifecycle", function()
         UIManager:quit()
     end)
 
+    it("is discovered by the real PluginLoader", function()
+        local discovered
+        for _, plugin in ipairs(PluginLoader:_discover()) do
+            if plugin.name == "kindle" or plugin.name == "kindle.koplugin" then
+                discovered = plugin
+                break
+            end
+        end
+
+        assert.is_truthy(discovered, "kindle.koplugin should be discovered")
+        assert.is_false(discovered.disabled)
+        assert.is_truthy(discovered.main:match("kindle%.koplugin/main%.lua$"))
+    end)
+
     it("instantiates through FileManager and registers its menu", function()
         load_plugin("kindle.koplugin")
 
@@ -46,5 +60,26 @@ describe("KindlePlugin native KOReader lifecycle", function()
         instance:addToMainMenu(menu_items)
         assert.is_truthy(menu_items.kindle_plugin)
         assert.is_truthy(menu_items.kindle_plugin.sub_item_table)
+
+        -- KOReader recreates plugin widgets while switching views. Verify a
+        -- second real WidgetContainer instance receives ui before init and
+        -- reads current settings without relying on the first instance.
+        G_reader_settings:saveSetting("kindle_plugin", {
+            enable_virtual_library = false,
+            documents_root = "/tmp/recreated-kindle-library",
+        })
+        local KindlePlugin = getmetatable(instance)
+        local registered = false
+        local recreated = KindlePlugin:new({
+            ui = {
+                menu = {
+                    registerToMainMenu = function()
+                        registered = true
+                    end,
+                },
+            },
+        })
+        assert.is_true(registered)
+        assert.are.equal("/tmp/recreated-kindle-library", recreated.settings.documents_root)
     end)
 end)
