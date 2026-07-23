@@ -2,37 +2,40 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test-lua:
     name: Lua Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Pull koplugin-dev image
-        run: docker pull ghcr.io/kaikozlov/koplugin-dev:v2026.03_2
+        run: make setup
 
       - name: Run Lua tests
-        run: |
-          docker run --rm \
-            -e SDL_VIDEODRIVER=dummy \
-            -v "$PWD":/opt/plugin \
-            -e PLUGIN_NAME=kindle \
-            ghcr.io/kaikozlov/koplugin-dev:v2026.03_2 \
-            busted-koreader --verbose \
-              --helper=/opt/koplugin-dev/commonrequire.lua \
-              --exclude-tags=e2e \
-              /opt/plugin/spec/
+        run: make test
 
   test-drm-compatibility:
     name: DRM Compatibility Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v6
         with:
