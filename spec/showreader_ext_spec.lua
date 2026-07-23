@@ -9,6 +9,10 @@ describe("ShowReaderExt", function()
     local ShowReaderExt
     local readerui_module
     local original_showReader_calls
+    local Trapper
+    local original_trapper_methods
+    local trapper_info_calls
+    local trapper_clear_calls
 
     setup(function()
         helper.setup_complete()
@@ -31,14 +35,38 @@ describe("ShowReaderExt", function()
         package.preload["document/credocument"] = function()
             return { is_cre = true }
         end
+
+        Trapper = require("ui/trapper")
+        original_trapper_methods = {
+            wrap = Trapper.wrap,
+            info = Trapper.info,
+            clear = Trapper.clear,
+        }
     end)
 
     before_each(function()
+        helper.before_each()
         package.loaded["lua/showreader_ext"] = nil
         package.loaded["apps/reader/readerui"] = nil
         original_showReader_calls = {}
+        trapper_info_calls = {}
+        trapper_clear_calls = 0
+        Trapper.wrap = function(_, fn) return fn() end
+        Trapper.info = function(_, text)
+            table.insert(trapper_info_calls, text)
+            return true
+        end
+        Trapper.clear = function()
+            trapper_clear_calls = trapper_clear_calls + 1
+        end
         ShowReaderExt = require("lua/showreader_ext")
         readerui_module = require("apps/reader/readerui")
+    end)
+
+    teardown(function()
+        Trapper.wrap = original_trapper_methods.wrap
+        Trapper.info = original_trapper_methods.info
+        Trapper.clear = original_trapper_methods.clear
     end)
 
     describe("initialization", function()
@@ -60,10 +88,12 @@ describe("ShowReaderExt", function()
                         return {
                             open_mode = "convert",
                             source_path = "/mnt/us/documents/book_B001.kfx",
+                            display_name = "Test Book",
                         }
                     end
                     return nil
                 end,
+                isBookPrepared = function() return true end,
                 resolveBookPath = function(self, book)
                     if book.open_mode == "blocked" then return nil, "unsupported_layout" end
                     return "/cache/book.epub"
@@ -122,6 +152,55 @@ describe("ShowReaderExt", function()
             readerui_module:showReader("KINDLE_VIRTUAL://B001/book.kfx")
             assert.equals(1, #original_showReader_calls)
             assert.equals("/cache/book.epub", original_showReader_calls[1].file)
+
+            ShowReaderExt:unapply()
+        end)
+
+        it("should show and clear preparation status for an uncached book", function()
+            local mock_vlib = createMockVirtualLibrary()
+            mock_vlib.isBookPrepared = function() return false end
+
+            ShowReaderExt:init(mock_vlib, nil)
+            ShowReaderExt:apply()
+
+            readerui_module:showReader("KINDLE_VIRTUAL://B001/book.kfx")
+
+            assert.equals(1, #trapper_info_calls)
+            assert.is_truthy(trapper_info_calls[1]:match("Preparing Test Book"))
+            assert.equals(1, trapper_clear_calls)
+            assert.equals(1, #original_showReader_calls)
+
+            ShowReaderExt:unapply()
+        end)
+
+        it("should skip preparation status for a cached book", function()
+            ShowReaderExt:init(createMockVirtualLibrary(), nil)
+            ShowReaderExt:apply()
+
+            readerui_module:showReader("KINDLE_VIRTUAL://B001/book.kfx")
+
+            assert.equals(0, #trapper_info_calls)
+            assert.equals(0, trapper_clear_calls)
+            assert.equals(1, #original_showReader_calls)
+
+            ShowReaderExt:unapply()
+        end)
+
+        it("should clear preparation status when preparation fails", function()
+            local mock_vlib = createMockVirtualLibrary()
+            mock_vlib.isBookPrepared = function() return false end
+            mock_vlib.resolveBookPath = function() return nil, "conversion_failed" end
+
+            ShowReaderExt:init(mock_vlib, nil)
+            ShowReaderExt:apply()
+
+            readerui_module:showReader("KINDLE_VIRTUAL://B001/book.kfx")
+
+            local UIManager = require("ui/uimanager")
+            assert.equals(1, #trapper_info_calls)
+            assert.equals(1, trapper_clear_calls)
+            assert.equals(0, #original_showReader_calls)
+            assert.is_true(#UIManager._show_calls > 0)
 
             ShowReaderExt:unapply()
         end)

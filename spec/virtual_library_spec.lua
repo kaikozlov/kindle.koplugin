@@ -445,6 +445,46 @@ describe("VirtualLibrary", function()
         end)
     end)
 
+    describe("isBookPrepared", function()
+        it("should treat direct books as prepared without a cache manager", function()
+            local vlib = VirtualLibrary:new({})
+
+            assert.is_true(vlib:isBookPrepared({ open_mode = "direct" }))
+        end)
+
+        it("should report a fresh converted book as prepared", function()
+            local checked_book
+            local vlib = VirtualLibrary:new({})
+            vlib:setCacheManager({
+                isFresh = function(_, book)
+                    checked_book = book
+                    return true
+                end,
+            })
+            local book = { open_mode = "convert" }
+
+            assert.is_true(vlib:isBookPrepared(book))
+            assert.equals(book, checked_book)
+        end)
+
+        it("should report a stale converted book as needing preparation", function()
+            local vlib = VirtualLibrary:new({})
+            vlib:setCacheManager({
+                isFresh = function() return false end,
+            })
+
+            assert.is_false(vlib:isBookPrepared({ open_mode = "convert" }))
+        end)
+
+        it("should report nil, blocked, and unconfigured books as not prepared", function()
+            local vlib = VirtualLibrary:new({})
+
+            assert.is_false(vlib:isBookPrepared(nil))
+            assert.is_false(vlib:isBookPrepared({ open_mode = "blocked" }))
+            assert.is_false(vlib:isBookPrepared({ open_mode = "convert" }))
+        end)
+    end)
+
     describe("getBlockedReasonText", function()
         it("should return text for drm reason", function()
             local vlib = VirtualLibrary:new({})

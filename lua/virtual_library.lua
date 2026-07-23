@@ -244,6 +244,26 @@ function VirtualLibrary:createVirtualFolderEntry(parent_path)
     return entry
 end
 
+--- Returns whether a book can be opened without running the converter.
+--- Direct-mode books are always ready; converted books are ready only when
+--- their cached EPUB and metadata are fresh.
+function VirtualLibrary:isBookPrepared(book)
+    if not book then
+        return false
+    end
+
+    if book.open_mode == "direct" then
+        return true
+    end
+
+    if book.open_mode == "blocked" or not self.cache_manager then
+        return false
+    end
+
+    local fresh = self.cache_manager:isFresh(book)
+    return fresh == true
+end
+
 function VirtualLibrary:resolveBookPath(book)
     if not book then
         return nil, "missing book"

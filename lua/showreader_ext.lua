@@ -4,7 +4,10 @@
 --- and delegates to the original showReader with a real file path.
 
 local InfoMessage = require("ui/widget/infomessage")
+local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
+local T = require("ffi/util").template
+local _ = require("gettext")
 local logger = require("logger")
 
 local ShowReaderExt = {
@@ -54,8 +57,22 @@ function ShowReaderExt:apply()
             return
         end
 
-        -- Resolve to real file (may trigger KFX→EPUB conversion + caching)
-        local real_file, err = virtual_library:resolveBookPath(book)
+        -- Resolve to real file (may trigger KFX→EPUB conversion + caching).
+        -- On a cache miss, force-paint a status message before the blocking
+        -- helper process starts. Keep the Trapper scope limited to preparation
+        -- so later reading-state prompts retain their existing behavior.
+        local real_file, err
+        if virtual_library:isBookPrepared(book) then
+            real_file, err = virtual_library:resolveBookPath(book)
+        else
+            Trapper:wrap(function()
+                local title = book.display_name or book.title or _("book")
+                Trapper:info(T(_("Preparing %1…\nThis may take a moment."), title))
+                real_file, err = virtual_library:resolveBookPath(book)
+                Trapper:clear()
+            end)
+        end
+
         if not real_file then
             logger.warn("KindlePlugin: failed to resolve book:", err or "unknown")
             UIManager:show(InfoMessage:new({
