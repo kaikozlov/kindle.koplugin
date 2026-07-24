@@ -39,7 +39,11 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.x"
+          # Match the CPython runtime bundled by python_build.sh.
+          python-version: "3.11"
+
+      - name: Install Python test dependencies
+        run: python3 -m pip install --disable-pip-version-check pycryptodome==3.23.0
 
       - uses: actions/setup-java@v5
         with:

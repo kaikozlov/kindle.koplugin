@@ -74,6 +74,11 @@ class PlaintextDrmIonTests(unittest.TestCase):
             with open(input_path, "wb") as input_file:
                 input_file.write(drmion_data)
 
+            yj_book = mock.Mock()
+            yj_book.return_value.convert_to_epub.return_value = b"epub-data"
+            fake_kfxlib = types.ModuleType("kfxlib")
+            fake_kfxlib.YJ_Book = yj_book
+
             stdout = io.StringIO()
             with mock.patch.object(kindle_helper, "_find_page_key", return_value=None), \
                     mock.patch.object(
@@ -81,10 +86,9 @@ class PlaintextDrmIonTests(unittest.TestCase):
                         "_decrypt_drmion",
                         return_value=b"CONT plaintext book",
                     ) as decrypt, \
-                    mock.patch("kfxlib.YJ_Book") as yj_book, \
+                    mock.patch.dict(sys.modules, {"kfxlib": fake_kfxlib}), \
                     contextlib.redirect_stdout(stdout), \
                     self.assertRaises(SystemExit) as exited:
-                yj_book.return_value.convert_to_epub.return_value = b"epub-data"
                 kindle_helper.cmd_convert(self.make_args(input_path, output_path))
 
             self.assertEqual(0, exited.exception.code)
