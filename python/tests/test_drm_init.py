@@ -45,5 +45,20 @@ class AccountSecretPreflightTests(unittest.TestCase):
         self.assertEqual("", warning)
 
 
+class DeviceSerialTests(unittest.TestCase):
+    def test_serial_removes_firmware_artifacts(self):
+        serial_file = mock.mock_open(read_data="  G090G10512345678\r\n\x00é")
+        with mock.patch("builtins.open", serial_file):
+            serial = drm_init._read_device_serial()
+
+        self.assertEqual("G090G10512345678", serial)
+
+    def test_invalid_serial_is_rejected(self):
+        serial_file = mock.mock_open(read_data="\x00\r\n ")
+        with mock.patch("builtins.open", serial_file):
+            with self.assertRaisesRegex(RuntimeError, "empty or invalid"):
+                drm_init._read_device_serial()
+
+
 if __name__ == "__main__":
     unittest.main()

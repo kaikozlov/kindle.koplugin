@@ -230,12 +230,21 @@ def _find_vouchers(root):
 
 
 def _read_device_serial():
-    """Read the Kindle serial from /proc/usid."""
+    """Read and normalize the Kindle serial from /proc/usid.
+
+    Some firmware versions append line endings or other non-serial bytes to
+    this proc file. The DRM SDK expects the alphanumeric DSN only.
+    """
     try:
         with open("/proc/usid", "r") as f:
-            return f.read().strip("\x00\n")
+            raw_serial = f.read()
     except FileNotFoundError:
         raise RuntimeError("/proc/usid not found — not running on a Kindle device?")
+
+    serial = "".join(char for char in raw_serial if char.isascii() and char.isalnum())
+    if not serial:
+        raise RuntimeError("Device serial is empty or invalid (/proc/usid)")
+    return serial
 
 
 def _extract_keys_with_hook(serial, vouchers, plugin_dir):
