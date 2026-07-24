@@ -69,6 +69,64 @@ class KeyLogCleanupTests(unittest.TestCase):
             self.assertFalse(os.path.exists(key_log))
 
 
+class PageKeyValidationTests(unittest.TestCase):
+    def test_validation_checks_main_and_sidecar_drmion(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            kfx_path = os.path.join(tmpdir, "book.kfx")
+            sidecar_assets = os.path.join(tmpdir, "book.sdr", "assets")
+            os.makedirs(sidecar_assets)
+            sidecar_path = os.path.join(sidecar_assets, "resource.kfx")
+            for path in (kfx_path, sidecar_path):
+                with open(path, "wb") as drmion_file:
+                    drmion_file.write(drm_init.drmion.DRMION_SIGNATURE + b"content")
+
+            with mock.patch.object(
+                drm_init.drmion,
+                "decrypt",
+                return_value=b"CONT validated",
+            ) as decrypt:
+                valid, error = drm_init._validate_page_key(kfx_path, b"k" * 16)
+
+            self.assertTrue(valid)
+            self.assertIsNone(error)
+            self.assertEqual(2, decrypt.call_count)
+
+    def test_validation_rejects_a_key_that_cannot_decrypt_content(self):
+        with tempfile.NamedTemporaryFile(suffix=".kfx") as kfx_file:
+            kfx_file.write(drm_init.drmion.DRMION_SIGNATURE + b"content")
+            kfx_file.flush()
+            with mock.patch.object(
+                drm_init.drmion,
+                "decrypt",
+                side_effect=ValueError("bad padding"),
+            ):
+                valid, error = drm_init._validate_page_key(kfx_file.name, b"x" * 16)
+
+        self.assertFalse(valid)
+        self.assertIn("bad padding", error)
+
+    def test_per_book_extraction_does_not_cache_rejected_key(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            kfx_path = os.path.join(tmpdir, "book.kfx")
+            voucher_path = os.path.join(tmpdir, "book.sdr", "assets", "voucher")
+            with mock.patch.object(drm_init, "_find_voucher_for_kfx", return_value=voucher_path), \
+                    mock.patch.object(drm_init, "_read_device_serial", return_value="SERIAL"), \
+                    mock.patch.object(drm_init, "_extract_keys_with_hook"), \
+                    mock.patch.object(drm_init, "_parse_captured_keys", return_value=[{"key": b"v" * 32}]), \
+                    mock.patch.object(drm_init, "_find_voucher_key", return_value=b"v" * 32), \
+                    mock.patch.object(drm_init, "_extract_page_key", return_value=b"p" * 16), \
+                    mock.patch.object(
+                        drm_init,
+                        "_validate_page_key",
+                        return_value=(False, "page key rejected"),
+                    ):
+                result = drm_init.extract_book_key(kfx_path, tmpdir, tmpdir)
+
+            self.assertFalse(result["ok"])
+            self.assertIn("rejected", result["message"])
+            self.assertFalse(os.path.exists(os.path.join(tmpdir, "drm_keys.json")))
+
+
 class DeviceSerialTests(unittest.TestCase):
     def test_serial_removes_firmware_artifacts(self):
         serial_file = mock.mock_open(read_data="  G090G10512345678\r\n\x00é")

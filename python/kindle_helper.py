@@ -59,8 +59,7 @@ def exit_json(obj, code=0):
 # DRMION decryption
 # ---------------------------------------------------------------------------
 
-DRMION_SIGNATURE = b"\xeaDRMION\xee"
-CONT_SIGNATURE = b"CONT"
+from dedrm.drmion import CONT_SIGNATURE, DRMION_SIGNATURE, decrypt as decrypt_drmion
 
 
 def _find_page_key(kfx_path, cache_dir):
@@ -108,31 +107,8 @@ def _find_page_key(kfx_path, cache_dir):
 
 
 def _decrypt_drmion(data, page_key):
-    """Decrypt a DRMION blob using DeDRM's DrmIon with proper ION parsing.
-
-    Uses the DeDRM ion.py library which correctly parses the ION structure
-    of DRMION envelopes (EncryptedPage, PlainText, LZMA compression, etc).
-    Returns the decrypted CONT data.
-    """
-    from io import BytesIO as _BytesIO
-    from dedrm.ion import DrmIon as _DrmIon
-
-    if not data.startswith(DRMION_SIGNATURE):
-        raise ValueError("Not a DRMION file")
-
-    class _Voucher:
-        def __init__(self, key):
-            self.secretkey = key
-
-    out = _BytesIO()
-    drm = _DrmIon(_BytesIO(data[8:-8]), lambda name: _Voucher(page_key))
-    drm.parse(out)
-    result = out.getvalue()
-
-    if not result.startswith(CONT_SIGNATURE):
-        raise ValueError("Decrypted data is not a valid CONT container")
-
-    return result
+    """Decrypt a DRMION blob using the shared DeDRM parser."""
+    return decrypt_drmion(data, page_key)
 
 
 # ---------------------------------------------------------------------------

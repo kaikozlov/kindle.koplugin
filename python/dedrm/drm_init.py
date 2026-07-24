@@ -20,6 +20,8 @@ import time
 
 from io import BytesIO
 
+from dedrm import drmion
+
 # Shared metadata key prefix — keys starting with this are the shared
 # device metadata key, not per-book voucher keys.
 _SHARED_METADATA_KEY_PREFIX = "6533356635"
@@ -79,6 +81,49 @@ def _find_voucher_for_kfx(kfx_path):
     return None
 
 
+def _find_kfx_for_voucher(voucher_path):
+    """Return the KFX file adjacent to an assets/voucher path, if present."""
+    sdr_dir = os.path.dirname(os.path.dirname(voucher_path))
+    if not sdr_dir.endswith(".sdr"):
+        return None
+    kfx_path = os.path.splitext(sdr_dir)[0] + ".kfx"
+    return kfx_path if os.path.isfile(kfx_path) else None
+
+
+def _iter_book_drmion_data(kfx_path):
+    """Yield DRMION blobs from a book's main file and sidecar assets."""
+    paths = [kfx_path]
+    sidecar_root = os.path.splitext(kfx_path)[0] + ".sdr"
+    if os.path.isdir(sidecar_root):
+        for dirpath, _, filenames in os.walk(sidecar_root):
+            for filename in sorted(filenames):
+                paths.append(os.path.join(dirpath, filename))
+
+    for path in paths:
+        try:
+            with open(path, "rb") as source_file:
+                data = source_file.read()
+        except OSError:
+            continue
+        if data.startswith(drmion.DRMION_SIGNATURE):
+            yield path, data
+
+
+def _validate_page_key(kfx_path, page_key):
+    """Verify a derived page key against all DRMION content for the book."""
+    checked = 0
+    for path, data in _iter_book_drmion_data(kfx_path):
+        checked += 1
+        try:
+            drmion.decrypt(data, page_key)
+        except Exception as error:
+            return False, f"page key rejected by {path}: {error}"
+
+    if checked == 0:
+        return False, "no DRMION content found for page-key validation"
+    return True, None
+
+
 def extract_book_key(kfx_path, plugin_dir, cache_dir):
     """Extract the decryption key for a single book.
 
@@ -113,6 +158,10 @@ def extract_book_key(kfx_path, plugin_dir, cache_dir):
             page_key = _extract_page_key(voucher_path, voucher_key)
         except Exception as e:
             return {"ok": False, "message": f"page key extraction failed: {e}"}
+
+        valid, validation_error = _validate_page_key(kfx_path, page_key)
+        if not valid:
+            return {"ok": False, "message": validation_error}
 
         book_id = _derive_book_id(voucher_path)
 
@@ -195,6 +244,15 @@ def run(documents_root, plugin_dir, cache_dir):
                 page_key = _extract_page_key(voucher_path, voucher_key)
             except Exception as e:
                 print(f"drm-init: page key extraction failed for {voucher_path}: {e}", file=sys.stderr, flush=True)
+                continue
+
+            kfx_path = _find_kfx_for_voucher(voucher_path)
+            if not kfx_path:
+                print(f"drm-init: skipping {voucher_path}: adjacent KFX not found", file=sys.stderr, flush=True)
+                continue
+            valid, validation_error = _validate_page_key(kfx_path, page_key)
+            if not valid:
+                print(f"drm-init: skipping {voucher_path}: {validation_error}", file=sys.stderr, flush=True)
                 continue
 
             book_id = _derive_book_id(voucher_path)
