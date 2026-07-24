@@ -9,6 +9,7 @@ Ports the Go drm-init command to Python. The workflow:
 6. Write drm_keys.json cache
 """
 
+import contextlib
 import json
 import os
 import re
@@ -27,6 +28,19 @@ _SHARED_METADATA_KEY_PREFIX = "6533356635"
 _AES_KEY_RE = re.compile(r"^EVP_256_KEY:([0-9a-f]+)\s+IV:([0-9a-f]+)")
 
 _ACSR_PATH = "/var/local/java/prefs/acsr"
+_KEY_LOG_PATH = "/mnt/us/crypto_keys.log"
+
+
+@contextlib.contextmanager
+def _temporary_key_log():
+    """Remove captured key material whenever an extraction attempt finishes."""
+    try:
+        yield _KEY_LOG_PATH
+    finally:
+        try:
+            os.remove(_KEY_LOG_PATH)
+        except OSError:
+            pass
 
 
 def _preflight_check():
@@ -81,54 +95,49 @@ def extract_book_key(kfx_path, plugin_dir, cache_dir):
     # Step 2: Read device serial
     serial = _read_device_serial()
 
-    # Step 3: Run the Java extractor with just this voucher
-    _extract_keys_with_hook(serial, [voucher_path], plugin_dir)
+    with _temporary_key_log() as key_log_path:
+        # Step 3: Run the Java extractor with just this voucher
+        _extract_keys_with_hook(serial, [voucher_path], plugin_dir)
 
-    # Step 4: Parse captured keys
-    keys = _parse_captured_keys("/mnt/us/crypto_keys.log")
-    if not keys:
-        return {"ok": False, "message": "no keys captured from device"}
+        # Step 4: Parse captured keys
+        keys = _parse_captured_keys(key_log_path)
+        if not keys:
+            return {"ok": False, "message": "no keys captured from device"}
 
-    # Step 5: Extract page key
-    voucher_key = _find_voucher_key(voucher_path, keys)
-    if voucher_key is None:
-        return {"ok": False, "message": "could not match key to voucher"}
+        # Step 5: Extract page key
+        voucher_key = _find_voucher_key(voucher_path, keys)
+        if voucher_key is None:
+            return {"ok": False, "message": "could not match key to voucher"}
 
-    try:
-        page_key = _extract_page_key(voucher_path, voucher_key)
-    except Exception as e:
-        return {"ok": False, "message": f"page key extraction failed: {e}"}
+        try:
+            page_key = _extract_page_key(voucher_path, voucher_key)
+        except Exception as e:
+            return {"ok": False, "message": f"page key extraction failed: {e}"}
 
-    book_id = _derive_book_id(voucher_path)
+        book_id = _derive_book_id(voucher_path)
 
-    # Step 6: Update drm_keys.json (merge into existing or create new)
-    cache_path = os.path.join(cache_dir, "drm_keys.json")
-    cache = _load_key_cache(cache_path)
-    if cache is None:
-        cache = {
-            "version": 1,
-            "device_serial": serial,
-            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "books": {},
+        # Step 6: Update drm_keys.json (merge into existing or create new)
+        cache_path = os.path.join(cache_dir, "drm_keys.json")
+        cache = _load_key_cache(cache_path)
+        if cache is None:
+            cache = {
+                "version": 1,
+                "device_serial": serial,
+                "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "books": {},
+            }
+
+        cache["books"][book_id] = {
+            "voucher_path": voucher_path,
+            "voucher_key_256": voucher_key.hex(),
+            "page_key_128": page_key.hex(),
         }
 
-    cache["books"][book_id] = {
-        "voucher_path": voucher_path,
-        "voucher_key_256": voucher_key.hex(),
-        "page_key_128": page_key.hex(),
-    }
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(cache_path, "w") as f:
+            json.dump(cache, f, indent=2)
 
-    os.makedirs(cache_dir, exist_ok=True)
-    with open(cache_path, "w") as f:
-        json.dump(cache, f, indent=2)
-
-    # Clean up the key log
-    try:
-        os.remove("/mnt/us/crypto_keys.log")
-    except OSError:
-        pass
-
-    return {"ok": True, "book_id": book_id}
+        return {"ok": True, "book_id": book_id}
 
 
 def _load_key_cache(cache_path):
@@ -154,68 +163,63 @@ def run(documents_root, plugin_dir, cache_dir):
     # Step 2: Read device serial
     serial = _read_device_serial()
 
-    # Step 3: Run the Java extractor with LD_PRELOAD hook
-    _extract_keys_with_hook(serial, vouchers, plugin_dir)
+    with _temporary_key_log() as key_log_path:
+        # Step 3: Run the Java extractor with LD_PRELOAD hook
+        _extract_keys_with_hook(serial, vouchers, plugin_dir)
 
-    # Step 4: Parse captured AES keys from the log
-    keys = _parse_captured_keys("/mnt/us/crypto_keys.log")
-    if not keys:
-        raise RuntimeError(
-            "No encryption keys were captured from the device. "
-            "This may indicate a problem with the DRM helper. "
-            "Try restarting your Kindle and running Refresh Book Access again."
-        )
+        # Step 4: Parse captured AES keys from the log
+        keys = _parse_captured_keys(key_log_path)
+        if not keys:
+            raise RuntimeError(
+                "No encryption keys were captured from the device. "
+                "This may indicate a problem with the DRM helper. "
+                "Try restarting your Kindle and running Refresh Book Access again."
+            )
 
-    # Step 5: Decrypt vouchers and extract page keys
-    cache = {
-        "version": 1,
-        "device_serial": serial,
-        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "books": {},
-    }
+        # Step 5: Decrypt vouchers and extract page keys
+        cache = {
+            "version": 1,
+            "device_serial": serial,
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "books": {},
+        }
 
-    keys_found = 0
-    for voucher_path in vouchers:
-        voucher_key = _find_voucher_key(voucher_path, keys)
-        if voucher_key is None:
-            print(f"drm-init: skipping {voucher_path}: no matching key", file=sys.stderr, flush=True)
-            continue
-
-        try:
-            page_key = _extract_page_key(voucher_path, voucher_key)
-        except Exception as e:
-            print(f"drm-init: page key extraction failed for {voucher_path}: {e}", file=sys.stderr, flush=True)
-            continue
-
-        book_id = _derive_book_id(voucher_path)
-
-        # Prefer non-tmp vouchers over tmp_ ones
-        if book_id in cache["books"]:
-            new_is_tmp = "tmp_" in voucher_path
-            existing_is_tmp = "tmp_" in cache["books"][book_id].get("voucher_path", "")
-            if not existing_is_tmp and new_is_tmp:
-                print(f"drm-init: skipping tmp voucher {voucher_path}", file=sys.stderr, flush=True)
+        keys_found = 0
+        for voucher_path in vouchers:
+            voucher_key = _find_voucher_key(voucher_path, keys)
+            if voucher_key is None:
+                print(f"drm-init: skipping {voucher_path}: no matching key", file=sys.stderr, flush=True)
                 continue
 
-        cache["books"][book_id] = {
-            "voucher_path": voucher_path,
-            "voucher_key_256": voucher_key.hex(),
-            "page_key_128": page_key.hex(),
-        }
-        keys_found += 1
+            try:
+                page_key = _extract_page_key(voucher_path, voucher_key)
+            except Exception as e:
+                print(f"drm-init: page key extraction failed for {voucher_path}: {e}", file=sys.stderr, flush=True)
+                continue
 
-    # Step 6: Write the cache file
-    cache_path = os.path.join(cache_dir, "drm_keys.json")
-    with open(cache_path, "w") as f:
-        json.dump(cache, f, indent=2)
+            book_id = _derive_book_id(voucher_path)
 
-    # Step 7: Clean up the key log
-    try:
-        os.remove("/mnt/us/crypto_keys.log")
-    except OSError:
-        pass
+            # Prefer non-tmp vouchers over tmp_ ones
+            if book_id in cache["books"]:
+                new_is_tmp = "tmp_" in voucher_path
+                existing_is_tmp = "tmp_" in cache["books"][book_id].get("voucher_path", "")
+                if not existing_is_tmp and new_is_tmp:
+                    print(f"drm-init: skipping tmp voucher {voucher_path}", file=sys.stderr, flush=True)
+                    continue
 
-    return {"books_found": len(vouchers), "keys_found": keys_found}
+            cache["books"][book_id] = {
+                "voucher_path": voucher_path,
+                "voucher_key_256": voucher_key.hex(),
+                "page_key_128": page_key.hex(),
+            }
+            keys_found += 1
+
+        # Step 6: Write the cache file
+        cache_path = os.path.join(cache_dir, "drm_keys.json")
+        with open(cache_path, "w") as f:
+            json.dump(cache, f, indent=2)
+
+        return {"books_found": len(vouchers), "keys_found": keys_found}
 
 
 def _find_vouchers(root):
@@ -259,7 +263,7 @@ def _extract_keys_with_hook(serial, vouchers, plugin_dir):
 
     # Clear the key log
     try:
-        os.remove("/mnt/us/crypto_keys.log")
+        os.remove(_KEY_LOG_PATH)
     except OSError:
         pass
 

@@ -45,6 +45,30 @@ class AccountSecretPreflightTests(unittest.TestCase):
         self.assertEqual("", warning)
 
 
+class KeyLogCleanupTests(unittest.TestCase):
+    def test_key_log_is_removed_after_failure(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            key_log = os.path.join(tmpdir, "crypto_keys.log")
+            with mock.patch.object(drm_init, "_KEY_LOG_PATH", key_log):
+                with self.assertRaisesRegex(RuntimeError, "extraction failed"):
+                    with drm_init._temporary_key_log():
+                        with open(key_log, "w") as log_file:
+                            log_file.write("sensitive key material")
+                        raise RuntimeError("extraction failed")
+
+            self.assertFalse(os.path.exists(key_log))
+
+    def test_key_log_is_removed_after_success(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            key_log = os.path.join(tmpdir, "crypto_keys.log")
+            with mock.patch.object(drm_init, "_KEY_LOG_PATH", key_log):
+                with drm_init._temporary_key_log():
+                    with open(key_log, "w") as log_file:
+                        log_file.write("sensitive key material")
+
+            self.assertFalse(os.path.exists(key_log))
+
+
 class DeviceSerialTests(unittest.TestCase):
     def test_serial_removes_firmware_artifacts(self):
         serial_file = mock.mock_open(read_data="  G090G10512345678\r\n\x00é")
