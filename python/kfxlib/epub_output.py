@@ -505,8 +505,9 @@ class EPUB_Output(object):
         if filename is None:
             filename = self.TEXT_FILEPATH % part_index
 
-        if self.is_book_part_filename(filename):
-            raise Exception("BookPart filename %s is not unique" % filename)
+        while self.is_book_part_filename(filename):
+            log.error("BookPart filename %s is not unique" % filename)
+            filename = filename.replace(".", "_.")
 
         if html is None:
             html = new_xhtml()

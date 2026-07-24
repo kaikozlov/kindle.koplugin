@@ -16,6 +16,7 @@ NMDL_NOTE = "NMDL_NOTE"
 NMDL_NOTE_V2 = "NMDL_NOTE_V2",
 NMDL_NOTE_V3 = "NMDL_NOTE_V3",
 NMDL_NOTE_V4 = "NMDL_NOTE_V4",
+NMDL_NOTE_V5 = "NMDL_NOTE_V5",
 SUPPORTS_HD_V1 = "SUPPORTS_HD_V1"
 SUPPORTS_HDV_V1 = "SUPPORTS_HDV_V1"
 SUPPORTS_HDV_V2 = "SUPPORTS_HDV_V2"
@@ -241,6 +242,7 @@ KNOWN_FEATURES = {
             2: NMDL_NOTE_V2,
             3: NMDL_NOTE_V3,
             4: NMDL_NOTE_V4,
+            5: NMDL_NOTE_V5,
             },
         },
 
@@ -277,6 +279,7 @@ KNOWN_FEATURES = {
             5: YJJPV_V5,
             6: YJJPV_V6,
             7: YJJPV_V7,
+            8: YJJPV_V8,
             },
 
         "reflow-language": {
@@ -651,6 +654,7 @@ KNOWN_METADATA = {
             "1.108.0.0",
             "1.109.0.0",
             "1.110.0.0",
+            "1.111.0.0",
 
             "3.0.0",
             "3.1.0",
@@ -772,6 +776,7 @@ KNOWN_METADATA = {
             "3.101.0",
             "3.102.0",
             "3.103.0",
+            "3.104.0",
             }
 
     },
@@ -930,6 +935,7 @@ KNOWN_METADATA = {
             833,
             834,
             851,
+            852,
             },
         },
     }

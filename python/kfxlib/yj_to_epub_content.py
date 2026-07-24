@@ -208,6 +208,10 @@ class KFX_EPUB_Content(object):
         self.pop_context()
 
     def process_page_spread_page_template(self, page_template, section_name, page_spread="", parent_template_id=None, is_section=True):
+        if self.DEBUG:
+            log.debug("process_page_spread_page_template: page_template=%s, section_name=%s, page_spread=%s" % (
+                repr(page_template), section_name, page_spread))
+
         if ion_type(page_template) is IonSymbol:
             page_template = self.get_fragment(ftype="$608", fid=page_template)
 
@@ -250,9 +254,17 @@ class KFX_EPUB_Content(object):
             page_property = left_property if self.page_progression_direction == "ltr" else right_property
 
             for page_template_ in story.pop("$146", []):
-                self.process_page_spread_page_template(page_template_, section_name, page_property, parent_template_id, is_section=False)
-                page_property = left_property if page_property == right_property else right_property
-                parent_template_id = None
+                type_ = page_template_.get("$159")
+                if type_ == "$269":
+                    book_part = self.book_parts[-1]
+                    self.process_content(page_template_, book_part.body(), book_part, self.writing_mode, is_section=True)
+                else:
+                    if type_ != "$270":
+                        log.error("Unexpected type %s in section %s page spread content" % (type_, section_name))
+
+                    self.process_page_spread_page_template(page_template_, section_name, page_property, parent_template_id, is_section=False)
+                    page_property = left_property if page_property == right_property else right_property
+                    parent_template_id = None
 
             self.pop_context()
             self.check_empty(story, "story %s" % story_name)
@@ -322,9 +334,17 @@ class KFX_EPUB_Content(object):
             self.push_context("story %s" % story_name)
 
             for page_template_ in story.pop("$146", []):
-                self.process_page_spread_page_template(
-                        page_template_, section_name, "rendition:page-spread-center", parent_template_id, is_section=False)
-                parent_template_id = None
+                type_ = page_template_.get("$159")
+                if type_ == "$269":
+                    book_part = self.book_parts[-1]
+                    self.process_content(page_template_, book_part.body(), book_part, self.writing_mode, is_section=True)
+                else:
+                    if type_ != "$270":
+                        log.error("Unexpected type %s in section %s page spread center content" % (type_, section_name))
+
+                    self.process_page_spread_page_template(
+                            page_template_, section_name, "rendition:page-spread-center", parent_template_id, is_section=False)
+                    parent_template_id = None
 
             self.pop_context()
             self.check_empty(story, "story %s" % story_name)

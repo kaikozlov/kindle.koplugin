@@ -49,14 +49,16 @@ class KFX_EPUB(
 
     DEBUG = False
 
-    def __init__(self, book, epub2_desired=False, force_cover=False, metadata_only=False, progress=None):
+    def __init__(
+            self, book, epub2_desired=False, force_cover=False, desaturate_notebooks=False,
+            metadata_only=False, progress=None):
         decimal.getcontext().prec = 6
         KFX_EPUB_Content.__init__(self)
         KFX_EPUB_Illustrated_Layout.__init__(self)
         KFX_EPUB_Metadata.__init__(self)
         KFX_EPUB_Misc.__init__(self)
         KFX_EPUB_Navigation.__init__(self)
-        KFX_EPUB_Notebook.__init__(self)
+        KFX_EPUB_Notebook.__init__(self, desaturate_notebooks)
         KFX_EPUB_Properties.__init__(self)
         KFX_EPUB_Resources.__init__(self)
         EPUB_Output.__init__(self, epub2_desired, force_cover, not metadata_only)

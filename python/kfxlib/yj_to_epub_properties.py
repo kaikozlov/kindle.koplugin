@@ -648,9 +648,10 @@ YJ_LENGTH_UNITS = {
 
 
 COLOR_YJ_PROPERTIES = {
-    "$83", "$86", "$85", "$87", "$84", "$116",
-    "$498", "$70", "$121", "$105", "$555", "$28", "$75",
-    "$21", "$19", "$718", "$24",
+    "$83", "$86", "$85", "$87", "$84", "$498",
+    "$116", "$70", "$121", "$105", "$555",
+    "$28", "$75", "$21", "$19", "$718",
+    "$24",
     }
 
 COLOR_NAME = {
@@ -1171,7 +1172,7 @@ class KFX_EPUB_Properties(object):
 
         return self.Style(declarations)
 
-    def property_value(self, yj_property_name, yj_value, svg=False):
+    def property_value(self, yj_property_name, yj_value, svg=False, transform_matrix_swap=False):
         property_info = YJ_PROPERTY_INFO.get(yj_property_name, None)
         value_map = property_info.values if property_info is not None else None
 
@@ -1331,6 +1332,9 @@ class KFX_EPUB_Properties(object):
             if yj_property_name == "$650":
                 value = self.process_polygon(yj_value)
 
+            elif yj_property_name == "vertex_list" or yj_property_name == "$851":
+                value = self.process_vertex_list(yj_value)
+
             elif yj_property_name == "$646" and len(yj_value) > 0:
                 values = []
                 for collision in yj_value:
@@ -1342,7 +1346,7 @@ class KFX_EPUB_Properties(object):
                 value = " ".join(sorted(values))
 
             elif yj_property_name == "$98":
-                value = self.process_transform(yj_value, svg)
+                value = self.process_transform(yj_value, svg=svg, transform_matrix_swap=transform_matrix_swap)
 
             elif yj_property_name == "$497":
                 values = []
@@ -2100,10 +2104,10 @@ class KFX_EPUB_Properties(object):
         return prefix + sep + suffix
 
     def fix_color_value(self, value):
-        if isstring(value) and not re.match(r"^[0-9]+$", value):
+        if isstring(value) and not re.match(r"^-?[0-9]+$", value):
             return value
 
-        color = int(value)
+        color = int(value) & 0xffffffff
         return self.color_str(color, self.int_to_alpha(color >> 24))
 
     def add_color_opacity(self, value, opacity):

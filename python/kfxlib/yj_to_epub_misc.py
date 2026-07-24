@@ -1,4 +1,5 @@
 from lxml import etree
+import math
 import operator
 import re
 import urllib.parse
@@ -20,6 +21,48 @@ DEVICE_SCREEN_NARROW_PX = 1200
 DEVICE_SCREEN_WIDE_PX = 1920
 
 RENDER_HTML_PLUGIN_AS = "iframe"
+
+
+SVG_SHAPE_PROPERTY_NAME = {
+    "$498": "stroke",
+    "$70": "fill",
+    "$72": "fill-opacity",
+    "$75": "stroke",
+    "$531": "stroke-dasharray",
+    "$532": "stroke-dashoffset",
+    "$77": "stroke-linecap",
+    "$529": "stroke-linejoin",
+    "$530": "stroke-miterlimit",
+    "$76": "stroke-width",
+    "$98": "transform",
+    }
+
+SVG_SHAPE_DIMENSION_NAME = {
+    "cx": "cx",
+    "$843": "cx",
+    "cy": "cy",
+    "$844": "cy",
+    "end_x": "x2",
+    "$849": "x2",
+    "end_y": "y2",
+    "$850": "y2",
+    "$57": "height",
+    "radius_x": "rx",
+    "$845": "rx",
+    "radius_y": "ry",
+    "$846": "ry",
+    "start_x": "x1",
+    "$847": "x1",
+    "start_y": "y1",
+    "$848": "y1",
+    "vertex_list": "points",
+    "$851": "points",
+    "$56": "width",
+    "x": "x",
+    "$841": "x",
+    "y": "y",
+    "$842": "y",
+    }
 
 
 class KFX_EPUB_Misc(object):
@@ -173,7 +216,7 @@ class KFX_EPUB_Misc(object):
                 if not (div_style.pop("text-align", "center") == "center" and div_style.pop("text-indent", "0") == "0" and
                         img_style.pop("position", "absolute") == "absolute" and
                         img_style.pop("top", "0") == "0" and img_style.pop("left", "0") == "0" and
-                        (iheight == "" or orig_int_height) and
+                        (iheight == "" or orig_int_height or re.match(r"^(100|9[5-9].*)%$", iheight)) and
                         (iwidth == "" or orig_int_width or re.match(r"^(100|9[5-9].*)%$", iwidth)) and
                         len(img_style) == 0 and len(div_style) == 0):
                     log.error("Unexpected image style for SVG wrapper (img h=%d, w=%d): %s" % (
@@ -234,9 +277,26 @@ class KFX_EPUB_Misc(object):
 
     def process_kvg_shape(self, parent, shape, content_list, book_part, writing_mode):
         shape_type = shape.pop("$159")
+
         if shape_type == "$273":
             elem = etree.SubElement(parent, qname(SVG_NS_URI, "path"), attrib={
                     "d": self.process_path(shape.pop("$249"))})
+
+        elif shape_type == "line" or shape_type == "$837":
+            elem = etree.SubElement(parent, qname(SVG_NS_URI, "path"), attrib={
+                    "d": self.process_path(shape.pop("$249"))})
+
+        elif shape_type == "rectangle" or shape_type == "$836":
+            elem = etree.SubElement(parent, qname(SVG_NS_URI, "rect"))
+
+        elif shape_type == "ellipse" or shape_type == "$835":
+            elem = etree.SubElement(parent, qname(SVG_NS_URI, "ellipse"))
+
+        elif shape_type == "polygon" or shape_type == "$838":
+            elem = etree.SubElement(parent, qname(SVG_NS_URI, "polygon"))
+
+        elif shape_type == "polyline" or shape_type == "$839":
+            elem = etree.SubElement(parent, qname(SVG_NS_URI, "polyline"))
 
         elif shape_type == "$270":
             source = shape.pop("$474")
@@ -265,20 +325,17 @@ class KFX_EPUB_Misc(object):
             log.error("Unexpected shape type: %s" % shape_type)
             return
 
-        for yj_property_name, svg_attrib in [
-                    ("$70", "fill"),
-                    ("$72", "fill-opacity"),
-                    ("$75", "stroke"),
-                    ("$531", "stroke-dasharray"),
-                    ("$532", "stroke-dashoffset"),
-                    ("$77", "stroke-linecap"),
-                    ("$529", "stroke-linejoin"),
-                    ("$530", "stroke-miterlimit"),
-                    ("$76", "stroke-width"),
-                    ("$98", "transform"),
-                    ]:
-            if yj_property_name in shape:
-                elem.set(svg_attrib, self.property_value(yj_property_name, shape.pop(yj_property_name), svg=True))
+        shape_dimensions = shape.pop("shape_dimensions", shape.pop("$840", {}))
+
+        for prop in list(shape_dimensions.keys()):
+            if prop in SVG_SHAPE_DIMENSION_NAME:
+                elem.set(SVG_SHAPE_DIMENSION_NAME[prop], self.property_value(prop, shape_dimensions[prop], svg=True))
+            else:
+                log.error("Unknown KVG shape_dimensions: %s" % prop)
+
+        for prop in list(shape.keys()):
+            if prop in SVG_SHAPE_PROPERTY_NAME:
+                elem.set(SVG_SHAPE_PROPERTY_NAME[prop], self.property_value(prop, shape.pop(prop), svg=True, transform_matrix_swap=True))
 
         if "stroke" in elem.attrib and "fill" not in elem.attrib:
             elem.set("fill", "none")
@@ -364,16 +421,31 @@ class KFX_EPUB_Misc(object):
 
         return "polygon(%s)" % (", ".join(d))
 
-    def process_transform(self, vals, svg):
+    def process_vertex_list(self, vertices):
+        if len(vertices) == 0 or (len(vertices) & 1) != 0:
+            log.error("vertex_list contains %d vertices: %s" % repr(vertices))
+
+        points = []
+        for i in range(0, len(vertices), 2):
+            points.append("%s,%s" % (vertices[i], vertices[i + 1]))
+
+        return " ".join(points)
+
+    def process_transform(self, vals, svg=False, transform_matrix_swap=False):
 
         if svg:
             px = ""
             sep = " "
+            deg = ""
         else:
             px = "px"
             sep = ","
+            deg = "deg"
 
         if len(vals) == 6:
+            if transform_matrix_swap:
+                vals[1], vals[2] = vals[2], vals[1]
+
             vals[4] = self.adjust_pixel_value(vals[4])
             vals[5] = self.adjust_pixel_value(vals[5])
 
@@ -391,20 +463,31 @@ class KFX_EPUB_Misc(object):
 
                 return translate + ("scale(%s%s%s)" % (value_str(vals[0]), sep, value_str(vals[3])))
 
-            if vals[0:4] == [0., 1., -1., 0.]:
-                return translate + "rotate(-90deg)"
+            if vals[0] == vals[3] and vals[1] == -vals[2] and vals[0] >= -1 and vals[0] <= 1 and vals[1] >= -1 and vals[1] <= 1:
+                if vals[0:4] == [0., 1., -1., 0.]:
+                    return translate + ("rotate(-90%s)" % deg)
 
-            if vals[0:4] == [0., -1., 1., 0.]:
-                return translate + "rotate(90deg)"
+                if vals[0:4] == [0., -1., 1., 0.]:
+                    return translate + ("rotate(90%s)" % deg)
 
-            if vals[0:4] == [-1., 0., 0., -1.]:
-                return translate + "rotate(180deg)"
+                if vals[0:4] == [-1., 0., 0., -1.]:
+                    return translate + ("rotate(180%s)" % deg)
+
+                angle_rad = math.acos(vals[0])
+                for angle_rad in [angle_rad, -angle_rad]:
+                    if round(math.sin(angle_rad), 3) == round(vals[1], 3):
+                        return translate + ("rotate(%s%s)" % (round(math.degrees(angle_rad), 2), deg))
 
             log.warning("Unexpected transform matrix: %s" % str(vals))
             return "matrix(%s)" % (sep.join([value_str(v) for v in vals]))
 
         log.error("Unexpected transform: %s" % str(vals))
         return "?"
+
+    def process_transform_origin(self, vals):
+        origin = "%s %s" % (vals.pop("$59"), vals.pop("$58"))
+        self.check_empty(vals, "transform_origin")
+        return origin
 
     def process_plugin(self, resource_name, alt_text, content_elem, book_part, is_html=False):
         res = self.process_external_resource(resource_name, save=False, is_plugin=True)

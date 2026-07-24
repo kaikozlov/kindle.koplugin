@@ -99,10 +99,11 @@ class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
         self.final_actions()
         return result
 
-    def convert_to_epub(self, epub2_desired=False, force_cover=False, progress_fn=None):
+    def convert_to_epub(self, epub2_desired=False, force_cover=False, desaturate_notebooks=False, progress_fn=None):
         from .yj_to_epub import KFX_EPUB
         self.decode_book()
         result = KFX_EPUB(self, epub2_desired=epub2_desired, force_cover=force_cover,
+                          desaturate_notebooks=desaturate_notebooks,
                           progress=make_progress(progress_fn)).decompile_to_epub()
         self.final_actions()
         return result
@@ -208,11 +209,18 @@ class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
 
         self.locate_book_datafiles()
 
+        missing_container = False
         for datafile in self.container_datafiles:
             log.info("Processing container: %s" % datafile.name)
             container = self.get_container(datafile)
-            container.deserialize()
-            self.yj_containers.append(container)
+            if container is not None:
+                container.deserialize()
+                self.yj_containers.append(container)
+            else:
+                missing_container = True
+
+        if missing_container:
+            raise Exception("Decoding book failed due to missing container")
 
         for container in self.yj_containers:
             self.fragments.extend(container.get_fragments())

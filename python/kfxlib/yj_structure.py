@@ -1043,9 +1043,12 @@ class BookStructure(object):
         if self.symtab.is_shared_symbol(IS(name)):
             return SYM_TYPE.SHARED
 
-        if (name in [APPROXIMATE_PAGE_LIST, "crop_bleed", DICTIONARY_RULES_SYMBOL, "mkfx_id",
+        if (name in {APPROXIMATE_PAGE_LIST, "crop_bleed", DICTIONARY_RULES_SYMBOL, "mkfx_id",
                      "page_list_entry", "srl_created_by_stampler", "yj.dictionary.text",
-                     "note_template_collection"] or
+                     "note_template_collection",
+                     "cx", "cy", "end_x", "end_y", "ellipse", "line", "polygon", "polyline",
+                     "radius_x", "radius_y", "rectangle", "shape_dimensions", "start_x", "start_y",
+                     "vertex_list", "x", "y"} or
                 re.match(r"^content_[0-9]+$", name) or
                 re.match(r"^eidbucket_[0-9]+$", name) or
                 re.match(r"^PAGE_LIST_[0-9]{10,}$", name) or
@@ -1268,7 +1271,7 @@ class BookStructure(object):
         section_images = collections.defaultdict(list)
 
         for chunk in content_pos_info:
-            if chunk.text is not None:
+            if chunk.text is not None and len(chunk.text.strip()) > 0:
                 raise Exception("Book contains unexpected text")
 
             if chunk.image_resource is not None:

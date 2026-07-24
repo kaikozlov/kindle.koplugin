@@ -24,6 +24,7 @@ ROUND_LINE_ENDINGS = True
 QUANTIZE_THICKNESS = True
 ANNOTATION_TEXT_OPACITY = 0.0
 
+
 SVG_DOCTYPE = b"<!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.1//EN' 'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'>"
 
 ERASER = "eraser"
@@ -55,13 +56,12 @@ STROKE_COLORS = {
     2: ("red", 0xff0000),
     3: ("orange", 0xff8800),
     4: ("yellow", 0xffff00),
-    5: ("green", 0x00ff00),
+    5: ("green", 0x00ff88),
     7: ("aqua", 0x00ffff),
     8: ("purple", 0x8800ff),
     9: ("pink", 0xff00ff),
     10: ("blue", 0x0000ff),
     }
-
 
 MIN_TAF = 0
 MAX_TAF = 1000
@@ -72,10 +72,11 @@ MAX_DAF = 300
 
 class KFX_EPUB_Notebook(object):
 
-    def __init__(self):
-        pass
+    def __init__(self, desaturate_notebooks):
+        self.desaturate_notebooks = desaturate_notebooks
 
     def process_scribe_notebook_page_section(self, section, page_template, section_name, seq):
+
         nmdl_canvas_width = section.pop("nmdl.canvas_width")
         nmdl_canvas_height = section.pop("nmdl.canvas_height")
 
@@ -109,11 +110,18 @@ class KFX_EPUB_Notebook(object):
 
         body = book_part.body()
 
-        page_svg_elem = etree.Element(SVG, nsmap=SVG_NAMESPACES, attrib={
+        page_svg_elem = notebook_content_parent = etree.Element(SVG, nsmap=SVG_NAMESPACES, attrib={
             "version": "1.1", "preserveAspectRatio": "xMidYMid meet",
             "viewBox": "0 0 %d %d" % (nmdl_canvas_width, nmdl_canvas_height)})
 
-        self.process_notebook_content(page_template, page_svg_elem)
+        if self.desaturate_notebooks:
+            desaturate_filter = etree.SubElement(notebook_content_parent, "filter", attrib={
+                "id": "desaturate", "color-interpolation-filters": "sRGB"})
+            etree.SubElement(desaturate_filter, "feColorMatrix", attrib={
+                "type": "matrix", "values": "0.5 0.25 0.25 0 0 0.25 0.5 0.25 0 0 0.25 0.25 0.5 0 0 0 0 0 1 0"})
+            notebook_content_parent = etree.SubElement(notebook_content_parent, "g", attrib={"style": "filter: url(#desaturate);"})
+
+        self.process_notebook_content(page_template, notebook_content_parent)
         self.check_empty(page_template, "Section %s page_template" % section_name)
 
         if CREATE_SVG_FILES_IN_EPUB:
@@ -238,6 +246,38 @@ class KFX_EPUB_Notebook(object):
                     self.scribe_notebook_stroke(content, parent, location_id)
             elif layout != "$323":
                 log.error("%s has unknown %s layout: %s" % (self.content_context, content_type, layout))
+
+        elif content_type == "$272":
+            shape_elem = etree.SubElement(parent, "g")
+
+            position = content.pop("$183", None)
+            if position == "$324":
+                top = self.pixel_value(content.pop("$58"))
+                left = self.pixel_value(content.pop("$59"))
+
+                if top != 0 or left != 0:
+                    shape_elem.set("transform", "translate(%d %d)" % (left, top))
+
+                fixed_height = self.pixel_value(content.pop("$67"))
+                fixed_width = self.pixel_value(content.pop("$66"))
+                height = self.pixel_value(content.pop("$57"))
+                width = self.pixel_value(content.pop("$56"))
+
+                if fixed_height != height or fixed_width != width:
+                    log.error("fixed position: height %s != %s or width %s != %s" % (fixed_height, height, fixed_width, width))
+            else:
+                log.error("Unknown kvg position: %s" % position)
+
+            if "$98" in content:
+                shape_elem = etree.SubElement(shape_elem, "g")
+                shape_elem.set("transform", self.process_transform(content.pop("$98"), svg=True, transform_matrix_swap=True))
+
+                if "$549" in content:
+                    shape_elem.set("transform-origin", self.process_transform_origin(content.pop("$549")))
+
+            for shape in content.pop("$250", []):
+                self.process_kvg_shape(shape_elem, shape, list(), None, None)
+
         else:
             log.error("%s has unknown content type: %s" % (self.content_context, content_type))
 
@@ -301,7 +341,7 @@ class KFX_EPUB_Notebook(object):
                 stroke_color_name, stroke_color = ("unknown", 0)
 
             opacity = 1.0
-            additive_opacity = False
+            darken = False
 
             for daf in nmdl_stroke_values["nmdl.density_adjust_factor"]:
                 if daf != 100:
@@ -321,7 +361,9 @@ class KFX_EPUB_Notebook(object):
                 brush_name = ORIGINAL_PEN
             elif nmdl_brush_type == 1:
                 brush_name = HIGHLIGHTER
-                opacity = 0.2
+                darken = True
+                if stroke_color == 0:
+                    stroke_color = 0xbcbcbc
             elif nmdl_brush_type == 5:
                 brush_name = PENCIL
             elif nmdl_brush_type == 6:
@@ -330,8 +372,8 @@ class KFX_EPUB_Notebook(object):
                 brush_name = MARKER if variable_thickness else PEN
             elif nmdl_brush_type == 9:
                 brush_name = SHADER
-                opacity = 0.2
-                additive_opacity = True
+                darken = True
+                opacity = 0.375
             else:
                 log.error("Unexpected brush type %d" % nmdl_brush_type)
                 brush_name = UNKNOWN + str(nmdl_brush_type)
@@ -378,24 +420,13 @@ class KFX_EPUB_Notebook(object):
 
             opacity_str = "%1.2f" % opacity
 
-            if opacity < 1.0 and not additive_opacity:
-                svg_elem = parent
-                while svg_elem.tag != SVG:
-                    svg_elem = svg_elem.parent
-
-                for opacity_group_elem in svg_elem:
-                    if opacity_group_elem.tag == "g" and opacity_group_elem.get("opacity", "") == opacity_str:
-                        break
-                else:
-                    opacity_group_elem = etree.SubElement(svg_elem, "g")
-                    opacity_group_elem.set("opacity", opacity_str)
-
-                parent = opacity_group_elem
-
             group_elem = etree.SubElement(parent, "g")
 
-            if opacity < 1.0 and additive_opacity:
+            if opacity < 1.0:
                 group_elem.set("opacity", opacity_str)
+
+            if darken:
+                group_elem.set("style", "mix-blend-mode: darken;")
 
             if location_id:
                 group_elem.set("id", location_id)
@@ -420,7 +451,7 @@ class KFX_EPUB_Notebook(object):
                     group_elem.set("stroke-linecap", "round")
 
             if "$98" in content:
-                group_elem.set("transform", self.process_transform(content.pop("$98"), True))
+                group_elem.set("transform", self.process_transform(content.pop("$98"), svg=True))
 
             if False:
                 pass

@@ -85,6 +85,9 @@ class LocalSymbolTable(object):
         self.local_min_id = len(self.symbols) + 1
 
     def create(self, symbol_table_data, yj_local_symbols=False):
+        if DEBUG:
+            log.debug("LocalSymbolTable create: %s", repr(symbol_table_data))
+
         if "imports" in symbol_table_data:
             imports = symbol_table_data["imports"]
             if ion_type(imports) is IonSymbol:
@@ -163,6 +166,9 @@ class LocalSymbolTable(object):
         self.local_min_id = len(self.symbols) + 1
 
     def import_symbols(self, symbols):
+        if DEBUG:
+            log.debug("import_symbols private=%s: %s" % (self.creating_yj_local_symbols, repr(symbols)))
+
         for symbol in symbols:
             symbol = unannotated(symbol)
 
