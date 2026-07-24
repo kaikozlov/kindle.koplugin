@@ -59,7 +59,25 @@ def exit_json(obj, code=0):
 # DRMION decryption
 # ---------------------------------------------------------------------------
 
-from dedrm.drmion import CONT_SIGNATURE, DRMION_SIGNATURE, decrypt as decrypt_drmion
+from dedrm.drmion import (
+    CONT_SIGNATURE,
+    DRMION_SIGNATURE,
+    decrypt as decrypt_drmion,
+    encryption_key_ids,
+)
+
+
+def _decode_page_key(entry):
+    key_value = entry.get("page_key_128", "") if isinstance(entry, dict) else entry
+    if not isinstance(key_value, str) or not key_value:
+        return None
+    try:
+        return bytes.fromhex(key_value)
+    except ValueError:
+        try:
+            return base64.b64decode(key_value)
+        except Exception:
+            return None
 
 
 def _find_page_key(kfx_path, cache_dir):
@@ -75,35 +93,37 @@ def _find_page_key(kfx_path, cache_dir):
 
     books = keys_data.get("books", {})
 
-    # Try matching by book ID extracted from filename
-    # Keys are indexed by ASIN/book ID (e.g. "B009NG3090")
+    # Prefer the stable identifier embedded in DRMION EnvelopeMetadata. This
+    # remains valid when Amazon changes or relocates the on-disk filename.
+    try:
+        with open(kfx_path, "rb") as source_file:
+            source_data = source_file.read()
+        for key_id in encryption_key_ids(source_data):
+            page_key = _decode_page_key(keys_data.get("keys", {}).get(key_id))
+            if page_key is not None:
+                return page_key
+    except Exception:
+        pass
+
+    abs_path = os.path.abspath(kfx_path)
+
+    # Next prefer an exact source path recorded by cache version 2.
+    for entry in books.values():
+        if isinstance(entry, dict) and entry.get("source_path") == abs_path:
+            page_key = _decode_page_key(entry)
+            if page_key is not None:
+                return page_key
+
+    # Legacy cache fallback: match ASIN/book ID embedded in the filename.
     basename = os.path.basename(kfx_path)
     for book_id, entry in books.items():
         if book_id in basename:
-            key_str = entry.get("page_key_128", "") if isinstance(entry, dict) else ""
-            if key_str:
-                try:
-                    return bytes.fromhex(key_str)
-                except ValueError:
-                    pass
+            page_key = _decode_page_key(entry)
+            if page_key is not None:
+                return page_key
 
-    # Fallback: try absolute path match
-    abs_path = os.path.abspath(kfx_path)
-    entry = books.get(abs_path) or books.get(kfx_path)
-    if not entry:
-        return None
-
-    key_str = entry.get("page_key_128", "") if isinstance(entry, dict) else ""
-    if not key_str:
-        return None
-    try:
-        return bytes.fromhex(key_str)
-    except ValueError:
-        pass
-    try:
-        return base64.b64decode(key_str)
-    except Exception:
-        return None
+    # Legacy caches may use a source path as the books-table key.
+    return _decode_page_key(books.get(abs_path) or books.get(kfx_path))
 
 
 def _decrypt_drmion(data, page_key):

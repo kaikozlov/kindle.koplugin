@@ -16,6 +16,48 @@ if PYTHON_DIR not in sys.path:
 import kindle_helper
 
 
+class PageKeyCacheTests(unittest.TestCase):
+    def test_lookup_prefers_encryption_key_identifier(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "renamed-book.kfx")
+            with open(input_path, "wb") as input_file:
+                input_file.write(kindle_helper.DRMION_SIGNATURE + b"metadata")
+            with open(os.path.join(tmpdir, "drm_keys.json"), "w") as cache_file:
+                json.dump({
+                    "version": 2,
+                    "books": {},
+                    "keys": {
+                        "amzn-key-id": {"page_key_128": "11" * 16},
+                    },
+                }, cache_file)
+
+            with mock.patch.object(
+                kindle_helper,
+                "encryption_key_ids",
+                return_value=["amzn-key-id"],
+            ):
+                page_key = kindle_helper._find_page_key(input_path, tmpdir)
+
+        self.assertEqual(bytes.fromhex("11" * 16), page_key)
+
+    def test_legacy_book_cache_remains_readable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "Book_B001234567.kfx")
+            with open(input_path, "wb") as input_file:
+                input_file.write(b"CONT legacy")
+            with open(os.path.join(tmpdir, "drm_keys.json"), "w") as cache_file:
+                json.dump({
+                    "version": 1,
+                    "books": {
+                        "B001234567": {"page_key_128": "22" * 16},
+                    },
+                }, cache_file)
+
+            page_key = kindle_helper._find_page_key(input_path, tmpdir)
+
+        self.assertEqual(bytes.fromhex("22" * 16), page_key)
+
+
 class PlaintextDrmIonTests(unittest.TestCase):
     def make_args(self, input_path, output_path):
         return types.SimpleNamespace(

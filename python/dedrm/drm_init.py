@@ -124,6 +124,61 @@ def _validate_page_key(kfx_path, page_key):
     return True, None
 
 
+def _encryption_key_ids_for_book(kfx_path):
+    """Collect stable encryption-key identifiers from a book's DRMION data."""
+    key_ids = []
+    for _, data in _iter_book_drmion_data(kfx_path):
+        try:
+            data_key_ids = drmion.encryption_key_ids(data)
+        except Exception:
+            continue
+        for key_id in data_key_ids:
+            if key_id not in key_ids:
+                key_ids.append(key_id)
+    return key_ids
+
+
+def _new_key_cache(serial):
+    return {
+        "version": 2,
+        "device_serial": serial,
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "books": {},
+        "keys": {},
+    }
+
+
+def _upgrade_key_cache(cache, serial):
+    """Upgrade a legacy cache in place while preserving its book entries."""
+    if not isinstance(cache, dict):
+        return _new_key_cache(serial)
+    cache["version"] = 2
+    cache["device_serial"] = serial
+    cache.setdefault("generated_at", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    cache.setdefault("books", {})
+    cache.setdefault("keys", {})
+    return cache
+
+
+def _store_page_key(cache, book_id, voucher_path, voucher_key, page_key, kfx_path):
+    """Store a key under both its book entry and stable DRM key identifiers."""
+    key_ids = _encryption_key_ids_for_book(kfx_path)
+    page_key_hex = page_key.hex()
+    cache["books"][book_id] = {
+        "source_path": os.path.abspath(kfx_path),
+        "voucher_path": voucher_path,
+        "voucher_key_256": voucher_key.hex() if voucher_key is not None else "",
+        "page_key_128": page_key_hex,
+        "encryption_key_ids": key_ids,
+    }
+    for key_id in key_ids:
+        cache["keys"][key_id] = {
+            "page_key_128": page_key_hex,
+            "book_id": book_id,
+        }
+    return key_ids
+
+
 def extract_book_key(kfx_path, plugin_dir, cache_dir):
     """Extract the decryption key for a single book.
 
@@ -167,26 +222,21 @@ def extract_book_key(kfx_path, plugin_dir, cache_dir):
 
         # Step 6: Update drm_keys.json (merge into existing or create new)
         cache_path = os.path.join(cache_dir, "drm_keys.json")
-        cache = _load_key_cache(cache_path)
-        if cache is None:
-            cache = {
-                "version": 1,
-                "device_serial": serial,
-                "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "books": {},
-            }
-
-        cache["books"][book_id] = {
-            "voucher_path": voucher_path,
-            "voucher_key_256": voucher_key.hex(),
-            "page_key_128": page_key.hex(),
-        }
+        cache = _upgrade_key_cache(_load_key_cache(cache_path), serial)
+        key_ids = _store_page_key(
+            cache,
+            book_id,
+            voucher_path,
+            voucher_key,
+            page_key,
+            kfx_path,
+        )
 
         os.makedirs(cache_dir, exist_ok=True)
         with open(cache_path, "w") as f:
             json.dump(cache, f, indent=2)
 
-        return {"ok": True, "book_id": book_id}
+        return {"ok": True, "book_id": book_id, "encryption_key_ids": key_ids}
 
 
 def _load_key_cache(cache_path):
@@ -226,12 +276,7 @@ def run(documents_root, plugin_dir, cache_dir):
             )
 
         # Step 5: Decrypt vouchers and extract page keys
-        cache = {
-            "version": 1,
-            "device_serial": serial,
-            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "books": {},
-        }
+        cache = _new_key_cache(serial)
 
         keys_found = 0
         for voucher_path in vouchers:
@@ -265,11 +310,14 @@ def run(documents_root, plugin_dir, cache_dir):
                     print(f"drm-init: skipping tmp voucher {voucher_path}", file=sys.stderr, flush=True)
                     continue
 
-            cache["books"][book_id] = {
-                "voucher_path": voucher_path,
-                "voucher_key_256": voucher_key.hex(),
-                "page_key_128": page_key.hex(),
-            }
+            _store_page_key(
+                cache,
+                book_id,
+                voucher_path,
+                voucher_key,
+                page_key,
+                kfx_path,
+            )
             keys_found += 1
 
         # Step 6: Write the cache file

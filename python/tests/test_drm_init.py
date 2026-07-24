@@ -127,6 +127,40 @@ class PageKeyValidationTests(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(tmpdir, "drm_keys.json")))
 
 
+class EncryptionKeyCacheTests(unittest.TestCase):
+    def test_store_indexes_page_key_by_drm_identifier(self):
+        cache = drm_init._new_key_cache("SERIAL")
+        with mock.patch.object(
+            drm_init,
+            "_encryption_key_ids_for_book",
+            return_value=["key-id-one", "key-id-two"],
+        ):
+            key_ids = drm_init._store_page_key(
+                cache,
+                "BOOK",
+                "/book.sdr/assets/voucher",
+                b"v" * 32,
+                b"p" * 16,
+                "/book.kfx",
+            )
+
+        self.assertEqual(["key-id-one", "key-id-two"], key_ids)
+        self.assertEqual("70" * 16, cache["keys"]["key-id-one"]["page_key_128"])
+        self.assertEqual(key_ids, cache["books"]["BOOK"]["encryption_key_ids"])
+        self.assertEqual(2, cache["version"])
+
+    def test_upgrade_preserves_legacy_book_entries(self):
+        legacy_entry = {"page_key_128": "aa" * 16}
+        cache = drm_init._upgrade_key_cache({
+            "version": 1,
+            "books": {"BOOK": legacy_entry},
+        }, "SERIAL")
+
+        self.assertEqual(2, cache["version"])
+        self.assertEqual(legacy_entry, cache["books"]["BOOK"])
+        self.assertEqual({}, cache["keys"])
+
+
 class DeviceSerialTests(unittest.TestCase):
     def test_serial_removes_firmware_artifacts(self):
         serial_file = mock.mock_open(read_data="  G090G10512345678\r\n\x00é")
