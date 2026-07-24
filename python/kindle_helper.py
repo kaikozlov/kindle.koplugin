@@ -21,7 +21,13 @@ import os
 import re
 import sys
 import zipfile
-from pathlib import Path
+
+from dedrm.drmion import (
+    CONT_SIGNATURE,
+    DRMION_SIGNATURE,
+    decrypt as decrypt_drmion,
+    encryption_key_ids,
+)
 
 VERSION = 1
 
@@ -58,13 +64,6 @@ def exit_json(obj, code=0):
 # ---------------------------------------------------------------------------
 # DRMION decryption
 # ---------------------------------------------------------------------------
-
-from dedrm.drmion import (
-    CONT_SIGNATURE,
-    DRMION_SIGNATURE,
-    decrypt as decrypt_drmion,
-    encryption_key_ids,
-)
 
 
 def _decode_page_key(entry):
@@ -352,7 +351,6 @@ def cmd_convert(args):
         })
 
     except Exception as e:
-        error_type = type(e).__name__
         code = "error"
         message = str(e)
 

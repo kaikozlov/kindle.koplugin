@@ -15,12 +15,11 @@ import os
 import re
 import subprocess
 import sys
-import struct
 import time
 
 from io import BytesIO
 
-from dedrm import drmion
+from dedrm import drmion, native_extractor
 
 # Shared metadata key prefix — keys starting with this are the shared
 # device metadata key, not per-book voucher keys.
@@ -179,6 +178,101 @@ def _store_page_key(cache, book_id, voucher_path, voucher_key, page_key, kfx_pat
     return key_ids
 
 
+def _select_native_page_key(kfx_path, page_keys):
+    """Choose and validate a native page key for one KFX book."""
+    key_ids = _encryption_key_ids_for_book(kfx_path)
+    candidates = []
+    for key_id in key_ids:
+        page_key = page_keys.get(key_id)
+        if page_key is not None and page_key not in candidates:
+            candidates.append(page_key)
+    for page_key in page_keys.values():
+        if page_key not in candidates:
+            candidates.append(page_key)
+
+    errors = []
+    for page_key in candidates:
+        valid, error = _validate_page_key(kfx_path, page_key)
+        if valid:
+            return page_key
+        errors.append(error)
+    detail = "; ".join(error for error in errors if error)
+    raise RuntimeError(detail or "native extractor had no key for this book")
+
+
+def _native_book_fallback(kfx_path, voucher_path, plugin_dir, cache_dir, serial, primary_error):
+    """Try an installed native KUAL extractor after primary extraction fails."""
+    try:
+        page_keys = native_extractor.extract_page_keys(plugin_dir=plugin_dir)
+        page_key = _select_native_page_key(kfx_path, page_keys)
+        book_id = _derive_book_id(voucher_path)
+        cache_path = os.path.join(cache_dir, "drm_keys.json")
+        cache = _upgrade_key_cache(_load_key_cache(cache_path), serial)
+        key_ids = _store_page_key(
+            cache,
+            book_id,
+            voucher_path,
+            None,
+            page_key,
+            kfx_path,
+        )
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(cache_path, "w") as cache_file:
+            json.dump(cache, cache_file, indent=2)
+        return {
+            "ok": True,
+            "book_id": book_id,
+            "encryption_key_ids": key_ids,
+            "extractor": "native",
+        }
+    except Exception as native_error:
+        return {
+            "ok": False,
+            "message": f"{primary_error}; native fallback failed: {native_error}",
+        }
+
+
+def _run_native_fallback(vouchers, plugin_dir, cache_dir, serial, primary_error):
+    """Populate a fresh cache from an installed native KUAL extractor."""
+    try:
+        page_keys = native_extractor.extract_page_keys(plugin_dir=plugin_dir)
+        cache = _new_key_cache(serial)
+        keys_found = 0
+        for voucher_path in vouchers:
+            kfx_path = _find_kfx_for_voucher(voucher_path)
+            if not kfx_path:
+                continue
+            try:
+                page_key = _select_native_page_key(kfx_path, page_keys)
+            except Exception as error:
+                print(f"drm-init: native key rejected for {kfx_path}: {error}", file=sys.stderr, flush=True)
+                continue
+            _store_page_key(
+                cache,
+                _derive_book_id(voucher_path),
+                voucher_path,
+                None,
+                page_key,
+                kfx_path,
+            )
+            keys_found += 1
+
+        if keys_found == 0:
+            raise RuntimeError("native extractor keys did not match any books")
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(os.path.join(cache_dir, "drm_keys.json"), "w") as cache_file:
+            json.dump(cache, cache_file, indent=2)
+        return {
+            "books_found": len(vouchers),
+            "keys_found": keys_found,
+            "extractor": "native",
+        }
+    except Exception as native_error:
+        raise RuntimeError(
+            f"{primary_error}; native fallback failed: {native_error}"
+        ) from native_error
+
+
 def extract_book_key(kfx_path, plugin_dir, cache_dir):
     """Extract the decryption key for a single book.
 
@@ -197,26 +291,59 @@ def extract_book_key(kfx_path, plugin_dir, cache_dir):
 
     with _temporary_key_log() as key_log_path:
         # Step 3: Run the Java extractor with just this voucher
-        _extract_keys_with_hook(serial, [voucher_path], plugin_dir)
+        try:
+            _extract_keys_with_hook(serial, [voucher_path], plugin_dir)
+        except Exception as error:
+            return _native_book_fallback(
+                kfx_path, voucher_path, plugin_dir, cache_dir, serial, error
+            )
 
         # Step 4: Parse captured keys
         keys = _parse_captured_keys(key_log_path)
         if not keys:
-            return {"ok": False, "message": "no keys captured from device"}
+            return _native_book_fallback(
+                kfx_path,
+                voucher_path,
+                plugin_dir,
+                cache_dir,
+                serial,
+                "no keys captured from device",
+            )
 
         # Step 5: Extract page key
         voucher_key = _find_voucher_key(voucher_path, keys)
         if voucher_key is None:
-            return {"ok": False, "message": "could not match key to voucher"}
+            return _native_book_fallback(
+                kfx_path,
+                voucher_path,
+                plugin_dir,
+                cache_dir,
+                serial,
+                "could not match key to voucher",
+            )
 
         try:
             page_key = _extract_page_key(voucher_path, voucher_key)
-        except Exception as e:
-            return {"ok": False, "message": f"page key extraction failed: {e}"}
+        except Exception as error:
+            return _native_book_fallback(
+                kfx_path,
+                voucher_path,
+                plugin_dir,
+                cache_dir,
+                serial,
+                f"page key extraction failed: {error}",
+            )
 
         valid, validation_error = _validate_page_key(kfx_path, page_key)
         if not valid:
-            return {"ok": False, "message": validation_error}
+            return _native_book_fallback(
+                kfx_path,
+                voucher_path,
+                plugin_dir,
+                cache_dir,
+                serial,
+                validation_error,
+            )
 
         book_id = _derive_book_id(voucher_path)
 
@@ -264,15 +391,20 @@ def run(documents_root, plugin_dir, cache_dir):
 
     with _temporary_key_log() as key_log_path:
         # Step 3: Run the Java extractor with LD_PRELOAD hook
-        _extract_keys_with_hook(serial, vouchers, plugin_dir)
+        try:
+            _extract_keys_with_hook(serial, vouchers, plugin_dir)
+        except Exception as error:
+            return _run_native_fallback(vouchers, plugin_dir, cache_dir, serial, error)
 
         # Step 4: Parse captured AES keys from the log
         keys = _parse_captured_keys(key_log_path)
         if not keys:
-            raise RuntimeError(
+            primary_error = (
                 "No encryption keys were captured from the device. "
-                "This may indicate a problem with the DRM helper. "
-                "Try restarting your Kindle and running Refresh Book Access again."
+                "This may indicate a problem with the DRM helper."
+            )
+            return _run_native_fallback(
+                vouchers, plugin_dir, cache_dir, serial, primary_error
             )
 
         # Step 5: Decrypt vouchers and extract page keys

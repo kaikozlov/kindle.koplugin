@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import os
 import sys
 import tempfile
@@ -11,7 +12,7 @@ PYTHON_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PYTHON_DIR not in sys.path:
     sys.path.insert(0, PYTHON_DIR)
 
-from dedrm import drm_init
+from dedrm import drm_init  # noqa: E402
 
 
 class AccountSecretPreflightTests(unittest.TestCase):
@@ -159,6 +160,92 @@ class EncryptionKeyCacheTests(unittest.TestCase):
         self.assertEqual(2, cache["version"])
         self.assertEqual(legacy_entry, cache["books"]["BOOK"])
         self.assertEqual({}, cache["keys"])
+
+
+class NativeFallbackTests(unittest.TestCase):
+    def test_native_fallback_caches_validated_page_key(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            kfx_path = os.path.join(tmpdir, "book.kfx")
+            voucher_path = os.path.join(tmpdir, "book.sdr", "assets", "voucher")
+            with mock.patch.object(
+                drm_init.native_extractor,
+                "extract_page_keys",
+                return_value={"key-id": b"p" * 16},
+            ), mock.patch.object(
+                drm_init,
+                "_select_native_page_key",
+                return_value=b"p" * 16,
+            ), mock.patch.object(
+                drm_init,
+                "_encryption_key_ids_for_book",
+                return_value=["key-id"],
+            ):
+                result = drm_init._native_book_fallback(
+                    kfx_path,
+                    voucher_path,
+                    tmpdir,
+                    tmpdir,
+                    "SERIAL",
+                    "cvm failed",
+                )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual("native", result["extractor"])
+            with open(os.path.join(tmpdir, "drm_keys.json")) as cache_file:
+                cache = json.load(cache_file)
+            self.assertEqual("70" * 16, cache["keys"]["key-id"]["page_key_128"])
+            self.assertEqual("", cache["books"][result["book_id"]]["voucher_key_256"])
+
+    def test_bulk_native_fallback_writes_matching_keys(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            voucher_path = os.path.join(tmpdir, "Book_B001234567.sdr", "assets", "voucher")
+            kfx_path = os.path.join(tmpdir, "Book_B001234567.kfx")
+            with mock.patch.object(
+                drm_init.native_extractor,
+                "extract_page_keys",
+                return_value={"key-id": b"p" * 16},
+            ), mock.patch.object(
+                drm_init,
+                "_find_kfx_for_voucher",
+                return_value=kfx_path,
+            ), mock.patch.object(
+                drm_init,
+                "_select_native_page_key",
+                return_value=b"p" * 16,
+            ), mock.patch.object(
+                drm_init,
+                "_encryption_key_ids_for_book",
+                return_value=["key-id"],
+            ):
+                result = drm_init._run_native_fallback(
+                    [voucher_path], tmpdir, tmpdir, "SERIAL", "cvm failed"
+                )
+
+            self.assertEqual(1, result["keys_found"])
+            self.assertEqual("native", result["extractor"])
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "drm_keys.json")))
+
+    def test_primary_extraction_failure_invokes_native_fallback(self):
+        native_result = {"ok": True, "book_id": "BOOK", "extractor": "native"}
+        with mock.patch.object(drm_init, "_preflight_check"), \
+                mock.patch.object(
+                    drm_init,
+                    "_find_voucher_for_kfx",
+                    return_value="/book.sdr/assets/voucher",
+                ), mock.patch.object(drm_init, "_read_device_serial", return_value="SERIAL"), \
+                mock.patch.object(
+                    drm_init,
+                    "_extract_keys_with_hook",
+                    side_effect=RuntimeError("cvm failed"),
+                ), mock.patch.object(
+                    drm_init,
+                    "_native_book_fallback",
+                    return_value=native_result,
+                ) as fallback:
+            result = drm_init.extract_book_key("/book.kfx", "/plugin", "/cache")
+
+        self.assertEqual(native_result, result)
+        fallback.assert_called_once()
 
 
 class DeviceSerialTests(unittest.TestCase):

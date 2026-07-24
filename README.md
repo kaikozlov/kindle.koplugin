@@ -39,6 +39,13 @@ A KOReader plugin that lets you browse and read your Kindle book library directl
 
 > Designed for Kindle devices running KOReader alongside stock firmware.
 
+Book-key extraction normally uses the Kindle Java DRM SDK bundled with the
+firmware. If that route fails and
+[Satsuoni's `kfxdedrm` KUAL extension](https://github.com/Satsuoni/DeDRM_tools/tree/master/Other_Tools/KRFKeyExtractor/kindle_device)
+is installed at `/mnt/us/extensions/kfxdedrm/`, the plugin can automatically
+use its tested native `libYJSDK` extractor as a fallback. The external binaries
+are optional and are not bundled with this plugin.
+
 ### License
 
 MIT License

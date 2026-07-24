@@ -13,7 +13,7 @@ PYTHON_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PYTHON_DIR not in sys.path:
     sys.path.insert(0, PYTHON_DIR)
 
-import kindle_helper
+import kindle_helper  # noqa: E402
 
 
 class PageKeyCacheTests(unittest.TestCase):
