@@ -278,21 +278,23 @@ def cmd_convert(args):
 
         convert_path = input_path
         if header.startswith(DRMION_SIGNATURE):
-            page_key = _find_page_key(input_path, cache_dir)
-            if page_key is None:
-                exit_json({
-                    "version": VERSION,
-                    "ok": False,
-                    "code": "drm",
-                    "message": "DRM-protected book: no cached page key found",
-                })
-
             with open(input_path, "rb") as f:
                 data = f.read()
 
+            page_key = _find_page_key(input_path, cache_dir)
             try:
+                # A DRMION envelope may contain only PlainText pages and need
+                # no voucher or key. DeDRM requests the key lazily only when it
+                # encounters an EncryptedPage.
                 cont_data = _decrypt_drmion(data, page_key)
             except Exception as e:
+                if page_key is None:
+                    exit_json({
+                        "version": VERSION,
+                        "ok": False,
+                        "code": "drm",
+                        "message": "DRM-protected book: no cached page key found",
+                    })
                 exit_json({
                     "version": VERSION,
                     "ok": False,
@@ -453,14 +455,14 @@ def cmd_decrypt(args):
         sys.exit(1)
 
     page_key = _find_page_key(input_path, cache_dir)
-    if page_key is None:
-        print("decrypt: no cached page key found", file=sys.stderr)
-        sys.exit(1)
-
     try:
+        # PlainText-only DRMION envelopes are valid without a cached key.
         cont_data = _decrypt_drmion(data, page_key)
     except Exception as e:
-        print(f"decrypt: {e}", file=sys.stderr)
+        if page_key is None:
+            print("decrypt: no cached page key found", file=sys.stderr)
+        else:
+            print(f"decrypt: {e}", file=sys.stderr)
         sys.exit(1)
 
     print(f"decrypted main container: {len(cont_data)} bytes", file=sys.stderr)
