@@ -198,6 +198,7 @@ rm -rf "$SITE_PACKAGES/pip"*.dist-info
 rm -rf "$SITE_PACKAGES/setuptools"
 rm -rf "$SITE_PACKAGES/setuptools"*.dist-info
 rm -rf "$SITE_PACKAGES/_distutils_hack"
+rm -f "$SITE_PACKAGES/distutils-precedence.pth"
 
 # ---------------------------------------------------------------------------
 # Step 4: Build C wrapper + syscall shim (tiny, ~30 seconds in Docker)
@@ -258,8 +259,16 @@ mkdir -p "$STAGING/dist/lib"
 cp "$OUTPUT_DIR/crypto_hook.so" "$STAGING/dist/lib/"
 cp lib/KFXVoucherExtractor.jar "$STAGING/dist/lib/"
 
-# Copy the Python dist
-cp -r "$DIST_DIR/" "$STAGING/dist/"
+# Copy the Python runtime contents into the existing dist/ directory. The
+# directory already contains DRM helper assets, so copying DIST_DIR itself
+# would incorrectly create dist/dist/ and break the launcher paths.
+cp -a "$DIST_DIR/." "$STAGING/dist/"
+
+# Fail the build if the package no longer matches Dockerfile.wrapper's paths.
+test -x "$STAGING/dist/bin/python3"
+test -f "$STAGING/dist/kindle_helper.py"
+test -f "$STAGING/dist/dedrm/native_extractor.py"
+test ! -d "$STAGING/dist/dist"
 
 # Create ZIP
 ZIP_NAME="kindle-koplugin-${TARGET}.zip"
