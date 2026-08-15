@@ -151,12 +151,14 @@ describe("DocSettingsExt", function()
     end)
 
     describe("legacy migration", function()
-        local original_file_exists
         local original_make_path
+        local tmp_dir
 
         before_each(function()
-            original_file_exists = util.fileExists
             original_make_path = util.makePath
+            tmp_dir = os.tmpname()
+            os.remove(tmp_dir)
+            assert.is_true(os.execute("mkdir -p " .. tmp_dir) == 0)
             DocSettingsExt:init({})
             DocSettingsExt.original_methods.getSidecarFilename = function()
                 return "metadata.epub.lua"
@@ -164,17 +166,18 @@ describe("DocSettingsExt", function()
         end)
 
         after_each(function()
-            util.fileExists = original_file_exists
             util.makePath = original_make_path
+            os.execute("rm -rf " .. tmp_dir)
         end)
 
-        it("should not reimport legacy metadata during canonical rotation", function()
-            local preferred = "/cache/test.sdr/metadata.epub.lua"
-            local legacy = "/docsettings/kindle_virtual/test.sdr/metadata.epub.lua"
+        it("should not reimport legacy metadata when the canonical file is readable", function()
+            local preferred_dir = tmp_dir .. "/cache/test.sdr"
+            local preferred = preferred_dir .. "/metadata.epub.lua"
             local make_path_called = false
-            util.fileExists = function(path)
-                return path == preferred .. ".old" or path == legacy
-            end
+            assert.is_true(os.execute("mkdir -p " .. preferred_dir) == 0)
+            local canonical = assert(io.open(preferred, "wb"))
+            canonical:write("canonical")
+            canonical:close()
             util.makePath = function()
                 make_path_called = true
                 return true
@@ -183,8 +186,34 @@ describe("DocSettingsExt", function()
             DocSettingsExt:migrateLegacySidecar(
                 { id = "test", open_mode = "convert" },
                 "KINDLE_VIRTUAL://test/Book.epub",
-                "/cache/test.epub",
-                "/cache/test.sdr"
+                tmp_dir .. "/cache/test.epub",
+                preferred_dir
+            )
+
+            assert.is_false(make_path_called)
+            local current = assert(io.open(preferred, "rb"))
+            assert.equals("canonical", current:read("*a"))
+            current:close()
+        end)
+
+        it("should not reimport legacy metadata during canonical rotation", function()
+            local preferred_dir = tmp_dir .. "/cache/test.sdr"
+            local preferred_old = preferred_dir .. "/metadata.epub.lua.old"
+            local make_path_called = false
+            assert.is_true(os.execute("mkdir -p " .. preferred_dir) == 0)
+            local rotated = assert(io.open(preferred_old, "wb"))
+            rotated:write("canonical")
+            rotated:close()
+            util.makePath = function()
+                make_path_called = true
+                return true
+            end
+
+            DocSettingsExt:migrateLegacySidecar(
+                { id = "test", open_mode = "convert" },
+                "KINDLE_VIRTUAL://test/Book.epub",
+                tmp_dir .. "/cache/test.epub",
+                preferred_dir
             )
 
             assert.is_false(make_path_called)

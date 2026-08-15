@@ -34,8 +34,20 @@ local function preferredDocumentPath(virtual_library, book)
     return nil
 end
 
+-- On Kindle's /mnt/us FUSE mount, KOReader's util.fileExists may return false
+-- for an existing file. Opening the file is the authoritative check and also
+-- matches the operation migration performs immediately afterwards.
+local function readableFileExists(path)
+    local handle = io.open(path, "rb")
+    if not handle then
+        return false
+    end
+    handle:close()
+    return true
+end
+
 local function copyFileIfMissing(source_path, destination_path)
-    if util.fileExists(destination_path) or not util.fileExists(source_path) then
+    if readableFileExists(destination_path) or not readableFileExists(source_path) then
         return false
     end
     local source = io.open(source_path, "rb")
@@ -69,9 +81,9 @@ function DocSettingsExt:migrateLegacySidecar(book, canonical, preferred_doc_path
     -- writes the replacement. During that window the preferred path is absent,
     -- but the canonical sidecar already exists and must not be replaced by a
     -- stale legacy copy (which may contain fewer annotations or older progress).
-    if util.fileExists(preferred_path)
-        or util.fileExists(preferred_path .. ".old")
-        or not util.fileExists(legacy_path)
+    if readableFileExists(preferred_path)
+        or readableFileExists(preferred_path .. ".old")
+        or not readableFileExists(legacy_path)
     then
         return
     end
