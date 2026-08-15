@@ -119,11 +119,11 @@ function DocSettingsExt:apply(DocSettings)
         if not preferred_doc_path then
             return DOCSETTINGS_DIR .. "/kindle_virtual/" .. sanitizeId(book.id) .. ".sdr"
         end
-        local preferred_dir = self.original_methods.getSidecarDir(
-            ds_self,
-            preferred_doc_path,
-            force_location
-        )
+        -- A virtual book has exactly one canonical sidecar. KOReader probes
+        -- alternate locations by passing force_location while searching; if we
+        -- honor those probes here, a cached EPUB can acquire duplicate
+        -- sidecars under docsettings/ or hashdocsettings/.
+        local preferred_dir = self.original_methods.getSidecarDir(ds_self, preferred_doc_path)
         self:migrateLegacySidecar(book, canonical, preferred_doc_path, preferred_dir)
         return preferred_dir
     end

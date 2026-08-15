@@ -41,6 +41,11 @@ describe("DocSettingsExt", function()
 
             mock_docsettings = {
                 getSidecarDir = function(self, doc_path, force_location)
+                    if force_location == "dir" then
+                        return "/docsettings" .. doc_path .. ".sdr"
+                    elseif force_location == "hash" then
+                        return "/hashdocsettings/ab/hash.sdr"
+                    end
                     return doc_path .. ".sdr"
                 end,
                 getSidecarFilename = function(doc_path)
@@ -73,6 +78,32 @@ describe("DocSettingsExt", function()
                 local result = mock_docsettings:getSidecarDir("KINDLE_VIRTUAL://test_id/Book.epub")
 
                 assert.equals("/cache/test_book_id.epub.sdr", result)
+            end)
+
+            it("should pin alternate location probes to the canonical sidecar", function()
+                mock_virtual_library.getBook = function(self, path)
+                    if path and path:match("^KINDLE_VIRTUAL://") then
+                        return { id = "test_book_id", open_mode = "convert" }
+                    end
+                    return nil
+                end
+
+                DocSettingsExt:apply(mock_docsettings)
+
+                assert.equals(
+                    "/cache/test_book_id.epub.sdr",
+                    mock_docsettings:getSidecarDir(
+                        "KINDLE_VIRTUAL://test_id/Book.epub",
+                        "dir"
+                    )
+                )
+                assert.equals(
+                    "/cache/test_book_id.epub.sdr",
+                    mock_docsettings:getSidecarDir(
+                        "KINDLE_VIRTUAL://test_id/Book.epub",
+                        "hash"
+                    )
+                )
             end)
 
             it("should return the source sidecar dir for direct virtual books", function()
