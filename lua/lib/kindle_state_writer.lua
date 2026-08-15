@@ -17,6 +17,32 @@ local KindleStateWriter = {}
 --- Path to the Kindle content catalog database.
 local CC_DB_PATH = "/var/local/cc.db"
 
+-- Recent Kindle firmware installs catalog triggers that reference scalar
+-- functions registered only by Amazon's catalog process. Stock SQLite (and
+-- therefore KOReader's ljsqlite3 connection) cannot even prepare an UPDATE
+-- until every referenced function exists. Returning nil from these
+-- connection-local shims makes the trigger guard clauses false, so the
+-- progress write can proceed without changing or dropping firmware triggers.
+local CATALOG_TRIGGER_FUNCTIONS = {
+    "get_companion_relation_external_id",
+    "get_entry_external_id",
+    "get_entry_change_type",
+    "build_merge_changes",
+    "build_merge_changes_delta",
+}
+
+local function registerCatalogTriggerFunctions(conn)
+    if type(conn.setscalar) ~= "function" then
+        return
+    end
+
+    for _, name in ipairs(CATALOG_TRIGGER_FUNCTIONS) do
+        conn:setscalar(name, function()
+            return nil
+        end)
+    end
+end
+
 ---
 --- Writes reading state to Kindle cc.db for a book identified by file path.
 --- @param book_path string: File path on device (matched against p_location).
@@ -100,7 +126,15 @@ function KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent
         return false, false
     end
 
+    local transaction_open = false
     local ok, result = pcall(function()
+        if type(conn.set_busy_timeout) == "function" then
+            conn:set_busy_timeout(5000)
+        end
+        registerCatalogTriggerFunctions(conn)
+        conn:exec("BEGIN IMMEDIATE")
+        transaction_open = true
+
         local sql = string.format(
             "UPDATE Entries SET p_percentFinished = ?, p_readState = ? WHERE %s",
             where_clause
@@ -117,9 +151,23 @@ function KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent
             read_state,
             where_value
         ):step()
+        stmt:close()
 
+        local changed = tonumber(conn:rowexec("SELECT changes()")) or 0
+        if changed < 1 then
+            conn:exec("ROLLBACK")
+            transaction_open = false
+            return false
+        end
+
+        conn:exec("COMMIT")
+        transaction_open = false
         return true
     end)
+
+    if transaction_open then
+        pcall(function() conn:exec("ROLLBACK") end)
+    end
 
     pcall(function() conn:close() end)
 
@@ -128,11 +176,15 @@ function KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent
         return false, false
     end
 
-    logger.info(
-        "KindlePlugin: Wrote Kindle reading progress:",
-        "percent:", percent_read,
-        "read_state:", read_state
-    )
+    if result then
+        logger.info(
+            "KindlePlugin: Wrote Kindle reading progress:",
+            "percent:", percent_read,
+            "read_state:", read_state
+        )
+    else
+        logger.warn("KindlePlugin: No matching Kindle catalog entry to update")
+    end
 
     return true, result
 end

@@ -112,4 +112,118 @@ describe("KindleStateWriter", function()
             assert.is_true(executed_cmd:match("p_percentFinished = 56") ~= nil)
         end)
     end)
+
+    describe("ljsqlite3 catalog trigger compatibility", function()
+        local function fakeSQ3(changes, prepare_error)
+            local calls = {}
+            local callbacks = {}
+            local stmt = {}
+
+            function stmt:reset()
+                table.insert(calls, "reset")
+                return self
+            end
+            function stmt:bind(...)
+                self.bound = { ... }
+                table.insert(calls, "bind")
+                return self
+            end
+            function stmt:step()
+                table.insert(calls, "step")
+                return self
+            end
+            function stmt:close()
+                table.insert(calls, "statement_close")
+            end
+
+            local conn = {}
+            function conn:set_busy_timeout(timeout)
+                self.timeout = timeout
+                table.insert(calls, "busy_timeout")
+            end
+            function conn:setscalar(name, callback)
+                callbacks[name] = callback
+                table.insert(calls, "setscalar:" .. name)
+            end
+            function conn:exec(sql)
+                table.insert(calls, sql)
+            end
+            function conn:prepare(sql)
+                table.insert(calls, "prepare:" .. sql)
+                if prepare_error then
+                    error("no such function")
+                end
+                return stmt
+            end
+            function conn:rowexec(sql)
+                table.insert(calls, sql)
+                return changes
+            end
+            function conn:close()
+                table.insert(calls, "connection_close")
+            end
+
+            return {
+                open = function() return conn end,
+            }, calls, callbacks, stmt
+        end
+
+        it("registers firmware trigger shims and commits a matched update", function()
+            local SQ3, calls, callbacks, stmt = fakeSQ3(1, false)
+
+            local backend_ok, updated = KindleStateWriter._writeWithSQ3(
+                SQ3,
+                "p_cdeKey = ?",
+                "B007N6JEII",
+                48,
+                1
+            )
+
+            assert.is_true(backend_ok)
+            assert.is_true(updated)
+            assert.equals(5000, SQ3.open().timeout)
+            assert.is_function(callbacks.get_companion_relation_external_id)
+            assert.is_function(callbacks.get_entry_external_id)
+            assert.is_function(callbacks.get_entry_change_type)
+            assert.is_function(callbacks.build_merge_changes)
+            assert.is_function(callbacks.build_merge_changes_delta)
+            assert.is_nil(callbacks.get_entry_external_id("ignored"))
+            assert.same({ 48, 1, "B007N6JEII" }, stmt.bound)
+            assert.is_true(table.concat(calls, "\n"):find("BEGIN IMMEDIATE", 1, true) ~= nil)
+            assert.is_true(table.concat(calls, "\n"):find("COMMIT", 1, true) ~= nil)
+        end)
+
+        it("rolls back when SQLite still cannot prepare the update", function()
+            local SQ3, calls = fakeSQ3(1, true)
+
+            local backend_ok, updated = KindleStateWriter._writeWithSQ3(
+                SQ3,
+                "p_cdeKey = ?",
+                "B007N6JEII",
+                48,
+                1
+            )
+
+            assert.is_false(backend_ok)
+            assert.is_false(updated)
+            assert.is_true(table.concat(calls, "\n"):find("ROLLBACK", 1, true) ~= nil)
+        end)
+
+        it("rolls back and reports no match when zero rows change", function()
+            local SQ3, calls = fakeSQ3(0, false)
+
+            local backend_ok, updated = KindleStateWriter._writeWithSQ3(
+                SQ3,
+                "p_cdeKey = ?",
+                "missing",
+                48,
+                1
+            )
+
+            assert.is_true(backend_ok)
+            assert.is_false(updated)
+            assert.is_true(table.concat(calls, "\n"):find("ROLLBACK", 1, true) ~= nil)
+            assert.is_nil(table.concat(calls, "\n"):find("COMMIT", 1, true))
+        end)
+    end)
 end)
