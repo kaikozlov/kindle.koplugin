@@ -176,7 +176,7 @@ function ReadingStateSync:getBookTitle(cde_key, doc_settings)
     end
 
     -- Try reading from cc.db
-    local state = KindleStateReader.readByCdeKey(cde_key)
+    local state = self:readKindleState(cde_key, nil)
     if state and state.title and state.title ~= "" then
         return state.title
     end
@@ -259,10 +259,18 @@ end
 --- @param source_path string|nil: Real file path on device.
 --- @return table|nil: State table with percent_read, timestamp, status, kindle_status.
 function ReadingStateSync:readKindleState(cde_key, source_path)
+    local catalog_uuid = cde_key and cde_key:match("^cc:([%x%-]+)$")
+    if catalog_uuid then
+        local state = KindleStateReader.readByUuid(catalog_uuid)
+        if state then
+            return state
+        end
+    end
+
     -- Try by cdeKey first (avoids ICU collation issue with p_location index)
-    -- Extract ASIN from source_path if cde_key is a sha1 hash
+    -- Extract ASIN from source_path for virtual UUIDs and sha1 IDs.
     local actual_cde_key = cde_key
-    if not actual_cde_key or actual_cde_key:match("^sha1:") then
+    if not actual_cde_key or catalog_uuid or actual_cde_key:match("^sha1:") then
         actual_cde_key = extractCdeKeyFromPath(source_path)
     end
     if actual_cde_key and actual_cde_key ~= "" then
@@ -290,10 +298,23 @@ end
 --- @param status string: KOReader status string.
 --- @return boolean: True if write succeeded.
 function ReadingStateSync:writeKindleState(cde_key, source_path, percent_read, timestamp, status)
+    local catalog_uuid = cde_key and cde_key:match("^cc:([%x%-]+)$")
+    if catalog_uuid then
+        local ok = KindleStateWriter.writeByUuid(
+            catalog_uuid,
+            percent_read,
+            timestamp,
+            status
+        )
+        if ok then
+            return true
+        end
+    end
+
     -- Try by cdeKey first (avoids ICU collation issue with p_location index)
-    -- Extract ASIN from source_path if cde_key is a sha1 hash
+    -- Extract ASIN from source_path for virtual UUIDs and sha1 IDs.
     local actual_cde_key = cde_key
-    if not actual_cde_key or actual_cde_key:match("^sha1:") then
+    if not actual_cde_key or catalog_uuid or actual_cde_key:match("^sha1:") then
         actual_cde_key = extractCdeKeyFromPath(source_path)
     end
     if actual_cde_key and actual_cde_key ~= "" then

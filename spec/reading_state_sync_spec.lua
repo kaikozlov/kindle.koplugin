@@ -104,9 +104,11 @@ describe("ReadingStateSync", function()
         ReadHistory = require("readhistory")
         RealDocSettings = require("docsettings")
         originals.reader_by_key = KindleStateReader.readByCdeKey
+        originals.reader_by_uuid = KindleStateReader.readByUuid
         originals.reader_by_path = KindleStateReader.readByPath
         originals.reader_all = KindleStateReader.readAllProgress
         originals.writer_by_key = KindleStateWriter.writeByCdeKey
+        originals.writer_by_uuid = KindleStateWriter.writeByUuid
         originals.writer_by_path = KindleStateWriter.writeByPath
         originals.history = ReadHistory.hist
         originals.has_sidecar = RealDocSettings.hasSidecarFile
@@ -121,9 +123,13 @@ describe("ReadingStateSync", function()
 
         local reader_data = {}
         local reader_data_by_key = {}
+        local reader_data_by_uuid = {}
         local all_books = {}
         KindleStateReader.readByCdeKey = function(cde_key)
             return reader_data_by_key[cde_key]
+        end
+        KindleStateReader.readByUuid = function(uuid)
+            return reader_data_by_uuid[uuid]
         end
         KindleStateReader.readByPath = function(path)
             return reader_data[path]
@@ -137,18 +143,26 @@ describe("ReadingStateSync", function()
         KindleStateReader._setMockStateByKey = function(key, state)
             reader_data_by_key[key] = state
         end
+        KindleStateReader._setMockStateByUuid = function(uuid, state)
+            reader_data_by_uuid[uuid] = state
+        end
         KindleStateReader._setMockAllBooks = function(books)
             all_books = books
         end
         KindleStateReader._clear = function()
             reader_data = {}
             reader_data_by_key = {}
+            reader_data_by_uuid = {}
             all_books = {}
         end
 
         local write_log = {}
         KindleStateWriter.writeByCdeKey = function(cde_key, percent, timestamp, status)
             table.insert(write_log, { method = "cdeKey", key = cde_key, percent = percent, timestamp = timestamp, status = status })
+            return true
+        end
+        KindleStateWriter.writeByUuid = function(uuid, percent, timestamp, status)
+            table.insert(write_log, { method = "uuid", uuid = uuid, percent = percent, timestamp = timestamp, status = status })
             return true
         end
         KindleStateWriter.writeByPath = function(path, percent, timestamp, status)
@@ -182,13 +196,16 @@ describe("ReadingStateSync", function()
 
     after_each(function()
         KindleStateReader.readByCdeKey = originals.reader_by_key
+        KindleStateReader.readByUuid = originals.reader_by_uuid
         KindleStateReader.readByPath = originals.reader_by_path
         KindleStateReader.readAllProgress = originals.reader_all
         KindleStateReader._setMockStateByPath = nil
         KindleStateReader._setMockStateByKey = nil
+        KindleStateReader._setMockStateByUuid = nil
         KindleStateReader._setMockAllBooks = nil
         KindleStateReader._clear = nil
         KindleStateWriter.writeByCdeKey = originals.writer_by_key
+        KindleStateWriter.writeByUuid = originals.writer_by_uuid
         KindleStateWriter.writeByPath = originals.writer_by_path
         KindleStateWriter._getWriteLog = nil
         KindleStateWriter._clearWriteLog = nil
@@ -293,6 +310,30 @@ describe("ReadingStateSync", function()
             local sync = ReadingStateSync:new()
             local doc_settings = createMockDocSettings("/mnt/us/documents/myfile.epub")
             assert.is_nil(sync:extractCdeKey(nil, doc_settings))
+        end)
+    end)
+
+    describe("catalog UUID routing", function()
+        local virtual_id = "cc:f82913d4-094a-43c6-8166-e330d40c1d7c"
+        local uuid = "f82913d4-094a-43c6-8166-e330d40c1d7c"
+        local source_path = "/mnt/us/documents/The Almighty Dollar_B0FLB24198.kfx"
+
+        it("should read cc: virtual IDs through p_uuid", function()
+            local expected = { percent_read = 47, cde_key = "B0FLB24198" }
+            KindleStateReader._setMockStateByUuid(uuid, expected)
+            local sync = ReadingStateSync:new()
+
+            assert.equals(expected, sync:readKindleState(virtual_id, source_path))
+        end)
+
+        it("should write cc: virtual IDs through p_uuid without path fallback", function()
+            local sync = ReadingStateSync:new()
+
+            assert.is_true(sync:writeKindleState(virtual_id, source_path, 48, 1, "reading"))
+            local writes = KindleStateWriter._getWriteLog()
+            assert.equals(1, #writes)
+            assert.equals("uuid", writes[1].method)
+            assert.equals(uuid, writes[1].uuid)
         end)
     end)
 

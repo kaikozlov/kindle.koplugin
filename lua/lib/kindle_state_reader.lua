@@ -36,6 +36,20 @@ function KindleStateReader.readByCdeKey(cde_key)
     return KindleStateReader._read("p_cdeKey = ? AND p_isLatestItem = 1", cde_key)
 end
 
+--- Reads reading state for a catalog entry identified by p_uuid.
+--- Virtual-library IDs use the form cc:<uuid>; p_cdeKey contains the ASIN on
+--- current firmware, so treating that virtual ID as a cdeKey cannot match.
+function KindleStateReader.readByUuid(uuid)
+    if not uuid or uuid == "" then
+        return nil
+    end
+
+    return KindleStateReader._read(
+        "p_uuid = ? AND p_isLatestItem = 1 AND p_location IS NOT NULL",
+        uuid
+    )
+end
+
 ---
 --- Internal: reads reading state from cc.db.
 --- @param where_clause string: WHERE clause with placeholder.

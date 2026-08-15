@@ -97,6 +97,24 @@ describe("KindleStateWriter", function()
         end)
     end)
 
+    describe("writeByUuid", function()
+        it("should write a virtual-library catalog row by p_uuid", function()
+            local get_executed_cmd = captureExecute(0)
+
+            local ok = KindleStateWriter.writeByUuid(
+                "f82913d4-094a-43c6-8166-e330d40c1d7c",
+                48,
+                1776640914,
+                "reading"
+            )
+
+            local executed_cmd = get_executed_cmd()
+            assert.is_true(ok)
+            assert.is_true(executed_cmd:match("p_uuid") ~= nil)
+            assert.is_true(executed_cmd:match("f82913d4%-094a%-43c6%-8166%-e330d40c1d7c") ~= nil)
+        end)
+    end)
+
     describe("percent formatting", function()
         it("should floor the percent value", function()
             local get_executed_cmd = captureExecute(0)

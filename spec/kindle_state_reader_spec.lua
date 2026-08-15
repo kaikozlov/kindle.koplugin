@@ -123,6 +123,30 @@ describe("KindleStateReader", function()
         end)
     end)
 
+    describe("readByUuid", function()
+        it("should return nil for nil UUID", function()
+            assert.is_nil(KindleStateReader.readByUuid(nil))
+        end)
+
+        it("should read a virtual-library catalog row by p_uuid", function()
+            local executed_cmd
+            rawset(io, "popen", function(cmd)
+                executed_cmd = cmd
+                local lines = { "47|1775770105|6|The Almighty Dollar|B0FLB24198" }
+                return {
+                    read = function() return table.remove(lines, 1) end,
+                    close = function() return 0 end,
+                }
+            end)
+
+            local state = KindleStateReader.readByUuid("f82913d4-094a-43c6-8166-e330d40c1d7c")
+
+            assert.equals(47, state.percent_read)
+            assert.equals("B0FLB24198", state.cde_key)
+            assert.is_true(executed_cmd:match("p_uuid") ~= nil)
+        end)
+    end)
+
     describe("readAllProgress", function()
         it("should parse multiple books from CLI output", function()
             mockPopen(

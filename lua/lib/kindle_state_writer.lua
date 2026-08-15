@@ -79,6 +79,23 @@ function KindleStateWriter.writeByCdeKey(cde_key, percent_read, timestamp, statu
     )
 end
 
+--- Writes reading state for a catalog entry identified by p_uuid.
+--- Virtual-library IDs use cc:<uuid>, whereas p_cdeKey generally stores the
+--- ASIN. Matching p_uuid avoids relying on a mutable on-disk book path.
+function KindleStateWriter.writeByUuid(uuid, percent_read, timestamp, status)
+    if not uuid or uuid == "" then
+        return false
+    end
+
+    return KindleStateWriter._write(
+        "p_uuid = ? AND p_isLatestItem = 1 AND p_location IS NOT NULL",
+        uuid,
+        percent_read,
+        timestamp,
+        status
+    )
+end
+
 ---
 --- Internal: writes reading state to cc.db.
 --- Updates p_percentFinished and p_readState only (p_lastAccess skipped due to ICU index).
