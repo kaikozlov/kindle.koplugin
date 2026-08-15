@@ -46,6 +46,23 @@ describe("FilesystemExt", function()
                     end
                     return nil
                 end,
+                getVirtualPath = function(self, path)
+                    if path == "/cache/b1.epub" then
+                        return "KINDLE_VIRTUAL://b1/Book.epub"
+                    end
+                    return nil
+                end,
+                getBook = function(self, path)
+                    if path == "KINDLE_VIRTUAL://b1/Book.epub" then
+                        return { id = "b1", source_size = 999 }
+                    end
+                    return nil
+                end,
+                cache_manager = {
+                    getCachePaths = function(self, book)
+                        return "/cache/" .. book.id .. ".epub", "/cache/" .. book.id .. ".json"
+                    end,
+                },
             }
 
             FilesystemExt:init(mock_virtual_library)
@@ -118,6 +135,23 @@ describe("FilesystemExt", function()
             local size = lfs.attributes("/regular/file.epub", "size")
             assert.equals(42, size)
         end)
+
+        it("should expose a missing known cache EPUB so Bookshelf can regenerate it", function()
+            FilesystemExt:apply()
+
+            local lfs = require("libs/libkoreader-lfs")
+
+            assert.equals("file", lfs.attributes("/cache/b1.epub", "mode"))
+            assert.equals(999, lfs.attributes("/cache/b1.epub", "size"))
+        end)
+
+        it("should not expose arbitrary missing files", function()
+            FilesystemExt:apply()
+
+            local lfs = require("libs/libkoreader-lfs")
+
+            assert.is_nil(lfs.attributes("/cache/unknown.epub", "mode"))
+        end)
     end)
 
     describe("unapply", function()
@@ -129,6 +163,7 @@ describe("FilesystemExt", function()
                 isActive = function() return true end,
                 isVirtualPath = function() return false end,
                 getRealPath = function() return nil end,
+                getVirtualPath = function() return nil end,
             }
 
             FilesystemExt:init(mock_virtual_library)

@@ -51,7 +51,35 @@ local function createPatchedAttributesFunction(virtual_library, original_lfs_att
             return nil
         end
 
-        return original_lfs_attributes(filepath, attribute_name)
+        local attributes = original_lfs_attributes(filepath, attribute_name)
+        if attributes ~= nil or type(filepath) ~= "string" then
+            return attributes
+        end
+
+        -- Bookshelf validates persisted paths before calling ReaderUI. When a
+        -- generated EPUB has been cleared, let that exact known cache path
+        -- continue to showReader, where the normal resolver will regenerate it.
+        -- Never synthesize attributes for missing source or arbitrary files.
+        local virtual_path = virtual_library:getVirtualPath(filepath)
+        local book = virtual_path and virtual_library:getBook(virtual_path) or nil
+        local cache_manager = virtual_library.cache_manager
+        local cached_path = book and cache_manager and cache_manager:getCachePaths(book) or nil
+        if cached_path ~= filepath then
+            return nil
+        end
+
+        if attribute_name then
+            if attribute_name == "mode" then
+                return "file"
+            elseif attribute_name == "size" then
+                return book.source_size or 0
+            end
+            return nil
+        end
+        return {
+            mode = "file",
+            size = book.source_size or 0,
+        }
     end
 end
 
