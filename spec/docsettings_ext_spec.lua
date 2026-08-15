@@ -5,10 +5,12 @@ local helper = require("spec/test_helper")
 
 describe("DocSettingsExt", function()
     local DocSettingsExt
+    local util
 
     setup(function()
         helper.setup_complete()
         DocSettingsExt = require("lua/docsettings_ext")
+        util = require("util")
     end)
 
     before_each(function()
@@ -145,6 +147,47 @@ describe("DocSettingsExt", function()
                 -- The original mock returns /history/<basename>.lua
                 assert.is_true(result:match("path%.epub") ~= nil)
             end)
+        end)
+    end)
+
+    describe("legacy migration", function()
+        local original_file_exists
+        local original_make_path
+
+        before_each(function()
+            original_file_exists = util.fileExists
+            original_make_path = util.makePath
+            DocSettingsExt:init({})
+            DocSettingsExt.original_methods.getSidecarFilename = function()
+                return "metadata.epub.lua"
+            end
+        end)
+
+        after_each(function()
+            util.fileExists = original_file_exists
+            util.makePath = original_make_path
+        end)
+
+        it("should not reimport legacy metadata during canonical rotation", function()
+            local preferred = "/cache/test.sdr/metadata.epub.lua"
+            local legacy = "/docsettings/kindle_virtual/test.sdr/metadata.epub.lua"
+            local make_path_called = false
+            util.fileExists = function(path)
+                return path == preferred .. ".old" or path == legacy
+            end
+            util.makePath = function()
+                make_path_called = true
+                return true
+            end
+
+            DocSettingsExt:migrateLegacySidecar(
+                { id = "test", open_mode = "convert" },
+                "KINDLE_VIRTUAL://test/Book.epub",
+                "/cache/test.epub",
+                "/cache/test.sdr"
+            )
+
+            assert.is_false(make_path_called)
         end)
     end)
 end)

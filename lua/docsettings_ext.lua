@@ -65,7 +65,14 @@ function DocSettingsExt:migrateLegacySidecar(book, canonical, preferred_doc_path
     local preferred_filename = self.original_methods.getSidecarFilename(preferred_doc_path)
     local legacy_path = legacy_dir .. "/" .. legacy_filename
     local preferred_path = preferred_dir .. "/" .. preferred_filename
-    if util.fileExists(preferred_path) or not util.fileExists(legacy_path) then
+    -- KOReader rotates metadata by moving the current file to .old before it
+    -- writes the replacement. During that window the preferred path is absent,
+    -- but the canonical sidecar already exists and must not be replaced by a
+    -- stale legacy copy (which may contain fewer annotations or older progress).
+    if util.fileExists(preferred_path)
+        or util.fileExists(preferred_path .. ".old")
+        or not util.fileExists(legacy_path)
+    then
         return
     end
 
