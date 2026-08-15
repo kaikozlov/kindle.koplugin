@@ -38,6 +38,7 @@ end
 local function setupPluginSettings(sync)
     local mock_plugin = {
         settings = {
+            enable_auto_sync = true,
             enable_sync_from_kindle = true,
             enable_sync_to_kindle = true,
             sync_from_kindle_newer = SYNC_DIRECTION.SILENT,
@@ -323,6 +324,132 @@ describe("ReadingStateSync", function()
             sync:setEnabled(true)
             sync.plugin = { settings = { enable_auto_sync = false } }
             assert.is_false(sync:isAutomaticSyncEnabled())
+        end)
+    end)
+
+    describe("configured automatic sync", function()
+        local history_path = "/mnt/us/documents/Throne of Glass_B007N6JEII.kfx"
+
+        it("should not pull when automatic sync is disabled", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            setupPluginSettings(sync)
+            sync.plugin.settings.enable_auto_sync = false
+            local original = mockReadKindleState(sync, {
+                percent_read = 80,
+                timestamp = 1762700000,
+                status = "reading",
+                kindle_status = 1,
+            })
+
+            local result = sync:syncFromKindleAutomatic(
+                "B007N6JEII",
+                history_path,
+                createMockDocSettings(history_path, { percent_finished = 0.3 })
+            )
+
+            assert.is_false(result)
+            restoreReadKindleState(sync, original)
+        end)
+
+        it("should honor NEVER for a newer Kindle state", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            setupPluginSettings(sync)
+            sync.plugin.settings.sync_from_kindle_newer = SYNC_DIRECTION.NEVER
+            RealDocSettings:_setSidecarFile(history_path, true)
+            local original = mockReadKindleState(sync, {
+                percent_read = 80,
+                timestamp = 1762700000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            local ds = createMockDocSettings(history_path, { percent_finished = 0.3 })
+
+            assert.is_false(sync:syncFromKindleAutomatic("B007N6JEII", history_path, ds))
+            assert.equals(0.3, ds:readSetting("percent_finished"))
+
+            restoreReadKindleState(sync, original)
+            RealDocSettings:_clearSidecars()
+        end)
+
+        it("should honor SILENT for an explicitly allowed older Kindle state", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            setupPluginSettings(sync)
+            sync.plugin.settings.sync_from_kindle_older = SYNC_DIRECTION.SILENT
+            RealDocSettings:_setSidecarFile(history_path, true)
+            local original = mockReadKindleState(sync, {
+                percent_read = 20,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            local ds = createMockDocSettings(history_path, { percent_finished = 0.5 })
+
+            assert.is_true(sync:syncFromKindleAutomatic("B007N6JEII", history_path, ds))
+            assert.equals(0.2, ds:readSetting("percent_finished"))
+
+            restoreReadKindleState(sync, original)
+            RealDocSettings:_clearSidecars()
+        end)
+
+        it("should honor TO Kindle direction and update the native position", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            setupPluginSettings(sync)
+            RealDocSettings:_setSidecarFile(history_path, true)
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 30,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            local original_write, writes = mockWriteKindleState(sync)
+            local original_update = sync.updateYjrPosition
+            local updated_percent = nil
+            sync.updateYjrPosition = function(_, _, percent)
+                updated_percent = percent
+            end
+            local ds = createMockDocSettings(history_path, {
+                percent_finished = 0.75,
+                summary = { status = "reading" },
+            })
+
+            assert.is_true(sync:syncToKindleAutomatic("B007N6JEII", history_path, ds))
+            assert.equals(1, #writes)
+            assert.equals(75, writes[1].percent)
+            assert.equals(75, updated_percent)
+
+            restoreReadKindleState(sync, original_read)
+            restoreWriteKindleState(sync, original_write)
+            sync.updateYjrPosition = original_update
+            RealDocSettings:_clearSidecars()
+        end)
+
+        it("should honor NEVER when KOReader is older than Kindle", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            setupPluginSettings(sync)
+            RealDocSettings:_setSidecarFile(history_path, true)
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 90,
+                timestamp = 1762700000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            local original_write, writes = mockWriteKindleState(sync)
+            local ds = createMockDocSettings(history_path, {
+                percent_finished = 0.75,
+                summary = { status = "reading" },
+            })
+
+            assert.is_false(sync:syncToKindleAutomatic("B007N6JEII", history_path, ds))
+            assert.equals(0, #writes)
+
+            restoreReadKindleState(sync, original_read)
+            restoreWriteKindleState(sync, original_write)
+            RealDocSettings:_clearSidecars()
         end)
     end)
 

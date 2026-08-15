@@ -5,6 +5,7 @@
 --- Adapted from kobo.koplugin/src/readerui_ext.lua (reading_state_sync removed).
 
 local logger = require("logger")
+local Trapper = require("ui/trapper")
 
 local ReaderUIExt = {}
 
@@ -89,7 +90,7 @@ function ReaderUIExt:apply(ReaderUI)
             updateBookListCache(virtual_path, reader_self.doc_settings)
 
             -- Sync progress to Kindle on book close
-            if self.reading_state_sync and self.reading_state_sync:isEnabled() then
+            if self.reading_state_sync and self.reading_state_sync:isAutomaticSyncEnabled() then
                 local cde_key = self.reading_state_sync:extractCdeKey(virtual_path, reader_self.doc_settings)
                 -- Resolve source_path from the virtual library book data
                 local book = self.virtual_library:getBook(virtual_path)
@@ -97,7 +98,13 @@ function ReaderUIExt:apply(ReaderUI)
                 if cde_key or source_path then
                     logger.info("KindlePlugin: Auto-syncing progress to Kindle on book close:",
                         "cde_key:", cde_key, "source_path:", source_path)
-                    self.reading_state_sync:syncToKindle(cde_key, source_path, reader_self.doc_settings)
+                    Trapper:wrap(function()
+                        self.reading_state_sync:syncToKindleAutomatic(
+                            cde_key,
+                            source_path,
+                            reader_self.doc_settings
+                        )
+                    end)
                 end
             end
         end

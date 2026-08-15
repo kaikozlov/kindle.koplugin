@@ -254,6 +254,21 @@ describe("VirtualLibrary", function()
             assert.is_nil(vlib:getRealPath(mock_books[1].virtual_path))
         end)
 
+        it("should map converted cache paths back to their virtual books", function()
+            local mock_books = {
+                { id = "b1", display_name = "Book", source_path = "/path/book.kfx", logical_ext = "epub" },
+            }
+            local vlib = VirtualLibrary:new({ getBooks = function() return mock_books end })
+            vlib:setCacheManager({
+                getCachePaths = function() return "/cache/b1.epub", "/cache/b1.json" end,
+            })
+
+            vlib:buildMappings(false)
+
+            assert.equals(mock_books[1].virtual_path, vlib:getVirtualPath("/cache/b1.epub"))
+            assert.equals("b1", vlib:getBook("/cache/b1.epub").id)
+        end)
+
         it("should clear existing mappings before rebuilding", function()
             local mock_index = {
                 getBooks = function(self, force) return {} end,
@@ -308,6 +323,42 @@ describe("VirtualLibrary", function()
     end)
 
     describe("getVirtualPath", function()
+        it("should lazily build mappings for a persisted Bookshelf cache path", function()
+            local calls = 0
+            local mock_books = {
+                { id = "b1", display_name = "Book", source_path = "/path/book.kfx", logical_ext = "epub" },
+            }
+            local vlib = VirtualLibrary:new({
+                getBooks = function()
+                    calls = calls + 1
+                    return mock_books
+                end,
+            })
+            vlib:setSettings({ cache_dir = "/cache", documents_root = "/documents" })
+            vlib:setCacheManager({
+                getCachePaths = function() return "/cache/b1.epub", "/cache/b1.json" end,
+            })
+
+            local virtual_path = vlib:getVirtualPath("/cache/b1.epub")
+
+            assert.equals(1, calls)
+            assert.equals(mock_books[1].virtual_path, virtual_path)
+        end)
+
+        it("should not scan the Kindle index for unrelated files", function()
+            local calls = 0
+            local vlib = VirtualLibrary:new({
+                getBooks = function()
+                    calls = calls + 1
+                    return {}
+                end,
+            })
+            vlib:setSettings({ cache_dir = "/cache", documents_root = "/documents" })
+
+            assert.is_nil(vlib:getVirtualPath("/other/library/book.epub"))
+            assert.equals(0, calls)
+        end)
+
         it("should return virtual path for a known real path", function()
             local mock_books = {
                 { id = "b1", display_name = "Book", source_path = "/path/book.kfx", logical_ext = "epub" },

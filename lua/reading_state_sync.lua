@@ -486,6 +486,112 @@ function ReadingStateSync:syncToKindle(cde_key, source_path, doc_settings)
     return ok
 end
 
+--- Sync the native Kindle state into KOReader during an automatic open.
+--- Unlike syncFromKindle(), this honors automatic-sync and all configured
+--- direction choices, including an explicitly allowed older Kindle state.
+function ReadingStateSync:syncFromKindleAutomatic(cde_key, source_path, doc_settings)
+    if not self:isAutomaticSyncEnabled() then
+        return false
+    end
+
+    local kindle_state = self:readKindleState(cde_key, source_path)
+    if not kindle_state or not kindle_state.percent_read then
+        return false
+    end
+    if kindle_state.kindle_status == 0 or kindle_state.percent_read == 0 then
+        return false
+    end
+
+    local doc_path = doc_settings.data and doc_settings.data.doc_path
+    local kr_timestamp = getValidatedKOReaderTimestamp(doc_path)
+    local kr_percent = doc_settings:readSetting("percent_finished") or 0
+    local summary = doc_settings:readSetting("summary") or {}
+    local kr_status = summary.status or "reading"
+    local same_percent = math.floor(kr_percent * 100) == math.floor(kindle_state.percent_read)
+    local same_status = kr_status == kindle_state.status
+        or (kr_percent >= 1 and kindle_state.percent_read >= 100)
+    if same_percent and same_status then
+        return false
+    end
+    local kindle_is_newer = kindle_state.timestamp > kr_timestamp
+    local sync_details = {
+        book_title = self:getBookTitle(cde_key, doc_settings),
+        source_percent = kindle_state.percent_read,
+        dest_percent = kr_percent * 100,
+        source_time = kindle_state.timestamp,
+        dest_time = kr_timestamp,
+    }
+
+    local sync_completed = false
+    self:syncIfApproved(true, kindle_is_newer, function()
+        sync_completed = self:applyKindleStateToKOReader(
+            kindle_state,
+            doc_settings,
+            kr_timestamp
+        )
+        if sync_completed then
+            doc_settings:flush()
+        end
+    end, sync_details)
+    return sync_completed
+end
+
+--- Sync KOReader state into the native Kindle database during automatic close.
+--- This honors automatic-sync and all configured direction choices, and keeps
+--- the native .yjr in-book position aligned when the database write succeeds.
+function ReadingStateSync:syncToKindleAutomatic(cde_key, source_path, doc_settings)
+    if not self:isAutomaticSyncEnabled() then
+        return false
+    end
+
+    local kr_percent = doc_settings:readSetting("percent_finished") or 0
+    local summary = doc_settings:readSetting("summary") or {}
+    local kr_status = summary.status or "reading"
+    local doc_path = doc_settings.data and doc_settings.data.doc_path
+    local kr_timestamp = getValidatedKOReaderTimestamp(doc_path)
+    if kr_timestamp == 0 then
+        return false
+    end
+
+    local kindle_state = self:readKindleState(cde_key, source_path) or {
+        percent_read = 0,
+        timestamp = 0,
+        status = "",
+        kindle_status = 0,
+    }
+    if SyncDecisionMaker.areBothSidesComplete(kindle_state, kr_percent, kr_status) then
+        return false
+    end
+    if math.floor(kr_percent * 100) == math.floor(kindle_state.percent_read or 0) then
+        return false
+    end
+
+    local koreader_is_newer = kr_timestamp >= (kindle_state.timestamp or 0)
+    local sync_details = {
+        book_title = self:getBookTitle(cde_key, doc_settings),
+        source_percent = kr_percent * 100,
+        dest_percent = kindle_state.percent_read or 0,
+        source_time = kr_timestamp,
+        dest_time = kindle_state.timestamp or 0,
+    }
+
+    local sync_completed = false
+    self:syncIfApproved(false, koreader_is_newer, function()
+        local current_timestamp = os.time()
+        sync_completed = self:writeKindleState(
+            cde_key,
+            source_path,
+            math.floor(kr_percent * 100),
+            current_timestamp,
+            kr_status
+        )
+        if sync_completed then
+            self:updateYjrPosition(source_path, math.floor(kr_percent * 100))
+        end
+    end, sync_details)
+    return sync_completed
+end
+
 ---
 --- Executes sync FROM Kindle to KOReader (PULL scenario).
 function ReadingStateSync:executePullFromKindle(cde_key, source_path, doc_settings, kindle_state, kr_percent, kr_timestamp)

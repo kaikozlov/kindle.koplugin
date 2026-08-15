@@ -414,6 +414,17 @@ function KindlePlugin:createSyncBehaviorMenuItem()
         end,
         sub_item_table = {
             {
+                text = _("Automatic sync on book open and close"),
+                checked_func = function()
+                    return self.settings.enable_auto_sync == true
+                end,
+                callback = function()
+                    self.settings.enable_auto_sync = not self.settings.enable_auto_sync
+                    self:saveSettings()
+                end,
+                separator = true,
+            },
+            {
                 text = _("Enable sync FROM Kindle TO KOReader"),
                 checked_func = function()
                     return self.settings.enable_sync_from_kindle == true

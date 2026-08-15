@@ -77,6 +77,12 @@ describe("ShowReaderExt", function()
                 isVirtualPath = function(self, path)
                     return path and path:match("^KINDLE_VIRTUAL://") ~= nil
                 end,
+                getVirtualPath = function(self, path)
+                    if path == "/cache/book.epub" then
+                        return "KINDLE_VIRTUAL://B001/book.kfx"
+                    end
+                    return nil
+                end,
                 getBook = function(self, virtual_path)
                     if virtual_path == "KINDLE_VIRTUAL://B001/book.kfx" then
                         return {
@@ -199,14 +205,14 @@ describe("ShowReaderExt", function()
             ShowReaderExt:unapply()
         end)
 
-        it("should trigger PULL sync when sync is enabled", function()
+        it("should trigger configured automatic sync before open", function()
             local sync_tracker = { called = false }
             local mock_sync = {
-                isEnabled = function() return true end,
+                isAutomaticSyncEnabled = function() return true end,
                 extractCdeKey = function(self, path)
                     return path:match("^KINDLE_VIRTUAL://([A-Z0-9]+)/")
                 end,
-                syncFromKindle = function(self, cde_key, source_path, doc_settings)
+                syncFromKindleAutomatic = function(self, cde_key, source_path, doc_settings)
                     sync_tracker.called = true
                     sync_tracker.cde_key = cde_key
                     sync_tracker.source_path = source_path
@@ -237,11 +243,11 @@ describe("ShowReaderExt", function()
             ShowReaderExt:unapply()
         end)
 
-        it("should not trigger sync when disabled", function()
+        it("should let the automatic sync policy reject a disabled sync", function()
             local sync_tracker = { called = false }
             local mock_sync = {
-                isEnabled = function() return false end,
-                syncFromKindle = function()
+                isAutomaticSyncEnabled = function() return false end,
+                syncFromKindleAutomatic = function()
                     sync_tracker.called = true
                     return false
                 end,
@@ -254,6 +260,38 @@ describe("ShowReaderExt", function()
 
             assert.is_false(sync_tracker.called)
 
+            ShowReaderExt:unapply()
+        end)
+
+        it("should route a cached Bookshelf EPUB through the virtual book", function()
+            local sync_tracker = { called = false }
+            local mock_sync = {
+                isAutomaticSyncEnabled = function() return true end,
+                extractCdeKey = function(self, path)
+                    return path:match("^KINDLE_VIRTUAL://([A-Z0-9]+)/")
+                end,
+                syncFromKindleAutomatic = function(self, cde_key, source_path)
+                    sync_tracker.called = true
+                    sync_tracker.cde_key = cde_key
+                    sync_tracker.source_path = source_path
+                    return true
+                end,
+            }
+            local DocSettings = require("docsettings")
+            local original_open = DocSettings.open
+            DocSettings.open = function()
+                return { flush = function() end }
+            end
+
+            ShowReaderExt:init(createMockVirtualLibrary(), mock_sync)
+            ShowReaderExt:apply()
+            readerui_module:showReader("/cache/book.epub")
+
+            assert.equals(1, #original_showReader_calls)
+            assert.equals("/cache/book.epub", original_showReader_calls[1].file)
+            assert.is_true(sync_tracker.called)
+            assert.equals("B001", sync_tracker.cde_key)
+            DocSettings.open = original_open
             ShowReaderExt:unapply()
         end)
 

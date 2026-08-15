@@ -16,6 +16,7 @@ function VirtualLibrary:new(library_index)
         books_by_id = {},
         books_by_virtual = {},
         real_to_virtual = {},
+        mappings_built = false,
         open_alias_to_virtual = {},
         virtual_to_open_alias = {},
         -- Flag used by pathchooser_ext to bypass virtual library interception
@@ -45,6 +46,13 @@ local function sanitizeDisplayName(name)
     return cleaned
 end
 
+local function isPathWithin(path, root)
+    if type(path) ~= "string" or type(root) ~= "string" or root == "" then
+        return false
+    end
+    return path == root or path:sub(1, #root + 1) == root .. "/"
+end
+
 function VirtualLibrary:generateVirtualPath(book)
     local filename = sanitizeDisplayName(book.display_name or book.title or book.id)
     local logical_ext = book.logical_ext or book.format or "bin"
@@ -71,7 +79,18 @@ function VirtualLibrary:buildMappings(force)
         if book.source_path then
             self.real_to_virtual[book.source_path] = book.virtual_path
         end
+        -- Bookshelf/History persist the converted EPUB path rather than the
+        -- KINDLE_VIRTUAL:// alias. Index that deterministic cache path too so
+        -- the book can be recovered after a KOReader restart.
+        if self.cache_manager then
+            local cached_path = self.cache_manager:getCachePaths(book)
+            if cached_path then
+                self.real_to_virtual[cached_path] = book.virtual_path
+            end
+        end
     end
+
+    self.mappings_built = true
 
     logger.info("KindlePlugin: built mappings for", #books, "books")
     return books
@@ -141,7 +160,25 @@ function VirtualLibrary:getVirtualPath(path)
         return self.open_alias_to_virtual[path]
     end
 
-    return self.real_to_virtual[path]
+    local virtual_path = self.real_to_virtual[path]
+    if virtual_path then
+        return virtual_path
+    end
+
+    -- Bookshelf and History may persist the converted EPUB path instead of
+    -- KINDLE_VIRTUAL://. Rebuild lazily so those entries work after restart,
+    -- before the virtual Kindle folder has been visited in this session.
+    local could_be_kindle_book = isPathWithin(path, self.settings.cache_dir)
+        or isPathWithin(path, self.settings.documents_root)
+    if not self.mappings_built
+        and could_be_kindle_book
+        and self.library_index
+        and self.library_index.getBooks then
+        self:buildMappings(false)
+        return self.open_alias_to_virtual[path] or self.real_to_virtual[path]
+    end
+
+    return nil
 end
 
 function VirtualLibrary:getRealPath(path)

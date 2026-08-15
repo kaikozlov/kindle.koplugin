@@ -66,7 +66,7 @@ describe("ReaderUIExt", function()
 
         local function createMockSync(is_enabled, sync_tracker)
             return {
-                isEnabled = function()
+                isAutomaticSyncEnabled = function()
                     return is_enabled
                 end,
                 extractCdeKey = function(self, virtual_path, doc_settings)
@@ -75,13 +75,13 @@ describe("ReaderUIExt", function()
                     end
                     return nil
                 end,
-                syncToKindle = function(self, cde_key, source_path, doc_settings)
-                    if sync_tracker then
+                syncToKindleAutomatic = function(self, cde_key, source_path, doc_settings)
+                    if is_enabled and sync_tracker then
                         sync_tracker.called = true
                         sync_tracker.cde_key = cde_key
                         sync_tracker.source_path = source_path
                     end
-                    return true
+                    return is_enabled
                 end,
             }
         end

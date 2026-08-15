@@ -31,9 +31,13 @@ function ShowReaderExt:apply()
     local original_showReader = self.original_showReader
 
     ReaderUI.showReader = function(reader_self, file, provider, seamless, is_provider_forced, after_open_callback)
-        if not virtual_library:isVirtualPath(file) then
+        local virtual_file = virtual_library:isVirtualPath(file) and file
+            or virtual_library:getVirtualPath(file)
+        if not virtual_file then
             return original_showReader(reader_self, file, provider, seamless, is_provider_forced, after_open_callback)
         end
+
+        file = virtual_file
 
         logger.info("KindlePlugin: showReader intercepting virtual path:", file)
 
@@ -87,7 +91,7 @@ function ShowReaderExt:apply()
         logger.info("KindlePlugin: resolved virtual path to:", real_file)
 
         -- Sync reading progress FROM Kindle before opening (PULL)
-        if reading_state_sync and reading_state_sync:isEnabled() then
+        if reading_state_sync and reading_state_sync:isAutomaticSyncEnabled() then
             local cde_key = reading_state_sync:extractCdeKey(file)
             local source_path = book.source_path
             if cde_key or source_path then
@@ -96,7 +100,9 @@ function ShowReaderExt:apply()
                 -- Open doc_settings for the real file to update progress
                 local DocSettings = require("docsettings")
                 local doc_settings = DocSettings:open(real_file)
-                reading_state_sync:syncFromKindle(cde_key, source_path, doc_settings)
+                Trapper:wrap(function()
+                    reading_state_sync:syncFromKindleAutomatic(cde_key, source_path, doc_settings)
+                end)
                 doc_settings:flush()
             end
         end
