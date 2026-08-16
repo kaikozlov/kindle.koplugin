@@ -80,6 +80,7 @@ function ReaderUIExt:apply(ReaderUI)
         -- Try document.virtual_path first (set by document_ext for virtual paths)
         -- Fall back to looking up via the open alias (set by showreader_ext)
         local virtual_path = reader_self.document and reader_self.document.virtual_path
+        local epub_path = reader_self.document and reader_self.document.file
         if not virtual_path and reader_self.document and reader_self.document.file then
             virtual_path = self.virtual_library:getVirtualPath(reader_self.document.file)
         end
@@ -102,7 +103,8 @@ function ReaderUIExt:apply(ReaderUI)
                         self.reading_state_sync:syncToKindleAutomatic(
                             cde_key,
                             source_path,
-                            reader_self.doc_settings
+                            reader_self.doc_settings,
+                            epub_path
                         )
                     end)
                 end

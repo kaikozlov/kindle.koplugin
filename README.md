@@ -7,7 +7,7 @@ A KOReader plugin that lets you browse and read your Kindle book library directl
 ### Features
 
 - **Virtual Library** — Browse your Kindle books from a dedicated folder in KOReader's file browser
-- **Reading State Sync** — Sync reading progress between KOReader and Kindle, so you can switch between them and pick up where you left off
+- **Exact Reading State Sync** — Switch between KOReader and the native Kindle reader at the same text position, in either direction
 - **Cached for Speed** — Books are prepared on first open and cached, so re-opening is instant
 
 ### Installation
@@ -37,14 +37,21 @@ A KOReader plugin that lets you browse and read your Kindle book library directl
 1. Go to **Menu → Kindle Library → Sync reading state with Kindle** to enable
 2. Under **Sync behavior**, enable automatic open/close sync and choose the
    FROM/TO Kindle rules for newer and older progress
-3. Reading progress syncs whether the book is opened from Kindle Library,
+3. Exact reading position syncs whether the book is opened from Kindle Library,
    KOReader Bookshelf, or History; cached Kindle EPUBs are mapped back to their
    native source book automatically
 
 Automatic sync runs before opening and after closing a book. **Ask me** waits
 for your answer at that lifecycle boundary, **Always sync** applies silently,
-and **Never** leaves the destination unchanged. Books whose progress and status
-already match are skipped.
+and **Never** leaves the destination unchanged. The plugin translates KOReader
+XPointers to Kindle KFX coordinates, persists them through Kindle's ReaderSDK,
+and reverse-translates the native last-page-read position when returning to
+KOReader. The shelf percentage is updated only after the authoritative native
+save succeeds. KOReader and Kindle calculate percentages against different
+rendered content lengths, so the native shelf is written with Kindle's rendered
+percentage rather than copying KOReader's percentage. This keeps the native
+shelf and native reader consistent while the exact text position remains the
+cross-reader source of truth.
 
 ### Compatibility
 

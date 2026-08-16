@@ -101,7 +101,9 @@ function ShowReaderExt:apply()
                 local DocSettings = require("docsettings")
                 local doc_settings = DocSettings:open(real_file)
                 Trapper:wrap(function()
-                    reading_state_sync:syncFromKindleAutomatic(cde_key, source_path, doc_settings)
+                    reading_state_sync:syncFromKindleAutomatic(
+                        cde_key, source_path, doc_settings, real_file
+                    )
                 end)
                 doc_settings:flush()
             end

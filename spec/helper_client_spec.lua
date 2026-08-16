@@ -146,4 +146,51 @@ describe("HelperClient", function()
             assert.equals(3, result.keys_found)
         end)
     end)
+
+    describe("native position sync", function()
+        it("should translate one XPointer using the helper position map", function()
+            local seen = nil
+            local client = HelperClient:new({
+                runner = function(args)
+                    seen = args
+                    return { ok = true, start = { long = "ATwFAACbAAAA", pid = 442741 } }
+                end,
+            })
+            local result = client:translatePosition(
+                "/cache/book.epub", "/body/DocFragment/body/p/text().1"
+            )
+            assert.equals("translate-position", seen[2])
+            assert.equals(442741, result.pid)
+        end)
+
+        it("should expose a native progress runner seam", function()
+            local client = HelperClient:new({
+                native_progress_runner = function(asin, path, position)
+                    return asin == "B007N6JEII" and path:match("%.kfx$")
+                        and position.pid == 442741
+                end,
+            })
+            assert.is_true(client:saveNativeProgress(
+                "B007N6JEII", "/mnt/us/documents/book.kfx",
+                { long = "ATwFAACbAAAA", pid = 442741 }
+            ))
+        end)
+
+        it("should reject native progress paths outside the Kindle library", function()
+            local invoked = false
+            local client = HelperClient:new({
+                native_progress_runner = function()
+                    invoked = true
+                    return true
+                end,
+            })
+            local ok, err = client:saveNativeProgress(
+                "B007N6JEII", "/tmp/book.kfx",
+                { long = "ATwFAACbAAAA", pid = 442741 }
+            )
+            assert.is_false(ok)
+            assert.equals("invalid native path", err)
+            assert.is_false(invoked)
+        end)
+    end)
 end)

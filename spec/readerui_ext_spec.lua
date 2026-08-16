@@ -75,11 +75,12 @@ describe("ReaderUIExt", function()
                     end
                     return nil
                 end,
-                syncToKindleAutomatic = function(self, cde_key, source_path, doc_settings)
+                syncToKindleAutomatic = function(self, cde_key, source_path, doc_settings, epub_path)
                     if is_enabled and sync_tracker then
                         sync_tracker.called = true
                         sync_tracker.cde_key = cde_key
                         sync_tracker.source_path = source_path
+                        sync_tracker.epub_path = epub_path
                     end
                     return is_enabled
                 end,
@@ -126,6 +127,7 @@ describe("ReaderUIExt", function()
             assert.is_true(tracker.called)
             assert.equals("B001", tracker.cde_key)
             assert.equals("/mnt/us/documents/test.kfx", tracker.source_path)
+            assert.equals("/mnt/us/documents/test.kfx", tracker.epub_path)
         end)
 
         it("should not sync when auto-sync is disabled", function()

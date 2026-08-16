@@ -212,10 +212,11 @@ describe("ShowReaderExt", function()
                 extractCdeKey = function(self, path)
                     return path:match("^KINDLE_VIRTUAL://([A-Z0-9]+)/")
                 end,
-                syncFromKindleAutomatic = function(self, cde_key, source_path, doc_settings)
+                syncFromKindleAutomatic = function(self, cde_key, source_path, doc_settings, epub_path)
                     sync_tracker.called = true
                     sync_tracker.cde_key = cde_key
                     sync_tracker.source_path = source_path
+                    sync_tracker.epub_path = epub_path
                     return true
                 end,
             }
@@ -238,6 +239,7 @@ describe("ShowReaderExt", function()
             assert.is_true(sync_tracker.called)
             assert.equals("B001", sync_tracker.cde_key)
             assert.equals("/mnt/us/documents/book_B001.kfx", sync_tracker.source_path)
+            assert.equals("/cache/book.epub", sync_tracker.epub_path)
             DocSettings.open = original_open
 
             ShowReaderExt:unapply()

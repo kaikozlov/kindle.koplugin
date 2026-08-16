@@ -143,6 +143,157 @@ function HelperClient:position(yjr_path, old_percent, new_percent)
     return result, err
 end
 
+--- Translate a KOReader XPointer into Kindle's exact long and short position.
+function HelperClient:translatePosition(epub_path, xpointer)
+    local result, err = self:_run({
+        self:getBinaryPath(),
+        "translate-position",
+        "--epub", epub_path,
+        "--start", xpointer,
+        "--end", xpointer,
+    })
+    if not result or not result.ok or not result.start then
+        return nil, err or (result and result.message) or "position translation failed"
+    end
+    return result.start
+end
+
+function HelperClient:translateNativePosition(epub_path, long_position)
+    local result, err = self:_run({
+        self:getBinaryPath(),
+        "translate-native-position",
+        "--epub", epub_path,
+        "--long", long_position,
+    })
+    if not result or not result.ok or not result.xpointer then
+        return nil, err or (result and result.message) or "reverse position translation failed"
+    end
+    return result
+end
+
+local function hexEncode(value)
+    return (value:gsub(".", function(character)
+        return string.format("%02x", string.byte(character))
+    end))
+end
+
+local function readNativeProgressResult(request_id, asin)
+    local result_file = io.open(
+        "/mnt/us/koreader/settings/kindle_native_progress_debug.log", "rb"
+    )
+    if not result_file then
+        return nil, "native progress result unavailable"
+    end
+    local values = {}
+    for line in result_file:lines() do
+        local key, value = line:match("^([a-z_]+)=(.*)$")
+        if key then values[key] = value end
+    end
+    result_file:close()
+    if values.request_id ~= request_id or values.asin ~= asin
+        or values.success ~= "true" or not values.long_position
+    then
+        return nil, "native progress result mismatch"
+    end
+    return values
+end
+
+--- Save an exact position through the native Kindle ReaderSDK.
+function HelperClient:saveNativeProgress(asin, native_path, position)
+    if type(asin) ~= "string" or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$") then
+        return false, "invalid ASIN"
+    end
+    if type(native_path) ~= "string"
+        or not native_path:match("^/mnt/us/documents/.+%.kfx$")
+    then
+        return false, "invalid native path"
+    end
+    if type(position) ~= "table" or type(position.long) ~= "string"
+        or type(position.pid) ~= "number" then
+        return false, "invalid native position"
+    end
+    if self.native_progress_runner then
+        return self.native_progress_runner(asin, native_path, position)
+    end
+
+    local request_id = tostring(os.time()) .. tostring(math.random(100000, 999999))
+    local payload_path = "/tmp/kindle-progress-" .. request_id .. ".properties"
+    local payload = io.open(payload_path, "wb")
+    if not payload then
+        return false, "cannot create native progress payload"
+    end
+    payload:write("version=1\n")
+    payload:write("request_id=", request_id, "\n")
+    payload:write("asin=", asin, "\n")
+    payload:write("operation=save\n")
+    payload:write("native_path_hex=", hexEncode(native_path), "\n")
+    payload:write("long_position=", position.long, "\n")
+    payload:write("short_position=", tostring(position.pid), "\n")
+    payload:close()
+    os.execute("chmod 600 " .. util.shell_escape({ payload_path }))
+
+    local helper = self:getPluginPath() .. "/bin/sync-native-progress"
+    local result = os.execute(util.shell_escape({ helper, payload_path }))
+    os.remove(payload_path)
+    if result ~= 0 then
+        logger.warn("KindlePlugin: authoritative native progress save failed with status", result)
+        return false, "native progress save failed"
+    end
+    local values, result_error = readNativeProgressResult(request_id, asin)
+    local native_percent = values and tonumber(values.native_percent)
+    if not values or values.catalog_progress_saved ~= "true"
+        or tonumber(values.saved_short) ~= position.pid
+        or values.long_position ~= position.long or not native_percent
+        or native_percent < 0 or native_percent > 100
+    then
+        return false, result_error or "native progress result mismatch"
+    end
+    logger.info("KindlePlugin: authoritative native progress saved:", asin, position.pid)
+    return true, nil, native_percent
+end
+
+--- Read Kindle's authoritative local last-page-read position.
+function HelperClient:readNativeProgress(asin, native_path)
+    if type(asin) ~= "string" or #asin ~= 10 or not asin:match("^B[A-Z0-9]+$") then
+        return nil, "invalid ASIN"
+    end
+    if type(native_path) ~= "string"
+        or not native_path:match("^/mnt/us/documents/.+%.kfx$")
+    then
+        return nil, "invalid native path"
+    end
+    if self.native_progress_reader then
+        return self.native_progress_reader(asin, native_path)
+    end
+    local request_id = tostring(os.time()) .. tostring(math.random(100000, 999999))
+    local payload_path = "/tmp/kindle-progress-" .. request_id .. ".properties"
+    local payload = io.open(payload_path, "wb")
+    if not payload then
+        return nil, "cannot create native progress payload"
+    end
+    payload:write("version=1\n")
+    payload:write("request_id=", request_id, "\n")
+    payload:write("asin=", asin, "\n")
+    payload:write("operation=read\n")
+    payload:write("native_path_hex=", hexEncode(native_path), "\n")
+    payload:close()
+    os.execute("chmod 600 " .. util.shell_escape({ payload_path }))
+
+    local helper = self:getPluginPath() .. "/bin/sync-native-progress"
+    local status = os.execute(util.shell_escape({ helper, payload_path }))
+    os.remove(payload_path)
+    if status ~= 0 then
+        return nil, "native progress read failed"
+    end
+    local values, result_error = readNativeProgressResult(request_id, asin)
+    if not values then return nil, result_error end
+    return {
+        long = values.long_position,
+        pid = tonumber(values.saved_short),
+        percent = tonumber(values.native_percent),
+    }
+end
+
 function HelperClient:drmInit()
     local root = self.settings.documents_root or "/mnt/us/documents"
     local cache_dir = self.settings.cache_dir or ""

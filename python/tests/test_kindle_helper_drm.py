@@ -87,6 +87,11 @@ class PlaintextDrmIonTests(unittest.TestCase):
                         return_value=b"CONT plaintext book",
                     ) as decrypt, \
                     mock.patch.dict(sys.modules, {"kfxlib": fake_kfxlib}), \
+                    mock.patch.object(
+                        kindle_helper,
+                        "position_metadata_conversion",
+                        return_value=contextlib.nullcontext(),
+                    ), \
                     contextlib.redirect_stdout(stdout), \
                     self.assertRaises(SystemExit) as exited:
                 kindle_helper.cmd_convert(self.make_args(input_path, output_path))

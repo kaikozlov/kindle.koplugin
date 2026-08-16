@@ -140,6 +140,9 @@ SITE_PACKAGES="$DIST_DIR/lib/python3.11/site-packages"
 echo "[3/5] Copying plugin source..."
 
 cp python/kindle_helper.py "$DIST_DIR/kindle_helper.py"
+cp python/epub_position.py "$DIST_DIR/epub_position.py"
+cp python/kfx_position_map.py "$DIST_DIR/kfx_position_map.py"
+cp python/kfx_position_adapter.py "$DIST_DIR/kfx_position_adapter.py"
 cp -r python/kfxlib/ "$DIST_DIR/kfxlib/"
 cp -r python/dedrm/ "$DIST_DIR/dedrm/"
 
@@ -273,6 +276,7 @@ cp -r lua/ "$STAGING/lua/"
 cp main.lua "$STAGING/"
 cp _meta.lua "$STAGING/"
 cp -r patches/ "$STAGING/patches/" 2>/dev/null || true
+cp -r bin/ "$STAGING/bin/"
 
 # Copy the C wrapper
 cp "$OUTPUT_DIR/kindle-helper" "$STAGING/"
@@ -292,7 +296,11 @@ cp -a "$DIST_DIR/." "$STAGING/dist/"
 # Fail the build if the package no longer matches Dockerfile.wrapper's paths.
 test -x "$STAGING/dist/bin/python3"
 test -f "$STAGING/dist/kindle_helper.py"
+test -f "$STAGING/dist/epub_position.py"
+test -f "$STAGING/dist/kfx_position_adapter.py"
 test -f "$STAGING/dist/dedrm/native_extractor.py"
+test -x "$STAGING/bin/sync-native-progress"
+test -f "$STAGING/bin/native-reading-progress-agent-v6.jar"
 test -x "$STAGING/dist/lib/runtime/ld-linux-armhf.so.3"
 test -f "$STAGING/dist/lib/runtime/libc.so.6"
 test ! -d "$STAGING/dist/dist"

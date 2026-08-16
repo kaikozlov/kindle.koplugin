@@ -79,6 +79,7 @@ local virtual_library = VirtualLibrary:new(library_index)
 local cache_manager = CacheManager:new(helper_client, virtual_library)
 local reading_state_sync = ReadingStateSync:new(helper_client)
 virtual_library:setCacheManager(cache_manager)
+reading_state_sync:setVirtualLibrary(virtual_library)
 
 --- Applies ShowReader extensions for virtual library support.
 local function applyShowReaderExtensions()
