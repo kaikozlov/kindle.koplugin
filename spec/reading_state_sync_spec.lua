@@ -408,6 +408,62 @@ describe("ReadingStateSync", function()
             restoreReadKindleState(sync, original)
         end)
 
+        it("should fall back to percentage-only pull when ReaderSDK is unavailable", function()
+            local sync = ReadingStateSync:new({
+                nativeProgressAvailable = function() return false end,
+            })
+            sync:setEnabled(true)
+            setupPluginSettings(sync)
+            RealDocSettings:_setSidecarFile(history_path, true)
+            local original = mockReadKindleState(sync, {
+                percent_read = 80,
+                timestamp = 1762700000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            local ds = createMockDocSettings(history_path, {
+                percent_finished = 0.3,
+                last_xpointer = "/body/DocFragment/body/p/text().30",
+                summary = { status = "reading" },
+            })
+
+            assert.is_true(sync:syncFromKindleAutomatic("B007N6JEII", history_path, ds))
+            assert.equals(0.8, ds:readSetting("percent_finished"))
+            assert.equals(
+                "/body/DocFragment/body/p/text().30",
+                ds:readSetting("last_xpointer")
+            )
+
+            restoreReadKindleState(sync, original)
+            RealDocSettings:_clearSidecars()
+        end)
+
+        it("should fall back to percentage push when ReaderSDK is unavailable", function()
+            local sync = ReadingStateSync:new({
+                nativeProgressAvailable = function() return false end,
+            })
+            sync:setEnabled(true)
+            setupPluginSettings(sync)
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 30,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            local original_write, writes = mockWriteKindleState(sync)
+            local ds = createMockDocSettings(history_path, {
+                percent_finished = 0.75,
+                summary = { status = "reading" },
+            })
+
+            assert.is_true(sync:syncToKindleAutomatic("B007N6JEII", history_path, ds))
+            assert.equals(1, #writes)
+            assert.equals(75, writes[1].percent)
+
+            restoreReadKindleState(sync, original_read)
+            restoreWriteKindleState(sync, original_write)
+        end)
+
         it("should honor NEVER for a newer Kindle state", function()
             local sync = ReadingStateSync:new()
             sync:setEnabled(true)

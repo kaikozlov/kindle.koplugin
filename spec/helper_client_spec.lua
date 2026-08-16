@@ -170,9 +170,29 @@ describe("HelperClient", function()
                         and position.pid == 442741
                 end,
             })
+            assert.is_true(client:nativeProgressAvailable(
+                "B007N6JEII", "/mnt/us/documents/book.kfx"
+            ))
             assert.is_true(client:saveNativeProgress(
                 "B007N6JEII", "/mnt/us/documents/book.kfx",
                 { long = "ATwFAACbAAAA", pid = 442741 }
+            ))
+        end)
+
+        it("should capability-gate exact sync for unsupported books", function()
+            local client = HelperClient:new({ native_progress_available = true })
+            assert.is_false(client:nativeProgressAvailable(
+                "personal-document", "/mnt/us/documents/book.kfx"
+            ))
+            assert.is_false(client:nativeProgressAvailable(
+                "B007N6JEII", "/tmp/book.kfx"
+            ))
+        end)
+
+        it("should allow device capability to be overridden for compatibility tests", function()
+            local client = HelperClient:new({ native_progress_available = false })
+            assert.is_false(client:nativeProgressAvailable(
+                "B007N6JEII", "/mnt/us/documents/book.kfx"
             ))
         end)
 

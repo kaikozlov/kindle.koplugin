@@ -177,6 +177,46 @@ local function hexEncode(value)
     end))
 end
 
+local function readableFile(path)
+    local handle = io.open(path, "rb")
+    if not handle then
+        return false
+    end
+    handle:close()
+    return true
+end
+
+--- Whether the exact ReaderSDK bridge is usable for this native book.
+--- Older Kindle firmware and personal documents may still use the legacy
+--- percentage/YJR synchronization path even when this returns false.
+function HelperClient:nativeProgressAvailable(asin, native_path)
+    if type(asin) ~= "string" or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$")
+        or type(native_path) ~= "string"
+        or not native_path:match("^/mnt/us/documents/.+%.kfx$")
+    then
+        return false
+    end
+
+    if self.native_progress_available ~= nil then
+        if type(self.native_progress_available) == "function" then
+            return self.native_progress_available(asin, native_path) == true
+        end
+        return self.native_progress_available == true
+    end
+    if self._native_progress_failed then
+        return false
+    end
+    if self.native_progress_runner or self.native_progress_reader then
+        return true
+    end
+
+    local plugin = self:getPluginPath()
+    return readableFile("/usr/java/bin/java")
+        and readableFile(plugin .. "/bin/sync-native-progress")
+        and readableFile(plugin .. "/bin/native-reading-progress-agent-v6.jar")
+        and readableFile(plugin .. "/bin/classes/AttachLauncher.class")
+end
+
 local function readNativeProgressResult(request_id, asin)
     local result_file = io.open(
         "/mnt/us/koreader/settings/kindle_native_progress_debug.log", "rb"
@@ -236,6 +276,7 @@ function HelperClient:saveNativeProgress(asin, native_path, position)
     local result = os.execute(util.shell_escape({ helper, payload_path }))
     os.remove(payload_path)
     if result ~= 0 then
+        self._native_progress_failed = true
         logger.warn("KindlePlugin: authoritative native progress save failed with status", result)
         return false, "native progress save failed"
     end
@@ -246,6 +287,7 @@ function HelperClient:saveNativeProgress(asin, native_path, position)
         or values.long_position ~= position.long or not native_percent
         or native_percent < 0 or native_percent > 100
     then
+        self._native_progress_failed = true
         return false, result_error or "native progress result mismatch"
     end
     logger.info("KindlePlugin: authoritative native progress saved:", asin, position.pid)
@@ -287,10 +329,14 @@ function HelperClient:readNativeProgress(asin, native_path)
     local status = os.execute(util.shell_escape({ helper, payload_path }))
     os.remove(payload_path)
     if status ~= 0 then
+        self._native_progress_failed = true
         return nil, "native progress read failed"
     end
     local values, result_error = readNativeProgressResult(request_id, asin)
-    if not values then return nil, result_error end
+    if not values then
+        self._native_progress_failed = true
+        return nil, result_error
+    end
     return {
         long = values.long_position,
         pid = tonumber(values.saved_short),
