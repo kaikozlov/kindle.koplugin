@@ -129,13 +129,13 @@ describe("CacheManager", function()
                 read = function() return "" end,
                 close = function() end,
             })
-            -- Old version metadata
+            -- Version 2 predates exact-position metadata in converted EPUBs.
             io_mocker.setMockFile(meta_path, {
-                read = function() return '{"converter_version":"1","source_mtime":1000,"source_size":42}' end,
+                read = function() return '{"converter_version":"2","source_mtime":1000,"source_size":42}' end,
                 close = function() end,
             })
 
-            -- Current CONVERTER_VERSION is "2"
+            -- Current CONVERTER_VERSION is "3".
             local fresh = cm:isFresh(book)
 
             assert.is_false(fresh)
@@ -153,7 +153,7 @@ describe("CacheManager", function()
                 close = function() end,
             })
             io_mocker.setMockFile(meta_path, {
-                read = function() return '{"converter_version":"2","source_mtime":1000,"source_size":42}' end,
+                read = function() return '{"converter_version":"3","source_mtime":1000,"source_size":42}' end,
                 close = function() end,
             })
 
@@ -175,7 +175,7 @@ describe("CacheManager", function()
             })
             -- The real json.decode is used, so provide valid JSON that decodes to the right table
             io_mocker.setMockFile(meta_path, {
-                read = function() return '{"converter_version":"2","source_mtime":1000,"source_size":42}' end,
+                read = function() return '{"converter_version":"3","source_mtime":1000,"source_size":42}' end,
                 close = function() end,
             })
 

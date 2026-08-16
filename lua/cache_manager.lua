@@ -5,7 +5,7 @@ local util = require("util")
 local CacheManager = {}
 CacheManager.__index = CacheManager
 
-CacheManager.CONVERTER_VERSION = "2"
+CacheManager.CONVERTER_VERSION = "3"
 
 function CacheManager:new(helper_client, virtual_library)
     local instance = {
