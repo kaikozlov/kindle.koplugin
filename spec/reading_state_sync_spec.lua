@@ -482,6 +482,39 @@ describe("ReadingStateSync", function()
             RealDocSettings:_clearSidecars()
         end)
 
+        it("should defer an ambiguous first pull until close establishes a receipt", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            local plugin = setupPluginSettings(sync)
+            local original = mockReadKindleState(sync, {
+                percent_read = 38,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            sync.getAuthoritativeKindleXPointer = function()
+                return "/body/DocFragment/body/p/text().38", nil, {
+                    long = "ATwFAACbAAAA", pid = 442741, percent = 38,
+                }
+            end
+            local ds = createMockDocSettings("/cache/book.epub", {
+                percent_finished = 0.52,
+                last_xpointer = "/body/DocFragment/body/p/text().52",
+                summary = { status = "reading" },
+            })
+
+            assert.is_false(sync:syncFromKindleAutomatic(
+                "B007N6JEII", history_path, ds, "/cache/book.epub"))
+            assert.equals(0.52, ds:readSetting("percent_finished"))
+            assert.equals(
+                "/body/DocFragment/body/p/text().52",
+                ds:readSetting("last_xpointer")
+            )
+            assert.is_nil(plugin.settings.position_sync_receipts)
+
+            restoreReadKindleState(sync, original)
+        end)
+
         it("should read and reverse-translate Kindle's exact LPR", function()
             local calls = {}
             local client = {

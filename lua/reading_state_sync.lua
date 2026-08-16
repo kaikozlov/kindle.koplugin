@@ -673,6 +673,21 @@ function ReadingStateSync:syncFromKindleAutomatic(cde_key, source_path, doc_sett
         logger.dbg("KindlePlugin: open-time native LPR is already reconciled")
         return false
     end
+    if not receipt and (kr_timestamp <= 0 or (kindle_state.timestamp or 0) <= 0) then
+        -- Upgrades have no reconciliation receipt yet. An absent timestamp is
+        -- not evidence that the native LPR is newer, and pulling here could
+        -- roll a valid KOReader sidecar back exactly once. Preserve KOReader;
+        -- its next close will write and receipt the authoritative coordinate.
+        local same_position = doc_settings:readSetting("last_xpointer") == exact_xpointer
+        local same_status = kr_status == kindle_state.status
+            or (kr_percent >= 1 and kindle_state.percent_read >= 100)
+        if same_position and same_status then
+            self:recordPositionReceipt(cde_key, source_path, native_position, "bootstrap")
+        else
+            logger.warn("KindlePlugin: deferring first exact LPR pull without comparable timestamps")
+        end
+        return false
+    end
     local kindle_is_newer = receipt ~= nil
         or kindle_state.timestamp > kr_timestamp
     local sync_details = {
