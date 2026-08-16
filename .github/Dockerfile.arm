@@ -48,6 +48,9 @@ WORKDIR /build
 # Copy source
 COPY python/kindle_helper.py /build/kindle_helper.py
 COPY python/annotation_position.py /build/annotation_position.py
+COPY python/epub_position.py /build/epub_position.py
+COPY python/kfx_position_adapter.py /build/kfx_position_adapter.py
+COPY python/kfx_position_map.py /build/kfx_position_map.py
 COPY python/kfxlib/ /build/kfxlib/
 COPY python/dedrm/ /build/dedrm/
 
