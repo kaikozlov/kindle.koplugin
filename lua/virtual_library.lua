@@ -65,7 +65,12 @@ function VirtualLibrary:buildMappings(force)
         book.virtual_path = self:generateVirtualPath(book)
         self.books_by_id[book.id] = book
         self.books_by_virtual[book.virtual_path] = book
-        self.real_to_virtual[book.source_path] = book.virtual_path
+        -- cc.db can contain visible cloud-only entries with no p_location.
+        -- Keep them in the virtual library as blocked/missing_source entries,
+        -- but never use nil as a Lua table key.
+        if book.source_path then
+            self.real_to_virtual[book.source_path] = book.virtual_path
+        end
     end
 
     logger.info("KindlePlugin: built mappings for", #books, "books")

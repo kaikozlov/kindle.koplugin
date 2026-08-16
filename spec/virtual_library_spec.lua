@@ -229,6 +229,31 @@ describe("VirtualLibrary", function()
             assert.is_true(mock_books[1].virtual_path:match("^KINDLE_VIRTUAL://") ~= nil)
         end)
 
+        it("should keep cloud-only books without indexing a nil source path", function()
+            local mock_books = {
+                {
+                    id = "cc:cloud-book",
+                    display_name = "Cloud Book",
+                    source_path = nil,
+                    open_mode = "blocked",
+                    block_reason = "missing_source",
+                    logical_ext = "epub",
+                },
+            }
+            local mock_index = {
+                getBooks = function() return mock_books end,
+            }
+            local vlib = VirtualLibrary:new(mock_index)
+
+            local result, err = vlib:buildMappings(false)
+
+            assert.is_nil(err)
+            assert.equals(1, #result)
+            assert.equals(mock_books[1], vlib.books_by_id["cc:cloud-book"])
+            assert.equals(mock_books[1], vlib.books_by_virtual[mock_books[1].virtual_path])
+            assert.is_nil(vlib:getRealPath(mock_books[1].virtual_path))
+        end)
+
         it("should clear existing mappings before rebuilding", function()
             local mock_index = {
                 getBooks = function(self, force) return {} end,
