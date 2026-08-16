@@ -9,8 +9,7 @@ The KFX→EPUB conversion uses kfxlib (John Howell's Calibre KFX Input plugin)
 directly — no Calibre installation required.
 
 DRM handling: DRMION books are decrypted using cached page keys before being
-passed to kfxlib.  The drm-init command (device-specific key extraction) is
-not yet implemented in Python.
+passed to kfxlib. Device-specific key extraction is exposed through drm-init.
 """
 
 import argparse
@@ -24,16 +23,13 @@ import zipfile
 
 # ---------------------------------------------------------------------------
 # kfxlib setup — ensure bundled plugin modules (pypdf, typing_extensions) are
-# importable even when calibre is not installed.
-#
-# In Nuitka standalone mode, __file__ points to the binary's location (dist/).
-# We ship calibre-plugin-modules/ inside dist/ so pypdf can be found via
-# sys.path.  When running from source, it lives next to this script.
+# importable even when calibre is not installed. The release package ships the
+# source tree next to this entry point inside its self-contained CPython runtime.
 # ---------------------------------------------------------------------------
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PLUGIN_MODULES = os.path.join(_THIS_DIR, "kfxlib", "calibre-plugin-modules")
 if not os.path.isdir(_PLUGIN_MODULES):
-    # Nuitka standalone: data files are in the same directory as the binary
+    # Compatibility with older package layouts.
     _PLUGIN_MODULES = os.path.join(_THIS_DIR, "calibre-plugin-modules")
 if os.path.isdir(_PLUGIN_MODULES) and _PLUGIN_MODULES not in sys.path:
     sys.path.insert(0, _PLUGIN_MODULES)

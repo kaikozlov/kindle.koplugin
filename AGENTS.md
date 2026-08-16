@@ -6,7 +6,7 @@
 
 1. **Scanning** the Kindle's on-device document library (KFX files in `/mnt/us/documents/`)
 2. **Decrypting** DRM-protected books using on-device key extraction
-3. **Converting** KFX → EPUB via a Python helper binary (Nuitka-compiled for ARM)
+3. **Converting** KFX → EPUB via a bundled ARM CPython runtime and Python helper
 4. **Caching** converted EPUBs for fast re-opening
 5. **Presenting** a virtual library UI inside KOReader's file browser
 
@@ -31,7 +31,7 @@ The plugin is modeled after the reference implementation at `REFERENCE/kobo.kopl
 └──────────────┬──────────────────────────────────────┘
                │ JSON stdin/stdout (via io.popen)
 ┌──────────────▼──────────────────────────────────────┐
-│  kindle-helper (Python — Nuitka standalone for ARM)  │
+│  kindle-helper (C launcher + bundled ARM CPython)     │
 │  python/kindle_helper.py ← CLI entry point           │
 │  Subcommands: scan, convert, cover, decrypt,         │
 │               drm-init, position                     │
@@ -71,7 +71,7 @@ User opens book in KOReader
 | Component | Language | Notes |
 |-----------|----------|-------|
 | KOReader plugin frontend | Lua | Runs inside KOReader's LuaJIT environment |
-| KFX→EPUB conversion | Python | kfxlib from Calibre KFX Input plugin, Nuitka-compiled for ARM |
+| KFX→EPUB conversion | Python | kfxlib from Calibre KFX Input plugin, run by bundled ARM CPython |
 | DRMION decryption | Python | DeDRM ion.py + pycryptodome |
 | DRM key extraction orchestration | Python | Shells out to device JVM with LD_PRELOAD hook |
 | DRM voucher extraction | Java (tiny) | ~30 lines, runs on device's `cvm` JVM |
@@ -88,7 +88,7 @@ User opens book in KOReader
 ├── README.md
 ├── _meta.lua                  ← KOReader plugin metadata
 ├── main.lua                   ← Plugin entry point (loaded by KOReader)
-├── python_build.sh            ← Docker ARM build + package script
+├── python_build.sh            ← CPython runtime assembly + ARM launcher/package script
 │
 ├── python/
 │   ├── kindle_helper.py       ← CLI entry point (scan, convert, cover, decrypt, drm-init, position)
@@ -133,7 +133,8 @@ User opens book in KOReader
 │   └── kfx_reference_snapshot.py ← Reference EPUB comparison tool
 │
 ├── .github/
-│   └── Dockerfile.arm         ← Nuitka ARM build pipeline
+│   ├── Dockerfile.wrapper     ← tiny ARM launcher build
+│   └── Dockerfile.crypto_hook ← ARM DRM hook build
 │
 └── REFERENCE/                 ← NOT tracked in git — local reference only
     ├── kobo.koplugin/         ← Sister plugin (Kobo) — architectural reference
@@ -379,5 +380,4 @@ The project has 6 real books from a Kindle device. All conversions produce outpu
 - **Cache invalidation** — cache is keyed on `source_mtime + source_size + converter_version`. Bumping `CONVERTER_VERSION` in `cache_manager.lua` forces re-conversion of all books
 - **Lua module paths** — KOReader adds the plugin directory to `package.path`, so `require("lua/cache_manager")` resolves to `plugins/kindle.koplugin/lua/cache_manager.lua`
 - **Shared modules from kobo.koplugin** — `lua/lib/pattern_utils.lua`, `lua/lib/session_flags.lua`, `lua/filesystem_ext.lua`, `lua/readerui_ext.lua`, `lua/pathchooser_ext.lua` are adapted from kobo.
-- **Nuitka `--include-data-dir`** — doesn't reliably place files on disk. Use explicit `cp` in Dockerfile output stage instead.
 - **pycryptodome Crypto module** — must not be over-stripped. pypdf imports ARC4 at module level, so all cipher .so files must be kept.
