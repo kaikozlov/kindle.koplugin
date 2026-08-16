@@ -34,31 +34,46 @@ class FakeEpub:
         elem.set("original-called", "yes")
         return "original-result"
 
+    def process_content(self, eid, elem):
+        return self.process_position(eid, 0, elem)
+
+    def process_page_template(self, eid, elem):
+        return self.process_position(eid, 0, elem)
+
 
 class KfxPositionAdapterTests(unittest.TestCase):
-    def test_runtime_adapter_tags_positions_and_restores_class(self):
+    def test_runtime_adapter_tags_only_content_positions_and_restores_class(self):
         original_init = FakeEpub.__init__
         original_process = FakeEpub.process_position
-        element = ElementTree.Element("span")
+        content_element = ElementTree.Element("span")
+        template_element = ElementTree.Element("body")
 
         with position_metadata_conversion(FakeEpub):
             converter = FakeEpub(FakeBook())
-            result = converter.process_position(7, 0, element)
+            result = converter.process_content(7, content_element)
+            converter.process_page_template(7, template_element)
 
             self.assertEqual("original-result", result)
-            self.assertEqual("yes", element.get("original-called"))
-            self.assertEqual("7", element.get("data-kfx-eid"))
-            self.assertEqual("100", element.get("data-kfx-pid"))
+            self.assertEqual("yes", content_element.get("original-called"))
+            self.assertEqual("7", content_element.get("data-kfx-eid"))
+            self.assertEqual("100", content_element.get("data-kfx-pid"))
+            self.assertEqual("yes", template_element.get("original-called"))
+            self.assertIsNone(template_element.get("data-kfx-eid"))
+            self.assertIsNone(template_element.get("data-kfx-pid"))
 
         self.assertIs(FakeEpub.__init__, original_init)
         self.assertIs(FakeEpub.process_position, original_process)
 
-    def test_nonzero_offsets_do_not_add_element_metadata(self):
+    def test_nonzero_content_offsets_do_not_add_element_metadata(self):
         element = ElementTree.Element("span")
 
-        with position_metadata_conversion(FakeEpub):
-            converter = FakeEpub(FakeBook())
-            converter.process_position(7, 3, element)
+        class OffsetFakeEpub(FakeEpub):
+            def process_content(self, eid, elem):
+                return self.process_position(eid, 3, elem)
+
+        with position_metadata_conversion(OffsetFakeEpub):
+            converter = OffsetFakeEpub(FakeBook())
+            converter.process_content(7, element)
 
         self.assertIsNone(element.get("data-kfx-eid"))
         self.assertIsNone(element.get("data-kfx-pid"))

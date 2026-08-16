@@ -11,6 +11,7 @@ source of truth for both the EPUB and content-position records.
 """
 
 from contextlib import contextmanager
+import sys
 
 from kfx_position_map import tag_position_element, unique_eid_base_pids
 
@@ -35,13 +36,21 @@ def position_metadata_conversion(epub_class=None):
 
     original_init = epub_class.__init__
     original_process_position = epub_class.process_position
+    content_process = getattr(epub_class, "process_content", None)
+    content_process_code = getattr(content_process, "__code__", None)
 
     def wrapped_init(self, book, *args, **kwargs):
         self._kindle_position_bases = _position_bases(book)
         return original_init(self, book, *args, **kwargs)
 
     def wrapped_process_position(self, eid, offset, elem):
-        if offset == 0:
+        # Match the fork's device-validated integration exactly: annotate only
+        # the offset-zero position emitted directly by process_content().
+        # kfxlib has other offset-zero process_position() callsites for page
+        # templates and stories; tagging those changes nearest-anchor selection
+        # during forward/reverse translation.
+        caller_code = sys._getframe(1).f_code
+        if offset == 0 and content_process_code is not None and caller_code is content_process_code:
             tag_position_element(elem, eid, getattr(self, "_kindle_position_bases", {}))
         return original_process_position(self, eid, offset, elem)
 
