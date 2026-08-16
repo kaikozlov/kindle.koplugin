@@ -42,7 +42,8 @@ CPYTHON_VERSION="3.11.15"
 LXML_VERSION="6.0.3"
 PILLOW_VERSION="12.2.0"
 PYCRYPTODOME_VERSION="3.9.9"
-BUILD_CACHE_REV="2"
+SOUPSIEVE_VERSION="2.8.1"
+BUILD_CACHE_REV="3"
 
 build_arm_image() {
     local image_tag="$1"
@@ -84,7 +85,7 @@ mkdir -p "$STAGING"
 # we skip downloading and installing — just copy from the cache.
 # ---------------------------------------------------------------------------
 CACHE_DIR="build-cache"
-CACHE_KEY="r${BUILD_CACHE_REV}_cpython-${CPYTHON_VERSION}+${PYTHON_BUILD_STANDALONE_TAG}_lxml-${LXML_VERSION}_pillow-${PILLOW_VERSION}_pycrypto-${PYCRYPTODOME_VERSION}"
+CACHE_KEY="r${BUILD_CACHE_REV}_cpython-${CPYTHON_VERSION}+${PYTHON_BUILD_STANDALONE_TAG}_lxml-${LXML_VERSION}_pillow-${PILLOW_VERSION}_pycrypto-${PYCRYPTODOME_VERSION}_soupsieve-${SOUPSIEVE_VERSION}"
 CACHE_STAMP="$CACHE_DIR/$CACHE_KEY/.stamp"
 
 if [ -f "$CACHE_STAMP" ]; then
@@ -145,6 +146,15 @@ else
     pip3 download --only-binary=:all: --python-version 3.11 --no-deps --dest /tmp/bs4dl beautifulsoup4 2>/dev/null
     unzip -q -o /tmp/bs4dl/beautifulsoup4*.whl -d "$SITE_PACKAGES"
 
+    # beautifulsoup4 imports its CSS selector adapter during normal kfxlib
+    # startup. Because dependencies are installed manually with --no-deps,
+    # bundle soupsieve explicitly rather than relying on the host runtime.
+    echo "  soupsieve $SOUPSIEVE_VERSION..."
+    rm -rf /tmp/soupsievedl && mkdir -p /tmp/soupsievedl
+    pip3 download --only-binary=:all: --no-deps --dest /tmp/soupsievedl \
+        "soupsieve==$SOUPSIEVE_VERSION" 2>/dev/null
+    unzip -q -o /tmp/soupsievedl/soupsieve*.whl -d "$SITE_PACKAGES"
+
     touch "$CACHE_STAMP"
     echo "  Cached to $CACHE_DIR/$CACHE_KEY/"
 
@@ -166,6 +176,10 @@ cp python/epub_position.py "$DIST_DIR/epub_position.py"
 cp python/kfx_position_map.py "$DIST_DIR/kfx_position_map.py"
 cp python/kfx_position_adapter.py "$DIST_DIR/kfx_position_adapter.py"
 cp -r python/kfxlib/ "$DIST_DIR/kfxlib/"
+# BeautifulSoup imports typing_extensions before kindle_helper has a chance to
+# adjust sys.path in some direct-runtime/tooling paths. Reuse kfxlib's bundled
+# compatible copy in site-packages instead of adding another version pin.
+cp python/kfxlib/calibre-plugin-modules/typing_extensions.py "$SITE_PACKAGES/typing_extensions.py"
 cp -r python/dedrm/ "$DIST_DIR/dedrm/"
 
 # Clean bytecode
@@ -311,6 +325,8 @@ test -f "$STAGING/dist/kindle_helper.py"
 test -f "$STAGING/dist/annotation_position.py"
 test -f "$STAGING/dist/epub_position.py"
 test -f "$STAGING/dist/kfx_position_adapter.py"
+test -d "$STAGING/dist/lib/python3.11/site-packages/soupsieve"
+test -f "$STAGING/dist/lib/python3.11/site-packages/typing_extensions.py"
 test -f "$STAGING/dist/dedrm/native_extractor.py"
 test -x "$STAGING/bin/sync-native-progress"
 test -f "$STAGING/bin/native-reading-progress-agent-v6.jar"
@@ -337,7 +353,7 @@ docker run --rm --platform linux/arm/v7 \
     kindle-runtime-smoke \
     --library-path /plugin/dist/lib/runtime:/plugin/dist/lib/external \
     /plugin/dist/bin/python3 -c \
-    'import lxml.etree; from PIL import Image; from Crypto.Cipher import AES; print("native imports ok")' \
+    'import bs4, soupsieve, lxml.etree; from PIL import Image; from Crypto.Cipher import AES; print("native imports ok")' \
     | grep -q 'native imports ok'
 rm -f "$SMOKE_DOCKERFILE"
 
