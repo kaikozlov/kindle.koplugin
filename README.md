@@ -6,7 +6,7 @@ A KOReader plugin that lets you browse and read your Kindle book library directl
 
 ### Features
 
-- **Virtual Library** — Browse your Kindle books from a dedicated folder in KOReader's file browser
+- **Native Kindle Library** — A Kindle Library entry opens a KOReader `BookList`; documents themselves always use real source/cache paths
 - **Exact Reading State Sync** — Switch between KOReader and the native Kindle reader at the same text position, in either direction
 - **Cached for Speed** — Books are prepared on first open and cached, so re-opening is instant
 
@@ -38,23 +38,28 @@ A KOReader plugin that lets you browse and read your Kindle book library directl
 2. Under **Sync behavior**, enable automatic open/close sync and choose the
    FROM/TO Kindle rules for newer and older progress
 3. Exact reading position syncs whether the book is opened from Kindle Library,
-   KOReader Bookshelf, or History; cached Kindle EPUBs are mapped back to their
-   native source book automatically
+   KOReader Bookshelf, Collections, or History; persisted cached EPUB paths are
+   mapped back to their native source book automatically. If a derived EPUB was
+   cleared or became stale, it is rebuilt at that real path before KOReader opens it.
 
-Automatic sync runs before opening and after closing a book. **Ask me** waits
-for your answer at that lifecycle boundary, **Always sync** applies silently,
-and **Never** leaves the destination unchanged. The plugin translates KOReader
-XPointers to Kindle KFX coordinates, persists them through Kindle's ReaderSDK,
-and reverse-translates the native last-page-read position when returning to
-KOReader. If KOReader cold-starts directly into a mapped Bookshelf or History
-entry before plugins are loaded, a reader-ready catch-up applies the same exact
-position to the live reader; normal Kindle Library opens are not reconciled
-twice. The shelf percentage is updated only after the authoritative native save
-succeeds. KOReader and Kindle calculate percentages against different rendered
-content lengths, so the native shelf is written with Kindle's rendered
-percentage rather than copying KOReader's percentage. This keeps the native
-shelf and native reader consistent while the exact text position remains the
-cross-reader source of truth.
+Automatic pull runs in KOReader's `DocSettingsLoad` lifecycle event, after the
+reader plugin exists but before KOReader's normal `ReadSettings` pass. That
+means ReaderRolling consumes the synchronized XPointer normally, including when
+KOReader cold-starts directly into a cached Kindle EPUB from History,
+Collections, or `lastfile`. On close, `CloseDocument` captures the mapped
+Kindle identity and the actual push runs from the following `SaveSettings`
+event, after ReaderRolling has stored the final XPointer and percentage.
+**Ask me** is shown asynchronously after the reader is on-screen (for pulls) or
+teardown completes (for pushes); **Always sync** applies silently, and **Never**
+leaves the destination unchanged.
+
+The plugin translates KOReader XPointers to Kindle KFX coordinates, persists
+them through Kindle's ReaderSDK, and reverse-translates the native
+last-page-read position when returning to KOReader. The shelf percentage is
+updated only after the authoritative native save succeeds. KOReader and Kindle
+calculate percentages against different rendered content lengths, so the
+native shelf is written with Kindle's rendered percentage rather than copying
+KOReader's percentage.
 
 The plugin also stores a text-free reconciliation receipt containing only the
 last successfully synchronized KFX position. On the next open it compares the
@@ -99,6 +104,10 @@ MIT License
 # Build the self-contained ARMv7 package
 ./python_build.sh
 
-# Run Lua tests
+# Initialize the pinned KOReader reference contract once
+# (REFERENCE/koreader must be checked out at KOREADER_TEST_COMMIT)
+git -C REFERENCE/koreader submodule update --init base
+
+# Run Lua tests against that KOReader Lua contract
 ./scripts/test
 ```

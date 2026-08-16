@@ -8,63 +8,74 @@
 2. **Decrypting** DRM-protected books using on-device key extraction
 3. **Converting** KFX → EPUB via a bundled ARM CPython runtime and Python helper
 4. **Caching** converted EPUBs for fast re-opening
-5. **Presenting** a virtual library UI inside KOReader's file browser
+5. **Presenting** a native `BookList` Kindle Library launched from one synthetic file-browser entry
 
-The plugin is modeled after the reference implementation at `REFERENCE/kobo.koplugin/`, which does the same thing for Kobo devices.
+KOReader itself is the architectural source of truth for UI/lifecycle behavior. `REFERENCE/kobo.koplugin/` may provide ideas, but do not copy its virtualization shims when current KOReader has a native extension point.
 
 ---
 
 ## Architecture
 
+KOReader only sees **real document paths**. `KINDLE_VIRTUAL://` is legacy migration data, never a live document/file-browser path.
+
 ```
 ┌─────────────────────────────────────────────────────┐
-│  KOReader (Lua)                                      │
-│  main.lua ← entry point                              │
-│  lua/*.lua ← plugin modules                          │
-│    helper_client.lua → shells out to Python binary    │
-│    cache_manager.lua → EPUB cache lifecycle           │
-│    virtual_library.lua → browse/search UI             │
-│    library_index.lua → book scanning & indexing       │
-│    document_ext.lua → DocumentRegistry patches        │
-│    filechooser_ext.lua → file browser integration     │
-│    docsettings_ext.lua → sidecar settings support     │
-└──────────────┬──────────────────────────────────────┘
-               │ JSON stdin/stdout (via io.popen)
-┌──────────────▼──────────────────────────────────────┐
-│  kindle-helper (C launcher + bundled ARM CPython)     │
-│  python/kindle_helper.py ← CLI entry point           │
-│  Subcommands: scan, convert, cover, decrypt,         │
-│               drm-init, position                     │
-│                                                      │
-│  python/kfxlib/  → KFX decode + YJ→EPUB conversion   │
-│                    (from Calibre KFX Input plugin)    │
-│  python/dedrm/   → DRMION decryption (DeDRM ion.py)  │
-│                    + drm-init key extraction          │
-└──────────────┬──────────────────────────────────────┘
-               │ (for drm-init only) shells out to device cvm
-┌──────────────▼──────────────────────────────────────┐
-│  DRM Helper Files (bundled in plugin)                 │
-│  lib/KFXVoucherExtractor.jar → Java JNI → DRMSDK     │
-│  lib/crypto_hook.so         → LD_PRELOAD AES hook    │
-│  drm_keys.json              → cached decryption keys  │
-└──────────────────────────────────────────────────────┘
+│ KOReader (Lua)                                       │
+│ main.lua                                             │
+│   FileManager plugin init                            │
+│     └─ minimal FileChooser hook → Kindle Library/    │
+│                            │                         │
+│                            ▼                         │
+│                    native BookList                   │
+│                            │                         │
+│                select book / explicit open           │
+│                            ▼                         │
+│ filemanagerutil.openFile(real source/cache path)     │
+│     └─ narrow resolver refreshes derived EPUB only   │
+│        when that known Kindle path is stale/missing  │
+│                            │                         │
+│                            ▼                         │
+│   ├─ KOReader chooses DocumentRegistry provider      │
+│   ├─ KOReader owns DocSettings/History/Collections   │
+│   └─ Reader lifecycle events                         │
+│       ├─ DocSettingsLoad → Kindle → KOReader pull    │
+│       └─ CloseDocument captures identity;            │
+│          final SaveSettings → KOReader → Kindle push │
+└──────────────────────┬──────────────────────────────┘
+                       │ JSON CLI
+┌──────────────────────▼──────────────────────────────┐
+│ kindle-helper (C launcher + bundled ARM CPython)     │
+│ python/kindle_helper.py                              │
+│ KFX conversion / DRM / exact position translation    │
+└──────────────────────┬──────────────────────────────┘
+                       │ DRM init / native progress
+┌──────────────────────▼──────────────────────────────┐
+│ Kindle firmware services                             │
+│ KFXVoucherExtractor + crypto hook / ReaderSDK agent  │
+└─────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
 
 ```
-User opens book in KOReader
-  → document_ext.lua intercepts open
-  → cache_manager checks for cached EPUB
-  → if not cached: helper_client:convert(kfx_path, epub_path)
-  → Python binary detects DRMION wrapper
-  → if DRM: decrypts using cached page keys from drm_keys.json
-  → kfxlib converts KFX → EPUB (Calibre's conversion pipeline)
-  → Lua feeds EPUB path to KOReader's crengine
-  → Book renders
+User opens Kindle Library
+  → FileChooser synthetic folder launches KindleLibrary BookList
+  → browsing uses cc.db/scan metadata only (NO conversion or DRM side effects)
+User selects a book
+  → virtual_library model resolves the Kindle entry
+  → filemanagerutil.openFile(real source/cache path)
+  → open_file_ext refreshes/prepares only a known stale/missing Kindle-derived EPUB
+  → one-time legacy sidecar migration runs if an old virtual sidecar exists
+  → KOReader chooses the native provider (MuPDF/CREngine/etc.)
+  → KOReader loads native DocSettings
+  → onDocSettingsLoad may update position before ReadSettings
+  → ReaderRolling/Paging restores position normally
+  → CloseDocument captures the mapped Kindle book/path
+  → ReaderRolling writes final position during SaveSettings
+  → plugin onSaveSettings pushes that final state to Kindle
 ```
 
----
+**Do not patch** `lfs.attributes`, `ffiUtil.realpath`, `DocumentRegistry`, `ReaderUI:showReader`, `ReaderUI:onClose`, or `DocSettings` to emulate files. If a feature appears to require that, first re-read current `REFERENCE/koreader/` for a native lifecycle/UI seam.
 
 ## Tech Stack
 
@@ -76,7 +87,7 @@ User opens book in KOReader
 | DRM key extraction orchestration | Python | Shells out to device JVM with LD_PRELOAD hook |
 | DRM voucher extraction | Java (tiny) | ~30 lines, runs on device's `cvm` JVM |
 | AES key interception | C (tiny) | ~60 lines, LD_PRELOAD hook, pre-compiled as static asset |
-| KOReader integration hooks | Lua | Monkey-patches on KOReader's DocumentRegistry, FileChooser, etc. |
+| KOReader integration | Lua | Native `BookList` + `DocSettingsLoad` + close-capture/final-`SaveSettings`; narrow reversible FileChooser discovery + real-path open resolver hooks |
 
 ---
 
@@ -84,70 +95,55 @@ User opens book in KOReader
 
 ```
 /
-├── AGENTS.md                  ← YOU ARE HERE
+├── AGENTS.md
 ├── README.md
-├── _meta.lua                  ← KOReader plugin metadata
-├── main.lua                   ← Plugin entry point (loaded by KOReader)
-├── python_build.sh            ← CPython runtime assembly + ARM launcher/package script
+├── _meta.lua
+├── main.lua                       ← plugin lifecycle + menus + sync events
+├── KOREADER_TEST_COMMIT           ← pinned KOReader Lua contract for tests
+├── python_build.sh
+│
+├── lua/
+│   ├── kindle_library.lua         ← native BookList UI; opens only real paths
+│   ├── filechooser_ext.lua        ← minimal synthetic-folder hook
+│   ├── open_file_ext.lua          ← refresh stale/missing known cached EPUBs before native open
+│   ├── virtual_library.lua        ← Kindle book model + real-path mappings
+│   ├── legacy_sidecar_migration.lua ← one-time pre-real-path sidecar migration
+│   ├── cache_manager.lua
+│   ├── library_index.lua
+│   ├── ccdb_scanner.lua
+│   ├── helper_client.lua
+│   ├── reading_state_sync.lua
+│   └── lib/
+│       ├── kindle_state_reader.lua
+│       ├── kindle_state_writer.lua
+│       ├── status_converter.lua
+│       └── sync_decision_maker.lua
 │
 ├── python/
-│   ├── kindle_helper.py       ← CLI entry point (scan, convert, cover, decrypt, drm-init, position)
-│   ├── kfxlib/                ← KFX→EPUB conversion engine (from Calibre KFX Input plugin)
-│   │   ├── calibre-plugin-modules/  ← pypdf, typing_extensions (pure Python)
-│   │   └── *.py               ← 34 modules: ION parsing, YJ decode, EPUB generation, etc.
+│   ├── kindle_helper.py
+│   ├── kfx_position_adapter.py    ← plugin-owned position instrumentation
+│   ├── epub_position.py
+│   ├── annotation_position.py
+│   ├── kfxlib/                    ← pristine Calibre KFX Input source
 │   └── dedrm/
-│       ├── ion.py             ← DeDRM ION parser + DRMION decryption
-│       ├── kfxtables.py       ← ION symbol tables
-│       └── drm_init.py        ← drm-init: voucher scanning, key extraction, page key derivation
 │
-├── lib/                       ← Pre-compiled DRM helper assets
-│   ├── crypto_hook.so         ← LD_PRELOAD AES key interception hook
-│   ├── crypto_hook.c          ← Source for the hook
-│   ├── KFXVoucherExtractor.jar ← Java voucher extraction class
-│   └── KFXVoucherExtractor.java ← Source for the jar
-│
-├── lua/                       ← Lua plugin modules
-│   ├── helper_client.lua      ← Python binary client (scan, convert, drm-init)
-│   ├── cache_manager.lua      ← EPUB cache lifecycle (freshness, cleanup)
-│   ├── virtual_library.lua    ← Virtual library path management & book entries
-│   ├── library_index.lua      ← Book scanning & metadata indexing
-│   ├── document_ext.lua       ← DocumentRegistry monkey-patches
-│   ├── filechooser_ext.lua    ← File browser integration patches
-│   ├── docsettings_ext.lua    ← Sidecar settings support
-│   ├── showreader_ext.lua     ← ReaderUI:showReader intercept
-│   ├── filesystem_ext.lua     ← lfs.attributes virtual path patching
-│   ├── readerui_ext.lua       ← ReaderUI close → virtual library navigation
-│   ├── pathchooser_ext.lua    ← PathChooser bypass virtual library
-│   ├── bookinfomanager_ext.lua← CoverBrowser metadata integration
-│   └── lib/                   ← Shared utility modules (from kobo.koplugin)
-│       ├── pattern_utils.lua  ← Lua pattern magic char escaping
-│       └── session_flags.lua  ← Session-persistent flag files in /tmp
-│
-├── spec/                      ← Busted test suite (126 specs)
-├── patches/                   ← KOReader startup patches
-│   └── 2-kindle-virtual-library-startup.lua ← ffi/util.realpath virtual path support
-│
-├── scripts/                   ← Dev/CI scripts
-│   ├── test                   ← Busted runner under luajit
-│   ├── convert_kfx_python.py  ← Local KFX→EPUB conversion using kfxlib
-│   └── kfx_reference_snapshot.py ← Reference EPUB comparison tool
-│
+├── agent/                         ← reproducible Kindle ReaderSDK progress agent
+├── lib/                           ← DRM/native helper assets
+├── scripts/
+│   ├── test                       ← current KOReader-contract Lua tests
+│   ├── koreader-test-container    ← overlays pinned Lua source on native runtime
+│   └── build_progress_agent
+├── spec/
 ├── .github/
-│   ├── Dockerfile.wrapper     ← tiny ARM launcher build
-│   └── Dockerfile.crypto_hook ← ARM DRM hook build
-│
-└── REFERENCE/                 ← NOT tracked in git — local reference only
-    ├── kobo.koplugin/         ← Sister plugin (Kobo) — architectural reference
-    ├── koreader/              ← KOReader source — for understanding KOReader APIs
-    ├── Calibre_KFX_Input/     ← Calibre KFX Input plugin source (kfxlib origin)
-    ├── DeDRM_tools/           ← DeDRM plugin source (ion.py origin)
-    ├── KFX_DRM/               ← DRM research: hooks, extractors, scripts, vouchers
-    ├── kindle_drm_classes/    ← Decompiled Kindle DRM Java classes
-    ├── KFX_DRM_INTEGRATION.md ← Detailed DRM integration plan
-    └── KFX_DRM_RESEARCH.md   ← Full DRM research notes (~1200 lines)
+└── REFERENCE/                     ← local reference checkouts; not release payload
+    ├── koreader/                  ← PRIMARY source for KOReader behavior
+    ├── DeDRM_tools/
+    ├── KFX_Input/
+    ├── sidecar/
+    └── ...
 ```
 
----
+There is deliberately **no plugin-local `patches/` directory**. KOReader's user-patch loader scans the top-level KOReader patches directory, not nested plugin directories, and this plugin no longer requires startup patches.
 
 ## Hard Rules
 
@@ -210,37 +206,39 @@ automatically when the user opens a book.
 
 ## KOReader Plugin Conventions
 
-KOReader plugins live in a `<name>.koplugin/` directory and must contain:
-- `_meta.lua` — plugin metadata (name, description, version)
-- `main.lua` — entry point, must return a `WidgetContainer` subclass
+KOReader plugins live in a `<name>.koplugin/` directory with `_meta.lua` and a `WidgetContainer` subclass returned from `main.lua`.
 
-Key KOReader APIs used:
-- `DocumentRegistry` — register/intercept document open handlers
-- `FileChooser` — file browser widget (we patch for virtual library)
-- `UIManager` — show dialogs, schedule tasks
-- `InfoMessage` / `ConfirmBox` — standard dialog widgets
-- `DataStorage` — paths for plugin data/cache
-- `G_reader_settings` — persistent settings store
-- `WidgetContainer` — base class for plugins
-- `gettext` (`_()`) — localization
+### Native integration rules
 
-### Monkey-Patching Pattern
+- **Real paths are the document identity.** History, Collections, provider selection, sidecars, BookList caches, and ReaderUI must see the actual source file or cached EPUB path.
+- **Library UI is a `BookList`, not a fake directory.** The FileManager hook may add one synthetic folder entry, but must never assign a URI to `FileChooser.path`.
+- **Pull sync in `onDocSettingsLoad`.** KOReader emits it after plugin instantiation and before `ReadSettings`; modify the in-memory `doc_settings` there and do not flush merely to make ReaderRolling see changes.
+- **Push sync after the final `SaveSettings`.** In normal ReaderUI teardown, `CloseDocument` occurs before the UIManager-driven final save. Capture Kindle identity in `onCloseDocument`, then push from plugin `onSaveSettings`, which is registered after ReaderRolling and therefore sees its final XPointer/percent. The uncommon ReaderUI branch that saves before `CloseDocument` may push immediately.
+- **DocSettings is KOReader-owned.** Preserve native `doc`/`dir`/`hash` probing and migration. Legacy virtual metadata may be copied once before opening a real path, but do not override `getSidecarDir` or `getSidecarFilename`.
+- **Provider selection is KOReader-owned.** The open resolver may substitute a refreshed real cache path, then must delegate to `filemanagerutil.openFile()` without forcing CREngine; direct PDFs must naturally resolve to MuPDF.
+- **PathChooser is untouched.** The synthetic Kindle Library entry is injected only when `FileChooser.name == "filemanager"`.
+- **Browsing must be side-effect free.** Listing a book or rendering metadata must not run KFX conversion, DRM extraction, or key refresh. Preparation begins only on explicit open.
+- **Runtime hooks must unwind.** `stopPlugin()` must restore both the FileChooser methods and `filemanagerutil.openFile` so live disable/delete works without a restart.
+- **Current `REFERENCE/koreader/` wins over old plugin precedent.** If Kobo code and current KOReader disagree, follow current KOReader unless there is a Kindle-specific necessity with a behavioral test.
 
-The plugin extends KOReader by monkey-patching core classes at runtime. Each `*_ext.lua` module follows this pattern:
-1. `init(deps)` — receive references to virtual_library, cache_manager, etc.
-2. `apply(TargetClass)` — replace or wrap methods on the target class
-3. Store original methods for fallback/chaining
+Key KOReader APIs:
+- `BookList` — Kindle Library UI
+- `filemanagerutil.openFile()` — native document-open boundary
+- `DocSettingsLoad` / `CloseDocument` / `SaveSettings` — reading-state lifecycle
+- `DocSettings` — sidecar storage and migration
+- `DocumentRegistry` — provider resolution (do not patch)
+- `UIManager` — dialogs/scheduling
+- `G_reader_settings` — persistent settings
+- `WidgetContainer` — plugin base class
 
----
 
 ## Testing
 
 ### Running Tests
 
 ```sh
-# Lua tests (real headless KOReader in the pinned koplugin-dev image)
+# Lua tests: pinned current KOReader Lua contract over the koplugin-dev native runtime
 make test
-# Compatibility wrapper using the same image:
 ./scripts/test
 
 # Python local test
@@ -250,9 +248,7 @@ python3 python/kindle_helper.py convert --input <kfx> --output <epub>
 ./scripts/test spec/virtual_library_spec.lua
 ```
 
-**Always use `make test` or `./scripts/test` for validation.** Both run the same pinned
-koplugin-dev image and `/opt/koplugin-dev/commonrequire.lua`; there is no separate host-only
-Busted runtime.
+**Always use `make test` or `./scripts/test` for validation.** `scripts/koreader-test-container` verifies `REFERENCE/koreader` is exactly the commit in `KOREADER_TEST_COMMIT`, overlays the current FileManager/ReaderUI/DocSettings/BookList/CoverBrowser Lua surface onto the known-good koplugin-dev native runtime, and then runs Busted. Initialize `REFERENCE/koreader/base` before testing (`git -C REFERENCE/koreader submodule update --init base`).
 
 ### Test Structure
 
@@ -379,5 +375,4 @@ The project has 6 real books from a Kindle device. All conversions produce outpu
 - **DRM books have two files** — the `.kfx` (DRMION content) and `*.sdr/assets/voucher` (decryption voucher)
 - **Cache invalidation** — cache is keyed on `source_mtime + source_size + converter_version`. Bumping `CONVERTER_VERSION` in `cache_manager.lua` forces re-conversion of all books
 - **Lua module paths** — KOReader adds the plugin directory to `package.path`, so `require("lua/cache_manager")` resolves to `plugins/kindle.koplugin/lua/cache_manager.lua`
-- **Shared modules from kobo.koplugin** — `lua/lib/pattern_utils.lua`, `lua/lib/session_flags.lua`, `lua/filesystem_ext.lua`, `lua/readerui_ext.lua`, `lua/pathchooser_ext.lua` are adapted from kobo.
 - **pycryptodome Crypto module** — must not be over-stripped. pypdf imports ARC4 at module level, so all cipher .so files must be kept.
