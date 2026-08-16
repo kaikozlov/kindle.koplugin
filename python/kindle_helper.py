@@ -40,6 +40,7 @@ if os.path.isdir(_PLUGIN_MODULES) and _PLUGIN_MODULES not in sys.path:
 
 from epub_position import (
     PositionTranslationError, translate_native_position, translate_pair)
+from annotation_position import normalize_annotation_ends
 from kfx_position_adapter import position_metadata_conversion
 
 from dedrm.drmion import (
@@ -725,6 +726,7 @@ def cmd_translate_positions(args):
                 request.get("start"),
                 request.get("end"),
             ))
+        translated = normalize_annotation_ends(args.epub, translated)
         exit_json({
             "version": VERSION,
             "ok": True,

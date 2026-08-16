@@ -20,6 +20,16 @@ class ReadingProgressAgentBundleTests(unittest.TestCase):
             manifest = bundle.read("META-INF/MANIFEST.MF").decode("utf-8")
         self.assertIn("Agent-Class: KindlePluginReadingProgressAgentV6", manifest)
 
+    def test_release_build_includes_the_complete_native_progress_bridge(self):
+        build_script = (ROOT / "python_build.sh").read_text(encoding="utf-8")
+        self.assertIn('cp -r bin/ "$STAGING/bin/"', build_script)
+        self.assertIn('test -x "$STAGING/bin/sync-native-progress"', build_script)
+        self.assertIn(
+            'test -f "$STAGING/bin/native-reading-progress-agent-v6.jar"',
+            build_script,
+        )
+        self.assertIn('test -f "$STAGING/dist/annotation_position.py"', build_script)
+
     def test_bundled_agent_targets_java_11_and_contains_durability_checks(self):
         with zipfile.ZipFile(AGENT_JAR) as bundle:
             bytecode = bundle.read("KindlePluginReadingProgressAgentV6.class")
