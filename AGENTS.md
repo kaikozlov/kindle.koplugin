@@ -276,7 +276,7 @@ construction failures.
 ## Build & Deploy
 
 ```sh
-# Build ARM binary (Docker + Nuitka)
+# Build the self-contained ARMv7 package
 ./python_build.sh
 
 # Run all tests
@@ -287,21 +287,26 @@ construction failures.
 ```
 
 The `python_build.sh` script:
-1. Docker build using `.github/Dockerfile.arm` (Nuitka standalone for ARMv7)
-2. Packages binary + Lua plugin files into a ZIP
-3. Produces `build/kindle-koplugin-armv7.zip`
+1. Downloads a pinned ARMv7 CPython runtime plus pinned binary wheels.
+2. Builds the tiny static launcher and compatibility shims in Docker.
+3. Bundles the hard-float dynamic loader/runtime so the same package works on
+   Kindle softfp firmware through 5.16.2.x and hardfp firmware 5.16.3+.
+4. Runs the packaged helper in a scratch ARM rootfs to verify it does not rely
+   on the firmware's `/lib/ld-linux-armhf.so.3` or native libraries.
+5. Packages the runtime + Lua plugin files into `build/kindle-koplugin-armv7.zip`.
 
 ### Binary Structure
 
-The ARM binary is a Nuitka standalone build (~55MB):
-- `kindle-helper` — static C wrapper (entry point, 362K)
+The ARM package contains:
+- `kindle-helper` — static C launcher (entry point)
 - `libsyscall_wrapper.so` — syscall compat shim (preadv2/pwritev2)
-- `dist/main.bin` — Nuitka-compiled Python binary (28MB)
-- `dist/ld-linux-armhf.so.3` — bundled dynamic linker
-- `dist/*.so` — shared libs (lxml, Pillow, pycryptodome, etc.)
-- `dist/calibre-plugin-modules/` — pypdf, typing_extensions
-- `dist/Crypto/` — pycryptodome (AES for DRMION decryption)
-- `dist/bs4/` — beautifulsoup4
+- `dist/bin/python3` — pinned ARMv7 hard-float CPython interpreter
+- `dist/lib/runtime/ld-linux-armhf.so.3` — bundled hard-float dynamic loader
+- `dist/lib/runtime/` — matching glibc/GCC runtime needed by the interpreter
+- `dist/lib/external/` — native libraries required by Pillow
+- `dist/lib/python3.11/site-packages/` — lxml, Pillow, pycryptodome, etc.
+- `dist/kfxlib/` — KFX conversion engine
+- `dist/dedrm/` — DRM helpers
 
 ---
 

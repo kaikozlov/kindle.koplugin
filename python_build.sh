@@ -42,6 +42,7 @@ CPYTHON_VERSION="3.11.15"
 LXML_VERSION="6.0.3"
 PILLOW_VERSION="12.2.0"
 PYCRYPTODOME_VERSION="3.9.9"
+BUILD_CACHE_REV="2"
 
 echo "=== Kindle Helper Build (download-based) ==="
 echo "Python: CPython $CPYTHON_VERSION"
@@ -62,7 +63,7 @@ mkdir -p "$STAGING"
 # we skip downloading and installing — just copy from the cache.
 # ---------------------------------------------------------------------------
 CACHE_DIR="build-cache"
-CACHE_KEY="cpython-${CPYTHON_VERSION}+${PYTHON_BUILD_STANDALONE_TAG}_lxml-${LXML_VERSION}_pillow-${PILLOW_VERSION}_pycrypto-${PYCRYPTODOME_VERSION}"
+CACHE_KEY="r${BUILD_CACHE_REV}_cpython-${CPYTHON_VERSION}+${PYTHON_BUILD_STANDALONE_TAG}_lxml-${LXML_VERSION}_pillow-${PILLOW_VERSION}_pycrypto-${PYCRYPTODOME_VERSION}"
 CACHE_STAMP="$CACHE_DIR/$CACHE_KEY/.stamp"
 
 if [ -f "$CACHE_STAMP" ]; then
@@ -94,13 +95,18 @@ else
     SITE_PACKAGES="$CACHE_DIST/lib/python3.11/site-packages"
     mkdir -p "$SITE_PACKAGES"
 
-    # lxml — available on PyPI as manylinux_2_31_armv7l
-    echo "  lxml $LXML_VERSION (PyPI)..."
-    curl -fSL -o /tmp/lxml.whl "https://files.pythonhosted.org/packages/$(pip3 index versions lxml 2>/dev/null | head -1 || echo 'cp311/cp311-manylinux_2_31_armv7l')/lxml-${LXML_VERSION}-cp311-cp311-manylinux_2_31_armv7l.whl" 2>/dev/null || {
-        echo "  Trying piwheels fallback..."
-        curl -fSL -o /tmp/lxml.whl "https://archive1.piwheels.org/simple/lxml/lxml-${LXML_VERSION}-cp311-cp311-linux_armv7l.whl"
-    }
-    unzip -q -o /tmp/lxml.whl -d "$SITE_PACKAGES"
+    # lxml — use the official manylinux armv7 wheel.  Unlike the piwheels
+    # build, this statically carries libxml2/libxslt and does not inherit a
+    # large set of distro-specific native dependencies.
+    echo "  lxml $LXML_VERSION (PyPI manylinux armv7)..."
+    rm -rf /tmp/lxmldl && mkdir -p /tmp/lxmldl
+    python3 -m pip download \
+        --only-binary=:all: --no-deps \
+        --platform manylinux_2_31_armv7l \
+        --python-version 3.11 --implementation cp --abi cp311 \
+        --dest /tmp/lxmldl \
+        "lxml==$LXML_VERSION"
+    unzip -q -o /tmp/lxmldl/lxml-*.whl -d "$SITE_PACKAGES"
 
     # Pillow — piwheels
     echo "  Pillow $PILLOW_VERSION (piwheels)..."
@@ -164,8 +170,9 @@ rm -f "$DIST_DIR/lib/libtcl"*                    # Tcl/Tk .so
 rm -f "$DIST_DIR/lib/libtcl9"*                   # Tcl .so
 rm -rf "$DIST_DIR/lib/python3.11/idlelib" # IDE
 rm -rf "$DIST_DIR/lib/python3.11/tkinter" # Tk
+rm -f "$DIST_DIR/lib/python3.11/lib-dynload/_tkinter"*.so # Tk extension
 rm -rf "$DIST_DIR/lib/python3.11/test"    # test suite
-rm -rf "$DIST_DIR/lib/python3.11/unittest"# test framework
+rm -rf "$DIST_DIR/lib/python3.11/unittest" # test framework
 rm -rf "$DIST_DIR/lib/python3.11/pydoc_data" # docs
 rm -rf "$DIST_DIR/lib/python3.11/ensurepip"  # pip bundler
 rm -rf "$DIST_DIR/lib/python3.11/lib2to3"   # 2to3 converter
@@ -178,14 +185,32 @@ find "$DIST_DIR/lib/python3.11" -name "test" -type d -exec rm -rf {} + 2>/dev/nu
 # Strip debug symbols from the Python binary (27MB -> ~7MB)
 docker run --rm --platform linux/arm/v7 -v "$(cd "$DIST_DIR" && pwd)/bin:/mnt" arm32v7/gcc:12 strip /mnt/python3
 
-# Extract shared libs needed by Pillow (not present on Kindle)
-# Pillow links: libtiff, libjpeg, libopenjp2, libxcb, libz
+# Extract shared libs needed by Pillow (not present on Kindle).
+# Keep these and the glibc runtime below from the same armhf image so the
+# bundled loader can run independently of the Kindle firmware ABI.
 echo "  Bundling shared libs for Pillow..."
 mkdir -p "$DIST_DIR/lib/external"
 docker run --rm --platform linux/arm/v7 -v "$(cd "$DIST_DIR" && pwd)/lib/external:/out" arm32v7/gcc:12 bash -c '
 for lib in libLerc.so.4 libXau.so.6 libXdmcp.so.6 libbrotlicommon.so.1 libbrotlidec.so.1 libbsd.so.0 libdeflate.so.0 libfreetype.so.6 libjbig.so.0 libjpeg.so.62 liblcms2.so.2 liblzma.so.5 libmd.so.0 libopenjp2.so.7 libpng16.so.16 libtiff.so.6 libwebp.so.7 libwebpdemux.so.2 libwebpmux.so.3 libxcb.so.1 libz.so.1 libzstd.so.1; do
     cp -L /lib/arm-linux-gnueabihf/$lib /out/ 2>/dev/null || true
 done
+'
+
+# Kindle firmware through 5.16.2 uses a softfp userspace and therefore lacks
+# /lib/ld-linux-armhf.so.3.  Bundle the armhf loader and its core runtime so
+# kindle-helper can invoke our hard-float CPython explicitly on both old and
+# new firmware.  The static launcher itself already runs on the older devices.
+echo "  Bundling hard-float runtime..."
+mkdir -p "$DIST_DIR/lib/runtime"
+docker run --rm --platform linux/arm/v7 -v "$(cd "$DIST_DIR" && pwd)/lib/runtime:/out" arm32v7/gcc:12 bash -c '
+set -e
+cp -L /lib/ld-linux-armhf.so.3 /out/ld-linux-armhf.so.3
+for lib in libc.so.6 libdl.so.2 libm.so.6 libpthread.so.0 librt.so.1 libutil.so.1; do
+    cp -L /lib/arm-linux-gnueabihf/$lib /out/$lib
+done
+# The piwheels Pillow build needs the GCC C++ runtime as well.
+cp -L /lib/arm-linux-gnueabihf/libgcc_s.so.1 /out/libgcc_s.so.1
+cp -L /usr/lib/arm-linux-gnueabihf/libstdc++.so.6 /out/libstdc++.so.6
 '
 
 # Strip unnecessary Crypto modules
@@ -268,7 +293,36 @@ cp -a "$DIST_DIR/." "$STAGING/dist/"
 test -x "$STAGING/dist/bin/python3"
 test -f "$STAGING/dist/kindle_helper.py"
 test -f "$STAGING/dist/dedrm/native_extractor.py"
+test -x "$STAGING/dist/lib/runtime/ld-linux-armhf.so.3"
+test -f "$STAGING/dist/lib/runtime/libc.so.6"
 test ! -d "$STAGING/dist/dist"
+
+# Exercise the final package in a scratch rootfs.  There is deliberately no
+# system /lib/ld-linux-armhf.so.3 here, reproducing the important constraint
+# of pre-5.16.3 Kindle firmware.  Success proves the launcher uses only the
+# bundled loader/runtime rather than the host firmware ABI.
+echo "  Testing self-contained runtime..."
+SMOKE_DOCKERFILE="$OUTPUT_DIR/Dockerfile.runtime-smoke"
+cat > "$SMOKE_DOCKERFILE" <<'EOF'
+FROM scratch
+COPY kindle.koplugin /plugin
+ENTRYPOINT ["/plugin/kindle-helper"]
+EOF
+docker buildx build \
+    --platform linux/arm/v7 \
+    -t kindle-runtime-smoke \
+    -f "$SMOKE_DOCKERFILE" \
+    --load \
+    "$OUTPUT_DIR" >/dev/null
+docker run --rm --platform linux/arm/v7 kindle-runtime-smoke --help | grep -q 'kindle-helper'
+docker run --rm --platform linux/arm/v7 \
+    --entrypoint /plugin/dist/lib/runtime/ld-linux-armhf.so.3 \
+    kindle-runtime-smoke \
+    --library-path /plugin/dist/lib/runtime:/plugin/dist/lib/external \
+    /plugin/dist/bin/python3 -c \
+    'import lxml.etree; from PIL import Image; from Crypto.Cipher import AES; print("native imports ok")' \
+    | grep -q 'native imports ok'
+rm -f "$SMOKE_DOCKERFILE"
 
 # Create ZIP
 ZIP_NAME="kindle-koplugin-${TARGET}.zip"

@@ -26,7 +26,12 @@ RUN printf '%s\n' \
     gcc -shared -fPIC -o /build/libsyscall_wrapper.so /build/syscall_wrapper.c && \
     strip /build/libsyscall_wrapper.so
 
-# Build C wrapper that invokes python3 with our script
+# Build a static launcher for the bundled hard-float Python runtime.
+#
+# Kindle firmware <= 5.16.2 uses a softfp userspace and does not provide
+# /lib/ld-linux-armhf.so.3. Executing Python directly therefore fails with
+# ENOENT even though the binary exists. Invoke our bundled hard-float loader
+# explicitly so one package works on both old softfp and new hardfp firmware.
 RUN printf '%s\n' \
     '#define _GNU_SOURCE' \
     '#include <stdio.h>' \
@@ -41,8 +46,10 @@ RUN printf '%s\n' \
     '    char dir_path[PATH_MAX];' \
     '    char python_path[PATH_MAX];' \
     '    char script_path[PATH_MAX];' \
-    '    char lib_path[PATH_MAX];' \
-    '    char pypath[PATH_MAX];' \
+    '    char loader_path[PATH_MAX];' \
+    '    char preload_path[PATH_MAX];' \
+    '    char runtime_path[PATH_MAX * 2];' \
+    '    char pypath[PATH_MAX * 2];' \
     '    ssize_t len;' \
     '' \
     '    len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);' \
@@ -54,34 +61,36 @@ RUN printf '%s\n' \
     '' \
     '    snprintf(python_path, sizeof(python_path), "%s/dist/bin/python3", dir);' \
     '    snprintf(script_path, sizeof(script_path), "%s/dist/kindle_helper.py", dir);' \
-    '    snprintf(lib_path, sizeof(lib_path), "%s/libsyscall_wrapper.so", dir);' \
+    '    snprintf(loader_path, sizeof(loader_path), "%s/dist/lib/runtime/ld-linux-armhf.so.3", dir);' \
+    '    snprintf(preload_path, sizeof(preload_path), "%s/libsyscall_wrapper.so", dir);' \
+    '    snprintf(runtime_path, sizeof(runtime_path), "%s/dist/lib/runtime:%s/dist/lib/external", dir, dir);' \
     '' \
     '    /* Set PYTHONPATH so python finds kfxlib, dedrm, etc. in dist/ */' \
     '    snprintf(pypath, sizeof(pypath), "%s/dist:%s/dist/lib/python3.11/site-packages", dir, dir);' \
     '    setenv("PYTHONPATH", pypath, 1);' \
-    '    setenv("LD_PRELOAD", lib_path, 1);' \
+    '    setenv("LD_PRELOAD", preload_path, 1);' \
+    '    setenv("LD_LIBRARY_PATH", runtime_path, 1);' \
     '    setenv("KINDLE_HELPER_BASE", dir, 1);' \
     '    setenv("PYTHONDONTWRITEBYTECODE", "1", 1);' \
     '' \
-    '    /* Set LD_LIBRARY_PATH so Pillow finds bundled shared libs */' \
-    '    char ld_path[PATH_MAX];' \
-    '    snprintf(ld_path, sizeof(ld_path), "%s/dist/lib/external", dir);' \
-    '    setenv("LD_LIBRARY_PATH", ld_path, 1);' \
-    '' \
-    '    /* Build argv: python3 -s script [user args] */' \
-    '    int new_argc = argc + 2;' \
+    '    /* Build argv: ld-linux --library-path runtime python3 -s script [user args] */' \
+    '    int new_argc = argc + 5;' \
     '    char **new_argv = malloc(sizeof(char *) * (new_argc + 1));' \
     '    if (!new_argv) { perror("malloc"); return 1; }' \
     '' \
-    '    new_argv[0] = python_path;' \
-    '    new_argv[1] = script_path;' \
+    '    new_argv[0] = loader_path;' \
+    '    new_argv[1] = "--library-path";' \
+    '    new_argv[2] = runtime_path;' \
+    '    new_argv[3] = python_path;' \
+    '    new_argv[4] = "-s";' \
+    '    new_argv[5] = script_path;' \
     '    for (int i = 1; i < argc; i++) {' \
-    '        new_argv[i + 1] = argv[i];' \
+    '        new_argv[i + 5] = argv[i];' \
     '    }' \
-    '    new_argv[argc + 1] = NULL;' \
+    '    new_argv[argc + 5] = NULL;' \
     '' \
-    '    execv(python_path, new_argv);' \
-    '    perror("execv python3");' \
+    '    execv(loader_path, new_argv);' \
+    '    perror("execv bundled ld-linux-armhf.so.3");' \
     '    return 1;' \
     '}' \
     > /build/wrapper.c && \

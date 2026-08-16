@@ -18,7 +18,9 @@ A KOReader plugin that lets you browse and read your Kindle book library directl
    | ------------ | ------- |
    | **armv7** | Kindle Paperwhite, Kindle Basic, Kindle Oasis, Kindle Scribe |
 
-   > **Not sure?** armv7 covers all modern Kindle models.
+   > **Not sure?** armv7 covers supported modern Kindle models. The package is
+   > self-contained across both the softfp userspace used through firmware
+   > 5.16.2.x and the hardfp userspace introduced in firmware 5.16.3.
 
 2. Extract `kindle.koplugin` to your KOReader plugins directory:
    - Kindle: `/mnt/us/koreader/plugins/`
@@ -55,7 +57,7 @@ MIT License
 ## Building from source
 
 ```sh
-# Build ARM binary (Docker + Nuitka)
+# Build the self-contained ARMv7 package
 ./python_build.sh
 
 # Run Lua tests
