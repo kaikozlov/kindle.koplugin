@@ -162,6 +162,42 @@ describe("CacheManager", function()
             assert.is_false(fresh)
         end)
 
+        it("should prefer the real source file signature over stale catalog metadata", function()
+            local source_path = "/tmp/kindle-cache-source.kfx"
+            local source = assert(_test_real_io_open(source_path, "wb"))
+            source:write("actual-source")
+            source:close()
+            local lfs = require("libs/libkoreader-lfs")
+            local attr = assert(lfs.attributes(source_path))
+
+            local cm = CacheManager:new({}, {})
+            cm:setSettings({ cache_dir = "/cache" })
+            local book = {
+                id = "b1",
+                source_path = source_path,
+                source_mtime = 1,
+                source_size = 1,
+            }
+            local epub_path, meta_path = cm:getCachePaths(book)
+            io_mocker.setMockFile(epub_path, {
+                read = function() return "" end,
+                close = function() end,
+            })
+            io_mocker.setMockFile(meta_path, {
+                read = function()
+                    return string.format(
+                        '{"converter_version":"3","source_mtime":%d,"source_size":%d}',
+                        attr.modification,
+                        attr.size
+                    )
+                end,
+                close = function() end,
+            })
+
+            assert.is_true(cm:isFresh(book))
+            os.remove(source_path)
+        end)
+
         it("should return true when cache is valid", function()
             local cm = CacheManager:new({}, {})
             cm:setSettings({ cache_dir = "/cache" })

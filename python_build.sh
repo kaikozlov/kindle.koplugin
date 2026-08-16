@@ -301,7 +301,6 @@ echo "[5/5] Packaging..."
 cp -r lua/ "$STAGING/lua/"
 cp main.lua "$STAGING/"
 cp _meta.lua "$STAGING/"
-cp -r patches/ "$STAGING/patches/" 2>/dev/null || true
 cp -r bin/ "$STAGING/bin/"
 
 # Copy the C wrapper

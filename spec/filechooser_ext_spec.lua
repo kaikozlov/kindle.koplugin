@@ -1,307 +1,126 @@
--- Tests for FileChooserExt module
-
-require('busted.runner')()
+require("busted.runner")()
 local helper = require("spec/test_helper")
 
-describe("FileChooserExt", function()
+describe("FileChooserExt native library entry", function()
     local FileChooserExt
-    local FileManager
-    local original_update_title_bar_path
-    local original_on_path_changed
 
     setup(function()
         helper.setup_complete()
-        FileManager = require("apps/filemanager/filemanager")
-        original_update_title_bar_path = FileManager.updateTitleBarPath
-        original_on_path_changed = FileManager.onPathChanged
-        FileChooserExt = require("lua/filechooser_ext")
     end)
 
     before_each(function()
+        helper.before_each()
         package.loaded["lua/filechooser_ext"] = nil
         FileChooserExt = require("lua/filechooser_ext")
-        helper.before_each()
-        FileManager.updateTitleBarPath = original_update_title_bar_path
-        FileManager.onPathChanged = original_on_path_changed
     end)
+
+    local function makeFixture()
+        local show_calls = 0
+        local shown_ui
+        local vlib = {
+            isActive = function() return true end,
+            createVirtualFolderEntry = function(_, parent)
+                return {
+                    text = "Kindle Library/",
+                    path = parent,
+                    attr = { mode = "directory" },
+                    is_kindle_library_folder = true,
+                }
+            end,
+        }
+        local library = {
+            setUI = function(_, ui) shown_ui = ui end,
+            show = function(_, ui)
+                show_calls = show_calls + 1
+                shown_ui = ui
+                return true
+            end,
+        }
+        local delegated_select = 0
+        local delegated_hold = 0
+        local fc = {
+            genItemTable = function(_, _, _, path)
+                return { { text = "normal", path = path .. "/normal" } }
+            end,
+            onMenuSelect = function()
+                delegated_select = delegated_select + 1
+                return false
+            end,
+            onMenuHold = function()
+                delegated_hold = delegated_hold + 1
+                return false
+            end,
+        }
+        FileChooserExt:init(vlib, library)
+        FileChooserExt:apply(fc)
+        return fc, function() return show_calls, shown_ui, delegated_select, delegated_hold end
+    end
 
     after_each(function()
-        FileManager.updateTitleBarPath = original_update_title_bar_path
-        FileManager.onPathChanged = original_on_path_changed
+        -- Every fixture is a private class table, but clear module state so a
+        -- failure cannot leak an applied hook into the following spec.
+        FileChooserExt.applied = false
+        FileChooserExt.original_methods = {}
     end)
 
-    describe("initialization", function()
-        it("should initialize with virtual_library and cache_manager", function()
-            local ext = FileChooserExt
-            local mock_vl = {}
-            local mock_cm = {}
+    it("adds the synthetic entry only to the real FileManager at HOME", function()
+        G_reader_settings:saveSetting("home_dir", "/mnt/us")
+        local fc = makeFixture()
 
-            ext:init(mock_vl, mock_cm)
+        local fm = setmetatable({ name = "filemanager", path = "/mnt/us" }, { __index = fc })
+        local items = fm:genItemTable({}, {}, "/mnt/us")
+        assert.equals(2, #items)
+        assert.is_true(items[1].is_kindle_library_folder)
+        assert.equals("/mnt/us", items[1].path)
 
-            assert.equals(mock_vl, ext.virtual_library)
-            assert.equals(mock_cm, ext.cache_manager)
-        end)
+        local pathchooser = setmetatable({ path = "/mnt/us" }, { __index = fc })
+        local chooser_items = pathchooser:genItemTable({}, {}, "/mnt/us")
+        assert.equals(1, #chooser_items)
+
+        local elsewhere = setmetatable({ name = "filemanager", path = "/tmp" }, { __index = fc })
+        assert.equals(1, #elsewhere:genItemTable({}, {}, "/tmp"))
     end)
 
-    describe("apply", function()
-        local mock_virtual_library
-        local mock_filechooser
+    it("opens a BookList without changing the FileChooser filesystem path", function()
+        G_reader_settings:saveSetting("home_dir", "/mnt/us")
+        local fc, state = makeFixture()
+        local ui = { marker = "fm" }
+        local fm = setmetatable({ name = "filemanager", path = "/mnt/us", ui = ui }, { __index = fc })
+        local item = fm:genItemTable({}, {}, "/mnt/us")[1]
 
-        before_each(function()
-            mock_virtual_library = {
-                isActive = function() return true end,
-                isVirtualPath = function(self, path)
-                    return type(path) == "string" and path:match("^KINDLE_VIRTUAL://") ~= nil
-                end,
-                VIRTUAL_LIBRARY_NAME = "Kindle Library",
-                VIRTUAL_PATH_PREFIX = "KINDLE_VIRTUAL://",
-                _file_chooser_bypass_active = false,
-                getBookEntries = function()
-                    return {
-                        { text = "Test Book", path = "KINDLE_VIRTUAL://b1/Book.epub", is_file = true,
-                          attr = { size = 100 }, kindle_open_mode = "convert" },
-                    }
-                end,
-                getBook = function() return nil end,
-                getBlockedReasonText = function() return "blocked" end,
-                createVirtualFolderEntry = function(self, parent)
-                    return {
-                        text = "Kindle Library/",
-                        path = parent .. "/Kindle Library",
-                        is_kindle_virtual_folder = true,
-                    }
-                end,
-                buildMappings = function() end,
-                buildPathMappings = function() end,
-            }
-
-            mock_filechooser = {
-                init = function() end,
-                changeToPath = function() end,
-                refreshPath = function() end,
-                genItemTable = function() return {} end,
-                onMenuSelect = function() return false end,
-                onMenuHold = function() return false end,
-                switchItemTable = function() end,
-            }
-
-            FileChooserExt:init(mock_virtual_library, { getCacheDir = function() return "/cache" end })
-        end)
-
-        it("should patch FileChooser methods", function()
-            FileChooserExt:apply(mock_filechooser)
-
-            assert.is_function(mock_filechooser.showKindleVirtualLibrary)
-            assert.is_not_nil(FileChooserExt.original_methods.init)
-            assert.is_not_nil(FileChooserExt.original_methods.changeToPath)
-        end)
-
-        describe("changeToPath", function()
-            it("should redirect to virtual library when returning from a virtual book", function()
-                FileChooserExt:apply(mock_filechooser)
-
-                -- Simulate returning from a virtual library book
-                mock_virtual_library._return_to_virtual_pending = true
-
-                local redirected = false
-                mock_filechooser.showKindleVirtualLibrary = function()
-                    redirected = true
-                end
-
-                mock_filechooser:changeToPath("/cache")
-
-                assert.is_true(redirected)
-                assert.is_false(mock_virtual_library._return_to_virtual_pending)
-            end)
-
-            it("should NOT redirect when user explicitly navigates to cache dir", function()
-                FileChooserExt:apply(mock_filechooser)
-
-                -- No pending return — user is browsing explicitly
-                mock_virtual_library._return_to_virtual_pending = false
-
-                local redirected = false
-                mock_filechooser.showKindleVirtualLibrary = function()
-                    redirected = true
-                end
-
-                mock_filechooser:changeToPath("/cache")
-
-                assert.is_false(redirected)
-            end)
-
-            it("should redirect to virtual library for KINDLE_VIRTUAL:// paths", function()
-                FileChooserExt:apply(mock_filechooser)
-
-                local redirected = false
-                mock_filechooser.showKindleVirtualLibrary = function()
-                    redirected = true
-                end
-
-                mock_filechooser:changeToPath("KINDLE_VIRTUAL://")
-
-                assert.is_true(redirected)
-            end)
-        end)
-
-        describe("genItemTable", function()
-            it("should inject virtual folder entry at root", function()
-                G_reader_settings:saveSetting("home_dir", "/mnt/us")
-
-                FileChooserExt:apply(mock_filechooser)
-
-                local item_table = mock_filechooser:genItemTable({}, {}, "/mnt/us")
-
-                -- Should have the virtual folder entry
-                local found = false
-                for _, item in ipairs(item_table) do
-                    if item.is_kindle_virtual_folder then
-                        found = true
-                    end
-                end
-                assert.is_true(found)
-            end)
-
-            it("should not inject virtual folder at non-home paths", function()
-                G_reader_settings:saveSetting("home_dir", "/mnt/us")
-
-                FileChooserExt:apply(mock_filechooser)
-
-                local item_table = mock_filechooser:genItemTable({}, {}, "/some/other/path")
-
-                local found = false
-                for _, item in ipairs(item_table) do
-                    if item.is_kindle_virtual_folder then
-                        found = true
-                    end
-                end
-                assert.is_false(found)
-            end)
-
-            it("should respect bypass flag", function()
-                G_reader_settings:saveSetting("home_dir", "/mnt/us")
-                mock_virtual_library._file_chooser_bypass_active = true
-
-                FileChooserExt:apply(mock_filechooser)
-
-                local item_table = mock_filechooser:genItemTable({}, {}, "/mnt/us")
-
-                local found = false
-                for _, item in ipairs(item_table) do
-                    if item.is_kindle_virtual_folder then
-                        found = true
-                    end
-                end
-                assert.is_false(found)
-            end)
-        end)
-
-        describe("onMenuSelect", function()
-            it("should handle virtual folder click", function()
-                FileChooserExt:apply(mock_filechooser)
-
-                local item = { is_kindle_virtual_folder = true }
-
-                local result = mock_filechooser:onMenuSelect(item)
-
-                assert.is_true(result)
-            end)
-
-            it("should delegate non-virtual items to original", function()
-                FileChooserExt:apply(mock_filechooser)
-
-                local item = { path = "/regular/path.epub" }
-
-                local result = mock_filechooser:onMenuSelect(item)
-
-                assert.is_false(result)
-            end)
-        end)
-
-        describe("onMenuHold", function()
-            it("should handle virtual path items", function()
-                FileChooserExt:apply(mock_filechooser)
-
-                local item = { path = "KINDLE_VIRTUAL://b1/Book.epub" }
-
-                local result = mock_filechooser:onMenuHold(item)
-
-                assert.is_true(result)
-            end)
-
-            it("should delegate non-virtual items to original", function()
-                FileChooserExt:apply(mock_filechooser)
-
-                local item = { path = "/regular/path.epub" }
-
-                local result = mock_filechooser:onMenuHold(item)
-
-                assert.is_false(result)
-            end)
-        end)
-
-        describe("showKindleVirtualLibrary", function()
-            it("should set path and populate book entries", function()
-                FileChooserExt:apply(mock_filechooser)
-                mock_filechooser.path = ""
-
-                mock_filechooser.last_book_entries = nil
-                mock_filechooser.switchItemTable = function(self, arg1, entries, arg3, arg4, arg5)
-                    self.last_book_entries = entries
-                end
-
-                mock_filechooser:showKindleVirtualLibrary()
-
-                assert.equals("KINDLE_VIRTUAL://", mock_filechooser.path)
-                assert.is_not_nil(mock_filechooser.last_book_entries)
-                -- Should have back entry + 1 book
-                assert.is_true(#mock_filechooser.last_book_entries >= 2)
-            end)
-
-            it("should not add back entry when locked at home pointing to virtual", function()
-                G_reader_settings:saveSetting("home_dir", "KINDLE_VIRTUAL://")
-                G_reader_settings:saveSetting("lock_home_folder", true)
-
-                FileChooserExt:apply(mock_filechooser)
-                mock_filechooser.last_book_entries = nil
-                mock_filechooser.switchItemTable = function(self, arg1, entries)
-                    self.last_book_entries = entries
-                end
-
-                mock_filechooser:showKindleVirtualLibrary()
-
-                -- Should have only the book entry, no back entry
-                local has_go_up = false
-                for _, item in ipairs(mock_filechooser.last_book_entries or {}) do
-                    if item.is_go_up then has_go_up = true end
-                end
-                assert.is_false(has_go_up)
-
-                G_reader_settings:delSetting("home_dir")
-                G_reader_settings:delSetting("lock_home_folder")
-            end)
-        end)
+        assert.is_true(fm:onMenuSelect(item))
+        local calls, shown_ui = state()
+        assert.equals(1, calls)
+        assert.equals(ui, shown_ui)
+        assert.equals("/mnt/us", fm.path)
     end)
 
-    describe("unapply", function()
-        it("should restore original methods", function()
-            local orig_genItemTable = function() return {"original"} end
-            local mock_fc = { genItemTable = orig_genItemTable }
+    it("delegates ordinary selections and holds unchanged", function()
+        local fc, state = makeFixture()
+        local fm = setmetatable({ name = "filemanager", path = "/mnt/us" }, { __index = fc })
+        assert.is_false(fm:onMenuSelect({ path = "/mnt/us/book.epub" }))
+        assert.is_false(fm:onMenuHold({ path = "/mnt/us/book.epub" }))
+        local _, _, select_calls, hold_calls = state()
+        assert.equals(1, select_calls)
+        assert.equals(1, hold_calls)
+    end)
 
-            local mock_vl = {
-                _file_chooser_bypass_active = false,
-                VIRTUAL_PATH_PREFIX = "KINDLE_VIRTUAL://",
-            }
+    it("restores KOReader methods on live plugin stop", function()
+        local original_gen = function() return {} end
+        local original_select = function() return false end
+        local original_hold = function() return false end
+        local fc = {
+            genItemTable = original_gen,
+            onMenuSelect = original_select,
+            onMenuHold = original_hold,
+        }
+        FileChooserExt:init({ isActive = function() return true end }, { show = function() end })
+        FileChooserExt:apply(fc)
+        assert.not_equals(original_gen, fc.genItemTable)
 
-            FileChooserExt:init(mock_vl, { getCacheDir = function() return "/cache" end })
-            FileChooserExt:apply(mock_fc)
-
-            assert.is_not.equals(orig_genItemTable, mock_fc.genItemTable)
-
-            FileChooserExt:unapply(mock_fc)
-
-            assert.equals(orig_genItemTable, mock_fc.genItemTable)
-            assert.is_nil(mock_fc.showKindleVirtualLibrary)
-        end)
+        FileChooserExt:unapply(fc)
+        assert.equals(original_gen, fc.genItemTable)
+        assert.equals(original_select, fc.onMenuSelect)
+        assert.equals(original_hold, fc.onMenuHold)
     end)
 end)

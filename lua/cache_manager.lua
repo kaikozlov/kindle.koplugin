@@ -1,4 +1,5 @@
 local json = require("json")
+local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 local util = require("util")
 
@@ -67,16 +68,30 @@ function CacheManager:readMetadata(meta_path)
     return decoded
 end
 
+local function getSourceSignature(book)
+    if book.source_path then
+        local attr = lfs.attributes(book.source_path)
+        if attr and attr.mode == "file" then
+            return attr.modification, attr.size
+        end
+        -- A catalog entry pointing at a missing source must never bless an old
+        -- derived EPUB as fresh.
+        return nil, nil
+    end
+    return book.source_mtime, book.source_size
+end
+
 function CacheManager:writeMetadata(meta_path, book)
     local handle = io.open(meta_path, "wb")
     if not handle then
         return false, "failed to create cache metadata"
     end
 
+    local source_mtime, source_size = getSourceSignature(book)
     handle:write(json.encode({
         converter_version = self.CONVERTER_VERSION,
-        source_mtime = book.source_mtime,
-        source_size = book.source_size,
+        source_mtime = source_mtime,
+        source_size = source_size,
     }))
     handle:close()
 
@@ -101,8 +116,12 @@ function CacheManager:isFresh(book)
         return false, epub_path, meta_path
     end
 
-    if metadata.source_mtime ~= book.source_mtime or metadata.source_size ~= book.source_size then
-        logger.dbg("KindlePlugin: cache stale for", book.id, "(source file changed)")
+    local source_mtime, source_size = getSourceSignature(book)
+    if source_mtime == nil or source_size == nil
+        or metadata.source_mtime ~= source_mtime
+        or metadata.source_size ~= source_size
+    then
+        logger.dbg("KindlePlugin: cache stale for", book.id, "(source file changed or missing)")
         return false, epub_path, meta_path
     end
 

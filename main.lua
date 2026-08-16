@@ -7,7 +7,6 @@ local Device = require("device")
 local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local PathChooser = require("ui/widget/pathchooser")
-local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local _ = require("gettext")
@@ -16,17 +15,14 @@ local T = require("ffi/util").template
 local util = require("util")
 
 local CacheManager = require("lua/cache_manager")
-local DocSettingsExt = require("lua/docsettings_ext")
-local DocumentExt = require("lua/document_ext")
 local FileChooserExt = require("lua/filechooser_ext")
-local FilesystemExt = require("lua/filesystem_ext")
 local HelperClient = require("lua/helper_client")
+local KindleLibrary = require("lua/kindle_library")
+local LegacySidecarMigration = require("lua/legacy_sidecar_migration")
 local LibraryIndex = require("lua/library_index")
-local BookInfoManagerExt = require("lua/bookinfomanager_ext")
-local PathChooserExt = require("lua/pathchooser_ext")
-local ReaderUIExt = require("lua/readerui_ext")
+local OpenFileExt = require("lua/open_file_ext")
 local ReadingStateSync = require("lua/reading_state_sync")
-local ShowReaderExt = require("lua/showreader_ext")
+local SyncDecisionMaker = require("lua/lib/sync_decision_maker")
 local VirtualLibrary = require("lua/virtual_library")
 
 local SYNC_DIRECTION = {
@@ -66,153 +62,272 @@ local default_settings = {
     sync_to_kindle_older = SYNC_DIRECTION.NEVER,
 }
 
-local function cloneDefaults()
-    local copy = {}
-    for key, value in pairs(default_settings) do
-        copy[key] = value
-    end
-    return copy
-end
-
 local helper_client = HelperClient:new()
 local library_index = LibraryIndex:new(helper_client)
 local virtual_library = VirtualLibrary:new(library_index)
 local cache_manager = CacheManager:new(helper_client, virtual_library)
 local reading_state_sync = ReadingStateSync:new(helper_client)
+local legacy_sidecar_migration = LegacySidecarMigration:new(virtual_library)
+local kindle_library = KindleLibrary:new(virtual_library, cache_manager)
 virtual_library:setCacheManager(cache_manager)
 reading_state_sync:setVirtualLibrary(virtual_library)
 
---- Applies ShowReader extensions for virtual library support.
-local function applyShowReaderExtensions()
-    local ext = ShowReaderExt
-    ext:init(virtual_library, reading_state_sync)
-    ext:apply()
-end
-
---- Applies document provider extensions for KFX/AZW files.
-local function applyDocumentExtensions()
-    local DocumentRegistry = require("document/documentregistry")
-    local ext = DocumentExt
-    ext:init(virtual_library, cache_manager)
-    ext:apply(DocumentRegistry)
-end
-
---- Applies DocSettings extensions for sidecar file support.
-local function applyDocSettingsExtensions()
-    local DocSettings = require("docsettings")
-    local ext = DocSettingsExt
-    ext:init(virtual_library)
-    ext:apply(DocSettings)
-end
-
---- Applies FileChooser extensions for virtual library.
-local function applyFileChooserExtensions()
-    local FileChooser = require("ui/widget/filechooser")
-    local ext = FileChooserExt
-    ext:init(virtual_library, cache_manager, reading_state_sync)
-    ext:apply(FileChooser)
-end
-
---- Applies BookInfoManager extensions for CoverBrowser integration.
-local function applyBookInfoManagerExtensions()
-    local ok, BookInfoManager = pcall(require, "bookinfomanager")
-    if ok and BookInfoManager then
-        local ext = BookInfoManagerExt
-        ext:init(virtual_library, cache_manager)
-        ext:apply(BookInfoManager)
-        ext:clearStaleVirtualEntries(BookInfoManager)
-    else
-        logger.dbg("KindlePlugin: CoverBrowser plugin not loaded, skipping BookInfoManager patches")
-    end
-end
-
---- Applies filesystem extensions for virtual path support.
-local function applyFilesystemExtensions()
-    local ext = FilesystemExt
-    ext:init(virtual_library)
-    ext:apply()
-end
-
---- Applies ReaderUI extensions for Kindle navigation on close.
-local function applyReaderUIExtensions()
-    local ok_rui, ReaderUI = pcall(require, "apps/reader/readerui")
-    if not ok_rui or not ReaderUI then
-        return
-    end
-
-    local ext = ReaderUIExt
-    ext:init(virtual_library, reading_state_sync)
-    ext:apply(ReaderUI)
-    logger.info("KindlePlugin: ReaderUI patches applied")
-end
-
---- Applies PathChooser extensions for bypassing virtual library.
-local function applyPathChooserExtensions()
-    local ext = PathChooserExt
-    ext:init({ virtual_library = virtual_library })
-    ext:apply()
-end
-
-local plugin_settings = G_reader_settings:readSetting("kindle_plugin") or cloneDefaults()
-helper_client:setSettings(plugin_settings)
-library_index:setSettings(plugin_settings)
-virtual_library:setSettings(plugin_settings)
-cache_manager:setSettings(plugin_settings)
-
-if plugin_settings.enable_virtual_library ~= false then
-    logger.info("KindlePlugin: enabling virtual library patches")
-    applyFilesystemExtensions()
-    applyShowReaderExtensions()
-    applyDocumentExtensions()
-    applyDocSettingsExtensions()
-    applyFileChooserExtensions()
-    applyBookInfoManagerExtensions()
-    applyReaderUIExtensions()
-    applyPathChooserExtensions()
-end
-
 local KindlePlugin = WidgetContainer:extend({
     name = "kindle_plugin",
+    settings_key = "kindle_plugin",
     is_doc_only = false,
     default_settings = default_settings,
 })
 
---- Initializes the plugin and loads settings.
+local function getMappedBook(document)
+    local path = document and document.file
+    return path and virtual_library:getBook(path) or nil
+end
+
+local function getBookCdeKey(book, doc_settings)
+    if not book then
+        return nil
+    end
+    return book.cde_key
+        or reading_state_sync:extractCdeKey(book.source_path, doc_settings)
+        or reading_state_sync:extractCdeKey(nil, doc_settings)
+end
+
+--- Initializes the plugin and registers only the minimal runtime integration
+--- needed by the current KOReader context.
 function KindlePlugin:init()
     self:loadSettings()
     self.ui.menu:registerToMainMenu(self)
 
     reading_state_sync:setPlugin(self, SYNC_DIRECTION)
-    if self.settings.sync_reading_state then
-        reading_state_sync:setEnabled(true)
+    reading_state_sync:setEnabled(self.settings.sync_reading_state == true)
+
+    -- FileManager constructs its FileChooser after plugin instances are
+    -- initialized, so installing this small reversible class hook here keeps
+    -- PathChooser/ReaderUI/DocumentRegistry entirely native.
+    if self.settings.enable_virtual_library ~= false or self.settings.sync_reading_state then
+        OpenFileExt:init(virtual_library, cache_manager, legacy_sidecar_migration)
+        OpenFileExt:apply()
+    end
+    if self.settings.enable_virtual_library ~= false then
+        if self.ui and not self.ui.document then
+            kindle_library:setUI(self.ui)
+            local FileChooser = require("ui/widget/filechooser")
+            FileChooserExt:init(virtual_library, kindle_library)
+            FileChooserExt:apply(FileChooser)
+        end
     end
 end
 
---- Reconcile a mapped cache file that KOReader opened during cold startup.
---- The initial ReaderUI:showReader call happens before document plugins are
---- instantiated, so the normal pre-open wrapper cannot observe that one call.
-function KindlePlugin:onReaderReady()
+local function stagePagingPercent(ui, doc_settings, percent)
+    local paging = ui and ui.paging
+    local pages = paging and tonumber(paging.number_of_pages)
+    if not pages or pages <= 0 or type(percent) ~= "number" then
+        return false
+    end
+    local page = math.floor(pages * percent)
+    if page < 1 then page = 1 end
+    if page > pages then page = pages end
+    doc_settings:saveSetting("last_page", page)
+    return true
+end
+
+local function configuredDirection(settings, is_pull_from_kindle, is_newer)
+    if is_pull_from_kindle then
+        return is_newer and settings.sync_from_kindle_newer
+            or settings.sync_from_kindle_older
+    end
+    return is_newer and settings.sync_to_kindle_newer
+        or settings.sync_to_kindle_older
+end
+
+--- KOReader emits DocSettingsLoad after all reader plugins are instantiated and
+--- before ReadSettings. Silent pulls therefore update the settings ReaderRolling
+--- is about to consume. PROMPT pulls must be asynchronous: blocking/yielding here
+--- would let ReadSettings continue before the user's answer. Their callback
+--- applies the accepted state to the already-live ReaderUI instead.
+function KindlePlugin:onDocSettingsLoad(doc_settings, document)
     if not self.settings.sync_reading_state
         or not reading_state_sync:isAutomaticSyncEnabled()
-        or not self.ui or not self.ui.document
     then
         return
     end
 
-    local active_document = self.ui.document
-    UIManager:nextTick(function()
-        if not self.ui or self.ui.document ~= active_document then
-            return
+    local book = getMappedBook(document)
+    if not book or not book.source_path then
+        return
+    end
+
+    local cde_key = getBookCdeKey(book, doc_settings)
+    local before_sync_percent = doc_settings:readSetting("percent_finished") or 0
+    local approval_handler = function(
+        plugin, sync_direction, is_pull_from_kindle, is_newer, sync_fn, sync_details
+    )
+        local setting = configuredDirection(self.settings, is_pull_from_kindle, is_newer)
+        if setting ~= SYNC_DIRECTION.PROMPT then
+            return SyncDecisionMaker.syncIfApproved(
+                plugin, sync_direction, is_pull_from_kindle, is_newer, sync_fn, sync_details
+            )
         end
-        Trapper:wrap(function()
-            reading_state_sync:syncColdStartReader(self.ui)
+
+        local before_xpointer = doc_settings:readSetting("last_xpointer")
+        local before_percent = doc_settings:readSetting("percent_finished") or 0
+        UIManager:nextTick(function()
+            SyncDecisionMaker.syncIfApproved(
+                plugin,
+                sync_direction,
+                is_pull_from_kindle,
+                is_newer,
+                function()
+                    sync_fn()
+                    local after_xpointer = doc_settings:readSetting("last_xpointer")
+                    local after_percent = doc_settings:readSetting("percent_finished") or 0
+                    local reader_is_active = self.ui and self.ui.document == document
+                    if reader_is_active and self.ui.rolling then
+                        if after_xpointer and after_xpointer ~= before_xpointer
+                            and self.ui.rolling.onGotoXPointer then
+                            self.ui.rolling:onGotoXPointer(after_xpointer)
+                        elseif after_percent ~= before_percent and self.ui.rolling.onGotoPercent then
+                            self.ui.rolling:onGotoPercent(after_percent * 100)
+                        end
+                    elseif reader_is_active and self.ui.paging
+                        and after_percent ~= before_percent
+                        and self.ui.paging.onGotoPercent
+                    then
+                        self.ui.paging:onGotoPercent(after_percent * 100)
+                    else
+                        -- The prompt may outlive a quickly closed reader. Preserve
+                        -- the accepted state even when there is no live view left.
+                        stagePagingPercent(self.ui, doc_settings, after_percent)
+                        doc_settings:flush()
+                    end
+                end,
+                sync_details,
+                true
+            )
         end)
-    end)
+        return true
+    end
+
+    reading_state_sync:syncFromKindleAutomatic(
+        cde_key,
+        book.source_path,
+        doc_settings,
+        document.file,
+        approval_handler
+    )
+
+    -- ReaderPaging restores last_page, not percent_finished. Silent pulls run
+    -- before ReadSettings, so stage the equivalent page using the same floor +
+    -- clamp semantics as ReaderPaging:onGotoPercent().
+    local after_sync_percent = doc_settings:readSetting("percent_finished") or 0
+    if after_sync_percent ~= before_sync_percent then
+        stagePagingPercent(self.ui, doc_settings, after_sync_percent)
+    end
+end
+
+function KindlePlugin:syncPendingClose()
+    local pending = self._pending_close_sync
+    if not pending then
+        return
+    end
+    self._pending_close_sync = nil
+    local approval_handler = function(
+        plugin, sync_direction, is_pull_from_kindle, is_newer, sync_fn, sync_details
+    )
+        local is_prompt = configuredDirection(
+            self.settings, is_pull_from_kindle, is_newer
+        ) == SYNC_DIRECTION.PROMPT
+        if is_prompt then
+            UIManager:nextTick(function()
+                SyncDecisionMaker.syncIfApproved(
+                    plugin,
+                    sync_direction,
+                    is_pull_from_kindle,
+                    is_newer,
+                    sync_fn,
+                    sync_details,
+                    true
+                )
+            end)
+            return true
+        end
+        return SyncDecisionMaker.syncIfApproved(
+            plugin,
+            sync_direction,
+            is_pull_from_kindle,
+            is_newer,
+            sync_fn,
+            sync_details
+        )
+    end
+    reading_state_sync:syncToKindleAutomatic(
+        pending.cde_key,
+        pending.source_path,
+        pending.doc_settings,
+        pending.epub_path,
+        approval_handler
+    )
+end
+
+--- CloseDocument happens before the final UIManager-driven SaveSettings in the
+--- normal ReaderUI teardown. Capture identity here, then push from onSaveSettings
+--- after ReaderRolling has written its final XPointer/percent. In the uncommon
+--- ReaderUI path that saves before CloseDocument, push immediately instead.
+function KindlePlugin:onCloseDocument()
+    if not self.settings.sync_reading_state
+        or not reading_state_sync:isAutomaticSyncEnabled()
+        or not self.ui
+        or not self.ui.document
+        or not self.ui.doc_settings
+    then
+        return
+    end
+
+    local book = getMappedBook(self.ui.document)
+    if not book or not book.source_path then
+        return
+    end
+
+    self._pending_close_sync = {
+        cde_key = getBookCdeKey(book, self.ui.doc_settings),
+        source_path = book.source_path,
+        doc_settings = self.ui.doc_settings,
+        epub_path = self.ui.document.file,
+    }
+
+    if self.ui.dialog ~= self.ui then
+        self:syncPendingClose()
+    end
+end
+
+--- ReaderRolling is registered before plugins, so its onSaveSettings handler has
+--- already captured the final reading position when this plugin sees the event.
+function KindlePlugin:onSaveSettings()
+    self:syncPendingClose()
+end
+
+function KindlePlugin:stopPlugin()
+    local FileChooser = require("ui/widget/filechooser")
+    FileChooserExt:unapply(FileChooser)
+    OpenFileExt:unapply()
+    kindle_library:close()
+    if self.ui and self.ui.file_chooser and self.ui.file_chooser.refreshPath then
+        self.ui.file_chooser:refreshPath()
+    end
+    return true
 end
 
 --- Loads plugin settings from persistent storage.
 function KindlePlugin:loadSettings()
-    self.settings = G_reader_settings:readSetting("kindle_plugin") or {}
+    self.settings = G_reader_settings:readSetting(self.settings_key) or {}
+
+    -- Older releases allowed the synthetic URI to become KOReader's HOME.
+    -- It is no longer a filesystem path, so repair that setting once.
+    local home_dir = G_reader_settings:readSetting("home_dir")
+    if virtual_library:isVirtualPath(home_dir) then
+        G_reader_settings:saveSetting("home_dir", Device.home_dir)
+    end
 
     for key, value in pairs(self.default_settings) do
         if self.settings[key] == nil then
@@ -228,7 +343,7 @@ end
 
 --- Saves plugin settings to persistent storage.
 function KindlePlugin:saveSettings()
-    G_reader_settings:saveSetting("kindle_plugin", self.settings)
+    G_reader_settings:saveSetting(self.settings_key, self.settings)
 end
 
 --- Shows an InfoMessage to the user.
@@ -254,7 +369,7 @@ function KindlePlugin:createVirtualLibraryToggleMenuItem()
             return self.settings.enable_virtual_library ~= false
         end,
         callback = function()
-            self.settings.enable_virtual_library = not (self.settings.enable_virtual_library ~= false)
+            self.settings.enable_virtual_library = self.settings.enable_virtual_library == false
             self:saveSettings()
             UIManager:askForRestart()
         end,
@@ -703,10 +818,13 @@ function KindlePlugin:createBrowseLibraryMenuItem()
         text = _("Browse Kindle Library"),
         enabled_func = function()
             return self.settings.enable_virtual_library ~= false
+                and self.ui
+                and not self.ui.document
         end,
         callback = function()
-            if self.ui and self.ui.file_chooser and self.ui.file_chooser.showKindleVirtualLibrary then
-                self.ui.file_chooser:showKindleVirtualLibrary()
+            if self.ui and not self.ui.document then
+                kindle_library:setUI(self.ui)
+                kindle_library:show(self.ui, true)
                 return
             end
             self:showInfo(_("Open the file browser to access Kindle Library."))

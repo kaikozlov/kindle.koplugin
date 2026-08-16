@@ -224,9 +224,7 @@ function KindleStateWriter._writeWithCLI(where_clause, where_value, percent_read
 
     if type(result) == "number" then
         result = result == 0
-    elseif type(result) == "boolean" then
-        -- already boolean
-    else
+    elseif type(result) ~= "boolean" then
         result = false
     end
 

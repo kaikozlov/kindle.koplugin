@@ -85,8 +85,9 @@ describe("LibraryIndex", function()
             local idx = LibraryIndex:new(mock_client)
             idx:setSettings({ documents_root = "/test/docs", index_ttl_seconds = 300 })
 
-            -- First call populates cache
+            -- First call populates cache.
             idx:refresh(true)
+            assert.is_true(scan_called)
             scan_called = false
 
             -- Second call should use cache (not forced)

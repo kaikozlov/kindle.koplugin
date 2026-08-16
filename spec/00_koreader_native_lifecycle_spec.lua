@@ -19,6 +19,10 @@ describe("KindlePlugin native KOReader lifecycle", function()
     end)
 
     after_each(function()
+        local instance = PluginLoader:getPluginInstance("kindle")
+        if instance and instance.stopPlugin then
+            pcall(instance.stopPlugin, instance)
+        end
         if filemanager then
             filemanager:onClose()
             filemanager = nil
@@ -81,5 +85,57 @@ describe("KindlePlugin native KOReader lifecycle", function()
         })
         assert.is_true(registered)
         assert.are.equal("/tmp/recreated-kindle-library", recreated.settings.documents_root)
+    end)
+
+    it("adds a native Kindle Library entry without replacing FileChooser.path", function()
+        G_reader_settings:saveSetting("kindle_plugin", {
+            enable_virtual_library = true,
+        })
+        G_reader_settings:saveSetting("home_dir", DataStorage:getDataDir())
+        load_plugin("kindle.koplugin")
+
+        local KindleLibrary = require("lua/kindle_library")
+        local original_show = KindleLibrary.show
+        local shown = false
+        KindleLibrary.show = function()
+            shown = true
+            return true
+        end
+
+        filemanager = FileManager:new({
+            dimen = Screen:getSize(),
+            root_path = DataStorage:getDataDir(),
+        })
+        UIManager:show(filemanager)
+        fastforward_ui_events()
+
+        local original_path = filemanager.file_chooser.path
+        local kindle_entry
+        for _, item in ipairs(filemanager.file_chooser.item_table) do
+            if item.is_kindle_library_folder then
+                kindle_entry = item
+                break
+            end
+        end
+        assert.is_truthy(kindle_entry)
+        assert.equals(original_path, kindle_entry.path)
+        assert.is_true(filemanager.file_chooser:onMenuSelect(kindle_entry))
+        assert.is_true(shown)
+        assert.equals(original_path, filemanager.file_chooser.path)
+
+        local instance = PluginLoader:getPluginInstance("kindle")
+        assert.is_truthy(instance)
+        assert.is_true(instance:stopPlugin())
+        local still_present = false
+        for _, item in ipairs(filemanager.file_chooser.item_table) do
+            if item.is_kindle_library_folder then
+                still_present = true
+                break
+            end
+        end
+        assert.is_false(still_present)
+        assert.equals(original_path, filemanager.file_chooser.path)
+
+        KindleLibrary.show = original_show
     end)
 end)

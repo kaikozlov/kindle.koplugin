@@ -1,11 +1,20 @@
 local BD = require("ui/bidi")
+local Device = require("device")
 local logger = require("logger")
+local util = require("util")
 local _ = require("gettext")
 
+-- Kindle library model.
+--
+-- Historical releases exposed KINDLE_VIRTUAL:// paths to KOReader and then
+-- patched filesystem/document APIs to make those paths look real.  Keep the
+-- legacy path helpers only for migration/compatibility; KOReader-facing code
+-- now uses real source paths or prepared cached EPUB paths exclusively.
 local VirtualLibrary = {}
 VirtualLibrary.__index = VirtualLibrary
 
-VirtualLibrary.VIRTUAL_PATH_PREFIX = "KINDLE_VIRTUAL://"
+VirtualLibrary.LEGACY_VIRTUAL_PATH_PREFIX = "KINDLE_VIRTUAL://"
+VirtualLibrary.VIRTUAL_PATH_PREFIX = VirtualLibrary.LEGACY_VIRTUAL_PATH_PREFIX
 VirtualLibrary.VIRTUAL_LIBRARY_NAME = "Kindle Library"
 
 function VirtualLibrary:new(library_index)
@@ -14,16 +23,9 @@ function VirtualLibrary:new(library_index)
         settings = {},
         cache_manager = nil,
         books_by_id = {},
-        books_by_virtual = {},
-        real_to_virtual = {},
+        books_by_real_path = {},
         mappings_built = false,
-        open_alias_to_virtual = {},
-        virtual_to_open_alias = {},
-        -- Flag used by pathchooser_ext to bypass virtual library interception
-        _file_chooser_bypass_active = false,
-        -- Flag set when opening a virtual library book; cleared after redirect.
-        -- Prevents explicit user navigation to cache dir from being intercepted.
-        _return_to_virtual_pending = false,
+        mapping_attempted = false,
     }
     setmetatable(instance, self)
     return instance
@@ -37,15 +39,6 @@ function VirtualLibrary:setCacheManager(cache_manager)
     self.cache_manager = cache_manager
 end
 
-local function sanitizeDisplayName(name)
-    local cleaned = (name or "Untitled"):gsub("[/\\]+", " "):gsub("%s+", " ")
-    cleaned = cleaned:gsub("^%s+", ""):gsub("%s+$", "")
-    if cleaned == "" then
-        cleaned = "Untitled"
-    end
-    return cleaned
-end
-
 local function isPathWithin(path, root)
     if type(path) ~= "string" or type(root) ~= "string" or root == "" then
         return false
@@ -53,132 +46,133 @@ local function isPathWithin(path, root)
     return path == root or path:sub(1, #root + 1) == root .. "/"
 end
 
+local function sanitizeDisplayName(name)
+    local cleaned = (name or "Untitled"):gsub("[/\\]+", " "):gsub("%s+", " ")
+    cleaned = cleaned:gsub("^%s+", ""):gsub("%s+$", "")
+    return cleaned ~= "" and cleaned or "Untitled"
+end
+
 function VirtualLibrary:generateVirtualPath(book)
     local filename = sanitizeDisplayName(book.display_name or book.title or book.id)
     local logical_ext = book.logical_ext or book.format or "bin"
-    return self.VIRTUAL_PATH_PREFIX .. book.id .. "/" .. filename .. "." .. logical_ext
+    return self.LEGACY_VIRTUAL_PATH_PREFIX .. book.id .. "/" .. filename .. "." .. logical_ext
+end
+
+function VirtualLibrary:isVirtualPath(path)
+    return type(path) == "string"
+        and path:sub(1, #self.LEGACY_VIRTUAL_PATH_PREFIX) == self.LEGACY_VIRTUAL_PATH_PREFIX
+end
+
+function VirtualLibrary:getBookId(path)
+    if not self:isVirtualPath(path) then
+        return nil
+    end
+    return path:match("^KINDLE_VIRTUAL://([^/]+)/")
 end
 
 function VirtualLibrary:buildMappings(force)
+    self.mapping_attempted = true
     local books, err = self.library_index:getBooks(force)
     if not books then
         return nil, err
     end
 
     self.books_by_id = {}
-    self.books_by_virtual = {}
-    self.real_to_virtual = {}
+    self.books_by_real_path = {}
 
     for _, book in ipairs(books) do
-        book.virtual_path = self:generateVirtualPath(book)
         self.books_by_id[book.id] = book
-        self.books_by_virtual[book.virtual_path] = book
-        -- cc.db can contain visible cloud-only entries with no p_location.
-        -- Keep them in the virtual library as blocked/missing_source entries,
-        -- but never use nil as a Lua table key.
         if book.source_path then
-            self.real_to_virtual[book.source_path] = book.virtual_path
+            self.books_by_real_path[book.source_path] = book
         end
-        -- Bookshelf/History persist the converted EPUB path rather than the
-        -- KINDLE_VIRTUAL:// alias. Index that deterministic cache path too so
-        -- the book can be recovered after a KOReader restart.
+        -- Cache paths are deterministic even before the EPUB exists. Indexing
+        -- them lets History/Collections and cold-start ReaderUI map a persisted
+        -- cached EPUB back to its Kindle book after a restart.
         if self.cache_manager then
             local cached_path = self.cache_manager:getCachePaths(book)
             if cached_path then
-                self.real_to_virtual[cached_path] = book.virtual_path
+                self.books_by_real_path[cached_path] = book
             end
         end
     end
 
     self.mappings_built = true
-
-    logger.info("KindlePlugin: built mappings for", #books, "books")
+    logger.info("KindlePlugin: built real-path mappings for", #books, "books")
     return books
 end
 
---- Checks if the virtual library should be active.
---- Active when the enable_virtual_library setting is not explicitly disabled.
---- @return boolean: True if virtual library is active.
-function VirtualLibrary:isActive()
-    return self.settings.enable_virtual_library ~= false
-end
-
---- Alias for buildMappings, matching the interface expected by
---- extensions copied from kobo.koplugin.
 function VirtualLibrary:buildPathMappings()
-    return self:buildMappings()
+    return self:buildMappings(false)
 end
 
 function VirtualLibrary:refresh(force)
     return self:buildMappings(force)
 end
 
-function VirtualLibrary:isVirtualPath(path)
-    return type(path) == "string" and path:match("^KINDLE_VIRTUAL://") ~= nil
+function VirtualLibrary:isActive()
+    return self.settings.enable_virtual_library ~= false
 end
 
-function VirtualLibrary:getBookId(virtual_path)
-    if not self:isVirtualPath(virtual_path) then
+function VirtualLibrary:getBook(path_or_id)
+    if not path_or_id then
         return nil
     end
 
-    return virtual_path:match("^KINDLE_VIRTUAL://([^/]+)/")
-end
-
-function VirtualLibrary:getBook(path)
-    if not path then
-        return nil
+    local book = self.books_by_id[path_or_id] or self.books_by_real_path[path_or_id]
+    if book then
+        return book
     end
 
-    if self.books_by_virtual[path] then
-        return self.books_by_virtual[path]
+    local legacy_id = self:getBookId(path_or_id)
+    if legacy_id and self.books_by_id[legacy_id] then
+        return self.books_by_id[legacy_id]
     end
 
-    if self.books_by_id[path] then
-        return self.books_by_id[path]
+    -- Reader startup, History, and Collections can reach us before the Kindle
+    -- list has ever been opened in this process. Rebuild lazily only for paths
+    -- that can plausibly belong to this plugin; the global open resolver must
+    -- not turn an unrelated KOReader document open into a Kindle library scan.
+    local cache_dir = self.settings.cache_dir
+    if not cache_dir and self.cache_manager and self.cache_manager.getCacheDir then
+        cache_dir = self.cache_manager:getCacheDir()
     end
-
-    local canonical = self:getCanonicalPath(path)
-    if self.books_by_virtual[canonical] then
-        return self.books_by_virtual[canonical]
-    end
-
-    local virtual_path = self.real_to_virtual[path]
-    if virtual_path then
-        return self.books_by_virtual[virtual_path]
+    local documents_root = self.settings.documents_root or "/mnt/us/documents"
+    local should_build = legacy_id ~= nil
+        or (type(path_or_id) == "string"
+            and (path_or_id:match("^cc:")
+                or path_or_id:match("^sha1:")
+                or isPathWithin(path_or_id, cache_dir)
+                or isPathWithin(path_or_id, documents_root)))
+    if not self.mapping_attempted and should_build then
+        local books = self:buildMappings(false)
+        if books then
+            return self.books_by_id[path_or_id]
+                or self.books_by_real_path[path_or_id]
+                or (legacy_id and self.books_by_id[legacy_id])
+        end
     end
 
     return nil
 end
 
-function VirtualLibrary:getVirtualPath(path)
-    if self:isVirtualPath(path) then
+function VirtualLibrary:getVirtualPath(real_path)
+    local book = self:getBook(real_path)
+    return book and self:generateVirtualPath(book) or nil
+end
+
+function VirtualLibrary:getCanonicalPath(path)
+    -- Compatibility helper for legacy callers/tests. Real paths are canonical.
+    local book = self:getBook(path)
+    if not book then
         return path
     end
-
-    if self.open_alias_to_virtual[path] then
-        return self.open_alias_to_virtual[path]
+    if book.open_mode == "direct" then
+        return book.source_path or path
     end
-
-    local virtual_path = self.real_to_virtual[path]
-    if virtual_path then
-        return virtual_path
+    if self.cache_manager then
+        return self.cache_manager:getCachePaths(book) or path
     end
-
-    -- Bookshelf and History may persist the converted EPUB path instead of
-    -- KINDLE_VIRTUAL://. Rebuild lazily so those entries work after restart,
-    -- before the virtual Kindle folder has been visited in this session.
-    local could_be_kindle_book = isPathWithin(path, self.settings.cache_dir)
-        or isPathWithin(path, self.settings.documents_root)
-    if not self.mappings_built
-        and could_be_kindle_book
-        and self.library_index
-        and self.library_index.getBooks then
-        self:buildMappings(false)
-        return self.open_alias_to_virtual[path] or self.real_to_virtual[path]
-    end
-
-    return nil
+    return path
 end
 
 function VirtualLibrary:getRealPath(path)
@@ -186,72 +180,88 @@ function VirtualLibrary:getRealPath(path)
     return book and book.source_path or nil
 end
 
-function VirtualLibrary:registerOpenAlias(real_path, virtual_path)
-    if not real_path or not virtual_path then
-        return
-    end
-
-    self.open_alias_to_virtual[real_path] = virtual_path
-    self.virtual_to_open_alias[virtual_path] = real_path
-end
-
-function VirtualLibrary:isOpenAlias(real_path)
-    return self.open_alias_to_virtual[real_path] ~= nil
-end
-
-function VirtualLibrary:clearOpenAlias(path)
-    local virtual_path = self:getVirtualPath(path)
-    if not virtual_path then
-        return
-    end
-
-    local real_path = self.virtual_to_open_alias[virtual_path]
-    if real_path then
-        self.open_alias_to_virtual[real_path] = nil
-    end
-    self.virtual_to_open_alias[virtual_path] = nil
-end
-
-function VirtualLibrary:getCanonicalPath(path)
-    return self:getVirtualPath(path) or path
-end
-
-function VirtualLibrary:getBlockedReasonText(book)
+function VirtualLibrary.getBlockedReasonText(_, book)
     local reason = book and book.block_reason or "unsupported_kfx_layout"
     local text = {
         drm = _("This book could not be opened. Try refreshing book access from the Kindle Library menu."),
         unsupported_kfx_layout = _("This KFX layout is not supported yet."),
         missing_source = _("The source file is missing."),
         conversion_failed = _("Failed to prepare this book for reading."),
-        drm_not_initialized = _("Book access has not been set up. Run Prepare Book Access from the Kindle Library menu."),
+        drm_not_initialized = _(
+            "Book access has not been set up. Run Prepare Book Access from the Kindle Library menu."
+        ),
+        cannot_read = _("The source file could not be read."),
+        unknown_format = _("This Kindle file format is not supported yet."),
     }
     return text[reason] or _("This book cannot be opened yet.")
 end
 
-local function createBookEntry(book)
-    local suffix = ""
+function VirtualLibrary:isBookPrepared(book)
+    if not book then
+        return false
+    end
+    if book.open_mode == "direct" then
+        return book.source_path ~= nil
+    end
+    if book.open_mode == "blocked" or not self.cache_manager then
+        return false
+    end
+    local fresh = self.cache_manager:isFresh(book)
+    return fresh == true
+end
+
+function VirtualLibrary:getPreparedPath(book)
+    if not book then
+        return nil
+    end
+    if book.open_mode == "direct" then
+        return book.source_path
+    end
+    if book.open_mode == "blocked" or not self.cache_manager then
+        return nil
+    end
+    local fresh, cached_path = self.cache_manager:isFresh(book)
+    return fresh and cached_path or nil
+end
+
+function VirtualLibrary:resolveBookPath(book)
+    if not book then
+        return nil, "missing book"
+    end
     if book.open_mode == "blocked" then
-        suffix = " [blocked]"
-    elseif book.open_mode == "drm" then
-        suffix = " [drm]"
-    elseif book.open_mode == "convert" then
-        suffix = " [convert]"
+        return nil, book.block_reason or "unsupported_kfx_layout"
+    end
+    if book.open_mode == "direct" then
+        return book.source_path
+    end
+    if not self.cache_manager then
+        return nil, "conversion_failed"
     end
 
-    return {
-        text = sanitizeDisplayName(book.display_name or book.title) .. suffix,
-        path = book.virtual_path,
-        is_file = true,
-        attr = {
-            mode = "file",
-            size = book.source_size or 0,
-        },
-        bidi_wrap_func = BD.filename,
-        kindle_book_id = book.id,
-        kindle_open_mode = book.open_mode,
-        kindle_block_reason = book.block_reason,
-        kindle_source_path = book.source_path,
+    local cached_path, err = self.cache_manager:ensureCachedEpub(book)
+    if cached_path then
+        self.books_by_real_path[cached_path] = book
+        return cached_path
+    end
+    return nil, err or "conversion_failed"
+end
+
+function VirtualLibrary:createVirtualFolderEntry(parent_path)
+    local entry = {
+        text = self.VIRTUAL_LIBRARY_NAME .. "/",
+        -- Keep a real filesystem path in the item. Selection is intercepted by
+        -- FileChooserExt before normal directory navigation.
+        path = parent_path or Device.home_dir or "/",
+        attr = { mode = "directory" },
+        is_kindle_library_folder = true,
+        is_kindle_virtual_folder = true, -- compatibility with older specs
+        bidi_wrap_func = BD.directory,
     }
+    if self.settings.virtual_library_cover_path
+        and self.settings.virtual_library_cover_path ~= "" then
+        entry.pt_cover_path = self.settings.virtual_library_cover_path
+    end
+    return entry
 end
 
 function VirtualLibrary:getBookEntries(force)
@@ -262,85 +272,21 @@ function VirtualLibrary:getBookEntries(force)
 
     local entries = {}
     for _, book in ipairs(books) do
-        table.insert(entries, createBookEntry(book))
+        local title = sanitizeDisplayName(book.display_name or book.title or book.id)
+        local authors = book.authors and table.concat(book.authors, ", ") or ""
+        local mandatory = authors ~= "" and authors or util.getFriendlySize(book.source_size or 0)
+        table.insert(entries, {
+            text = title,
+            file = book.source_path or "",
+            path = book.source_path or "",
+            attr = { mode = "file", size = book.source_size or 0 },
+            mandatory = mandatory,
+            kindle_book_id = book.id,
+            kindle_open_mode = book.open_mode,
+            kindle_block_reason = book.block_reason,
+        })
     end
-
     return entries
-end
-
-function VirtualLibrary:createVirtualFolderEntry(parent_path)
-    local entry = {
-        text = self.VIRTUAL_LIBRARY_NAME .. "/",
-        path = (parent_path or "") .. "/" .. self.VIRTUAL_LIBRARY_NAME,
-        is_kindle_virtual_folder = true,
-        bidi_wrap_func = BD.directory,
-    }
-
-    -- Optional custom cover image (set via menu)
-    if self.settings
-        and self.settings.virtual_library_cover_path
-        and self.settings.virtual_library_cover_path ~= "" then
-        entry.pt_cover_path = self.settings.virtual_library_cover_path
-    end
-
-    return entry
-end
-
---- Returns whether a book can be opened without running the converter.
---- Direct-mode books are always ready; converted books are ready only when
---- their cached EPUB and metadata are fresh.
-function VirtualLibrary:isBookPrepared(book)
-    if not book then
-        return false
-    end
-
-    if book.open_mode == "direct" then
-        return true
-    end
-
-    if book.open_mode == "blocked" or not self.cache_manager then
-        return false
-    end
-
-    local fresh = self.cache_manager:isFresh(book)
-    return fresh == true
-end
-
-function VirtualLibrary:resolveBookPath(book)
-    if not book then
-        return nil, "missing book"
-    end
-
-    logger.info("KindlePlugin: resolveBookPath for", book.id,
-        "mode:", book.open_mode, "source:", book.source_path)
-
-    if book.open_mode == "blocked" then
-        logger.warn("KindlePlugin: book is blocked:", book.block_reason)
-        return nil, book.block_reason or "unsupported_kfx_layout"
-    end
-
-    if book.open_mode == "direct" then
-        logger.info("KindlePlugin: direct open:", book.source_path)
-        self:registerOpenAlias(book.source_path, book.virtual_path)
-        return book.source_path
-    end
-
-    -- open_mode "convert" or "drm" — both go through cache/conversion pipeline
-    -- For "drm", the Python binary handles DRMION decryption internally
-    if not self.cache_manager then
-        logger.warn("KindlePlugin: cache manager is not configured")
-        return nil, "conversion_failed"
-    end
-
-    local cached_path, err = self.cache_manager:ensureCachedEpub(book)
-    if cached_path then
-        logger.info("KindlePlugin: resolved to cached EPUB:", cached_path)
-        self:registerOpenAlias(cached_path, book.virtual_path)
-        return cached_path
-    end
-
-    logger.warn("KindlePlugin: resolveBookPath failed:", err or "unknown")
-    return nil, err or "conversion_failed"
 end
 
 return VirtualLibrary

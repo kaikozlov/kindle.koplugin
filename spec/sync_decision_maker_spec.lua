@@ -132,7 +132,6 @@ describe("SyncDecisionMaker", function()
         end)
 
         it("should prompt user when direction is PROMPT", function()
-            local executed = false
             local plugin = {
                 settings = {
                     enable_sync_from_kindle = true,
@@ -140,14 +139,14 @@ describe("SyncDecisionMaker", function()
                 },
             }
 
-            -- In test env, Trapper:confirm returns true by default
+            -- In test env, Trapper:confirm returns true by default.
             local ok = SyncDecisionMaker.syncIfApproved(
                 plugin, SYNC_DIRECTION, true, true,
-                function() executed = true end
+                function() end
             )
 
             assert.is_true(ok)
-            -- ConfirmBox path is async so the callback may not execute in tests
+            -- ConfirmBox path is async, so only the approval result is asserted.
         end)
 
         it("should respect sync_from_kindle_older = SILENT", function()

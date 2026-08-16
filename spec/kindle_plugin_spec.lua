@@ -1,185 +1,107 @@
----
--- Unit tests for KindlePlugin main module.
-
-require('busted.runner')()
+require("busted.runner")()
 local helper = require("spec/test_helper")
 
 describe("KindlePlugin", function()
-    local KindlePlugin
     local UIManager
+    local instances
 
     setup(function()
         helper.setup_complete()
         UIManager = require("ui/uimanager")
-        -- Requiring main.lua applies virtual-library monkey patches at module
-        -- load time. Keep them disabled in this unit spec; the native lifecycle
-        -- spec covers real PluginLoader construction separately.
-        G_reader_settings:saveSetting("kindle_plugin", {
-            enable_virtual_library = false,
-        })
-        KindlePlugin = require("main")
     end)
 
     before_each(function()
-        UIManager:_reset()
         helper.before_each()
+        UIManager:_reset()
+        package.loaded["main"] = nil
+        instances = {}
     end)
 
-    --- Helper: create a mock ui table for plugin construction.
-    -- The real WidgetContainer:new() calls init() during construction,
-    -- so ui must be available at that point.
-    local function mockUI(overrides)
-        return {
-            menu = {
-                registerToMainMenu = function() end,
+    after_each(function()
+        for _, instance in ipairs(instances) do
+            pcall(function() instance:stopPlugin() end)
+        end
+    end)
+
+    local function newPlugin(settings, ui)
+        if settings then
+            G_reader_settings:saveSetting("kindle_plugin", settings)
+        end
+        local KindlePlugin = require("main")
+        local instance = KindlePlugin:new({
+            ui = ui or {
+                menu = { registerToMainMenu = function() end },
             },
-        }
-    end
-
-    local function newPlugin(plugin_class, ui)
-        return plugin_class:new({
-            ui = ui or mockUI(),
         })
+        table.insert(instances, instance)
+        return instance
     end
 
-    describe("init", function()
-        it("should initialize plugin with default settings", function()
-            local instance = newPlugin(KindlePlugin)
+    it("does not patch KOReader document/filesystem/reader APIs at module load", function()
+        local lfs = require("libs/libkoreader-lfs")
+        local DocumentRegistry = require("document/documentregistry")
+        local ReaderUI = require("apps/reader/readerui")
+        local attrs = lfs.attributes
+        local open_document = DocumentRegistry.openDocument
+        local show_reader = ReaderUI.showReader
 
-            assert.is_not_nil(instance.settings)
-            assert.is_true(instance.settings.enable_virtual_library)
-            assert.is_false(instance.settings.drm_initialized)
-            assert.is_false(instance.settings.sync_reading_state)
-        end)
+        require("main")
 
-        it("should preserve existing settings over defaults", function()
-            G_reader_settings:saveSetting("kindle_plugin", {
-                enable_virtual_library = false,
-                drm_initialized = true,
-                custom_setting = "preserved",
-            })
-
-            local instance = newPlugin(KindlePlugin)
-
-            assert.is_false(instance.settings.enable_virtual_library)
-            assert.is_true(instance.settings.drm_initialized)
-            assert.are.equal("preserved", instance.settings.custom_setting)
-            -- Defaults still fill in missing keys
-            assert.is_not_nil(instance.settings.documents_root)
-            assert.is_not_nil(instance.settings.cache_dir)
-        end)
-
-        it("should enable reading state sync when setting is true", function()
-            G_reader_settings:saveSetting("kindle_plugin", {
-                enable_virtual_library = false,
-                sync_reading_state = true,
-            })
-
-            -- Reload main to pick up new settings and create fresh sync instance
-            package.loaded["main"] = nil
-            package.loaded["lua/reading_state_sync"] = nil
-            local KindlePlugin2 = require("main")
-
-            local instance = newPlugin(KindlePlugin2)
-
-            -- The init should have set sync_reading_state in settings
-            assert.is_true(instance.settings.sync_reading_state)
-        end)
-
-        it("should register to main menu", function()
-            local registered = false
-            local ui = {
-                menu = {
-                    registerToMainMenu = function()
-                        registered = true
-                    end,
-                },
-            }
-
-            newPlugin(KindlePlugin, ui)
-            assert.is_true(registered)
-        end)
+        assert.equals(attrs, lfs.attributes)
+        assert.equals(open_document, DocumentRegistry.openDocument)
+        assert.equals(show_reader, ReaderUI.showReader)
     end)
 
-    describe("saveSettings", function()
-        it("should persist settings via G_reader_settings", function()
-            local saved_key, saved_value
-            local original_save_setting = G_reader_settings.saveSetting
-            G_reader_settings.saveSetting = function(self, key, value)
-                saved_key = key
-                saved_value = value
-                return original_save_setting(self, key, value)
-            end
-
-            local instance = newPlugin(KindlePlugin)
-            instance.settings.documents_root = "/mnt/us/test-docs"
-            instance:saveSettings()
-            G_reader_settings.saveSetting = original_save_setting
-
-            assert.are.equal("kindle_plugin", saved_key)
-            assert.are.equal("/mnt/us/test-docs", saved_value.documents_root)
-        end)
+    it("loads defaults while preserving explicit settings", function()
+        local instance = newPlugin({
+            enable_virtual_library = false,
+            drm_initialized = true,
+            custom_setting = "preserved",
+        })
+        assert.is_false(instance.settings.enable_virtual_library)
+        assert.is_true(instance.settings.drm_initialized)
+        assert.equals("preserved", instance.settings.custom_setting)
+        assert.is_not_nil(instance.settings.documents_root)
+        assert.is_not_nil(instance.settings.cache_dir)
     end)
 
-    describe("addToMainMenu", function()
-        it("should still add menu items when virtual library is inactive", function()
-            -- Menu must always be visible so user can re-enable virtual library
-            local instance = newPlugin(KindlePlugin)
-            instance.settings.enable_virtual_library = false
-            instance.ui = { document = nil }
-
-            local menu_items = {}
-            instance:addToMainMenu(menu_items)
-
-            assert.is_not_nil(menu_items.kindle_plugin)
-            assert.is_not_nil(menu_items.kindle_plugin.sub_item_table)
-
-            -- Browse and Refresh should be disabled when virtual library is off
-            local browse_item = menu_items.kindle_plugin.sub_item_table[1]
-            assert.is_false(browse_item.enabled_func())
-
-            local refresh_item = menu_items.kindle_plugin.sub_item_table[2]
-            assert.is_false(refresh_item.enabled_func())
-        end)
-
-        it("should not add menu items when document is open", function()
-            local instance = newPlugin(KindlePlugin)
-            instance.ui = { document = { file = "test.epub" } }
-
-            local menu_items = {}
-            instance:addToMainMenu(menu_items)
-
-            assert.is_nil(menu_items.kindle_plugin)
-        end)
-
-        it("should create menu with all expected items when active", function()
-            local instance = newPlugin(KindlePlugin)
-            instance.ui = { document = nil }
-
-            -- Ensure virtual library is active
-            instance.settings.enable_virtual_library = true
-
-            -- Manually check isActive by verifying settings
-            assert.is_true(instance.settings.enable_virtual_library ~= false)
-
-            -- The menu requires virtual_library:isActive() which depends on
-            -- settings being wired. Test that loadSettings populates correctly.
-            assert.is_not_nil(instance.settings.documents_root)
-            assert.is_not_nil(instance.settings.cache_dir)
-        end)
+    it("repairs the obsolete virtual HOME URI", function()
+        G_reader_settings:saveSetting("home_dir", "KINDLE_VIRTUAL://")
+        newPlugin({ enable_virtual_library = true })
+        assert.not_equals("KINDLE_VIRTUAL://", G_reader_settings:readSetting("home_dir"))
     end)
 
-    describe("SYNC_DIRECTION", function()
-        it("should have PROMPT, SILENT, and NEVER constants", function()
-            -- Access the SYNC_DIRECTION from the main module environment
-            -- The constants are used in settings, verify they work via settings
-            local instance = newPlugin(KindlePlugin)
+    it("registers its menu and can be live-stopped", function()
+        local registered = false
+        local instance = newPlugin(nil, {
+            menu = {
+                registerToMainMenu = function()
+                    registered = true
+                end,
+            },
+        })
+        assert.is_true(registered)
+        assert.is_true(instance:stopPlugin())
+    end)
 
-            -- Default sync directions should be set
-            assert.is_not_nil(instance.settings.sync_from_kindle_newer)
-            assert.is_not_nil(instance.settings.sync_to_kindle_newer)
-            assert.is_not_nil(instance.settings.sync_from_kindle_older)
-            assert.is_not_nil(instance.settings.sync_to_kindle_older)
-        end)
+    it("keeps the menu available while the library view is disabled", function()
+        local instance = newPlugin({ enable_virtual_library = false })
+        instance.ui = { document = nil }
+        local menu_items = {}
+        instance:addToMainMenu(menu_items)
+        assert.is_truthy(menu_items.kindle_plugin)
+        assert.is_false(menu_items.kindle_plugin.sub_item_table[1].enabled_func())
+        assert.is_false(menu_items.kindle_plugin.sub_item_table[2].enabled_func())
+    end)
+
+    it("does not add FileManager-only menu items in ReaderUI", function()
+        local instance = newPlugin(nil, {
+            document = { file = "/tmp/book.epub" },
+            doc_settings = {},
+            menu = { registerToMainMenu = function() end },
+        })
+        local menu_items = {}
+        instance:addToMainMenu(menu_items)
+        assert.is_nil(menu_items.kindle_plugin)
     end)
 end)

@@ -12,6 +12,7 @@
 local DocSettings = require("docsettings")
 local ReadHistory = require("readhistory")
 local UIManager = require("ui/uimanager")
+local Event = require("ui/event")
 local _ = require("gettext")
 local logger = require("logger")
 local T = require("ffi/util").template
@@ -23,9 +24,6 @@ local KindleStateWriter = require("lua/lib/kindle_state_writer")
 local SyncDecisionMaker = require("lua/lib/sync_decision_maker")
 
 local ReadingStateSync = {}
-
---- Path to the Kindle content catalog database.
-local CC_DB_PATH = "/var/local/cc.db"
 
 ---
 --- Extracts book cdeKey (ASIN or PDOC hash) from virtual path.
@@ -284,7 +282,15 @@ end
 --- clients without the capability probe retain the exact path for compatibility
 --- with tests/integrations; the bundled HelperClient performs the real device
 --- and ASIN checks.
-function ReadingStateSync:canUseExactNativeProgress(cde_key, source_path)
+function ReadingStateSync:canUseExactNativeProgress(cde_key, source_path, document_path)
+    -- Exact translation is defined only for converted EPUBs carrying the
+    -- plugin-owned data-kfx-* anchors. Direct PDFs/MOBI/etc. may still have a
+    -- perfectly usable ReaderSDK LPR, but they must use percentage/YJR sync.
+    if document_path ~= nil
+        and (type(document_path) ~= "string" or not document_path:lower():match("%.epub$"))
+    then
+        return false
+    end
     if not self.helper_client
         or type(self.helper_client.nativeProgressAvailable) ~= "function"
     then
@@ -512,10 +518,23 @@ end
 --- @param sync_fn function: Callback to execute if approved.
 --- @param sync_details table: Optional details for user prompt.
 --- @return boolean: True if sync was executed.
-function ReadingStateSync:syncIfApproved(is_pull_from_kindle, is_newer, sync_fn, sync_details)
+function ReadingStateSync:syncIfApproved(
+    is_pull_from_kindle, is_newer, sync_fn, sync_details, approval_handler
+)
     if not self.plugin or not self.sync_direction then
         logger.warn("KindlePlugin: Sync settings not configured, denying sync")
         return false
+    end
+
+    if approval_handler then
+        return approval_handler(
+            self.plugin,
+            self.sync_direction,
+            is_pull_from_kindle,
+            is_newer,
+            sync_fn,
+            sync_details
+        )
     end
 
     return SyncDecisionMaker.syncIfApproved(
@@ -603,23 +622,23 @@ function ReadingStateSync:syncFromKindle(cde_key, source_path, doc_settings)
     local kr_timestamp = getValidatedKOReaderTimestamp(
         doc_settings.data and doc_settings.data.doc_path
     )
+    local epub_path = doc_settings.data and doc_settings.data.doc_path
 
-    if not self:canUseExactNativeProgress(cde_key, source_path) then
-        logger.info("KindlePlugin: ReaderSDK bridge unavailable; using percentage-only pull")
+    if not self:canUseExactNativeProgress(cde_key, source_path, epub_path) then
+        logger.info("KindlePlugin: exact EPUB bridge unavailable; using percentage-only pull")
         if kindle_state.timestamp <= kr_timestamp then
             return false
         end
         return self:applyKindleStateToKOReader(kindle_state, doc_settings, kr_timestamp)
     end
 
-    local epub_path = doc_settings.data and doc_settings.data.doc_path
     local exact_xpointer, position_error, native_position = self:getAuthoritativeKindleXPointer(
         cde_key, source_path, epub_path
     )
     if not exact_xpointer then
         logger.warn("KindlePlugin: exact native progress pull failed:", position_error)
-        if not self:canUseExactNativeProgress(cde_key, source_path) then
-            logger.info("KindlePlugin: ReaderSDK bridge failed; falling back to percentage-only pull")
+        if not self:canUseExactNativeProgress(cde_key, source_path, epub_path) then
+            logger.info("KindlePlugin: exact EPUB bridge failed; falling back to percentage-only pull")
             if kindle_state.timestamp <= kr_timestamp then
                 return false
             end
@@ -655,6 +674,19 @@ end
 --- @param doc_settings table: Document settings instance.
 --- @param kr_timestamp number: KOReader timestamp for logging.
 --- @return boolean: True if state was applied.
+local function saveKOReaderSummaryStatus(doc_settings, status, percent_read)
+    local summary = doc_settings:readSetting("summary") or {}
+    local new_status = percent_read >= 100 and "complete" or status
+    if summary.status ~= new_status then
+        summary.status = new_status
+        summary.modified = os.date("%Y-%m-%d", os.time())
+        doc_settings:saveSetting("summary", summary)
+    elseif doc_settings:readSetting("summary") == nil then
+        summary.status = new_status
+        doc_settings:saveSetting("summary", summary)
+    end
+end
+
 function ReadingStateSync:applyKindleStateToKOReader(kindle_state, doc_settings, kr_timestamp)
     local koreader_percent = kindle_state.percent_read / 100.0
 
@@ -671,14 +703,7 @@ function ReadingStateSync:applyKindleStateToKOReader(kindle_state, doc_settings,
     doc_settings:saveSetting("percent_finished", koreader_percent)
     doc_settings:saveSetting("last_percent", koreader_percent)
 
-    local summary = doc_settings:readSetting("summary") or {}
-    summary.status = kindle_state.status
-
-    if kindle_state.percent_read >= 100 then
-        summary.status = "complete"
-    end
-
-    doc_settings:saveSetting("summary", summary)
+    saveKOReaderSummaryStatus(doc_settings, kindle_state.status, kindle_state.percent_read)
 
     return true
 end
@@ -708,7 +733,7 @@ function ReadingStateSync:syncToKindle(cde_key, source_path, doc_settings, epub_
         source_path
     )
 
-    local exact_available = self:canUseExactNativeProgress(cde_key, source_path)
+    local exact_available = self:canUseExactNativeProgress(cde_key, source_path, epub_path)
     if not exact_available then
         local kindle_state = self:readKindleState(cde_key, source_path)
         local kindle_percent = math.floor(kr_percent * 100)
@@ -727,10 +752,10 @@ function ReadingStateSync:syncToKindle(cde_key, source_path, doc_settings, epub_
         cde_key, source_path, epub_path, doc_settings
     )
     if not native_percent then
-        if not self:canUseExactNativeProgress(cde_key, source_path) then
+        if not self:canUseExactNativeProgress(cde_key, source_path, epub_path) then
             local kindle_state = self:readKindleState(cde_key, source_path)
             local kindle_percent = math.floor(kr_percent * 100)
-            logger.info("KindlePlugin: ReaderSDK bridge failed; falling back to legacy percentage/YJR push")
+            logger.info("KindlePlugin: exact EPUB bridge failed; falling back to legacy percentage/YJR push")
             return self:writeApproximateKindleState(
                 cde_key,
                 source_path,
@@ -753,7 +778,8 @@ end
 
 --- Legacy automatic pull used when the exact ReaderSDK bridge is unavailable.
 function ReadingStateSync:syncFromKindleApproximateAutomatic(
-    cde_key, doc_settings, kindle_state, kr_timestamp, kr_percent, kr_status
+    cde_key, doc_settings, kindle_state, kr_timestamp, kr_percent, kr_status,
+    approval_handler
 )
     local same_percent = math.floor(kr_percent * 100) == math.floor(kindle_state.percent_read)
     local same_status = kr_status == kindle_state.status
@@ -774,10 +800,7 @@ function ReadingStateSync:syncFromKindleApproximateAutomatic(
         sync_completed = self:applyKindleStateToKOReader(
             kindle_state, doc_settings, kr_timestamp
         )
-        if sync_completed then
-            doc_settings:flush()
-        end
-    end, sync_details)
+    end, sync_details, approval_handler)
     return sync_completed
 end
 
@@ -785,7 +808,7 @@ end
 --- Unlike syncFromKindle(), this honors automatic-sync and all configured
 --- direction choices, including an explicitly allowed older Kindle state.
 function ReadingStateSync:syncFromKindleAutomatic(
-    cde_key, source_path, doc_settings, epub_path, apply_live_xpointer
+    cde_key, source_path, doc_settings, epub_path, approval_handler
 )
     if not self:isAutomaticSyncEnabled() then
         return false
@@ -805,10 +828,11 @@ function ReadingStateSync:syncFromKindleAutomatic(
     local summary = doc_settings:readSetting("summary") or {}
     local kr_status = summary.status or "reading"
 
-    if not self:canUseExactNativeProgress(cde_key, source_path) then
-        logger.info("KindlePlugin: ReaderSDK bridge unavailable; using percentage-only automatic pull")
+    if not self:canUseExactNativeProgress(cde_key, source_path, epub_path) then
+        logger.info("KindlePlugin: exact EPUB bridge unavailable; using percentage-only automatic pull")
         return self:syncFromKindleApproximateAutomatic(
-            cde_key, doc_settings, kindle_state, kr_timestamp, kr_percent, kr_status
+            cde_key, doc_settings, kindle_state, kr_timestamp, kr_percent, kr_status,
+            approval_handler
         )
     end
 
@@ -819,10 +843,11 @@ function ReadingStateSync:syncFromKindleAutomatic(
         self:getAuthoritativeKindleXPointer(cde_key, source_path, epub_path)
     if not exact_xpointer then
         logger.warn("KindlePlugin: exact native progress pull failed:", position_error)
-        if not self:canUseExactNativeProgress(cde_key, source_path) then
-            logger.info("KindlePlugin: ReaderSDK bridge failed; falling back to percentage-only automatic pull")
+        if not self:canUseExactNativeProgress(cde_key, source_path, epub_path) then
+            logger.info("KindlePlugin: exact EPUB bridge failed; falling back to percentage-only automatic pull")
             return self:syncFromKindleApproximateAutomatic(
-                cde_key, doc_settings, kindle_state, kr_timestamp, kr_percent, kr_status
+                cde_key, doc_settings, kindle_state, kr_timestamp, kr_percent, kr_status,
+                approval_handler
             )
         end
         return false
@@ -869,13 +894,6 @@ function ReadingStateSync:syncFromKindleAutomatic(
             self:recordPositionReceipt(cde_key, source_path, native_position, "pull")
             return
         end
-        if apply_live_xpointer then
-            local ok, applied = pcall(apply_live_xpointer, exact_xpointer)
-            if not ok or applied == false then
-                logger.warn("KindlePlugin: cold-start live position apply failed")
-                return
-            end
-        end
         sync_completed = self:applyKindleStateToKOReader(
             kindle_state,
             doc_settings,
@@ -883,62 +901,17 @@ function ReadingStateSync:syncFromKindleAutomatic(
         )
         if sync_completed then
             doc_settings:saveSetting("last_xpointer", exact_xpointer)
-            doc_settings:flush()
             self:recordPositionReceipt(cde_key, source_path, native_position, "pull")
         end
-    end, sync_details)
+    end, sync_details, approval_handler)
     return sync_completed
-end
-
---- Catch up a converted Kindle book that KOReader opened as its startup file.
---- At cold startup ReaderUI:showReader is already on the stack when document
---- plugins are instantiated, so ShowReaderExt cannot perform its usual pull.
---- Normal virtual-library opens register an alias before that call and are
---- deliberately skipped here to avoid a duplicate reconciliation.
-function ReadingStateSync:syncColdStartReader(ui)
-    if not self:isAutomaticSyncEnabled()
-        or type(ui) ~= "table"
-        or type(ui.document) ~= "table"
-        or type(ui.document.file) ~= "string"
-        or not ui.document.file:match("%.epub$")
-        or type(ui.doc_settings) ~= "table"
-        or type(ui.rolling) ~= "table"
-        or type(ui.rolling.onGotoXPointer) ~= "function"
-        or not self.virtual_library
-    then
-        return false
-    end
-
-    local epub_path = ui.document.file
-    if type(self.virtual_library.isOpenAlias) == "function"
-        and self.virtual_library:isOpenAlias(epub_path)
-    then
-        return false
-    end
-
-    local virtual_path = self.virtual_library:getVirtualPath(epub_path)
-    local book = virtual_path and self.virtual_library:getBook(virtual_path)
-    if not book or not book.source_path then
-        return false
-    end
-
-    local cde_key = self:extractCdeKey(virtual_path, ui.doc_settings)
-    logger.info("KindlePlugin: reconciling cold-start mapped reader position")
-    return self:syncFromKindleAutomatic(
-        cde_key,
-        book.source_path,
-        ui.doc_settings,
-        epub_path,
-        function(xpointer)
-            ui.rolling:onGotoXPointer(xpointer)
-            return true
-        end
-    )
 end
 
 --- Sync KOReader state into Kindle's authoritative ReaderSDK state during close.
 --- This honors automatic-sync and all configured direction choices.
-function ReadingStateSync:syncToKindleAutomatic(cde_key, source_path, doc_settings, epub_path)
+function ReadingStateSync:syncToKindleAutomatic(
+    cde_key, source_path, doc_settings, epub_path, approval_handler
+)
     if not self:isAutomaticSyncEnabled() then
         return false
     end
@@ -946,8 +919,6 @@ function ReadingStateSync:syncToKindleAutomatic(cde_key, source_path, doc_settin
     local kr_percent = doc_settings:readSetting("percent_finished") or 0
     local summary = doc_settings:readSetting("summary") or {}
     local kr_status = summary.status or "reading"
-    local doc_path = doc_settings.data and doc_settings.data.doc_path
-    local kr_timestamp = getValidatedKOReaderTimestamp(doc_path)
     local close_timestamp = os.time()
 
     local kindle_state = self:readKindleState(cde_key, source_path) or {
@@ -959,7 +930,7 @@ function ReadingStateSync:syncToKindleAutomatic(cde_key, source_path, doc_settin
     if SyncDecisionMaker.areBothSidesComplete(kindle_state, kr_percent, kr_status) then
         return false
     end
-    local exact_available = self:canUseExactNativeProgress(cde_key, source_path)
+    local exact_available = self:canUseExactNativeProgress(cde_key, source_path, epub_path)
     if not exact_available then
         local same_percent = math.floor(kr_percent * 100) == math.floor(kindle_state.percent_read or 0)
         local same_status = kr_status == kindle_state.status
@@ -1012,8 +983,8 @@ function ReadingStateSync:syncToKindleAutomatic(cde_key, source_path, doc_settin
             if sync_completed then
                 self:recordPositionReceipt(cde_key, source_path, native_position, "push")
             end
-        elseif not self:canUseExactNativeProgress(cde_key, source_path) then
-            logger.info("KindlePlugin: ReaderSDK bridge failed; falling back to legacy percentage/YJR automatic push")
+        elseif not self:canUseExactNativeProgress(cde_key, source_path, epub_path) then
+            logger.info("KindlePlugin: exact EPUB bridge failed; falling back to legacy percentage/YJR automatic push")
             sync_completed = self:writeApproximateKindleState(
                 cde_key,
                 source_path,
@@ -1023,7 +994,7 @@ function ReadingStateSync:syncToKindleAutomatic(cde_key, source_path, doc_settin
                 kindle_state.percent_read
             )
         end
-    end, sync_details)
+    end, sync_details, approval_handler)
     return sync_completed
 end
 
@@ -1058,8 +1029,9 @@ function ReadingStateSync:executePullFromKindle(cde_key, source_path, doc_settin
 
     local sync_completed = false
     self:syncIfApproved(true, true, function()
-        if not self:canUseExactNativeProgress(cde_key, source_path) then
-            logger.info("KindlePlugin: ReaderSDK bridge unavailable; using percentage-only manual pull")
+        local epub_path = doc_settings.data and doc_settings.data.doc_path
+        if not self:canUseExactNativeProgress(cde_key, source_path, epub_path) then
+            logger.info("KindlePlugin: exact EPUB bridge unavailable; using percentage-only manual pull")
             sync_completed = self:applyKindleStateToKOReader(
                 kindle_state, doc_settings, kr_timestamp
             )
@@ -1069,14 +1041,13 @@ function ReadingStateSync:executePullFromKindle(cde_key, source_path, doc_settin
             return
         end
 
-        local epub_path = doc_settings.data and doc_settings.data.doc_path
         local exact_xpointer, position_error, native_position = self:getAuthoritativeKindleXPointer(
             cde_key, source_path, epub_path
         )
         if not exact_xpointer then
             logger.warn("KindlePlugin: exact native progress pull failed:", position_error)
-            if not self:canUseExactNativeProgress(cde_key, source_path) then
-                logger.info("KindlePlugin: ReaderSDK bridge failed; falling back to percentage-only manual pull")
+            if not self:canUseExactNativeProgress(cde_key, source_path, epub_path) then
+                logger.info("KindlePlugin: exact EPUB bridge failed; falling back to percentage-only manual pull")
                 sync_completed = self:applyKindleStateToKOReader(
                     kindle_state, doc_settings, kr_timestamp
                 )
@@ -1091,12 +1062,7 @@ function ReadingStateSync:executePullFromKindle(cde_key, source_path, doc_settin
         doc_settings:saveSetting("percent_finished", koreader_percent)
         doc_settings:saveSetting("last_percent", koreader_percent)
 
-        local summary = doc_settings:readSetting("summary") or {}
-        summary.status = kindle_state.status
-        if kindle_state.percent_read >= 100 then
-            summary.status = "complete"
-        end
-        doc_settings:saveSetting("summary", summary)
+        saveKOReaderSummaryStatus(doc_settings, kindle_state.status, kindle_state.percent_read)
         doc_settings:saveSetting("last_xpointer", exact_xpointer)
         doc_settings:flush()
         self:recordPositionReceipt(cde_key, source_path, native_position, "pull")
@@ -1143,8 +1109,9 @@ function ReadingStateSync:executePushToKindle(cde_key, source_path, doc_settings
         local current_timestamp = os.time()
 
         logger.info("KindlePlugin: Syncing TO Kindle (PUSH)")
-        if not self:canUseExactNativeProgress(cde_key, source_path) then
-            logger.info("KindlePlugin: ReaderSDK bridge unavailable; using legacy percentage/YJR manual push")
+        local epub_path = doc_settings.data and doc_settings.data.doc_path
+        if not self:canUseExactNativeProgress(cde_key, source_path, epub_path) then
+            logger.info("KindlePlugin: exact EPUB bridge unavailable; using legacy percentage/YJR manual push")
             sync_completed = self:writeApproximateKindleState(
                 cde_key,
                 source_path,
@@ -1156,7 +1123,6 @@ function ReadingStateSync:executePushToKindle(cde_key, source_path, doc_settings
             return
         end
 
-        local epub_path = doc_settings.data and doc_settings.data.doc_path
         local native_percent, native_position = self:saveAuthoritativeNativePosition(
             cde_key, source_path, epub_path, doc_settings
         )
@@ -1167,8 +1133,8 @@ function ReadingStateSync:executePushToKindle(cde_key, source_path, doc_settings
             if sync_completed then
                 self:recordPositionReceipt(cde_key, source_path, native_position, "push")
             end
-        elseif not self:canUseExactNativeProgress(cde_key, source_path) then
-            logger.info("KindlePlugin: ReaderSDK bridge failed; falling back to legacy percentage/YJR manual push")
+        elseif not self:canUseExactNativeProgress(cde_key, source_path, epub_path) then
+            logger.info("KindlePlugin: exact EPUB bridge failed; falling back to legacy percentage/YJR manual push")
             sync_completed = self:writeApproximateKindleState(
                 cde_key,
                 source_path,

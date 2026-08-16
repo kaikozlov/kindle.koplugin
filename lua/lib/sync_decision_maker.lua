@@ -75,12 +75,14 @@ end
 --- @param is_newer boolean: True if source is newer.
 --- @param sync_fn function: Callback to execute if sync is approved.
 --- @param sync_details table|nil: Optional sync details for prompt.
-local function promptUserForSyncAndExecute(is_pull_from_kindle, is_newer, sync_fn, sync_details)
+local function promptUserForSyncAndExecute(
+    is_pull_from_kindle, is_newer, sync_fn, sync_details, force_async
+)
     local dialog_text = formatSyncPrompt(sync_details, is_pull_from_kindle, is_newer)
     local direction_text = is_pull_from_kindle and "from Kindle" or "to Kindle"
     local state_text = is_newer and "newer" or "older"
 
-    if Trapper:isWrapped() then
+    if Trapper:isWrapped() and not force_async then
         local confirmed = Trapper:confirm(dialog_text, _("No"), _("Yes"))
         logger.dbg(
             "KindlePlugin: User sync confirmation (Trapper):",
@@ -126,7 +128,10 @@ end
 --- @param sync_fn function: Callback to execute if sync is approved.
 --- @param sync_details table|nil: Optional sync details for prompt.
 --- @return boolean: True if sync was executed or initiated, false if denied.
-function SyncDecisionMaker.syncIfApproved(plugin, sync_direction, is_pull_from_kindle, is_newer, sync_fn, sync_details)
+function SyncDecisionMaker.syncIfApproved(
+    plugin, sync_direction, is_pull_from_kindle, is_newer, sync_fn, sync_details,
+    force_async_prompt
+)
     logger.dbg(
         "KindlePlugin: Evaluating sync approval:",
         is_pull_from_kindle and "FROM Kindle" or "TO Kindle",
@@ -185,7 +190,9 @@ function SyncDecisionMaker.syncIfApproved(plugin, sync_direction, is_pull_from_k
             tostring(is_newer)
         )
 
-        promptUserForSyncAndExecute(is_pull_from_kindle, is_newer, sync_fn, sync_details)
+        promptUserForSyncAndExecute(
+            is_pull_from_kindle, is_newer, sync_fn, sync_details, force_async_prompt
+        )
         return true
     end
 

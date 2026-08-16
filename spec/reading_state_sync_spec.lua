@@ -438,6 +438,38 @@ describe("ReadingStateSync", function()
             RealDocSettings:_clearSidecars()
         end)
 
+        it("should use percentage-only pull for a direct PDF even when ReaderSDK is available", function()
+            local sync = ReadingStateSync:new({
+                nativeProgressAvailable = function() return true end,
+            })
+            sync:setEnabled(true)
+            setupPluginSettings(sync)
+            local pdf_path = "/mnt/us/documents/Direct_B007N6JEII.pdf"
+            RealDocSettings:_setSidecarFile(pdf_path, true)
+            local original = mockReadKindleState(sync, {
+                percent_read = 60,
+                timestamp = 1762700000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            sync.getAuthoritativeKindleXPointer = function()
+                error("direct PDF must not attempt exact EPUB translation")
+            end
+            local ds = createMockDocSettings(pdf_path, {
+                percent_finished = 0.2,
+                summary = { status = "reading" },
+            })
+
+            assert.is_true(sync:syncFromKindleAutomatic(
+                "B007N6JEII", pdf_path, ds, pdf_path
+            ))
+            assert.equals(0.6, ds:readSetting("percent_finished"))
+            assert.is_nil(ds:readSetting("last_xpointer"))
+
+            restoreReadKindleState(sync, original)
+            RealDocSettings:_clearSidecars()
+        end)
+
         it("should fall back to percentage push when ReaderSDK is unavailable", function()
             local sync = ReadingStateSync:new({
                 nativeProgressAvailable = function() return false end,
@@ -457,6 +489,38 @@ describe("ReadingStateSync", function()
             })
 
             assert.is_true(sync:syncToKindleAutomatic("B007N6JEII", history_path, ds))
+            assert.equals(1, #writes)
+            assert.equals(75, writes[1].percent)
+
+            restoreReadKindleState(sync, original_read)
+            restoreWriteKindleState(sync, original_write)
+        end)
+
+        it("should use percentage push for a direct PDF even when ReaderSDK is available", function()
+            local sync = ReadingStateSync:new({
+                nativeProgressAvailable = function() return true end,
+            })
+            sync:setEnabled(true)
+            setupPluginSettings(sync)
+            local pdf_path = "/mnt/us/documents/Direct_B007N6JEII.pdf"
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 30,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            local original_write, writes = mockWriteKindleState(sync)
+            sync.saveAuthoritativeNativePosition = function()
+                error("direct PDF must not attempt exact EPUB translation")
+            end
+            local ds = createMockDocSettings(pdf_path, {
+                percent_finished = 0.75,
+                summary = { status = "reading" },
+            })
+
+            assert.is_true(sync:syncToKindleAutomatic(
+                "B007N6JEII", pdf_path, ds, pdf_path
+            ))
             assert.equals(1, #writes)
             assert.equals(75, writes[1].percent)
 
@@ -836,116 +900,6 @@ describe("ReadingStateSync", function()
             restoreReadKindleState(sync, original_read)
         end)
 
-        it("should reconcile a mapped EPUB opened during cold startup", function()
-            local sync = ReadingStateSync:new()
-            sync:setEnabled(true)
-            local plugin = setupPluginSettings(sync)
-            plugin.settings.position_sync_receipts = {
-                B007N6JEII = { long = "ATwFAACbAAAA", pid = 442741 },
-            }
-            RealDocSettings:_setSidecarFile("/cache/book.epub", true)
-            local original_read = mockReadKindleState(sync, {
-                percent_read = 52,
-                timestamp = 1000,
-                status = "reading",
-                kindle_status = 1,
-            })
-            sync.getAuthoritativeKindleXPointer = function()
-                return "/body/DocFragment/body/p/text().52", nil, {
-                    long = "ATwFAACcAAAA", pid = 442742, percent = 52,
-                }
-            end
-            sync:setVirtualLibrary({
-                isOpenAlias = function() return false end,
-                getVirtualPath = function()
-                    return "KINDLE_VIRTUAL://B007N6JEII/Book.kfx"
-                end,
-                getBook = function()
-                    return { source_path = history_path }
-                end,
-            })
-            local ds = createMockDocSettings("/cache/book.epub", {
-                percent_finished = 0.38,
-                last_xpointer = "/body/DocFragment/body/p/text().38",
-                summary = { status = "reading" },
-            })
-            local applied
-            local ui = {
-                document = { file = "/cache/book.epub" },
-                doc_settings = ds,
-                rolling = {
-                    onGotoXPointer = function(_, xpointer)
-                        applied = xpointer
-                    end,
-                },
-            }
-
-            assert.is_true(sync:syncColdStartReader(ui))
-            assert.equals("/body/DocFragment/body/p/text().52", applied)
-            assert.equals(0.52, ds:readSetting("percent_finished"))
-            assert.equals("ATwFAACcAAAA",
-                plugin.settings.position_sync_receipts.B007N6JEII.long)
-
-            restoreReadKindleState(sync, original_read)
-            RealDocSettings:_clearSidecars()
-        end)
-
-        it("should skip a normal virtual-library open already reconciled before open", function()
-            local sync = ReadingStateSync:new()
-            sync:setEnabled(true)
-            setupPluginSettings(sync)
-            sync:setVirtualLibrary({
-                isOpenAlias = function() return true end,
-                getVirtualPath = function()
-                    error("normal open must not rebuild mappings")
-                end,
-            })
-            local ui = {
-                document = { file = "/cache/book.epub" },
-                doc_settings = createMockDocSettings("/cache/book.epub"),
-                rolling = { onGotoXPointer = function() end },
-            }
-
-            assert.is_false(sync:syncColdStartReader(ui))
-        end)
-
-        it("should not apply or receipt a pull when live navigation fails", function()
-            local sync = ReadingStateSync:new()
-            sync:setEnabled(true)
-            local plugin = setupPluginSettings(sync)
-            plugin.settings.position_sync_receipts = {
-                B007N6JEII = { long = "ATwFAACbAAAA", pid = 442741 },
-            }
-            RealDocSettings:_setSidecarFile(history_path, true)
-            local original_read = mockReadKindleState(sync, {
-                percent_read = 52,
-                timestamp = 1000,
-                status = "reading",
-                kindle_status = 1,
-            })
-            sync.getAuthoritativeKindleXPointer = function()
-                return "/body/DocFragment/body/p/text().52", nil, {
-                    long = "ATwFAACcAAAA", pid = 442742, percent = 52,
-                }
-            end
-            local ds = createMockDocSettings(history_path, {
-                percent_finished = 0.38,
-                last_xpointer = "/body/DocFragment/body/p/text().38",
-                summary = { status = "reading" },
-            })
-
-            assert.is_false(sync:syncFromKindleAutomatic(
-                "B007N6JEII", history_path, ds, "/cache/book.epub",
-                function() return false end
-            ))
-            assert.equals(0.38, ds:readSetting("percent_finished"))
-            assert.equals("ATwFAACbAAAA",
-                plugin.settings.position_sync_receipts.B007N6JEII.long)
-            assert.equals(0, plugin.save_count)
-
-            restoreReadKindleState(sync, original_read)
-            RealDocSettings:_clearSidecars()
-        end)
     end)
 
     -- ========================================================================
@@ -1373,7 +1327,9 @@ describe("ReadingStateSync", function()
             local result = sync:syncBidirectional("B007N6JEII", "/mnt/us/documents/Throne of Glass_B007N6JEII.kfx", ds)
             assert.is_true(result)
             assert.equals(1, #write_log)
-            assert.equals(37, write_log[1].percent)
+            -- A raw KFX DocSettings path has no EPUB position anchors, so
+            -- manual sync correctly uses the percentage/YJR path.
+            assert.equals(85, write_log[1].percent)
 
             restoreReadKindleState(sync, orig_read)
             restoreWriteKindleState(sync, orig_write)
@@ -1780,6 +1736,7 @@ describe("ReadingStateSync", function()
 
             local summary = ds:readSetting("summary")
             assert.equals("reading", summary.status)
+            assert.equals(os.date("%Y-%m-%d", os.time()), summary.modified)
         end)
     end)
 
