@@ -29,11 +29,38 @@ javac --release 11 \
 
 cp "$CLASSES/AttachLauncher.class" "$OUTPUT_DIR/classes/AttachLauncher.class"
 
-jar --create \
-    --file "$OUTPUT_DIR/native-reading-progress-agent-v6.jar" \
-    --manifest "$ROOT/agent/manifest-progress.mf" \
-    --date=1980-01-01T00:00:02Z \
-    -C "$CLASSES" KindlePluginReadingProgressAgentV6.class
+# Build the agent JAR ourselves instead of using `jar`. The JDK tool injects a
+# compiler-specific Created-By field and DEFLATE output is not guaranteed to be
+# byte-identical across hosts. Stored ZIP entries with fixed metadata make the
+# committed agent bundle reproducible as long as its class bytecode is.
+python3 - "$ROOT/agent/manifest-progress.mf" \
+    "$CLASSES/KindlePluginReadingProgressAgentV6.class" \
+    "$OUTPUT_DIR/native-reading-progress-agent-v6.jar" <<'PY'
+import sys
+import zipfile
+from pathlib import Path
+
+manifest_path, class_path, output_path = map(Path, sys.argv[1:])
+manifest_lines = manifest_path.read_text(encoding="utf-8").splitlines()
+manifest = ("\r\n".join(manifest_lines) + "\r\n\r\n").encode("utf-8")
+class_bytes = class_path.read_bytes()
+
+def entry(name, data, mode=0o644):
+    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 2))
+    info.compress_type = zipfile.ZIP_STORED
+    info.create_system = 3
+    info.external_attr = mode << 16
+    return info, data
+
+with zipfile.ZipFile(output_path, "w") as bundle:
+    directory = zipfile.ZipInfo("META-INF/", date_time=(1980, 1, 1, 0, 0, 2))
+    directory.compress_type = zipfile.ZIP_STORED
+    directory.create_system = 3
+    directory.external_attr = (0o40755 << 16) | 0x10
+    bundle.writestr(directory, b"")
+    bundle.writestr(*entry("META-INF/MANIFEST.MF", manifest))
+    bundle.writestr(*entry("KindlePluginReadingProgressAgentV6.class", class_bytes))
+PY
 
 chmod 0644 "$OUTPUT_DIR/classes/AttachLauncher.class" \
     "$OUTPUT_DIR/native-reading-progress-agent-v6.jar"
