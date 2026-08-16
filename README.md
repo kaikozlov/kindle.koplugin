@@ -2,7 +2,7 @@
 
 A KOReader plugin that lets you browse and read your Kindle book library directly in KOReader. Your books appear in a **Kindle Library** folder in the file browser — just tap to read.
 
-**[Download latest release](https://github.com/soloipd/kindle.koplugin/releases/latest)**
+**[Download latest release](https://github.com/kaikozlov/kindle.koplugin/releases/latest)**
 
 ### Features
 
