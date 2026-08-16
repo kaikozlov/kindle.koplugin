@@ -42,6 +42,27 @@ class NativeExtractorTests(unittest.TestCase):
 
         self.assertEqual(second, executable)
 
+    def test_find_executable_does_not_trust_fuse_access_check(self):
+        with tempfile.TemporaryDirectory() as native_dir:
+            candidate = os.path.join(native_dir, native_extractor.CANDIDATE_NAMES[0])
+            open(candidate, "wb").close()
+
+            with mock.patch.object(os, "access", return_value=False), \
+                    mock.patch.object(
+                        native_extractor.subprocess,
+                        "run",
+                        return_value=mock.Mock(returncode=0),
+                    ) as run:
+                executable = native_extractor.find_executable(native_dir=native_dir)
+
+        self.assertEqual(candidate, executable)
+        run.assert_called_once_with(
+            [candidate, "test"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
     def test_extract_page_keys_removes_generated_keyfile(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             key_file = os.path.join(tmpdir, "keyfile.txt")

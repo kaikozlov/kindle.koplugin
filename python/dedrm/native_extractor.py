@@ -39,7 +39,10 @@ def find_executable(plugin_dir=None, native_dir=None):
     """Return the first ABI-compatible native extractor executable."""
     failures = []
     for path in _candidate_paths(plugin_dir, native_dir):
-        if not os.path.isfile(path) or not os.access(path, os.X_OK):
+        # /mnt/us is FUSE-mounted on Kindle firmware, and os.access(X_OK) can
+        # report false for binaries that the kernel can execute successfully.
+        # Treat the extractor's own `test` command as the compatibility probe.
+        if not os.path.isfile(path):
             continue
         try:
             result = subprocess.run(
