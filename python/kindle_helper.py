@@ -756,6 +756,39 @@ def cmd_translate_native_position(args):
         }, code=1)
 
 
+def cmd_translate_native_positions(args):
+    """Reverse-translate a bounded annotation range batch into XPointers."""
+    try:
+        with open(args.request, "r", encoding="utf-8") as request_file:
+            requests = json.load(request_file)
+        if not isinstance(requests, list) or len(requests) > 1000:
+            raise ValueError("invalid native position request list")
+        translated = []
+        for request in requests:
+            if not isinstance(request, dict):
+                raise ValueError("invalid native position request")
+            start = request.get("start")
+            end = request.get("end")
+            if not isinstance(start, str) or not isinstance(end, str):
+                raise ValueError("native annotation range is incomplete")
+            translated.append({
+                "start": translate_native_position(args.epub, start),
+                "end": translate_native_position(args.epub, end),
+            })
+        exit_json({
+            "version": VERSION,
+            "ok": True,
+            "positions": translated,
+        })
+    except (OSError, zipfile.BadZipFile, PositionTranslationError, ValueError,
+            json.JSONDecodeError) as error:
+        exit_json({
+            "version": VERSION,
+            "ok": False,
+            "message": str(error),
+        }, code=1)
+
+
 def main():
     parser = argparse.ArgumentParser(prog="kindle-helper")
     sub = parser.add_subparsers(dest="command")
@@ -808,6 +841,10 @@ def main():
     p_translate_native.add_argument("--epub", required=True)
     p_translate_native.add_argument("--long", dest="long_position", required=True)
 
+    p_translate_natives = sub.add_parser("translate-native-positions")
+    p_translate_natives.add_argument("--epub", required=True)
+    p_translate_natives.add_argument("--request", required=True)
+
     # extract-key
     p_extract = sub.add_parser("extract-key")
     p_extract.add_argument("--input", required=True,
@@ -833,6 +870,7 @@ def main():
         "translate-position": cmd_translate_position,
         "translate-positions": cmd_translate_positions,
         "translate-native-position": cmd_translate_native_position,
+        "translate-native-positions": cmd_translate_native_positions,
         "extract-key": cmd_extract_key,
     }
 

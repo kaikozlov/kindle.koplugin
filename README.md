@@ -66,6 +66,13 @@ the plugin repairs that display value from Kindle's verified rendered percent
 without moving either reader. A receipt is written only after the exact native
 save and shelf update both succeed.
 
+For annotation integrations, the bundled helper also provides bounded batch
+translation in both directions. `translate-positions` converts normalized
+KOReader XPointer ranges to exact KFX coordinates, while
+`translate-native-positions` reverse-translates up to 1,000 native ranges and
+verifies every endpoint by round trip. The coordinate map contains no book or
+annotation text.
+
 ### Compatibility
 
 > Designed for Kindle devices running KOReader alongside stock firmware.
