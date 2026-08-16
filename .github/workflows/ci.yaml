@@ -23,6 +23,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout pinned KOReader contract
+        uses: actions/checkout@v7
+        with:
+          repository: koreader/koreader
+          ref: c4f11272c6b6c8d98ff947a75efe23e212b3686e
+          path: REFERENCE/koreader
+          persist-credentials: false
+
+      - name: Initialize KOReader base submodule
+        run: git -C REFERENCE/koreader submodule update --init base
+
       - name: Pull koplugin-dev image
         run: make setup
 

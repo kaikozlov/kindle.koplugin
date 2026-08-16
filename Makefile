@@ -36,28 +36,25 @@ setup: ## Pull the koplugin-dev image
 # =============================================================================
 
 .PHONY: test
-test: ## Run all tests (excludes e2e)
-	$(RUN) busted-koreader --verbose \
-		--helper=/opt/koplugin-dev/commonrequire.lua \
-		--exclude-tags=e2e \
-		/opt/plugin/spec/
+test: ## Run all tests against the pinned current KOReader Lua contract
+	./scripts/test
 
 .PHONY: test-e2e
 test-e2e: ## Run E2E tests only (requires network)
-	$(RUN) busted-koreader --verbose \
+	./scripts/koreader-test-container --verbose \
 		--helper=/opt/koplugin-dev/commonrequire.lua \
 		--filter=e2e \
 		/opt/plugin/spec/
 
 .PHONY: test-all
 test-all: ## Run all tests including e2e
-	$(RUN) busted-koreader --verbose \
+	./scripts/koreader-test-container --verbose \
 		--helper=/opt/koplugin-dev/commonrequire.lua \
 		/opt/plugin/spec/
 
 .PHONY: test-filter
 test-filter: ## Run tests matching FILTER pattern (pass FILTER="...")
-	$(RUN) busted-koreader --verbose \
+	./scripts/koreader-test-container --verbose \
 		--helper=/opt/koplugin-dev/commonrequire.lua \
 		--filter="$(FILTER)" \
 		/opt/plugin/spec/
@@ -67,8 +64,8 @@ test-filter: ## Run tests matching FILTER pattern (pass FILTER="...")
 # =============================================================================
 
 .PHONY: lint
-lint: ## Run luacheck inside the container
-	$(RUN) luacheck /opt/plugin
+lint: ## Run luacheck against tracked plugin Lua source
+	$(RUN) sh -lc 'cd /opt/plugin && luacheck _meta.lua main.lua lua spec'
 
 # =============================================================================
 # Interactive
