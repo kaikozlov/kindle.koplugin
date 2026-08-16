@@ -2,7 +2,7 @@
 
 A KOReader plugin that lets you browse and read your Kindle book library directly in KOReader. Your books appear in a **Kindle Library** folder in the file browser — just tap to read.
 
-**[Download latest release](https://github.com/kaikozlov/kindle.koplugin/releases/latest)**
+**[Download latest release](https://github.com/soloipd/kindle.koplugin/releases/latest)**
 
 ### Features
 
@@ -52,6 +52,16 @@ rendered content lengths, so the native shelf is written with Kindle's rendered
 percentage rather than copying KOReader's percentage. This keeps the native
 shelf and native reader consistent while the exact text position remains the
 cross-reader source of truth.
+
+The plugin also stores a text-free reconciliation receipt containing only the
+last successfully synchronized KFX position. On the next open it compares the
+native reader's exact last-page-read coordinate with that receipt. A changed
+coordinate is pulled even if Kindle's catalog timestamp is stale; an unchanged
+coordinate cannot overwrite newer KOReader progress. If the coordinate still
+matches but a stale native process has overwritten only the shelf percentage,
+the plugin repairs that display value from Kindle's verified rendered percent
+without moving either reader. A receipt is written only after the exact native
+save and shelf update both succeed.
 
 ### Compatibility
 

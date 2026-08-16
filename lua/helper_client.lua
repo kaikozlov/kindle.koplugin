@@ -249,7 +249,11 @@ function HelperClient:saveNativeProgress(asin, native_path, position)
         return false, result_error or "native progress result mismatch"
     end
     logger.info("KindlePlugin: authoritative native progress saved:", asin, position.pid)
-    return true, nil, native_percent
+    return true, nil, native_percent, {
+        long = values.long_position,
+        pid = tonumber(values.saved_short),
+        percent = native_percent,
+    }
 end
 
 --- Read Kindle's authoritative local last-page-read position.

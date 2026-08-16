@@ -119,6 +119,96 @@ function ReadingStateSync:setVirtualLibrary(virtual_library)
     self.virtual_library = virtual_library
 end
 
+local function receiptAsin(cde_key, source_path)
+    local asin = cde_key
+    if not asin or not asin:match("^B[A-Z0-9]+$") then
+        asin = extractCdeKeyFromPath(source_path)
+    end
+    if asin and #asin == 10 and asin:match("^B[A-Z0-9]+$") then
+        return asin
+    end
+    return nil
+end
+
+local function validNativePosition(position)
+    return type(position) == "table"
+        and type(position.long) == "string"
+        and position.long:match("^[A-Za-z0-9+/]+$")
+        and #position.long == 12
+        and type(position.pid) == "number"
+        and position.pid >= 0
+        and position.pid == math.floor(position.pid)
+end
+
+--- Return the last exact native position reconciled by this plugin.
+--- Coordinates contain no book text and are stored in KOReader's atomic
+--- settings file, so they survive restarts without creating another sidecar.
+function ReadingStateSync:getPositionReceipt(cde_key, source_path)
+    local asin = receiptAsin(cde_key, source_path)
+    local receipts = self.plugin and self.plugin.settings
+        and self.plugin.settings.position_sync_receipts
+    local receipt = asin and type(receipts) == "table" and receipts[asin]
+    if not validNativePosition(receipt) then
+        return nil
+    end
+    return receipt
+end
+
+--- Record an exact position only after both the authoritative LPR operation
+--- and its corresponding KOReader/native state update have succeeded.
+function ReadingStateSync:recordPositionReceipt(cde_key, source_path, position, direction)
+    local asin = receiptAsin(cde_key, source_path)
+    if not asin or not validNativePosition(position) or not self.plugin then
+        return false
+    end
+    local settings = self.plugin.settings
+    if type(settings.position_sync_receipts) ~= "table" then
+        settings.position_sync_receipts = {}
+    end
+    settings.position_sync_receipts[asin] = {
+        long = position.long,
+        pid = position.pid,
+        percent = position.percent,
+        direction = direction,
+        synced_at = os.time(),
+    }
+    if type(self.plugin.saveSettings) == "function" then
+        self.plugin:saveSettings()
+    end
+    return true
+end
+
+local function sameReceiptPosition(receipt, position)
+    return receipt and validNativePosition(position)
+        and receipt.long == position.long
+        and receipt.pid == position.pid
+end
+
+--- Repair only cc.db's display percentage when the exact native LPR still
+--- matches the last verified receipt. This handles a stale native reader
+--- process overwriting the shelf after our authoritative save without ever
+--- moving either reader's actual position.
+function ReadingStateSync:repairCatalogFromReceipt(
+    cde_key, source_path, receipt, native_position, kindle_state
+)
+    if not sameReceiptPosition(receipt, native_position)
+        or type(receipt.percent) ~= "number"
+        or type(kindle_state) ~= "table"
+        or type(kindle_state.percent_read) ~= "number"
+        or math.abs(receipt.percent - kindle_state.percent_read) < 0.05
+    then
+        return false
+    end
+    logger.info("KindlePlugin: repairing stale shelf percentage from exact LPR receipt")
+    return self:writeKindleState(
+        cde_key,
+        source_path,
+        receipt.percent,
+        os.time(),
+        kindle_state.status or "reading"
+    )
+end
+
 ---
 --- Checks if reading state sync is enabled.
 --- @return boolean: True if sync is enabled.
@@ -219,7 +309,7 @@ function ReadingStateSync:saveAuthoritativeNativePosition(cde_key, source_path, 
         logger.warn("KindlePlugin: exact native position translation failed:", translate_error)
         return false
     end
-    local saved, save_error, native_percent = self.helper_client:saveNativeProgress(
+    local saved, save_error, native_percent, native_position = self.helper_client:saveNativeProgress(
         asin, source_path, position
     )
     if not saved then
@@ -230,7 +320,11 @@ function ReadingStateSync:saveAuthoritativeNativePosition(cde_key, source_path, 
         logger.warn("KindlePlugin: native progress save omitted Kindle percentage")
         return false
     end
-    return native_percent
+    return native_percent, native_position or {
+        long = position.long,
+        pid = position.pid,
+        percent = native_percent,
+    }
 end
 
 --- Resolve Kindle's exact local LPR back to a KOReader XPointer.
@@ -255,7 +349,8 @@ function ReadingStateSync:getAuthoritativeKindleXPointer(cde_key, source_path, e
     if native.pid and translated.pid and native.pid ~= translated.pid then
         return nil, "native reverse position mismatch"
     end
-    return translated.xpointer
+    native.percent = native.percent or translated.percent
+    return translated.xpointer, nil, native
 end
 
 --- Reads Kindle reading state from cc.db.
@@ -436,17 +531,24 @@ function ReadingStateSync:syncFromKindle(cde_key, source_path, doc_settings)
         doc_settings.data and doc_settings.data.doc_path
     )
 
-    if kindle_state.timestamp <= kr_timestamp then
-        logger.dbg("KindlePlugin: KOReader is more recent, keeping KOReader value")
-        return false
-    end
-
     local epub_path = doc_settings.data and doc_settings.data.doc_path
-    local exact_xpointer, position_error = self:getAuthoritativeKindleXPointer(
+    local exact_xpointer, position_error, native_position = self:getAuthoritativeKindleXPointer(
         cde_key, source_path, epub_path
     )
     if not exact_xpointer then
         logger.warn("KindlePlugin: exact native progress pull failed:", position_error)
+        return false
+    end
+    local receipt = self:getPositionReceipt(cde_key, source_path)
+    if sameReceiptPosition(receipt, native_position) then
+        self:repairCatalogFromReceipt(
+            cde_key, source_path, receipt, native_position, kindle_state
+        )
+        logger.dbg("KindlePlugin: native LPR is already reconciled")
+        return false
+    end
+    if not receipt and kindle_state.timestamp <= kr_timestamp then
+        logger.dbg("KindlePlugin: KOReader is more recent, keeping KOReader value")
         return false
     end
     local applied = self:applyKindleStateToKOReader(
@@ -454,6 +556,7 @@ function ReadingStateSync:syncFromKindle(cde_key, source_path, doc_settings)
     )
     if applied then
         doc_settings:saveSetting("last_xpointer", exact_xpointer)
+        self:recordPositionReceipt(cde_key, source_path, native_position, "pull")
     end
     return applied
 end
@@ -517,15 +620,19 @@ function ReadingStateSync:syncToKindle(cde_key, source_path, doc_settings, epub_
         source_path
     )
 
-    local native_percent = self:saveAuthoritativeNativePosition(
+    local native_percent, native_position = self:saveAuthoritativeNativePosition(
         cde_key, source_path, epub_path, doc_settings
     )
     if not native_percent then
         return false
     end
-    return self:writeKindleState(
+    local written = self:writeKindleState(
         cde_key, source_path, native_percent, current_timestamp, kr_status
     )
+    if written then
+        self:recordPositionReceipt(cde_key, source_path, native_position, "push")
+    end
+    return written
 end
 
 --- Sync the native Kindle state into KOReader during an automatic open.
@@ -549,10 +656,25 @@ function ReadingStateSync:syncFromKindleAutomatic(cde_key, source_path, doc_sett
     local kr_percent = doc_settings:readSetting("percent_finished") or 0
     local summary = doc_settings:readSetting("summary") or {}
     local kr_status = summary.status or "reading"
-    -- A shelf percentage is not a position. Two locations within the same
-    -- displayed percentage can have different KFX EID/offset coordinates, so
-    -- the timestamp and authoritative LPR must decide the open-time pull.
-    local kindle_is_newer = kindle_state.timestamp > kr_timestamp
+    -- A shelf percentage and cc.db timestamp are not authoritative positions.
+    -- Compare the exact LPR with the last successfully reconciled coordinate;
+    -- this detects native-reader movement even when catalog time is stale.
+    local exact_xpointer, position_error, native_position =
+        self:getAuthoritativeKindleXPointer(cde_key, source_path, epub_path)
+    if not exact_xpointer then
+        logger.warn("KindlePlugin: exact native progress pull failed:", position_error)
+        return false
+    end
+    local receipt = self:getPositionReceipt(cde_key, source_path)
+    if sameReceiptPosition(receipt, native_position) then
+        self:repairCatalogFromReceipt(
+            cde_key, source_path, receipt, native_position, kindle_state
+        )
+        logger.dbg("KindlePlugin: open-time native LPR is already reconciled")
+        return false
+    end
+    local kindle_is_newer = receipt ~= nil
+        or kindle_state.timestamp > kr_timestamp
     local sync_details = {
         book_title = self:getBookTitle(cde_key, doc_settings),
         source_percent = kindle_state.percent_read,
@@ -563,17 +685,11 @@ function ReadingStateSync:syncFromKindleAutomatic(cde_key, source_path, doc_sett
 
     local sync_completed = false
     self:syncIfApproved(true, kindle_is_newer, function()
-        local exact_xpointer, position_error = self:getAuthoritativeKindleXPointer(
-            cde_key, source_path, epub_path
-        )
-        if not exact_xpointer then
-            logger.warn("KindlePlugin: exact native progress pull failed:", position_error)
-            return
-        end
         local same_position = doc_settings:readSetting("last_xpointer") == exact_xpointer
         local same_status = kr_status == kindle_state.status
             or (kr_percent >= 1 and kindle_state.percent_read >= 100)
         if same_position and same_status then
+            self:recordPositionReceipt(cde_key, source_path, native_position, "pull")
             return
         end
         sync_completed = self:applyKindleStateToKOReader(
@@ -584,6 +700,7 @@ function ReadingStateSync:syncFromKindleAutomatic(cde_key, source_path, doc_sett
         if sync_completed then
             doc_settings:saveSetting("last_xpointer", exact_xpointer)
             doc_settings:flush()
+            self:recordPositionReceipt(cde_key, source_path, native_position, "pull")
         end
     end, sync_details)
     return sync_completed
@@ -601,9 +718,7 @@ function ReadingStateSync:syncToKindleAutomatic(cde_key, source_path, doc_settin
     local kr_status = summary.status or "reading"
     local doc_path = doc_settings.data and doc_settings.data.doc_path
     local kr_timestamp = getValidatedKOReaderTimestamp(doc_path)
-    if kr_timestamp == 0 then
-        return false
-    end
+    local close_timestamp = os.time()
 
     local kindle_state = self:readKindleState(cde_key, source_path) or {
         percent_read = 0,
@@ -614,21 +729,24 @@ function ReadingStateSync:syncToKindleAutomatic(cde_key, source_path, doc_settin
     if SyncDecisionMaker.areBothSidesComplete(kindle_state, kr_percent, kr_status) then
         return false
     end
-    local koreader_is_newer = kr_timestamp >= (kindle_state.timestamp or 0)
+    -- This method runs in KOReader's close lifecycle. The just-captured
+    -- XPointer is therefore the newest local event even if ReadHistory has not
+    -- flushed its timestamp yet or the reader moved backwards in the book.
+    local koreader_is_newer = true
     local sync_details = {
         book_title = self:getBookTitle(cde_key, doc_settings),
         source_percent = kr_percent * 100,
         dest_percent = kindle_state.percent_read or 0,
-        source_time = kr_timestamp,
+        source_time = close_timestamp,
         dest_time = kindle_state.timestamp or 0,
     }
 
     local sync_completed = false
     self:syncIfApproved(false, koreader_is_newer, function()
-        local current_timestamp = os.time()
+        local current_timestamp = close_timestamp
         -- Always verify the exact LPR even when the rounded shelf percentage
         -- already matches; two positions inside one percentage point differ.
-        local native_percent = self:saveAuthoritativeNativePosition(
+        local native_percent, native_position = self:saveAuthoritativeNativePosition(
             cde_key, source_path, epub_path, doc_settings
         )
         if native_percent then
@@ -639,6 +757,9 @@ function ReadingStateSync:syncToKindleAutomatic(cde_key, source_path, doc_settin
                 current_timestamp,
                 kr_status
             )
+            if sync_completed then
+                self:recordPositionReceipt(cde_key, source_path, native_position, "push")
+            end
         end
     end, sync_details)
     return sync_completed
@@ -676,7 +797,7 @@ function ReadingStateSync:executePullFromKindle(cde_key, source_path, doc_settin
     local sync_completed = false
     self:syncIfApproved(true, true, function()
         local epub_path = doc_settings.data and doc_settings.data.doc_path
-        local exact_xpointer, position_error = self:getAuthoritativeKindleXPointer(
+        local exact_xpointer, position_error, native_position = self:getAuthoritativeKindleXPointer(
             cde_key, source_path, epub_path
         )
         if not exact_xpointer then
@@ -696,6 +817,7 @@ function ReadingStateSync:executePullFromKindle(cde_key, source_path, doc_settin
         doc_settings:saveSetting("summary", summary)
         doc_settings:saveSetting("last_xpointer", exact_xpointer)
         doc_settings:flush()
+        self:recordPositionReceipt(cde_key, source_path, native_position, "pull")
 
         sync_completed = true
     end, sync_details)
@@ -740,13 +862,16 @@ function ReadingStateSync:executePushToKindle(cde_key, source_path, doc_settings
 
         logger.info("KindlePlugin: Syncing TO Kindle (PUSH)")
         local epub_path = doc_settings.data and doc_settings.data.doc_path
-        local native_percent = self:saveAuthoritativeNativePosition(
+        local native_percent, native_position = self:saveAuthoritativeNativePosition(
             cde_key, source_path, epub_path, doc_settings
         )
         if native_percent then
             sync_completed = self:writeKindleState(
                 cde_key, source_path, native_percent, current_timestamp, kr_status
             )
+            if sync_completed then
+                self:recordPositionReceipt(cde_key, source_path, native_position, "push")
+            end
         end
     end, sync_details)
 

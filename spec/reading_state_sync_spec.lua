@@ -46,8 +46,13 @@ local function setupPluginSettings(sync)
             sync_to_kindle_newer = SYNC_DIRECTION.SILENT,
             sync_to_kindle_older = SYNC_DIRECTION.NEVER,
         },
+        save_count = 0,
+        saveSettings = function(self)
+            self.save_count = self.save_count + 1
+        end,
     }
     sync:setPlugin(mock_plugin, SYNC_DIRECTION)
+    return mock_plugin
 end
 
 --- Helper: mock readKindleState to return a specific state.
@@ -537,11 +542,11 @@ describe("ReadingStateSync", function()
             RealDocSettings:_clearSidecars()
         end)
 
-        it("should honor NEVER when KOReader is older than Kindle", function()
+        it("should treat the just-closed KOReader position as the newest event", function()
             local sync = ReadingStateSync:new()
             sync:setEnabled(true)
             setupPluginSettings(sync)
-            RealDocSettings:_setSidecarFile(history_path, true)
+            sync.plugin.settings.sync_to_kindle_newer = SYNC_DIRECTION.NEVER
             local original_read = mockReadKindleState(sync, {
                 percent_read = 90,
                 timestamp = 1762700000,
@@ -559,7 +564,187 @@ describe("ReadingStateSync", function()
 
             restoreReadKindleState(sync, original_read)
             restoreWriteKindleState(sync, original_write)
+        end)
+
+        it("should pull a changed exact LPR even when the catalog timestamp is stale", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            local plugin = setupPluginSettings(sync)
+            plugin.settings.position_sync_receipts = {
+                B007N6JEII = { long = "ATwFAACbAAAA", pid = 442741 },
+            }
+            RealDocSettings:_setSidecarFile(history_path, true)
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 52,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            sync.getAuthoritativeKindleXPointer = function()
+                return "/body/DocFragment/body/p/text().52", nil, {
+                    long = "ATwFAACcAAAA", pid = 442742, percent = 52,
+                }
+            end
+            local ds = createMockDocSettings(history_path, {
+                percent_finished = 0.38,
+                last_xpointer = "/body/DocFragment/body/p/text().38",
+                summary = { status = "reading" },
+            })
+
+            assert.is_true(sync:syncFromKindleAutomatic(
+                "B007N6JEII", history_path, ds, "/cache/book.epub"))
+            assert.equals(0.52, ds:readSetting("percent_finished"))
+            assert.equals(
+                "/body/DocFragment/body/p/text().52",
+                ds:readSetting("last_xpointer")
+            )
+            assert.equals("ATwFAACcAAAA",
+                plugin.settings.position_sync_receipts.B007N6JEII.long)
+            assert.equals(1, plugin.save_count)
+
+            restoreReadKindleState(sync, original_read)
             RealDocSettings:_clearSidecars()
+        end)
+
+        it("should not restore a stale native LPR already recorded by a prior push", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            local plugin = setupPluginSettings(sync)
+            plugin.settings.sync_from_kindle_older = SYNC_DIRECTION.SILENT
+            plugin.settings.position_sync_receipts = {
+                B007N6JEII = { long = "ATwFAACbAAAA", pid = 442741 },
+            }
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 38,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            sync.getAuthoritativeKindleXPointer = function()
+                return "/body/DocFragment/body/p/text().38", nil, {
+                    long = "ATwFAACbAAAA", pid = 442741, percent = 38,
+                }
+            end
+            local ds = createMockDocSettings(history_path, {
+                percent_finished = 0.52,
+                last_xpointer = "/body/DocFragment/body/p/text().52",
+                summary = { status = "reading" },
+            })
+
+            assert.is_false(sync:syncFromKindleAutomatic(
+                "B007N6JEII", history_path, ds, "/cache/book.epub"))
+            assert.equals(0.52, ds:readSetting("percent_finished"))
+            assert.equals(
+                "/body/DocFragment/body/p/text().52",
+                ds:readSetting("last_xpointer")
+            )
+
+            restoreReadKindleState(sync, original_read)
+        end)
+
+        it("should repair a stale shelf without moving either reader", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            local plugin = setupPluginSettings(sync)
+            plugin.settings.position_sync_receipts = {
+                B007N6JEII = {
+                    long = "ATwFAACbAAAA", pid = 442741, percent = 52,
+                },
+            }
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 38,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            local original_write, writes = mockWriteKindleState(sync)
+            sync.getAuthoritativeKindleXPointer = function()
+                return "/body/DocFragment/body/p/text().52", nil, {
+                    long = "ATwFAACbAAAA", pid = 442741, percent = 52,
+                }
+            end
+            local ds = createMockDocSettings(history_path, {
+                percent_finished = 0.52,
+                last_xpointer = "/body/DocFragment/body/p/text().52",
+                summary = { status = "reading" },
+            })
+
+            assert.is_false(sync:syncFromKindleAutomatic(
+                "B007N6JEII", history_path, ds, "/cache/book.epub"))
+            assert.equals(1, #writes)
+            assert.equals(52, writes[1].percent)
+            assert.equals(
+                "/body/DocFragment/body/p/text().52",
+                ds:readSetting("last_xpointer")
+            )
+
+            restoreReadKindleState(sync, original_read)
+            restoreWriteKindleState(sync, original_write)
+        end)
+
+        it("should persist a push receipt even before ReadHistory flushes", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            local plugin = setupPluginSettings(sync)
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 38,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            local original_write, writes = mockWriteKindleState(sync)
+            sync.saveAuthoritativeNativePosition = function()
+                return 52, {
+                    long = "ATwFAACcAAAA", pid = 442742, percent = 52,
+                }
+            end
+            local ds = createMockDocSettings("/cache/book.epub", {
+                percent_finished = 0.52,
+                last_xpointer = "/body/DocFragment/body/p/text().52",
+                summary = { status = "reading" },
+            })
+
+            assert.is_true(sync:syncToKindleAutomatic(
+                "B007N6JEII", history_path, ds, "/cache/book.epub"))
+            assert.equals(1, #writes)
+            assert.equals("ATwFAACcAAAA",
+                plugin.settings.position_sync_receipts.B007N6JEII.long)
+            assert.equals("push",
+                plugin.settings.position_sync_receipts.B007N6JEII.direction)
+            assert.equals(1, plugin.save_count)
+
+            restoreReadKindleState(sync, original_read)
+            restoreWriteKindleState(sync, original_write)
+        end)
+
+        it("should not record a receipt when the shelf update fails", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            local plugin = setupPluginSettings(sync)
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 38,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            sync.writeKindleState = function() return false end
+            sync.saveAuthoritativeNativePosition = function()
+                return 52, {
+                    long = "ATwFAACcAAAA", pid = 442742, percent = 52,
+                }
+            end
+            local ds = createMockDocSettings("/cache/book.epub", {
+                percent_finished = 0.52,
+                last_xpointer = "/body/DocFragment/body/p/text().52",
+                summary = { status = "reading" },
+            })
+
+            assert.is_false(sync:syncToKindleAutomatic(
+                "B007N6JEII", history_path, ds, "/cache/book.epub"))
+            assert.is_nil(plugin.settings.position_sync_receipts)
+            assert.equals(0, plugin.save_count)
+
+            restoreReadKindleState(sync, original_read)
         end)
     end)
 
