@@ -93,6 +93,9 @@ MIT License
 ## Building from source
 
 ```sh
+# Rebuild the Kindle ReaderSDK progress agent (JDK 11+)
+./scripts/build_progress_agent
+
 # Build the self-contained ARMv7 package
 ./python_build.sh
 

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Rebuild the native Kindle reading-progress attach helper and Java agent.
+#
+# The Kindle ReaderSDK classes are not redistributable build dependencies, so
+# agent/stubs/ contains compile-time-only API signatures recovered from the
+# device bytecode. The stubs are never packaged; the agent links against the
+# real Kindle framework classes after it is attached on-device.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+OUTPUT_DIR="${1:-$ROOT/bin}"
+BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kindle-progress-agent.XXXXXX")"
+trap 'rm -rf "$BUILD_DIR"' EXIT
+
+CLASSES="$BUILD_DIR/classes"
+mkdir -p "$CLASSES" "$OUTPUT_DIR/classes"
+
+STUBS=()
+while IFS= read -r stub; do
+    STUBS+=("$stub")
+done < <(find "$ROOT/agent/stubs" -name '*.java' -type f | sort)
+
+javac --release 11 \
+    -d "$CLASSES" \
+    "${STUBS[@]}" \
+    "$ROOT/agent/src/AttachLauncher.java" \
+    "$ROOT/agent/src/KindlePluginReadingProgressAgentV6.java"
+
+cp "$CLASSES/AttachLauncher.class" "$OUTPUT_DIR/classes/AttachLauncher.class"
+
+jar --create \
+    --file "$OUTPUT_DIR/native-reading-progress-agent-v6.jar" \
+    --manifest "$ROOT/agent/manifest-progress.mf" \
+    --date=1980-01-01T00:00:02Z \
+    -C "$CLASSES" KindlePluginReadingProgressAgentV6.class
+
+chmod 0644 "$OUTPUT_DIR/classes/AttachLauncher.class" \
+    "$OUTPUT_DIR/native-reading-progress-agent-v6.jar"
