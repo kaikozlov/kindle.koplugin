@@ -65,10 +65,11 @@ describe("BookInfoManagerExt", function()
         it("should prefer a Kindle thumbnail over sidecar extraction", function()
             local thumbnail_calls = 0
             local sidecar_calls = 0
-            local virtual_library = {
-                resolveBookPath = function() return nil end,
+            local virtual_library = {}
+            local cache_manager = {
+                helper_client = {},
+                isFresh = function() return false end,
             }
-            local cache_manager = { helper_client = {} }
             BookInfoManagerExt:init(virtual_library, cache_manager)
             BookInfoManagerExt.tryLoadKindleThumbnail = function(_, bookinfo, path)
                 thumbnail_calls = thumbnail_calls + 1
@@ -94,6 +95,41 @@ describe("BookInfoManagerExt", function()
             assert.equals(1, thumbnail_calls)
             assert.equals(0, sidecar_calls)
             assert.equals("Y", bookinfo.has_cover)
+        end)
+
+        it("should not prepare an uncached book while extracting metadata", function()
+            local virtual_library = {
+                resolveBookPath = function()
+                    error("metadata extraction must not resolve or prepare book paths")
+                end,
+            }
+            local cache_manager = {
+                helper_client = {},
+                isFresh = function()
+                    return false, "/cache/book.epub", "/cache/book.json"
+                end,
+                ensureCachedEpub = function()
+                    error("metadata extraction must not convert books")
+                end,
+            }
+            BookInfoManagerExt:init(virtual_library, cache_manager)
+            BookInfoManagerExt.tryExtractCoverFromSidecar = function() end
+
+            local bookinfo = BookInfoManagerExt:buildBookInfoFromScanAndEpub(
+                "KINDLE_VIRTUAL://book/Book.epub",
+                {
+                    id = "book",
+                    title = "Book",
+                    authors = { "Author" },
+                    source_path = "/mnt/us/documents/book.kfx",
+                    open_mode = "convert",
+                },
+                false
+            )
+
+            assert.equals("Book", bookinfo.title)
+            assert.equals("Author", bookinfo.authors)
+            assert.equals("Y", bookinfo.has_meta)
         end)
     end)
 end)

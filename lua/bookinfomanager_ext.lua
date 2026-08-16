@@ -173,8 +173,17 @@ function BookInfoManagerExt:buildBookInfoFromScanAndEpub(virtual_filepath, book,
         bookinfo.has_meta = "Y"
     end
 
-    -- Resolve to cached EPUB
-    local real_path = self.virtual_library:resolveBookPath(book)
+    -- Read richer metadata only from an EPUB that is already cached and fresh.
+    -- Metadata/cover extraction may run in a CoverBrowser subprocess while the
+    -- user is merely browsing the library, so it must never trigger conversion
+    -- or DRM key extraction as a side effect.
+    local real_path
+    if self.cache_manager and book.open_mode ~= "blocked" then
+        local fresh, epub_path = self.cache_manager:isFresh(book)
+        if fresh then
+            real_path = epub_path
+        end
+    end
     local has_cached_epub = real_path and lfs.attributes(real_path, "mode") == "file"
 
     -- If we have a cached EPUB, prefer its metadata over scan data.
