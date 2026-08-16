@@ -638,7 +638,9 @@ end
 --- Sync the native Kindle state into KOReader during an automatic open.
 --- Unlike syncFromKindle(), this honors automatic-sync and all configured
 --- direction choices, including an explicitly allowed older Kindle state.
-function ReadingStateSync:syncFromKindleAutomatic(cde_key, source_path, doc_settings, epub_path)
+function ReadingStateSync:syncFromKindleAutomatic(
+    cde_key, source_path, doc_settings, epub_path, apply_live_xpointer
+)
     if not self:isAutomaticSyncEnabled() then
         return false
     end
@@ -707,6 +709,13 @@ function ReadingStateSync:syncFromKindleAutomatic(cde_key, source_path, doc_sett
             self:recordPositionReceipt(cde_key, source_path, native_position, "pull")
             return
         end
+        if apply_live_xpointer then
+            local ok, applied = pcall(apply_live_xpointer, exact_xpointer)
+            if not ok or applied == false then
+                logger.warn("KindlePlugin: cold-start live position apply failed")
+                return
+            end
+        end
         sync_completed = self:applyKindleStateToKOReader(
             kindle_state,
             doc_settings,
@@ -719,6 +728,52 @@ function ReadingStateSync:syncFromKindleAutomatic(cde_key, source_path, doc_sett
         end
     end, sync_details)
     return sync_completed
+end
+
+--- Catch up a converted Kindle book that KOReader opened as its startup file.
+--- At cold startup ReaderUI:showReader is already on the stack when document
+--- plugins are instantiated, so ShowReaderExt cannot perform its usual pull.
+--- Normal virtual-library opens register an alias before that call and are
+--- deliberately skipped here to avoid a duplicate reconciliation.
+function ReadingStateSync:syncColdStartReader(ui)
+    if not self:isAutomaticSyncEnabled()
+        or type(ui) ~= "table"
+        or type(ui.document) ~= "table"
+        or type(ui.document.file) ~= "string"
+        or not ui.document.file:match("%.epub$")
+        or type(ui.doc_settings) ~= "table"
+        or type(ui.rolling) ~= "table"
+        or type(ui.rolling.onGotoXPointer) ~= "function"
+        or not self.virtual_library
+    then
+        return false
+    end
+
+    local epub_path = ui.document.file
+    if type(self.virtual_library.isOpenAlias) == "function"
+        and self.virtual_library:isOpenAlias(epub_path)
+    then
+        return false
+    end
+
+    local virtual_path = self.virtual_library:getVirtualPath(epub_path)
+    local book = virtual_path and self.virtual_library:getBook(virtual_path)
+    if not book or not book.source_path then
+        return false
+    end
+
+    local cde_key = self:extractCdeKey(virtual_path, ui.doc_settings)
+    logger.info("KindlePlugin: reconciling cold-start mapped reader position")
+    return self:syncFromKindleAutomatic(
+        cde_key,
+        book.source_path,
+        ui.doc_settings,
+        epub_path,
+        function(xpointer)
+            ui.rolling:onGotoXPointer(xpointer)
+            return true
+        end
+    )
 end
 
 --- Sync KOReader state into Kindle's authoritative ReaderSDK state during close.

@@ -7,6 +7,7 @@ local Device = require("device")
 local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local PathChooser = require("ui/widget/pathchooser")
+local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local _ = require("gettext")
@@ -185,6 +186,28 @@ function KindlePlugin:init()
     if self.settings.sync_reading_state then
         reading_state_sync:setEnabled(true)
     end
+end
+
+--- Reconcile a mapped cache file that KOReader opened during cold startup.
+--- The initial ReaderUI:showReader call happens before document plugins are
+--- instantiated, so the normal pre-open wrapper cannot observe that one call.
+function KindlePlugin:onReaderReady()
+    if not self.settings.sync_reading_state
+        or not reading_state_sync:isAutomaticSyncEnabled()
+        or not self.ui or not self.ui.document
+    then
+        return
+    end
+
+    local active_document = self.ui.document
+    UIManager:nextTick(function()
+        if not self.ui or self.ui.document ~= active_document then
+            return
+        end
+        Trapper:wrap(function()
+            reading_state_sync:syncColdStartReader(self.ui)
+        end)
+    end)
 end
 
 --- Loads plugin settings from persistent storage.
