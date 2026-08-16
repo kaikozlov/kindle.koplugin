@@ -24,7 +24,7 @@
 #   ./python_build.sh
 #
 # Prerequisites:
-#   - Docker with buildx (for C wrapper only, ~30 seconds)
+#   - Docker with ARM emulation; buildx is used when available
 #   - Internet access for downloads
 
 set -euo pipefail
@@ -43,6 +43,27 @@ LXML_VERSION="6.0.3"
 PILLOW_VERSION="12.2.0"
 PYCRYPTODOME_VERSION="3.9.9"
 BUILD_CACHE_REV="2"
+
+build_arm_image() {
+    local image_tag="$1"
+    local dockerfile="$2"
+    local context="${3:-.}"
+
+    if docker buildx version >/dev/null 2>&1; then
+        docker buildx build \
+            --platform linux/arm/v7 \
+            -t "$image_tag" \
+            -f "$dockerfile" \
+            --load \
+            "$context"
+    else
+        docker build \
+            --platform linux/arm/v7 \
+            -t "$image_tag" \
+            -f "$dockerfile" \
+            "$context"
+    fi
+}
 
 echo "=== Kindle Helper Build (download-based) ==="
 echo "Python: CPython $CPYTHON_VERSION"
@@ -236,12 +257,7 @@ echo "[4/5] Building C wrapper..."
 
 WRAPPER_TAG="kindle-wrapper-builder"
 
-docker buildx build \
-    --platform linux/arm/v7 \
-    -t "$WRAPPER_TAG" \
-    -f .github/Dockerfile.wrapper \
-    --load \
-    .
+build_arm_image "$WRAPPER_TAG" .github/Dockerfile.wrapper
 
 CONTAINER_ID=$(docker create "$WRAPPER_TAG")
 docker cp "$CONTAINER_ID:/build/kindle-helper" "$OUTPUT_DIR/kindle-helper"
@@ -254,12 +270,7 @@ docker rm "$CONTAINER_ID"
 echo "  Building crypto_hook.so (old glibc)..."
 CRYPTO_HOOK_TAG="kindle-crypto-hook-builder"
 
-docker buildx build \
-    --platform linux/arm/v7 \
-    -t "$CRYPTO_HOOK_TAG" \
-    -f .github/Dockerfile.crypto_hook \
-    --load \
-    .
+build_arm_image "$CRYPTO_HOOK_TAG" .github/Dockerfile.crypto_hook
 
 CRYPTO_CID=$(docker create "$CRYPTO_HOOK_TAG")
 docker cp "$CRYPTO_CID:/build/crypto_hook.so" "$OUTPUT_DIR/crypto_hook.so"
@@ -274,7 +285,6 @@ echo "[5/5] Packaging..."
 
 # Copy Lua plugin files
 cp -r lua/ "$STAGING/lua/"
-cp -r bin/ "$STAGING/bin/"
 cp main.lua "$STAGING/"
 cp _meta.lua "$STAGING/"
 cp -r patches/ "$STAGING/patches/" 2>/dev/null || true
@@ -320,12 +330,7 @@ FROM scratch
 COPY kindle.koplugin /plugin
 ENTRYPOINT ["/plugin/kindle-helper"]
 EOF
-docker buildx build \
-    --platform linux/arm/v7 \
-    -t kindle-runtime-smoke \
-    -f "$SMOKE_DOCKERFILE" \
-    --load \
-    "$OUTPUT_DIR" >/dev/null
+build_arm_image kindle-runtime-smoke "$SMOKE_DOCKERFILE" "$OUTPUT_DIR" >/dev/null
 docker run --rm --platform linux/arm/v7 kindle-runtime-smoke --help | grep -q 'kindle-helper'
 docker run --rm --platform linux/arm/v7 \
     --entrypoint /plugin/dist/lib/runtime/ld-linux-armhf.so.3 \
