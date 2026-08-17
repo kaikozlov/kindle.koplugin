@@ -97,9 +97,11 @@ describe("native KOReader sync lifecycle", function()
         local settings = fakeSettings({ last_xpointer = "old" })
         local pull_args
         ReadingStateSync.syncFromKindleAutomatic = function(
-            _, cde_key, source_path, ds, epub_path, approval_handler
+            _, cde_key, source_path, ds, epub_path, approval_handler, conflict_handler
         )
-            pull_args = { cde_key, source_path, ds, epub_path, approval_handler }
+            pull_args = {
+                cde_key, source_path, ds, epub_path, approval_handler, conflict_handler,
+            }
             ds:saveSetting("last_xpointer", "synced")
             return true
         end
@@ -112,6 +114,7 @@ describe("native KOReader sync lifecycle", function()
         assert.equals(settings, pull_args[3])
         assert.equals("/cache/book.epub", pull_args[4])
         assert.is_function(pull_args[5])
+        assert.is_function(pull_args[6])
         assert.equals("synced", settings:readSetting("last_xpointer"))
         assert.equals(0, settings._flushes())
     end)
@@ -211,6 +214,61 @@ describe("native KOReader sync lifecycle", function()
         assert.equals("native-xpointer", live_xpointer)
     end)
 
+    it("always defers an exact conflict prompt and applies the explicit Kindle choice live", function()
+        local book = {
+            id = "book",
+            cde_key = "B000000001",
+            source_path = "/documents/book.kfx",
+            open_mode = "convert",
+        }
+        local settings = fakeSettings({ last_xpointer = "koreader-xpointer", percent_finished = 0.52 })
+        local conflict_dialog
+        local next_tick
+        local live_xpointer
+        local verified = 0
+        UIManager.show = function(_, widget) conflict_dialog = widget end
+        UIManager.nextTick = function(_, callback) next_tick = callback end
+        ReadingStateSync.verifyOpenedKOReaderPosition = function()
+            verified = verified + 1
+            return true
+        end
+        ReadingStateSync.syncFromKindleAutomatic = function(
+            _, _, _, ds, _, _, conflict_handler
+        )
+            return conflict_handler(
+                {
+                    book_title = "Book",
+                    kindle_percent = 38,
+                    koreader_percent = 52,
+                },
+                function()
+                    ds:saveSetting("last_xpointer", "kindle-xpointer")
+                    return true
+                end,
+                function() error("KOReader choice should not run") end
+            )
+        end
+
+        buildReaderPlugin(book, "/cache/book.epub", settings)
+        instance.ui.rolling = {
+            onGotoXPointer = function(_, xpointer) live_xpointer = xpointer end,
+        }
+
+        instance:onDocSettingsLoad(settings, instance.ui.document)
+        assert.is_nil(conflict_dialog)
+        assert.is_function(next_tick)
+        assert.equals("koreader-xpointer", settings:readSetting("last_xpointer"))
+
+        next_tick()
+        assert.is_truthy(conflict_dialog)
+        assert.is_truthy(conflict_dialog.text:find("Kindle: 38.0%%"))
+        assert.is_truthy(conflict_dialog.text:find("KOReader: 52.0%%"))
+        conflict_dialog.choice1_callback()
+
+        assert.equals("kindle-xpointer", live_xpointer)
+        assert.equals(1, verified)
+    end)
+
     it("moves a live paging document after an approved PROMPT pull", function()
         local book = {
             id = "pdf",
@@ -295,6 +353,54 @@ describe("native KOReader sync lifecycle", function()
         assert.equals("final-xpointer", seen.xpointer)
         assert.equals(0.73, seen.percent)
         assert.equals("/cache/book.epub", seen.epub_path)
+    end)
+
+    it("defers a mandatory close-time conflict prompt until after final settings are captured", function()
+        local book = {
+            id = "book",
+            cde_key = "B000000001",
+            source_path = "/documents/book.kfx",
+            open_mode = "convert",
+        }
+        local settings = fakeSettings({ last_xpointer = "stale", percent_finished = 0.2 })
+        local conflict_dialog
+        local next_tick
+        local selected
+        UIManager.show = function(_, widget) conflict_dialog = widget end
+        UIManager.nextTick = function(_, callback) next_tick = callback end
+
+        ReadingStateSync.syncToKindleAutomatic = function(
+            _, _, _, ds, _, _, conflict_handler
+        )
+            return conflict_handler(
+                {
+                    book_title = "Book",
+                    kindle_percent = 38,
+                    koreader_percent = 73,
+                },
+                function() selected = "kindle" end,
+                function()
+                    selected = ds:readSetting("last_xpointer")
+                    return true
+                end
+            )
+        end
+
+        buildReaderPlugin(book, "/cache/book.epub", settings)
+        instance:onCloseDocument()
+        settings:saveSetting("last_xpointer", "final-xpointer")
+        settings:saveSetting("percent_finished", 0.73)
+        instance:onSaveSettings()
+
+        assert.is_nil(conflict_dialog)
+        assert.is_function(next_tick)
+        assert.is_nil(selected)
+        next_tick()
+        assert.is_truthy(conflict_dialog)
+        assert.is_truthy(conflict_dialog.text:find("Kindle: 38.0%%"))
+        assert.is_truthy(conflict_dialog.text:find("KOReader: 73.0%%"))
+        conflict_dialog.choice2_callback()
+        assert.equals("final-xpointer", selected)
     end)
 
     it("forces close-time PROMPT approval asynchronous after final settings are captured", function()

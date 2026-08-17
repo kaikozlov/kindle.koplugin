@@ -141,6 +141,37 @@ local function configuredDirection(settings, is_pull_from_kindle, is_newer)
         or settings.sync_to_kindle_older
 end
 
+local function applyPullToLiveReader(plugin, document, doc_settings, sync_fn)
+    local before_xpointer = doc_settings:readSetting("last_xpointer")
+    local before_percent = doc_settings:readSetting("percent_finished") or 0
+    sync_fn()
+    local after_xpointer = doc_settings:readSetting("last_xpointer")
+    local after_percent = doc_settings:readSetting("percent_finished") or 0
+    local reader_is_active = plugin.ui and plugin.ui.document == document
+
+    if reader_is_active and plugin.ui.rolling then
+        if after_xpointer and after_xpointer ~= before_xpointer
+            and plugin.ui.rolling.onGotoXPointer
+        then
+            plugin.ui.rolling:onGotoXPointer(after_xpointer)
+        elseif after_percent ~= before_percent and plugin.ui.rolling.onGotoPercent then
+            plugin.ui.rolling:onGotoPercent(after_percent * 100)
+        end
+        reading_state_sync:verifyOpenedKOReaderPosition(plugin.ui, document.file)
+    elseif reader_is_active and plugin.ui.paging
+        and after_percent ~= before_percent
+        and plugin.ui.paging.onGotoPercent
+    then
+        plugin.ui.paging:onGotoPercent(after_percent * 100)
+    else
+        -- The choice may outlive a quickly closed reader. Preserve the accepted
+        -- state, but do not acknowledge an exact pull without live readback.
+        stagePagingPercent(plugin.ui, doc_settings, after_percent)
+        doc_settings:flush()
+        reading_state_sync:discardOpenPositionVerification(document.file)
+    end
+end
+
 --- KOReader emits DocSettingsLoad after all reader plugins are instantiated and
 --- before ReadSettings. Silent pulls therefore update the settings ReaderRolling
 --- is about to consume. PROMPT pulls must be asynchronous: blocking/yielding here
@@ -170,8 +201,6 @@ function KindlePlugin:onDocSettingsLoad(doc_settings, document)
             )
         end
 
-        local before_xpointer = doc_settings:readSetting("last_xpointer")
-        local before_percent = doc_settings:readSetting("percent_finished") or 0
         UIManager:nextTick(function()
             SyncDecisionMaker.syncIfApproved(
                 plugin,
@@ -179,35 +208,24 @@ function KindlePlugin:onDocSettingsLoad(doc_settings, document)
                 is_pull_from_kindle,
                 is_newer,
                 function()
-                    sync_fn()
-                    local after_xpointer = doc_settings:readSetting("last_xpointer")
-                    local after_percent = doc_settings:readSetting("percent_finished") or 0
-                    local reader_is_active = self.ui and self.ui.document == document
-                    if reader_is_active and self.ui.rolling then
-                        if after_xpointer and after_xpointer ~= before_xpointer
-                            and self.ui.rolling.onGotoXPointer then
-                            self.ui.rolling:onGotoXPointer(after_xpointer)
-                        elseif after_percent ~= before_percent and self.ui.rolling.onGotoPercent then
-                            self.ui.rolling:onGotoPercent(after_percent * 100)
-                        end
-                        reading_state_sync:verifyOpenedKOReaderPosition(
-                            self.ui, document.file
-                        )
-                    elseif reader_is_active and self.ui.paging
-                        and after_percent ~= before_percent
-                        and self.ui.paging.onGotoPercent
-                    then
-                        self.ui.paging:onGotoPercent(after_percent * 100)
-                    else
-                        -- The prompt may outlive a quickly closed reader. Preserve
-                        -- the accepted state, but do not acknowledge an exact pull
-                        -- that no live renderer has confirmed.
-                        stagePagingPercent(self.ui, doc_settings, after_percent)
-                        doc_settings:flush()
-                        reading_state_sync:discardOpenPositionVerification(document.file)
-                    end
+                    applyPullToLiveReader(self, document, doc_settings, sync_fn)
                 end,
                 sync_details,
+                true
+            )
+        end)
+        return true
+    end
+    local conflict_handler = function(details, use_kindle_fn, use_koreader_fn)
+        UIManager:nextTick(function()
+            SyncDecisionMaker.promptForConflict(
+                details,
+                function()
+                    applyPullToLiveReader(
+                        self, document, doc_settings, use_kindle_fn
+                    )
+                end,
+                use_koreader_fn,
                 true
             )
         end)
@@ -219,7 +237,8 @@ function KindlePlugin:onDocSettingsLoad(doc_settings, document)
         book.source_path,
         doc_settings,
         document.file,
-        approval_handler
+        approval_handler,
+        conflict_handler
     )
 
     -- ReaderPaging restores last_page, not percent_finished. Silent pulls run
@@ -277,12 +296,21 @@ function KindlePlugin:syncPendingClose()
             sync_details
         )
     end
+    local conflict_handler = function(details, use_kindle_fn, use_koreader_fn)
+        UIManager:nextTick(function()
+            SyncDecisionMaker.promptForConflict(
+                details, use_kindle_fn, use_koreader_fn, true
+            )
+        end)
+        return true
+    end
     reading_state_sync:syncToKindleAutomatic(
         pending.cde_key,
         pending.source_path,
         pending.doc_settings,
         pending.epub_path,
-        approval_handler
+        approval_handler,
+        conflict_handler
     )
 end
 

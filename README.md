@@ -51,7 +51,9 @@ Kindle identity and the actual push runs from the following `SaveSettings`
 event, after ReaderRolling has stored the final XPointer and percentage.
 **Ask me** is shown asynchronously after the reader is on-screen (for pulls) or
 teardown completes (for pushes); **Always sync** applies silently, and **Never**
-leaves the destination unchanged.
+leaves the destination unchanged. A genuine two-sided exact-position conflict
+always prompts regardless of those rules, because neither reader is a safe
+automatic winner.
 
 The plugin translates KOReader XPointers to Kindle KFX coordinates, persists
 them through Kindle's ReaderSDK, and reverse-translates the native
@@ -66,12 +68,15 @@ The plugin stores one text-free reconciliation receipt: the last exact KFX
 coordinate known to both readers. Each exact sync compares that receipt with
 the current Kindle coordinate and the current KOReader coordinate. If only one
 side moved, that side is propagated; if both already agree, the agreement is
-confirmed; if both moved independently and disagree, neither is overwritten.
-This also recovers an interrupted close by retrying the one unfinished
-KOReader-to-Kindle push. Pull receipts advance only after KOReader confirms the
-rendered destination; push receipts advance only after ReaderSDK confirms the
-exact coordinate and the Kindle shelf update succeeds. Shelf-percentage drift
-is repaired separately and never selects an exact reading position.
+confirmed. If both moved independently and disagree, the plugin shows both
+renderer-specific percentages and requires an explicit **Use Kindle**, **Use
+KOReader**, or **Cancel** choice. Cancel preserves both sides and the conflict is
+asked again on the next sync attempt. This also recovers an interrupted close by
+retrying the one unfinished KOReader-to-Kindle push. Pull receipts advance only
+after KOReader confirms the rendered destination; push receipts advance only
+after ReaderSDK confirms the exact coordinate and the Kindle shelf update
+succeeds. Shelf-percentage drift is repaired separately and never selects an
+exact reading position.
 
 For annotation integrations, the bundled helper also provides bounded batch
 translation in both directions. `translate-positions` converts normalized

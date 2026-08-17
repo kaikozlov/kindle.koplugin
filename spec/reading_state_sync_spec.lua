@@ -814,10 +814,12 @@ describe("ReadingStateSync", function()
             RealDocSettings:_clearSidecars()
         end)
 
-        it("should preserve both sides when Kindle and KOReader moved independently", function()
+        it("should always surface a two-sided conflict before changing either reader", function()
             local sync = ReadingStateSync:new()
             sync:setEnabled(true)
             local plugin = setupPluginSettings(sync)
+            plugin.settings.sync_from_kindle_newer = SYNC_DIRECTION.NEVER
+            plugin.settings.sync_to_kindle_newer = SYNC_DIRECTION.NEVER
             plugin.settings.position_sync_receipts = {
                 B007N6JEII = { long = "ATwFAACaAAAA", pid = 442740, percent = 37 },
             }
@@ -838,9 +840,26 @@ describe("ReadingStateSync", function()
                 last_xpointer = "/body/DocFragment/body/p/text().52",
                 summary = { status = "reading" },
             })
+            local conflict
 
-            assert.is_false(sync:syncFromKindleAutomatic(
-                "B007N6JEII", history_path, ds, "/cache/book.epub"))
+            assert.is_true(sync:syncFromKindleAutomatic(
+                "B007N6JEII",
+                history_path,
+                ds,
+                "/cache/book.epub",
+                nil,
+                function(details, use_kindle, use_koreader)
+                    conflict = {
+                        details = details,
+                        use_kindle = use_kindle,
+                        use_koreader = use_koreader,
+                    }
+                    return true
+                end
+            ))
+            assert.is_truthy(conflict)
+            assert.equals(38, conflict.details.kindle_percent)
+            assert.equals(52, conflict.details.koreader_percent)
             assert.equals(0, #writes)
             assert.is_nil(sync.pending_open_verification)
             assert.equals("ATwFAACaAAAA",
@@ -849,6 +868,17 @@ describe("ReadingStateSync", function()
                 "/body/DocFragment/body/p/text().52",
                 ds:readSetting("last_xpointer")
             )
+
+            -- Choosing Kindle stages the exact native destination, but the old
+            -- receipt remains until the live KOReader renderer confirms it.
+            assert.is_true(conflict.use_kindle())
+            assert.equals(
+                "/body/DocFragment/body/p/text().38",
+                ds:readSetting("last_xpointer")
+            )
+            assert.is_truthy(sync.pending_open_verification)
+            assert.equals("ATwFAACaAAAA",
+                plugin.settings.position_sync_receipts.B007N6JEII.long)
 
             restoreReadKindleState(sync, original_read)
             restoreWriteKindleState(sync, original_write)
@@ -1099,7 +1129,7 @@ describe("ReadingStateSync", function()
             restoreWriteKindleState(sync, original_write)
         end)
 
-        it("should not overwrite Kindle at close when both exact authorities moved", function()
+        it("should resolve a close-time conflict to KOReader only after explicit choice", function()
             local sync = ReadingStateSync:new()
             sync:setEnabled(true)
             local plugin = setupPluginSettings(sync)
@@ -1118,14 +1148,79 @@ describe("ReadingStateSync", function()
                     long = "ATwFAACbAAAA", pid = 442741, percent = 38,
                 }
             end
+            sync.saveAuthoritativeNativePosition = function()
+                return 52, {
+                    long = "ATwFAACcAAAA", pid = 442742, percent = 52,
+                }
+            end
             local ds = createMockDocSettings("/cache/book.epub", {
                 percent_finished = 0.52,
                 last_xpointer = "/body/DocFragment/body/p/text().52",
                 summary = { status = "reading" },
             })
 
-            assert.is_false(sync:syncToKindleAutomatic(
-                "B007N6JEII", history_path, ds, "/cache/book.epub"))
+            assert.is_true(sync:syncToKindleAutomatic(
+                "B007N6JEII",
+                history_path,
+                ds,
+                "/cache/book.epub",
+                nil,
+                function(details, _, use_koreader)
+                    assert.equals(38, details.kindle_percent)
+                    assert.equals(52, details.koreader_percent)
+                    assert.equals(0, #writes)
+                    return use_koreader()
+                end
+            ))
+            assert.equals(1, #writes)
+            assert.equals(52, writes[1].percent)
+            assert.equals("ATwFAACcAAAA",
+                plugin.settings.position_sync_receipts.B007N6JEII.long)
+
+            restoreReadKindleState(sync, original_read)
+            restoreWriteKindleState(sync, original_write)
+        end)
+
+        it("should still prompt when both readers mark a conflicting exact position complete", function()
+            local sync = ReadingStateSync:new()
+            sync:setEnabled(true)
+            local plugin = setupPluginSettings(sync)
+            plugin.settings.position_sync_receipts = {
+                B007N6JEII = { long = "ATwFAACaAAAA", pid = 442740, percent = 99 },
+            }
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 100,
+                timestamp = 2000,
+                status = "complete",
+                kindle_status = 2,
+            })
+            local original_write, writes = mockWriteKindleState(sync)
+            sync.getAuthoritativeKindleXPointer = function()
+                return "/body/DocFragment/body/p/text().98", nil, {
+                    long = "ATwFAACbAAAA", pid = 442741, percent = 100,
+                }
+            end
+            local ds = createMockDocSettings("/cache/book.epub", {
+                percent_finished = 1.0,
+                last_xpointer = "/body/DocFragment/body/p/text().52",
+                summary = { status = "complete" },
+            })
+            local prompted = false
+
+            assert.is_true(sync:syncToKindleAutomatic(
+                "B007N6JEII",
+                history_path,
+                ds,
+                "/cache/book.epub",
+                nil,
+                function(details)
+                    prompted = true
+                    assert.equals(100, details.kindle_percent)
+                    assert.equals(100, details.koreader_percent)
+                    return true
+                end
+            ))
+            assert.is_true(prompted)
             assert.equals(0, #writes)
             assert.equals("ATwFAACaAAAA",
                 plugin.settings.position_sync_receipts.B007N6JEII.long)

@@ -3,12 +3,71 @@
 --- Handles user prompts and determines whether sync should proceed based on settings.
 
 local ConfirmBox = require("ui/widget/confirmbox")
+local MultiConfirmBox = require("ui/widget/multiconfirmbox")
 local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local logger = require("logger")
 
 local SyncDecisionMaker = {}
+
+local function formatConflictPrompt(details)
+    details = details or {}
+    return string.format(
+        "%s\n\n%s: %s\n\n%s\n\nKindle: %.1f%%\nKOReader: %.1f%%\n\n%s\n\n%s",
+        _("Reading positions differ"),
+        _("Book"),
+        details.book_title or _("Unknown Book"),
+        _("Both Kindle and KOReader have moved since they were last synchronized."),
+        tonumber(details.kindle_percent) or 0,
+        tonumber(details.koreader_percent) or 0,
+        _("Which position do you want to keep?"),
+        _("Percentages are reported by each reader and may differ for the same text position.")
+    )
+end
+
+--- A genuine exact-position conflict has no safe automatic winner. Always ask
+--- the user, independently of the ordinary newer/older sync policy.
+function SyncDecisionMaker.promptForConflict(
+    details, use_kindle_fn, use_koreader_fn, force_async
+)
+    local text = formatConflictPrompt(details)
+    local function showChooser(on_choice)
+        UIManager:show(MultiConfirmBox:new{
+            text = text,
+            choice1_text = _("Use Kindle"),
+            choice1_callback = function() on_choice("kindle") end,
+            choice2_text = _("Use KOReader"),
+            choice2_callback = function() on_choice("koreader") end,
+            cancel_text = _("Cancel"),
+            cancel_callback = function() on_choice(false) end,
+            dismissable = false,
+        })
+    end
+
+    if Trapper:isWrapped() and not force_async then
+        local co = coroutine.running()
+        if co then
+            showChooser(function(choice) coroutine.resume(co, choice) end)
+            local choice = coroutine.yield()
+            if choice == "kindle" then
+                return use_kindle_fn and use_kindle_fn() or true
+            elseif choice == "koreader" then
+                return use_koreader_fn and use_koreader_fn() or true
+            end
+            return false
+        end
+    end
+
+    showChooser(function(choice)
+        if choice == "kindle" and use_kindle_fn then
+            use_kindle_fn()
+        elseif choice == "koreader" and use_koreader_fn then
+            use_koreader_fn()
+        end
+    end)
+    return true
+end
 
 ---
 --- Checks if both KOReader and Kindle have a book marked as complete.

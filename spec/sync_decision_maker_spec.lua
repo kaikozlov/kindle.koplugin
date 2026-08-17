@@ -5,15 +5,24 @@ local helper = require("spec/test_helper")
 
 describe("SyncDecisionMaker", function()
     local SyncDecisionMaker
+    local UIManager
+    local original_show
 
     setup(function()
         helper.setup_complete()
+        UIManager = require("ui/uimanager")
+        original_show = UIManager.show
     end)
 
     before_each(function()
         package.loaded["lua/lib/sync_decision_maker"] = nil
         SyncDecisionMaker = require("lua/lib/sync_decision_maker")
         helper.before_each()
+        UIManager.show = original_show
+    end)
+
+    after_each(function()
+        UIManager.show = original_show
     end)
 
     describe("areBothSidesComplete", function()
@@ -39,6 +48,42 @@ describe("SyncDecisionMaker", function()
         it("should return false when only one side is complete", function()
             local kindle_state = { status = "complete", percent_read = 100 }
             assert.is_false(SyncDecisionMaker.areBothSidesComplete(kindle_state, 0.5, "reading"))
+        end)
+    end)
+
+    describe("promptForConflict", function()
+        it("shows both renderer percentages and explicit resolution choices", function()
+            local shown
+            local selected
+            UIManager.show = function(_, widget) shown = widget end
+
+            assert.is_true(SyncDecisionMaker.promptForConflict(
+                {
+                    book_title = "Book",
+                    kindle_percent = 38,
+                    koreader_percent = 52,
+                },
+                function() selected = "kindle" end,
+                function() selected = "koreader" end,
+                true
+            ))
+
+            assert.is_truthy(shown)
+            assert.is_truthy(shown.text:find("Kindle: 38.0%%"))
+            assert.is_truthy(shown.text:find("KOReader: 52.0%%"))
+            assert.equals("Use Kindle", shown.choice1_text)
+            assert.equals("Use KOReader", shown.choice2_text)
+            assert.equals("Cancel", shown.cancel_text)
+            assert.is_false(shown.dismissable)
+
+            shown.choice1_callback()
+            assert.equals("kindle", selected)
+            selected = nil
+            shown.choice2_callback()
+            assert.equals("koreader", selected)
+            selected = nil
+            shown.cancel_callback()
+            assert.is_nil(selected)
         end)
     end)
 
