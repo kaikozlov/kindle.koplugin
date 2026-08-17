@@ -55,21 +55,23 @@ leaves the destination unchanged.
 
 The plugin translates KOReader XPointers to Kindle KFX coordinates, persists
 them through Kindle's ReaderSDK, and reverse-translates the native
-last-page-read position when returning to KOReader. The shelf percentage is
-updated only after the authoritative native save succeeds. KOReader and Kindle
-calculate percentages against different rendered content lengths, so the
-native shelf is written with Kindle's rendered percentage rather than copying
-KOReader's percentage.
+last-page-read position when returning to KOReader. KOReader and Kindle
+calculate percentages against different rendered content lengths, so exact
+sync never copies one reader's percentage into the other. On a pull, only the
+translated XPointer is staged before `ReadSettings`; after KOReader renders the
+destination, its own rendered percentage is read back. On a push, the Kindle
+shelf is written with the percentage returned by ReaderSDK.
 
-The plugin also stores a text-free reconciliation receipt containing only the
-last successfully synchronized KFX position. On the next open it compares the
-native reader's exact last-page-read coordinate with that receipt. A changed
-coordinate is pulled even if Kindle's catalog timestamp is stale; an unchanged
-coordinate cannot overwrite newer KOReader progress. If the coordinate still
-matches but a stale native process has overwritten only the shelf percentage,
-the plugin repairs that display value from Kindle's verified rendered percent
-without moving either reader. A receipt is written only after the exact native
-save and shelf update both succeed.
+The plugin stores one text-free reconciliation receipt: the last exact KFX
+coordinate known to both readers. Each exact sync compares that receipt with
+the current Kindle coordinate and the current KOReader coordinate. If only one
+side moved, that side is propagated; if both already agree, the agreement is
+confirmed; if both moved independently and disagree, neither is overwritten.
+This also recovers an interrupted close by retrying the one unfinished
+KOReader-to-Kindle push. Pull receipts advance only after KOReader confirms the
+rendered destination; push receipts advance only after ReaderSDK confirms the
+exact coordinate and the Kindle shelf update succeeds. Shelf-percentage drift
+is repaired separately and never selects an exact reading position.
 
 For annotation integrations, the bundled helper also provides bounded batch
 translation in both directions. `translate-positions` converts normalized

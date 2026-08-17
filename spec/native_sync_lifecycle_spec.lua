@@ -8,6 +8,7 @@ describe("native KOReader sync lifecycle", function()
     local original_get_books
     local original_pull
     local original_push
+    local original_verify
     local original_show
     local original_next_tick
     local instance
@@ -26,6 +27,7 @@ describe("native KOReader sync lifecycle", function()
         original_get_books = LibraryIndex.getBooks
         original_pull = ReadingStateSync.syncFromKindleAutomatic
         original_push = ReadingStateSync.syncToKindleAutomatic
+        original_verify = ReadingStateSync.verifyOpenedKOReaderPosition
         original_show = UIManager.show
         original_next_tick = UIManager.nextTick
     end)
@@ -41,6 +43,7 @@ describe("native KOReader sync lifecycle", function()
         LibraryIndex.getBooks = original_get_books
         ReadingStateSync.syncFromKindleAutomatic = original_pull
         ReadingStateSync.syncToKindleAutomatic = original_push
+        ReadingStateSync.verifyOpenedKOReaderPosition = original_verify
         UIManager.show = original_show
         UIManager.nextTick = original_next_tick
     end)
@@ -111,6 +114,27 @@ describe("native KOReader sync lifecycle", function()
         assert.is_function(pull_args[5])
         assert.equals("synced", settings:readSetting("last_xpointer"))
         assert.equals(0, settings._flushes())
+    end)
+
+    it("acknowledges a staged exact pull only at ReaderReady", function()
+        local book = {
+            id = "book",
+            cde_key = "B000000001",
+            source_path = "/documents/book.kfx",
+            open_mode = "convert",
+        }
+        local settings = fakeSettings({ last_xpointer = "native-xpointer" })
+        local verified
+        ReadingStateSync.verifyOpenedKOReaderPosition = function(_, reader, epub_path)
+            verified = { reader = reader, epub_path = epub_path }
+            return true
+        end
+
+        buildReaderPlugin(book, "/cache/book.epub", settings)
+        instance:onReaderReady()
+
+        assert.equals(instance.ui, verified.reader)
+        assert.equals("/cache/book.epub", verified.epub_path)
     end)
 
     it("stages last_page for a silent pull into a paging document", function()

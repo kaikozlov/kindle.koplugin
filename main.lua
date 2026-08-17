@@ -190,6 +190,9 @@ function KindlePlugin:onDocSettingsLoad(doc_settings, document)
                         elseif after_percent ~= before_percent and self.ui.rolling.onGotoPercent then
                             self.ui.rolling:onGotoPercent(after_percent * 100)
                         end
+                        reading_state_sync:verifyOpenedKOReaderPosition(
+                            self.ui, document.file
+                        )
                     elseif reader_is_active and self.ui.paging
                         and after_percent ~= before_percent
                         and self.ui.paging.onGotoPercent
@@ -197,9 +200,11 @@ function KindlePlugin:onDocSettingsLoad(doc_settings, document)
                         self.ui.paging:onGotoPercent(after_percent * 100)
                     else
                         -- The prompt may outlive a quickly closed reader. Preserve
-                        -- the accepted state even when there is no live view left.
+                        -- the accepted state, but do not acknowledge an exact pull
+                        -- that no live renderer has confirmed.
                         stagePagingPercent(self.ui, doc_settings, after_percent)
                         doc_settings:flush()
+                        reading_state_sync:discardOpenPositionVerification(document.file)
                     end
                 end,
                 sync_details,
@@ -223,6 +228,17 @@ function KindlePlugin:onDocSettingsLoad(doc_settings, document)
     local after_sync_percent = doc_settings:readSetting("percent_finished") or 0
     if after_sync_percent ~= before_sync_percent then
         stagePagingPercent(self.ui, doc_settings, after_sync_percent)
+    end
+end
+
+--- ReaderReady runs after ReaderRolling has restored and rendered last_xpointer.
+--- This is the earliest native lifecycle point where an automatic exact pull can
+--- be acknowledged without confusing "requested" with "actually displayed".
+function KindlePlugin:onReaderReady()
+    if self.ui and self.ui.document then
+        reading_state_sync:verifyOpenedKOReaderPosition(
+            self.ui, self.ui.document.file
+        )
     end
 end
 
