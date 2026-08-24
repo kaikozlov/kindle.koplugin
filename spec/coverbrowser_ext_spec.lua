@@ -61,18 +61,16 @@ describe("CoverBrowserExt", function()
     end
 
     it("stays in classic mode without CoverBrowser", function()
-        assert.is_false(CoverBrowserExt.available())
         assert.is_nil(CoverBrowserExt.displayMode())
         assert.is_false(CoverBrowserExt.apply({}))
     end)
 
-    it("inherits the unified filemanager display mode", function()
+    it("mirrors the filemanager display mode by default", function()
         installCoverBrowser(nil, {
-            unified_display_mode = true,
             filemanager_display_mode = "mosaic_image",
         })
 
-        assert.is_true(CoverBrowserExt.available())
+        assert.is_not_nil(CoverBrowserExt.displayMode())
         assert.equals("mosaic_image", CoverBrowserExt.displayMode())
 
         local menu = {}

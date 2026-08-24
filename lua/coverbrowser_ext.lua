@@ -18,29 +18,16 @@ local DISPLAY_MODES = {
     list_image_filename = true,
 }
 
-function CoverBrowserExt.available()
-    local ok, BookInfoManager = pcall(require, "bookinfomanager")
-    if not ok then
-        return false
-    end
-    local ok_modes = DISPLAY_MODES[BookInfoManager:getSetting("kindle_library_display_mode") or ""]
-    local unified = BookInfoManager:getSetting("unified_display_mode")
-    local fm_mode = BookInfoManager:getSetting("filemanager_display_mode")
-    return (ok_modes or (unified and DISPLAY_MODES[fm_mode or ""])) and true or false
-end
-
 function CoverBrowserExt.displayMode()
     local ok, BookInfoManager = pcall(require, "bookinfomanager")
     if not ok then
         return nil
     end
+    -- An explicit Kindle Library choice wins; otherwise the library mirrors
+    -- the file browser's display mode so the two views feel consistent.
     local mode = BookInfoManager:getSetting("kindle_library_display_mode")
     if not DISPLAY_MODES[mode or ""] then
-        if BookInfoManager:getSetting("unified_display_mode") then
-            mode = BookInfoManager:getSetting("filemanager_display_mode")
-        else
-            mode = nil
-        end
+        mode = BookInfoManager:getSetting("filemanager_display_mode")
     end
     return DISPLAY_MODES[mode or ""] and mode or nil, BookInfoManager
 end

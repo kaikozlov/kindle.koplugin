@@ -1254,54 +1254,59 @@ function ReadingStateSync:syncToKindleAutomatic(
         local koreader_position = self:getKOReaderNativePosition(epub_path, doc_settings)
         local receipt = self:getPositionReceipt(cde_key, source_path)
         if not native_position then
-            logger.warn("KindlePlugin: cannot read exact native position before close sync:", position_error)
-            return false
-        end
-        applyNativeTimestamp(kindle_state, native_position)
-        local reconciliation = classifyExactPositions(
-            receipt, native_position, koreader_position
-        )
-        if reconciliation == "unknown" then
-            logger.warn("KindlePlugin: exact close sync cannot classify KOReader position; preserving both sides")
-            return false
-        elseif reconciliation == "conflict" then
-            logger.warn("KindlePlugin: Kindle and KOReader both moved since last sync; asking user")
-            return self:promptExactConflict(
-                cde_key,
-                source_path,
-                epub_path,
-                doc_settings,
-                kindle_state,
-                exact_xpointer,
-                native_position,
-                koreader_position,
-                false,
-                conflict_handler
+            -- The stored Kindle coordinate may predate this plugin (or this
+            -- conversion) and carry anchors our EPUB cannot reverse-translate.
+            -- It is still comparable as "unknown": fall through to the normal
+            -- exact push below instead of silently discarding KOReader's
+            -- final position.
+            logger.info("KindlePlugin: close sync cannot compare native position:", position_error)
+        else
+            applyNativeTimestamp(kindle_state, native_position)
+            local reconciliation = classifyExactPositions(
+                receipt, native_position, koreader_position
             )
-        elseif reconciliation == "pull" then
-            logger.info("KindlePlugin: Kindle moved while KOReader stayed put; not overwriting native position")
-            return false
-        elseif reconciliation == "unchanged" then
-            self:repairCatalogFromReceipt(
-                cde_key, source_path, receipt, native_position, kindle_state
-            )
-            return false
-        elseif reconciliation == "agreed" then
-            -- Both exact stores already match; acknowledging this readback is
-            -- safe and prevents needless recovery work on the next open.
-            local recorded = self:recordPositionReceipt(
-                cde_key, source_path, native_position, "reconciled"
-            )
-            if recorded then
-                self:repairCatalogFromReceipt(
+            if reconciliation == "unknown" then
+                logger.warn("KindlePlugin: exact close sync cannot classify KOReader position; preserving both sides")
+                return false
+            elseif reconciliation == "conflict" then
+                logger.warn("KindlePlugin: Kindle and KOReader both moved since last sync; asking user")
+                return self:promptExactConflict(
                     cde_key,
                     source_path,
-                    self:getPositionReceipt(cde_key, source_path),
+                    epub_path,
+                    doc_settings,
+                    kindle_state,
+                    exact_xpointer,
                     native_position,
-                    kindle_state
+                    koreader_position,
+                    false,
+                    conflict_handler
                 )
+            elseif reconciliation == "pull" then
+                logger.info("KindlePlugin: Kindle moved while KOReader stayed put; not overwriting native position")
+                return false
+            elseif reconciliation == "unchanged" then
+                self:repairCatalogFromReceipt(
+                    cde_key, source_path, receipt, native_position, kindle_state
+                )
+                return false
+            elseif reconciliation == "agreed" then
+                -- Both exact stores already match; acknowledging this readback is
+                -- safe and prevents needless recovery work on the next open.
+                local recorded = self:recordPositionReceipt(
+                    cde_key, source_path, native_position, "reconciled"
+                )
+                if recorded then
+                    self:repairCatalogFromReceipt(
+                        cde_key,
+                        source_path,
+                        self:getPositionReceipt(cde_key, source_path),
+                        native_position,
+                        kindle_state
+                    )
+                end
+                return recorded
             end
-            return recorded
         end
         -- "push" and "untracked" continue to the normal exact save below.
     end
@@ -1534,10 +1539,11 @@ function ReadingStateSync:syncBidirectional(cde_key, source_path, doc_settings)
             cde_key, source_path, doc_path
         )
         if not native_position then
-            logger.warn("KindlePlugin: manual exact sync cannot read native position:", position_error)
-            return false
-        end
-        applyNativeTimestamp(kindle_state, native_position)
+            -- Without a comparable native coordinate, keep the timestamp
+            -- policy below instead of blocking all manual synchronization.
+            logger.info("KindlePlugin: manual exact sync cannot compare native position:", position_error)
+        else
+            applyNativeTimestamp(kindle_state, native_position)
         local receipt = self:getPositionReceipt(cde_key, source_path)
         local koreader_position = self:getKOReaderNativePosition(doc_path, doc_settings)
         local reconciliation = classifyExactPositions(
@@ -1576,6 +1582,7 @@ function ReadingStateSync:syncBidirectional(cde_key, source_path, doc_settings)
             return self:executePushToKindle(
                 cde_key, source_path, doc_settings, kindle_state, kr_percent, kr_timestamp
             )
+        end
         end
         -- No receipt yet: retain the existing timestamp bootstrap policy.
     end
