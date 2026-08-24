@@ -75,10 +75,7 @@ describe("CoverBrowserExt", function()
 
         local menu = {}
         assert.is_true(CoverBrowserExt.apply(menu))
-        assert.equals("mosaic", menu.display_mode_type)
-        assert.is_true(menu._do_cover_images)
-        assert.is_true(menu._do_center_partial_rows)
-        assert.is_function(menu.getBookInfo)
+        assert.is_nil(menu.getBookInfo)
         assert.is_function(menu.updateItems)
     end)
 

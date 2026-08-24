@@ -44,7 +44,6 @@ local function initGrid(menu, BookInfoManager, display_mode)
 end
 
 --- Apply CoverBrowser display overrides to one native BookList instance.
---- @return boolean: True when a cover display mode was applied.
 function CoverBrowserExt.apply(booklist_menu)
     if not booklist_menu then
         return false
@@ -53,19 +52,15 @@ function CoverBrowserExt.apply(booklist_menu)
     if not display_mode then
         return false
     end
-
     local ok, err = pcall(function()
         local BookInfoManager = require("bookinfomanager")
         local CoverMenu = require("covermenu")
-        local BookList = require("ui/widget/booklist")
 
         booklist_menu.updateItems = CoverMenu.updateItems
         booklist_menu.onCloseWidget = CoverMenu.onCloseWidget
-        -- ListMenu/MosaicMenu items ask their owning menu for reading-state
-        -- metadata through this instance method.
-        booklist_menu.getBookInfo = function(_, file)
-            return BookList.getBookInfo(file)
-        end
+        -- CoverBrowser items call menu.getBookInfo(path) with dot syntax, so
+        -- the BookList class function reached through normal instance lookup
+        -- is exactly the native History/Collections behavior. Do not wrap it.
 
         initGrid(booklist_menu, BookInfoManager, display_mode)
         if booklist_menu.display_mode_type == "mosaic" then
