@@ -1,5 +1,6 @@
 -- Kindle cc.db state reader.
--- Reads reading progress from Kindle's content catalog SQLite database.
+-- Reads reading progress from Kindle's content catalog SQLite database
+-- through KOReader's bundled lua-ljsqlite3.
 -- DB location: /var/local/cc.db
 -- Key table: Entries
 -- Key columns: p_percentFinished, p_lastAccess, p_readState, p_cdeKey, p_location
@@ -12,6 +13,19 @@ local KindleStateReader = {}
 --- Path to the Kindle content catalog database.
 local CC_DB_PATH = "/var/local/cc.db"
 
+local function openSqlite()
+    local SQ3 = package.loaded["lua-ljsqlite3/init"]
+    if SQ3 then
+        return SQ3
+    end
+    local ok
+    ok, SQ3 = pcall(require, "lua-ljsqlite3/init")
+    if ok then
+        return SQ3
+    end
+    return nil
+end
+
 ---
 --- Reads reading state from Kindle cc.db for a book identified by file path.
 --- @param book_path string: File path on device (matched against p_location).
@@ -20,7 +34,6 @@ function KindleStateReader.readByPath(book_path)
     if not book_path or book_path == "" then
         return nil
     end
-
     return KindleStateReader._read("p_location = ?", book_path)
 end
 
@@ -32,7 +45,6 @@ function KindleStateReader.readByCdeKey(cde_key)
     if not cde_key or cde_key == "" then
         return nil
     end
-
     return KindleStateReader._read("p_cdeKey = ? AND p_isLatestItem = 1", cde_key)
 end
 
@@ -43,44 +55,31 @@ function KindleStateReader.readByUuid(uuid)
     if not uuid or uuid == "" then
         return nil
     end
-
     return KindleStateReader._read(
-        "p_uuid = ? AND p_isLatestItem = 1 AND p_location IS NOT NULL",
-        uuid
+        "p_uuid = (SELECT p_sourceUuid FROM Entries WHERE p_uuid = ?)", uuid
     )
 end
 
 ---
---- Internal: reads reading state from cc.db.
+--- Internal: reads reading state from cc.db via lua-ljsqlite3.
 --- @param where_clause string: WHERE clause with placeholder.
 --- @param where_value string: Value to bind.
 --- @return table|nil: State table or nil.
 function KindleStateReader._read(where_clause, where_value)
-    -- Use ljsqlite3 if available (on-device), otherwise fall back to os.execute
-    local SQ3 = package.loaded["lua-ljsqlite3/init"]
+    local SQ3 = openSqlite()
     if not SQ3 then
-        -- Try alternate require path
-        local ok
-        ok, SQ3 = pcall(require, "lua-ljsqlite3/init")
-        if not ok then
-            SQ3 = nil
-        end
+        logger.warn("KindlePlugin: lua-ljsqlite3 unavailable for cc.db read")
+        return nil
     end
-
-    if SQ3 then
-        local ok, result = KindleStateReader._readWithSQ3(SQ3, where_clause, where_value)
-        if ok then
-            return result
-        end
-        logger.info("KindlePlugin: ljsqlite3 read failed, falling back to CLI")
+    local ok, result = KindleStateReader._readWithSQ3(SQ3, where_clause, where_value)
+    if not ok then
+        return nil
     end
-
-    -- Fallback: use sqlite3 CLI via os.execute
-    return KindleStateReader._readWithCLI(where_clause, where_value)
+    return result
 end
 
 ---
---- Reads state using ljsqlite3 (on-device, efficient).
+--- Reads state using ljsqlite3.
 function KindleStateReader._readWithSQ3(SQ3, where_clause, where_value)
     local conn, err = SQ3.open(CC_DB_PATH)
     if not conn then
@@ -137,79 +136,19 @@ function KindleStateReader._readWithSQ3(SQ3, where_clause, where_value)
 end
 
 ---
---- Reads state using sqlite3 CLI (fallback, works in dev/test).
-function KindleStateReader._readWithCLI(where_clause, where_value)
-    if not where_value then
-        return nil
-    end
-    -- Escape single quotes for SQL
-    local escaped = where_value:gsub("'", "''")
-
-    local query = string.format(
-        "SELECT p_percentFinished, p_lastAccess, p_readState, p_titles_0_nominal, p_cdeKey FROM Entries WHERE %s LIMIT 1;",
-        where_clause:gsub("?", "'" .. escaped .. "'")
-    )
-
-    local cmd = string.format("sqlite3 -separator '|' '%s' \"%s\" 2>/dev/null", CC_DB_PATH, query)
-    local handle = io.popen(cmd, "r")
-    if not handle then
-        logger.warn("KindlePlugin: Failed to execute sqlite3 CLI")
-        return nil
-    end
-
-    local line = handle:read("*l")
-    handle:close()
-
-    if not line or line == "" then
-        return nil
-    end
-
-    -- Parse: percent_finished|last_access|read_state|title|cde_key
-    local percent_str, access_str, state_str, title, cde_key = line:match("^(.-)|(.-)|(.-)|(.-)|(.+)$")
-    if not percent_str then
-        return nil
-    end
-
-    local percent_finished = tonumber(percent_str)
-    local last_access = tonumber(access_str) or 0
-    local read_state = tonumber(state_str) or 0
-
-    if percent_finished == nil then
-        percent_finished = 0
-    end
-
-    return {
-        percent_read = percent_finished,
-        timestamp = last_access,
-        status = StatusConverter.kindleToKoreader(read_state),
-        kindle_status = read_state,
-        title = title or "",
-        cde_key = cde_key or "",
-    }
-end
-
----
 --- Reads all books with reading progress from cc.db.
 --- @return table|nil: Array of {cde_key, title, percent_read, last_access, location}, or nil on error.
 function KindleStateReader.readAllProgress()
-    local SQ3 = package.loaded["lua-ljsqlite3/init"]
+    local SQ3 = openSqlite()
     if not SQ3 then
-        local ok
-        ok, SQ3 = pcall(require, "lua-ljsqlite3/init")
-        if not ok then
-            SQ3 = nil
-        end
+        logger.warn("KindlePlugin: lua-ljsqlite3 unavailable for cc.db readAll")
+        return nil
     end
-
-    if SQ3 then
-        local ok, result = KindleStateReader._readAllWithSQ3(SQ3)
-        if ok then
-            return result
-        end
-        logger.info("KindlePlugin: ljsqlite3 readAll failed, falling back to CLI")
+    local ok, result = KindleStateReader._readAllWithSQ3(SQ3)
+    if not ok then
+        return nil
     end
-
-    return KindleStateReader._readAllWithCLI()
+    return result
 end
 
 function KindleStateReader._readAllWithSQ3(SQ3)
@@ -256,38 +195,6 @@ function KindleStateReader._readAllWithSQ3(SQ3)
     end
 
     return true, result
-end
-
-function KindleStateReader._readAllWithCLI()
-    local query = "SELECT p_cdeKey, p_cdeType, p_titles_0_nominal, p_percentFinished, p_lastAccess, p_location "
-        .. "FROM Entries WHERE p_cdeType IN ('EBOK','PDOC') AND p_isLatestItem = 1 "
-        .. "AND p_location IS NOT NULL AND p_type NOT LIKE '%Dictionary%';"
-
-    local cmd = string.format("sqlite3 -separator '|' '%s' \"%s\" 2>/dev/null", CC_DB_PATH, query)
-    local handle = io.popen(cmd, "r")
-    if not handle then
-        return nil
-    end
-
-    local books = {}
-    for line in handle:lines() do
-        local cde_key, cde_type, title, percent_str, access_str, location = line:match(
-            "^(.-)|(.-)|(.-)|(.-)|(.-)|(.+)$"
-        )
-        if cde_key then
-            table.insert(books, {
-                cde_key = cde_key,
-                cde_type = cde_type,
-                title = title,
-                percent_read = tonumber(percent_str) or 0,
-                last_access = tonumber(access_str) or 0,
-                location = location,
-            })
-        end
-    end
-    handle:close()
-
-    return books
 end
 
 return KindleStateReader

@@ -1,11 +1,12 @@
 -- Tests for KindleStateWriter module
+-- cc.db access is virtualized through the shared lua-ljsqlite3 mock.
 
 require('busted.runner')()
 local helper = require("spec/test_helper")
 
 describe("KindleStateWriter", function()
     local KindleStateWriter
-    local original_execute
+    local SQ3
 
     setup(function()
         helper.setup_complete()
@@ -13,24 +14,14 @@ describe("KindleStateWriter", function()
 
     before_each(function()
         helper.before_each()
-        helper.install_sqlite_unavailable()
+        SQ3 = helper.install_sqlite_mock()
         package.loaded["lua/lib/kindle_state_writer"] = nil
         KindleStateWriter = require("lua/lib/kindle_state_writer")
-        original_execute = os.execute
     end)
 
     after_each(function()
-        rawset(os, "execute", original_execute)
+        helper.reset_state()
     end)
-
-    local function captureExecute(result)
-        local executed_cmd
-        rawset(os, "execute", function(cmd)
-            executed_cmd = cmd
-            return result
-        end)
-        return function() return executed_cmd end
-    end
 
     describe("writeByPath", function()
         it("should return false for nil path", function()
@@ -41,8 +32,8 @@ describe("KindleStateWriter", function()
             assert.is_false(KindleStateWriter.writeByPath("", 50, os.time(), "reading"))
         end)
 
-        it("should execute sqlite3 UPDATE via CLI", function()
-            local get_executed_cmd = captureExecute(0)
+        it("should update only progress and read state", function()
+            SQ3._getMock().rowexec_results["SELECT changes()"] = "1"
 
             local ok = KindleStateWriter.writeByPath(
                 "/mnt/us/documents/test.kfx",
@@ -51,17 +42,19 @@ describe("KindleStateWriter", function()
                 "reading"
             )
 
-            local executed_cmd = get_executed_cmd()
+            local mock = SQ3._getMock()
             assert.is_true(ok)
-            assert.is_not_nil(executed_cmd)
-            assert.is_true(executed_cmd:match("UPDATE Entries") ~= nil)
-            assert.is_true(executed_cmd:match("p_percentFinished") ~= nil)
+            assert.is_not_nil(mock.prepared_sql[1]:match("UPDATE Entries"))
+            assert.is_not_nil(mock.prepared_sql[1]:match("p_percentFinished"))
+            assert.is_not_nil(mock.prepared_sql[1]:match("p_readState"))
             -- p_lastAccess is NOT updated (ICU collation index)
-            assert.is_true(executed_cmd:match("p_readState") ~= nil)
+            assert.is_nil(mock.prepared_sql[1]:match("p_lastAccess"))
+            assert.same({ 56, 6, "/mnt/us/documents/test.kfx" }, mock.bound_values)
+            assert.is_not_nil(table.concat(mock.executed, "\n"):find("COMMIT", 1, true))
         end)
 
-        it("should return false when sqlite3 fails", function()
-            captureExecute(1)
+        it("should return false when no catalog row matches", function()
+            SQ3._getMock().rowexec_results["SELECT changes()"] = "0"
 
             local ok = KindleStateWriter.writeByPath(
                 "/mnt/us/documents/test.kfx",
@@ -71,6 +64,15 @@ describe("KindleStateWriter", function()
             )
 
             assert.is_false(ok)
+            assert.is_nil(table.concat(SQ3._getMock().executed, "\n"):find("COMMIT", 1, true))
+        end)
+
+        it("should return false without ljsqlite3", function()
+            helper.install_sqlite_unavailable()
+            package.loaded["lua/lib/kindle_state_writer"] = nil
+            local Writer = require("lua/lib/kindle_state_writer")
+
+            assert.is_false(Writer.writeByPath("/mnt/us/documents/test.kfx", 56, 0, "reading"))
         end)
     end)
 
@@ -79,8 +81,8 @@ describe("KindleStateWriter", function()
             assert.is_false(KindleStateWriter.writeByCdeKey(nil, 50, os.time(), "reading"))
         end)
 
-        it("should write by ASIN with correct WHERE clause", function()
-            local get_executed_cmd = captureExecute(0)
+        it("should write by ASIN with the latest-item guard", function()
+            SQ3._getMock().rowexec_results["SELECT changes()"] = "1"
 
             local ok = KindleStateWriter.writeByCdeKey(
                 "B007N6JEII",
@@ -89,17 +91,16 @@ describe("KindleStateWriter", function()
                 "reading"
             )
 
-            local executed_cmd = get_executed_cmd()
             assert.is_true(ok)
-            assert.is_not_nil(executed_cmd)
-            assert.is_true(executed_cmd:match("B007N6JEII") ~= nil)
-            assert.is_true(executed_cmd:match("p_isLatestItem") ~= nil)
+            assert.is_not_nil(
+                SQ3._getMock().prepared_sql[1]:match("p_cdeKey = %? AND p_isLatestItem = 1"))
+            assert.equals("B007N6JEII", SQ3._getMock().bound_values[3])
         end)
     end)
 
     describe("writeByUuid", function()
         it("should write a virtual-library catalog row by p_uuid", function()
-            local get_executed_cmd = captureExecute(0)
+            SQ3._getMock().rowexec_results["SELECT changes()"] = "1"
 
             local ok = KindleStateWriter.writeByUuid(
                 "f82913d4-094a-43c6-8166-e330d40c1d7c",
@@ -108,16 +109,15 @@ describe("KindleStateWriter", function()
                 "reading"
             )
 
-            local executed_cmd = get_executed_cmd()
             assert.is_true(ok)
-            assert.is_true(executed_cmd:match("p_uuid") ~= nil)
-            assert.is_true(executed_cmd:match("f82913d4%-094a%-43c6%-8166%-e330d40c1d7c") ~= nil)
+            assert.is_not_nil(
+                SQ3._getMock().prepared_sql[1]:match("p_uuid = %(SELECT p_sourceUuid"))
+            assert.equals("f82913d4-094a-43c6-8166-e330d40c1d7c", SQ3._getMock().bound_values[3])
         end)
     end)
-
-    describe("percent formatting", function()
-        it("should floor the percent value", function()
-            local get_executed_cmd = captureExecute(0)
+    describe("percent handling", function()
+        it("should bind the caller-supplied percent value unchanged", function()
+            SQ3._getMock().rowexec_results["SELECT changes()"] = "1"
 
             KindleStateWriter.writeByPath(
                 "/mnt/us/documents/test.kfx",
@@ -126,8 +126,9 @@ describe("KindleStateWriter", function()
                 "reading"
             )
 
-            local executed_cmd = get_executed_cmd()
-            assert.is_true(executed_cmd:match("p_percentFinished = 56") ~= nil)
+            -- Callers floor whole-number percents; exact pushes keep Kindle's
+            -- own fractional renderer percentage. The writer binds verbatim.
+            assert.equals(56.7, SQ3._getMock().bound_values[1])
         end)
     end)
 

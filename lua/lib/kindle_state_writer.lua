@@ -1,13 +1,14 @@
 -- Kindle cc.db state writer.
--- Writes reading progress to Kindle's content catalog SQLite database.
+-- Writes reading progress to Kindle's content catalog SQLite database
+-- through KOReader's bundled lua-ljsqlite3.
 -- DB location: /var/local/cc.db
 -- Key table: Entries
 -- Key columns: p_percentFinished, p_readState
 --
 -- NOTE: p_lastAccess CANNOT be updated because its index
 -- (EntriesLastAccessIndex) includes p_titles_0_collation which uses
--- ICU collation, and neither ljsqlite3 nor the on-device sqlite3 CLI
--- have ICU support. We update p_percentFinished and p_readState only.
+-- ICU collation, and ljsqlite3 has no ICU support. We update
+-- p_percentFinished and p_readState only.
 
 local StatusConverter = require("lua/lib/status_converter")
 local logger = require("logger")
@@ -43,6 +44,20 @@ local function registerCatalogTriggerFunctions(conn)
     end
 end
 
+
+local function openSqlite()
+    local SQ3 = package.loaded["lua-ljsqlite3/init"]
+    if SQ3 then
+        return SQ3
+    end
+    local ok
+    ok, SQ3 = pcall(require, "lua-ljsqlite3/init")
+    if ok then
+        return SQ3
+    end
+    return nil
+end
+
 ---
 --- Writes reading state to Kindle cc.db for a book identified by file path.
 --- @param book_path string: File path on device (matched against p_location).
@@ -54,7 +69,6 @@ function KindleStateWriter.writeByPath(book_path, percent_read, timestamp, statu
     if not book_path or book_path == "" then
         return false
     end
-
     return KindleStateWriter._write("p_location = ?", book_path, percent_read, timestamp, status)
 end
 
@@ -69,9 +83,8 @@ function KindleStateWriter.writeByCdeKey(cde_key, percent_read, timestamp, statu
     if not cde_key or cde_key == "" then
         return false
     end
-
     return KindleStateWriter._write(
-        "p_cdeKey = ? AND p_isLatestItem = 1 AND p_location IS NOT NULL",
+        "p_cdeKey = ? AND p_isLatestItem = 1",
         cde_key,
         percent_read,
         timestamp,
@@ -86,9 +99,8 @@ function KindleStateWriter.writeByUuid(uuid, percent_read, timestamp, status)
     if not uuid or uuid == "" then
         return false
     end
-
     return KindleStateWriter._write(
-        "p_uuid = ? AND p_isLatestItem = 1 AND p_location IS NOT NULL",
+        "p_uuid = (SELECT p_sourceUuid FROM Entries WHERE p_uuid = ?)",
         uuid,
         percent_read,
         timestamp,
@@ -97,8 +109,8 @@ function KindleStateWriter.writeByUuid(uuid, percent_read, timestamp, status)
 end
 
 ---
---- Internal: writes reading state to cc.db.
---- Updates p_percentFinished and p_readState only (p_lastAccess skipped due to ICU index).
+--- Internal: writes reading state to cc.db via lua-ljsqlite3.
+--- Only updates p_percentFinished and p_readState (p_lastAccess skipped due to ICU index).
 --- @param where_clause string: WHERE clause with placeholder.
 --- @param where_value string|nil: Value to bind.
 --- @param percent_read number: Progress percentage (0-100).
@@ -112,29 +124,20 @@ function KindleStateWriter._write(where_clause, where_value, percent_read, times
     percent_read = tonumber(percent_read) or 0
     local read_state = status and StatusConverter.koreaderToKindle(status) or 6
 
-    -- Use ljsqlite3 if available (on-device), otherwise fall back to CLI
-    local SQ3 = package.loaded["lua-ljsqlite3/init"]
+    local SQ3 = openSqlite()
     if not SQ3 then
-        local ok
-        ok, SQ3 = pcall(require, "lua-ljsqlite3/init")
-        if not ok then
-            SQ3 = nil
-        end
+        logger.warn("KindlePlugin: lua-ljsqlite3 unavailable for cc.db write")
+        return false
     end
-
-    if SQ3 then
-        local ok, result = KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent_read, read_state)
-        if ok then
-            return result
-        end
-        logger.info("KindlePlugin: ljsqlite3 write failed, falling back to CLI")
+    local ok, result = KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent_read, read_state)
+    if not ok then
+        return false
     end
-
-    return KindleStateWriter._writeWithCLI(where_clause, where_value, percent_read, read_state)
+    return result
 end
 
 ---
---- Writes state using ljsqlite3 (on-device, efficient).
+--- Writes state using ljsqlite3.
 --- Only updates p_percentFinished and p_readState (p_lastAccess skipped — ICU index).
 function KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent_read, read_state)
     local conn = SQ3.open(CC_DB_PATH)
@@ -204,41 +207,6 @@ function KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent
     end
 
     return true, result
-end
-
----
---- Writes state using sqlite3 CLI (fallback).
---- Only updates p_percentFinished and p_readState (p_lastAccess skipped — ICU index).
-function KindleStateWriter._writeWithCLI(where_clause, where_value, percent_read, read_state)
-    local escaped = where_value:gsub("'", "''")
-
-    local sql = string.format(
-        "UPDATE Entries SET p_percentFinished = %s, p_readState = %d WHERE %s;",
-        tostring(percent_read),
-        read_state,
-        where_clause:gsub("?", "'" .. escaped .. "'")
-    )
-
-    local cmd = string.format("sqlite3 '%s' \"%s\" 2>/dev/null", CC_DB_PATH, sql)
-    local result = os.execute(cmd)
-
-    if type(result) == "number" then
-        result = result == 0
-    elseif type(result) ~= "boolean" then
-        result = false
-    end
-
-    if result then
-        logger.info(
-            "KindlePlugin: Wrote Kindle reading progress via CLI:",
-            "percent:", percent_read,
-            "read_state:", read_state
-        )
-    else
-        logger.warn("KindlePlugin: Failed to write to cc.db via CLI")
-    end
-
-    return result
 end
 
 return KindleStateWriter

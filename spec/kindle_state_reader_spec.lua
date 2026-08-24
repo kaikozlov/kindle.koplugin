@@ -1,12 +1,12 @@
 -- Tests for KindleStateReader module
--- These tests mock the sqlite3 CLI since we don't have ljsqlite3 in the test env
+-- cc.db access is virtualized through the shared lua-ljsqlite3 mock.
 
 require('busted.runner')()
 local helper = require("spec/test_helper")
 
 describe("KindleStateReader", function()
     local KindleStateReader
-    local original_popen
+    local SQ3
 
     setup(function()
         helper.setup_complete()
@@ -14,51 +14,14 @@ describe("KindleStateReader", function()
 
     before_each(function()
         helper.before_each()
-        helper.install_sqlite_unavailable()
+        SQ3 = helper.install_sqlite_mock()
         package.loaded["lua/lib/kindle_state_reader"] = nil
         KindleStateReader = require("lua/lib/kindle_state_reader")
-        original_popen = io.popen
     end)
 
     after_each(function()
-        rawset(io, "popen", original_popen)
+        helper.reset_state()
     end)
-
-    local function mockPopen(output, should_fail)
-        rawset(io, "popen", function(cmd, mode)
-            if should_fail then
-                return nil
-            end
-            local mock_handle = {
-                _output = output,
-                _lines = {},
-                read = function(self, fmt)
-                    if fmt == "*l" then
-                        local line = self._lines[1]
-                        if line then
-                            table.remove(self._lines, 1)
-                            return line
-                        end
-                        return nil
-                    end
-                    return self._output
-                end,
-                lines = function(self)
-                    local i = 0
-                    return function()
-                        i = i + 1
-                        return self._lines[i]
-                    end
-                end,
-                close = function(self) return 0 end,
-            }
-            -- Parse output into lines
-            for line in (output or ""):gmatch("[^\n]+") do
-                table.insert(mock_handle._lines, line)
-            end
-            return mock_handle
-        end)
-    end
 
     describe("readByPath", function()
         it("should return nil for nil path", function()
@@ -69,8 +32,14 @@ describe("KindleStateReader", function()
             assert.is_nil(KindleStateReader.readByPath(""))
         end)
 
-        it("should parse reading progress from cc.db CLI output", function()
-            mockPopen("56.477375|1775769644||Floors #2: 3 Below|B008PL1YQ0")
+        it("should read reading progress through ljsqlite3", function()
+            SQ3._setMockResults({
+                { "56.477375" },
+                { "1775769644" },
+                { "" },
+                { "Floors #2: 3 Below" },
+                { "B008PL1YQ0" },
+            }, 1)
 
             local state = KindleStateReader.readByPath("/mnt/us/documents/test.kfx")
 
@@ -79,10 +48,18 @@ describe("KindleStateReader", function()
             assert.equals(1775769644, state.timestamp)
             assert.equals("Floors #2: 3 Below", state.title)
             assert.equals("B008PL1YQ0", state.cde_key)
+            assert.is_true(SQ3._getMock().prepared_sql[1]:match("p_location = %?") ~= nil)
+            assert.equals("/mnt/us/documents/test.kfx", SQ3._getMock().bound_values[1])
         end)
 
         it("should handle NULL percent_finished as 0", function()
-            mockPopen("|1775769644||Some Book|B001")
+            SQ3._setMockResults({
+                { "" },
+                { "" },
+                { "" },
+                { "Some Book" },
+                { "B001" },
+            }, 1)
 
             local state = KindleStateReader.readByPath("/mnt/us/documents/test.kfx")
 
@@ -90,20 +67,20 @@ describe("KindleStateReader", function()
             assert.equals(0, state.percent_read)
         end)
 
-        it("should return nil when no results found", function()
-            mockPopen("")
+        it("should return nil when no row matches", function()
+            SQ3._setMockResults(nil, 0)
 
             local state = KindleStateReader.readByPath("/mnt/us/documents/nonexistent.kfx")
 
             assert.is_nil(state)
         end)
 
-        it("should return nil when popen fails", function()
-            mockPopen("", true)
+        it("should return nil without ljsqlite3", function()
+            helper.install_sqlite_unavailable()
+            package.loaded["lua/lib/kindle_state_reader"] = nil
+            local Reader = require("lua/lib/kindle_state_reader")
 
-            local state = KindleStateReader.readByPath("/mnt/us/documents/test.kfx")
-
-            assert.is_nil(state)
+            assert.is_nil(Reader.readByPath("/mnt/us/documents/test.kfx"))
         end)
     end)
 
@@ -113,13 +90,20 @@ describe("KindleStateReader", function()
         end)
 
         it("should read progress by ASIN", function()
-            mockPopen("67.035034|1775770105||The Hunger Games Trilogy|B004XJRQUQ")
+            SQ3._setMockResults({
+                { "67.035034" },
+                { "1775770105" },
+                { "" },
+                { "The Hunger Games Trilogy" },
+                { "B004XJRQUQ" },
+            }, 1)
 
             local state = KindleStateReader.readByCdeKey("B004XJRQUQ")
 
             assert.is_not_nil(state)
             assert.equals(67.035034, state.percent_read)
             assert.equals("B004XJRQUQ", state.cde_key)
+            assert.is_true(SQ3._getMock().prepared_sql[1]:match("p_cdeKey = %?") ~= nil)
         end)
     end)
 
@@ -129,30 +113,32 @@ describe("KindleStateReader", function()
         end)
 
         it("should read a virtual-library catalog row by p_uuid", function()
-            local executed_cmd
-            rawset(io, "popen", function(cmd)
-                executed_cmd = cmd
-                local lines = { "47|1775770105|6|The Almighty Dollar|B0FLB24198" }
-                return {
-                    read = function() return table.remove(lines, 1) end,
-                    close = function() return 0 end,
-                }
-            end)
+            SQ3._setMockResults({
+                { "47" },
+                { "1775770105" },
+                { "6" },
+                { "The Almighty Dollar" },
+                { "B0FLB24198" },
+            }, 1)
 
             local state = KindleStateReader.readByUuid("f82913d4-094a-43c6-8166-e330d40c1d7c")
 
             assert.equals(47, state.percent_read)
             assert.equals("B0FLB24198", state.cde_key)
-            assert.is_true(executed_cmd:match("p_uuid") ~= nil)
+            assert.is_true(SQ3._getMock().prepared_sql[1]:match("p_uuid = ") ~= nil)
         end)
     end)
 
     describe("readAllProgress", function()
-        it("should parse multiple books from CLI output", function()
-            mockPopen(
-                "B007N6JEII|EBOK|Throne of Glass|1.162167|1776640914|/mnt/us/documents/test.kfx\n"
-                .. "B008PL1YQ0|EBOK|Three Below|56.477375|1775769644|/mnt/us/documents/test2.kfx"
-            )
+        it("should read multiple books from cc.db", function()
+            SQ3._setMockResults({
+                { "B007N6JEII", "B008PL1YQ0" },
+                { "EBOK", "EBOK" },
+                { "Throne of Glass", "Three Below" },
+                { "1.162167", "56.477375" },
+                { "1776640914", "1775769644" },
+                { "/mnt/us/documents/test.kfx", "/mnt/us/documents/test2.kfx" },
+            }, 2)
 
             local books = KindleStateReader.readAllProgress()
 
@@ -164,13 +150,13 @@ describe("KindleStateReader", function()
             assert.equals(56.477375, books[2].percent_read)
         end)
 
-        it("should return empty table for empty result", function()
-            mockPopen("")
+        it("should return an empty table when no rows match", function()
+            SQ3._setMockResults(nil, 0)
 
             local books = KindleStateReader.readAllProgress()
 
-            -- CLI fallback returns {} when no lines parsed
             assert.is_not_nil(books)
+            assert.equals(0, #books)
         end)
     end)
 end)

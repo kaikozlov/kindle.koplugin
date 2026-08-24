@@ -190,12 +190,45 @@ function M.install_sqlite_mock()
     local rows
     local row_count = 0
     local opened_path
+    local mock = {
+        executed = {},
+        prepared_sql = {},
+        bound_values = {},
+        rowexec_results = {},
+        stepped = 0,
+    }
 
     local connection = {}
-    function connection:exec()
+    function connection:exec(sql)
+        table.insert(mock.executed, sql)
         return rows, row_count
     end
     function connection:close() end
+    function connection:set_busy_timeout() end
+    function connection:setscalar() end
+    function connection:rowexec(sql)
+        return mock.rowexec_results[sql] or "0"
+    end
+    function connection:prepare(sql)
+        table.insert(mock.prepared_sql, sql)
+        local statement = {}
+        function statement:reset()
+            return self
+        end
+        function statement:bind(...)
+            mock.bound_values = { ... }
+            return self
+        end
+        function statement:resultset()
+            return rows, row_count
+        end
+        function statement:step()
+            mock.stepped = mock.stepped + 1
+            return true
+        end
+        function statement:close() end
+        return statement
+    end
 
     local SQ3 = {}
     function SQ3.open(path)
@@ -209,10 +242,18 @@ function M.install_sqlite_mock()
     function SQ3._getMockDbPath()
         return opened_path
     end
+    function SQ3._getMock()
+        return mock
+    end
     function SQ3._reset()
         rows = nil
         row_count = 0
         opened_path = nil
+        mock.executed = {}
+        mock.prepared_sql = {}
+        mock.bound_values = {}
+        mock.rowexec_results = {}
+        mock.stepped = 0
     end
 
     package.loaded[sqlite_module_name] = SQ3
