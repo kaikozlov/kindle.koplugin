@@ -129,23 +129,6 @@ describe("HelperClient", function()
         end)
     end)
 
-    describe("drmInit", function()
-        it("should call _run with drm-init command", function()
-            local client = HelperClient:new({
-                runner = function(args)
-                    return { ok = true, books_found = 5, keys_found = 3 }
-                end,
-            })
-            client:setSettings({})
-
-            local result = client:drmInit()
-
-            assert.is_not_nil(result)
-            assert.is_true(result.ok)
-            assert.equals(5, result.books_found)
-            assert.equals(3, result.keys_found)
-        end)
-    end)
 
     describe("native position sync", function()
         it("should translate one XPointer using the helper position map", function()

@@ -344,29 +344,6 @@ function HelperClient:readNativeProgress(asin, native_path)
     }
 end
 
-function HelperClient:drmInit()
-    local root = self.settings.documents_root or "/mnt/us/documents"
-    local cache_dir = self.settings.cache_dir or ""
-    logger.info("KindlePlugin: running drm-init on root:", root, "cache:", cache_dir)
-    local result, err = self:_run({
-        self:getBinaryPath(),
-        "drm-init",
-        "--root",
-        root,
-        "--cache-dir",
-        cache_dir,
-    })
-    if result then
-        if result.ok then
-            logger.info("KindlePlugin: drm-init succeeded, books:", result.books_found, "keys:", result.keys_found)
-        else
-            logger.warn("KindlePlugin: drm-init failed:", result.message)
-        end
-    else
-        logger.warn("KindlePlugin: drm-init failed:", err)
-    end
-    return result, err
-end
 
 --- Extracts the decryption key for a single book (JIT key extraction).
 --- @param kfx_path string: Path to the KFX file.

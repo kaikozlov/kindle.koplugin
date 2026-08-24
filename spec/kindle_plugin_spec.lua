@@ -68,11 +68,9 @@ describe("KindlePlugin", function()
     it("loads defaults while preserving explicit settings", function()
         local instance = newPlugin({
             enable_virtual_library = false,
-            drm_initialized = true,
             custom_setting = "preserved",
         })
         assert.is_false(instance.settings.enable_virtual_library)
-        assert.is_true(instance.settings.drm_initialized)
         assert.equals("preserved", instance.settings.custom_setting)
         assert.is_not_nil(instance.settings.documents_root)
         assert.is_not_nil(instance.settings.cache_dir)

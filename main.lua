@@ -51,7 +51,6 @@ local default_settings = {
     cache_dir = DataStorage:getFullDataDir() .. "/cache/kindle.koplugin",
     index_ttl_seconds = 300,
     last_scan_at = 0,
-    drm_initialized = false,
     sync_reading_state = false,
     enable_auto_sync = true,
     enable_sync_from_kindle = false,
@@ -657,44 +656,6 @@ function KindlePlugin:createSyncBehaviorMenuItem()
     }
 end
 
---- Creates book access setup menu item.
---- @return table: Menu item configuration.
-function KindlePlugin:createDrmSetupMenuItem()
-    return {
-        text = _("Refresh Book Access"),
-        help_text = _(
-            "Prepares your Kindle books for reading in KOReader. "
-            .. "This only needs to be run once, or when you add new books to your Kindle."
-        ),
-        callback = function()
-            self:showInfo(_("Preparing book access…\nThis may take a moment."), 0)
-            UIManager:scheduleIn(0.1, function()
-                local result, err = helper_client:drmInit()
-                if not result then
-                    UIManager:show(InfoMessage:new({
-                        text = _("Book access setup failed:\n") .. (err or _("unknown error")),
-                        timeout = 5,
-                    }))
-                    return
-                end
-                if not result.ok then
-                    UIManager:show(InfoMessage:new({
-                        text = _("Book access setup failed:\n") .. (result.message or _("unknown error")),
-                        timeout = 5,
-                    }))
-                    return
-                end
-                self.settings.drm_initialized = true
-                self:saveSettings()
-                virtual_library:refresh(true)
-                local msg = _("Book access ready.\n")
-                    .. string.format(_("Books found: %d\nKeys prepared: %d"), result.books_found, result.keys_found)
-                UIManager:show(InfoMessage:new({ text = msg, timeout = 5 }))
-            end)
-        end,
-        separator = true,
-    }
-end
 
 --- Creates clear book keys menu item.
 --- @return table: Menu item configuration.
@@ -702,7 +663,7 @@ function KindlePlugin:createClearKeysMenuItem()
     return {
         text = _("Clear Book Keys"),
         help_text = _(
-        "Removes cached book access keys. You will need to refresh book access before opening books again."),
+        "Removes cached book access keys. Required keys will be extracted again when a book is next opened."),
         callback = function()
             local keys_path = cache_manager:getDrmKeysPath()
             local f = io.open(keys_path, "rb")
@@ -713,12 +674,10 @@ function KindlePlugin:createClearKeysMenuItem()
             f:close()
 
             UIManager:show(ConfirmBox:new({
-                text = _("Clear all cached book keys? You will need to refresh book access before opening books again."),
+                text = _("Clear all cached book keys? Required keys will be extracted again when a book is next opened."),
                 ok_text = _("Clear keys"),
                 ok_callback = function()
                     os.remove(keys_path)
-                    self.settings.drm_initialized = false
-                    self:saveSettings()
                     self:showInfo(_("Book keys cleared."), 2)
                 end,
             }))
@@ -824,10 +783,6 @@ function KindlePlugin:createAboutMenuItem()
                 end
             end
 
-            local drm_status = _("Not set up")
-            if self.settings.drm_initialized then
-                drm_status = _("Ready")
-            end
 
             local cache_stats = cache_manager:getCacheStats()
 
@@ -840,12 +795,10 @@ Total books: %d
   Direct open: %d
   Blocked: %d
 
-Book access: %s
 Cached EPUBs: %d (%s)
 Root: %s
 Cache: %s]]),
                 total, drm_count, convert_count, direct_count, blocked_count,
-                drm_status,
                 cache_stats.count, util.getFriendlySize(cache_stats.total_size),
                 self.settings.documents_root or default_settings.documents_root,
                 self.settings.cache_dir or default_settings.cache_dir
@@ -912,7 +865,6 @@ function KindlePlugin:addToMainMenu(menu_items)
     local sub_item_table = {
         self:createBrowseLibraryMenuItem(),
         self:createRefreshLibraryMenuItem(),
-        self:createDrmSetupMenuItem(),
         self:createClearKeysMenuItem(),
         self:createClearCacheMenuItem(),
         self:createVirtualLibraryToggleMenuItem(),

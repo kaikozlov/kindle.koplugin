@@ -183,13 +183,10 @@ end
 function VirtualLibrary.getBlockedReasonText(_, book)
     local reason = book and book.block_reason or "unsupported_kfx_layout"
     local text = {
-        drm = _("This book could not be opened. Try refreshing book access from the Kindle Library menu."),
+        drm = _("This DRM-protected Kindle format is not supported."),
         unsupported_kfx_layout = _("This KFX layout is not supported yet."),
         missing_source = _("The source file is missing."),
         conversion_failed = _("Failed to prepare this book for reading."),
-        drm_not_initialized = _(
-            "Book access has not been set up. Run Prepare Book Access from the Kindle Library menu."
-        ),
         cannot_read = _("The source file could not be read."),
         unknown_format = _("This Kindle file format is not supported yet."),
     }
