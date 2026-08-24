@@ -60,7 +60,7 @@ KOReader only sees **real document paths**. The historical `KINDLE_VIRTUAL://` s
 ```
 User opens Kindle Library
   → FileChooser synthetic folder launches KindleLibrary BookList
-  → browsing uses cc.db/scan metadata only (NO conversion or DRM side effects)
+  → browsing uses cc.db metadata only (NO conversion or DRM side effects)
 User selects a book
   → virtual_library model resolves the Kindle entry
   → filemanagerutil.openFile(real source/cache path)

@@ -178,79 +178,6 @@ def _extract_sidecar_metadata(sidecar_dir):
     return None
 
 
-def cmd_scan(args):
-    if not args.root:
-        print("scan: --root is required", file=sys.stderr)
-        sys.exit(2)
-
-    books = []
-    root = args.root
-
-    for dirpath, dirnames, filenames in os.walk(root):
-        # Skip .sdr sidecar directories and system directories (dictionaries, etc.)
-        dirnames[:] = [
-            d for d in dirnames
-            if not d.lower().endswith(".sdr") and d.lower() not in EXCLUDED_DIRS
-        ]
-
-        for fname in sorted(filenames):
-            ext = os.path.splitext(fname)[1].lower()
-            if ext not in SUPPORTED_EXTENSIONS:
-                continue
-
-            fpath = os.path.join(dirpath, fname)
-            try:
-                stat = os.stat(fpath)
-            except OSError:
-                continue
-
-            rel_path = os.path.relpath(fpath, root)
-            # Normalise to forward slashes (matches Go behaviour)
-            rel_path_norm = rel_path.replace(os.sep, "/")
-
-            book = {
-                "id": "sha1:" + _sha1_hex(rel_path_norm),
-                "source_path": fpath,
-                "format": ext.lstrip("."),
-                "logical_ext": ext.lstrip("."),
-                "title": _derive_title(fname),
-                "authors": [],
-                "display_name": _derive_title(fname),
-                "open_mode": "direct",
-                "source_mtime": int(stat.st_mtime),
-                "source_size": stat.st_size,
-            }
-
-            # Check for sidecar directory
-            sidecar = os.path.splitext(fpath)[0] + ".sdr"
-            if os.path.isdir(sidecar):
-                book["sidecar_path"] = sidecar
-
-            if ext == ".kfx":
-                book["logical_ext"] = "epub"
-                mode, reason = _classify_kfx(fpath)
-                book["open_mode"] = mode
-                if reason:
-                    book["block_reason"] = reason
-
-                meta = _extract_sidecar_metadata(sidecar)
-                if meta:
-                    if meta.get("title"):
-                        book["title"] = meta["title"]
-                        book["display_name"] = meta["title"]
-                    if meta.get("authors"):
-                        book["authors"] = meta["authors"]
-
-            books.append(book)
-
-    books.sort(key=lambda b: (b["display_name"].lower(), b["source_path"]))
-
-    exit_json({
-        "version": VERSION,
-        "root": root,
-        "books": books,
-    })
-
 
 # ---------------------------------------------------------------------------
 # convert — KFX → EPUB using kfxlib
@@ -704,10 +631,6 @@ def main():
     parser = argparse.ArgumentParser(prog="kindle-helper")
     sub = parser.add_subparsers(dest="command")
 
-    # scan
-    p_scan = sub.add_parser("scan")
-    p_scan.add_argument("--root", required=True)
-
     # convert
     p_convert = sub.add_parser("convert")
     p_convert.add_argument("--input", required=True)
@@ -777,7 +700,6 @@ def main():
         sys.exit(2)
 
     dispatch = {
-        "scan": cmd_scan,
         "convert": cmd_convert,
         "cover": cmd_cover,
         "decrypt": cmd_decrypt,

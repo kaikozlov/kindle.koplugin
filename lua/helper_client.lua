@@ -84,22 +84,6 @@ function HelperClient:_run(args)
     return decoded
 end
 
-function HelperClient:scan(root)
-    logger.info("KindlePlugin: scanning root:", root)
-    local result, err = self:_run({
-        self:getBinaryPath(),
-        "scan",
-        "--root",
-        root,
-    })
-    if result then
-        local book_count = result.books and #result.books or 0
-        logger.info("KindlePlugin: scan found", book_count, "books")
-    else
-        logger.warn("KindlePlugin: scan failed:", err)
-    end
-    return result, err
-end
 
 function HelperClient:convert(input_path, output_path)
     logger.info("KindlePlugin: converting", input_path, "->", output_path)

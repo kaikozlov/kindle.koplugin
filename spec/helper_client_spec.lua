@@ -97,22 +97,6 @@ describe("HelperClient", function()
         end)
     end)
 
-    describe("scan", function()
-        it("should call _run with scan command", function()
-            local client = HelperClient:new({
-                runner = function(args)
-                    return { books = { { id = "b1" } } }
-                end,
-            })
-            client:setSettings({})
-
-            local result = client:scan("/test/root")
-
-            assert.is_not_nil(result)
-            assert.is_table(result.books)
-        end)
-    end)
-
     describe("convert", function()
         it("should call _run with convert command", function()
             local client = HelperClient:new({

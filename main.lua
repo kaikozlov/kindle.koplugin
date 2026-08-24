@@ -61,7 +61,7 @@ local default_settings = {
 }
 
 local helper_client = HelperClient:new()
-local library_index = LibraryIndex:new(helper_client)
+local library_index = LibraryIndex:new()
 local virtual_library = VirtualLibrary:new(library_index)
 local cache_manager = CacheManager:new(helper_client, virtual_library)
 local reading_state_sync = ReadingStateSync:new(helper_client)
