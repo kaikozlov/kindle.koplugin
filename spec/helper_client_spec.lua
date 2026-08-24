@@ -136,7 +136,10 @@ describe("HelperClient", function()
             local client = HelperClient:new({
                 runner = function(args)
                     seen = args
-                    return { ok = true, start = { long = "ATwFAACbAAAA", pid = 442741 } }
+                    return {
+                        ok = true,
+                        start = { long = "ATwFAACbAAAA", pid = 442741, percent = 75.5 },
+                    }
                 end,
             })
             local result = client:translatePosition(
@@ -144,6 +147,7 @@ describe("HelperClient", function()
             )
             assert.equals("translate-position", seen[2])
             assert.equals(442741, result.pid)
+            assert.equals(75.5, result.percent)
         end)
 
         it("should expose a native progress runner seam", function()
@@ -160,6 +164,59 @@ describe("HelperClient", function()
                 "B007N6JEII", "/mnt/us/documents/book.kfx",
                 { long = "ATwFAACbAAAA", pid = 442741 }
             ))
+        end)
+
+        it("should read exact progress directly from a Kindle sidecar", function()
+            local seen
+            local client = HelperClient:new({
+                runner = function(args)
+                    seen = args
+                    return {
+                        ok = true,
+                        long = "ATwFAACbAAAA",
+                        pid = 442741,
+                        timestamp_ms = 2000,
+                    }
+                end,
+            })
+
+            local result = client:readNativeProgress(
+                "B007N6JEII", "/mnt/us/documents/book.kfx"
+            )
+
+            assert.equals("read-native-sidecar", seen[2])
+            assert.equals(442741, result.pid)
+            assert.equals(2000, result.timestamp_ms)
+        end)
+
+        it("should write and read back exact sidecar progress", function()
+            local seen
+            local client = HelperClient:new({
+                runner = function(args)
+                    seen = args
+                    return {
+                        ok = true,
+                        long = "ATwFAACbAAAA",
+                        pid = 442741,
+                    }
+                end,
+            })
+
+            local ok, err, percent, saved = client:saveNativeProgress(
+                "B007N6JEII",
+                "/mnt/us/documents/book.kfx",
+                { long = "ATwFAACbAAAA", pid = 442741, percent = 75.5 }
+            )
+
+            assert.is_true(ok)
+            assert.is_nil(err)
+            assert.equals("write-native-sidecar", seen[2])
+            assert.equals(75.5, percent)
+            assert.same({
+                long = "ATwFAACbAAAA",
+                pid = 442741,
+                percent = 75.5,
+            }, saved)
         end)
 
         it("should capability-gate exact sync for unsupported books", function()

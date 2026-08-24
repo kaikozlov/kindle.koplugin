@@ -10,7 +10,8 @@ if PYTHON_DIR not in sys.path:
     sys.path.insert(0, PYTHON_DIR)
 
 from epub_position import (
-    PositionTranslationError, translate_native_position, translate_xpointer)
+    PositionTranslationError, native_position_percent, translate_native_position,
+    translate_pair, translate_xpointer)
 
 
 CONTAINER = b'''<?xml version="1.0"?>
@@ -47,6 +48,19 @@ class EpubPositionTests(unittest.TestCase):
         self.assertEqual(27124, result["pid"])
         self.assertEqual("AXMEAAAJAAAA", result["long"])
 
+    def test_reports_native_renderer_percentage(self):
+        epub_path = self.make_epub()
+        translated = translate_pair(
+            epub_path,
+            "/body/DocFragment/body/p/em/text().3",
+            "/body/DocFragment/body/p/em/text().3",
+        )
+
+        expected = native_position_percent(epub_path, translated["start"]["pid"])
+        self.assertAlmostEqual(expected, translated["start"]["percent"])
+        self.assertAlmostEqual(expected, translated["end"]["percent"])
+        self.assertGreater(expected, 99)
+
     def test_translates_tail_text_from_start_of_kfx_element(self):
         result = translate_xpointer(
             self.make_epub(),
@@ -69,6 +83,10 @@ class EpubPositionTests(unittest.TestCase):
         self.assertEqual(native["pid"], restored["pid"])
         self.assertEqual(
             "/body/DocFragment/body/p/em/text().3", restored["xpointer"])
+        self.assertAlmostEqual(
+            native_position_percent(self.make_epub(), restored["pid"]),
+            restored["percent"],
+        )
 
     def test_round_trips_native_position_to_parent_tail_text(self):
         native = translate_xpointer(

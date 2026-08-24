@@ -38,6 +38,7 @@ from epub_position import (
     PositionTranslationError, translate_native_position, translate_pair)
 from annotation_position import normalize_annotation_ends
 from kfx_position_adapter import position_metadata_conversion
+from krds_position import KrdsError, read_position_file, write_position_file
 
 from dedrm.drmion import (
     CONT_SIGNATURE,
@@ -532,127 +533,41 @@ def cmd_drm_init(args):
         })
 
 
-def cmd_position(args):
-    if not args.yjr:
-        print("position: --yjr is required", file=sys.stderr)
-        sys.exit(2)
-    if args.old_percent is None or args.new_percent is None:
-        print("position: --old-percent and --new-percent are required", file=sys.stderr)
-        sys.exit(2)
-
-    yjr_path = args.yjr
-    old_percent = args.old_percent
-    new_percent = args.new_percent
-
-    with open(yjr_path, "rb") as f:
-        data = bytearray(f.read())
-
-    # Find the LAST erl value (reading position, not bookmarks)
-    erl_key = b"\xff\xfe\x00\x00\x03erl"
-    erl_idx = -1
-    pos = 0
-    while True:
-        idx = data.find(erl_key, pos)
-        if idx < 0:
-            break
-        erl_idx = idx
-        pos = idx + 1
-
-    if erl_idx < 0:
-        exit_json({
-            "version": VERSION,
-            "ok": False,
-            "message": "erl key not found in .yjr file",
-        })
-
-    # Parse the erl value header: 03 XX XX XX <string_bytes>
-    val_start = erl_idx + len(erl_key)
-    if val_start + 4 >= len(data) or data[val_start] != 0x03:
-        exit_json({
-            "version": VERSION,
-            "ok": False,
-            "message": "erl value has unexpected format",
-        })
-
-    old_len = (data[val_start + 1] << 16) | (data[val_start + 2] << 8) | data[val_start + 3]
-    if val_start + 4 + old_len > len(data):
-        exit_json({
-            "version": VERSION,
-            "ok": False,
-            "message": "erl value truncated",
-        })
-
-    old_erl = bytes(data[val_start + 4:val_start + 4 + old_len]).decode("utf-8", errors="replace")
-    print(f"existing erl: {old_erl}", file=sys.stderr)
-
-    # Parse existing erl: base64part:position
-    parts = old_erl.split(":", 1)
-    if len(parts) != 2:
-        exit_json({
-            "version": VERSION,
-            "ok": False,
-            "message": "erl value has no colon separator",
-        })
-
-    decoded = base64.b64decode(parts[0])
-    if len(decoded) != 9 or decoded[0] != 0x01:
-        exit_json({
-            "version": VERSION,
-            "ok": False,
-            "message": "erl base64 decode failed",
-        })
-
+def cmd_read_native_sidecar(args):
     try:
-        old_position = int(parts[1])
-    except ValueError:
-        exit_json({
-            "version": VERSION,
-            "ok": False,
-            "message": "erl position parse error",
-        })
-
-    if old_percent == 0:
+        result = read_position_file(args.input)
         exit_json({
             "version": VERSION,
             "ok": True,
-            "erl": old_erl,
-            "message": "old percent is 0, cannot scale",
+            **result,
         })
+    except (OSError, KrdsError) as error:
+        exit_json({
+            "version": VERSION,
+            "ok": False,
+            "message": str(error),
+        }, code=1)
 
-    # Scale: new_pos = old_pos * (new_pct / old_pct)
-    new_position = int(old_position * (new_percent / old_percent))
-    if new_position < 0:
-        new_position = 0
 
-    new_erl = parts[0] + ":" + str(new_position)
-    print(f"new erl: {new_erl} (scaled {old_percent:.2f}% -> {new_percent:.2f}%)", file=sys.stderr)
-
-    # Build replacement bytes
-    new_erl_bytes = new_erl.encode("utf-8")
-    new_len = len(new_erl_bytes)
-    erl_value_header = bytes([0x03, (new_len >> 16) & 0xFF, (new_len >> 8) & 0xFF, new_len & 0xFF])
-    old_end = val_start + 4 + old_len
-
-    # Replace in data
-    result = data[:val_start] + bytearray(erl_value_header) + bytearray(new_erl_bytes) + data[old_end:]
-
-    # Ensure sync_lpr is set to 1
-    sync_key = b"\xff\xfe\x00\x00\x08sync_lpr"
-    sync_idx = result.find(sync_key)
-    if sync_idx >= 0:
-        val_off = sync_idx + len(sync_key)
-        if val_off + 1 < len(result):
-            result[val_off] = 0x00
-            result[val_off + 1] = 0x01
-
-    with open(yjr_path, "wb") as f:
-        f.write(result)
-
-    exit_json({
-        "version": VERSION,
-        "ok": True,
-        "erl": new_erl,
-    })
+def cmd_write_native_sidecar(args):
+    try:
+        result = write_position_file(
+            args.input,
+            args.long_position,
+            args.pid,
+            args.timestamp_ms,
+        )
+        exit_json({
+            "version": VERSION,
+            "ok": True,
+            **result,
+        })
+    except (OSError, KrdsError) as error:
+        exit_json({
+            "version": VERSION,
+            "ok": False,
+            "message": str(error),
+        }, code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -810,7 +725,17 @@ def main():
     p_decrypt.add_argument("--output", required=True)
     p_decrypt.add_argument("--cache-dir", default="")
 
-    # position
+    # Exact native reading position sidecars
+    p_read_native = sub.add_parser("read-native-sidecar")
+    p_read_native.add_argument("--input", required=True)
+
+    p_write_native = sub.add_parser("write-native-sidecar")
+    p_write_native.add_argument("--input", required=True)
+    p_write_native.add_argument("--long", dest="long_position", required=True)
+    p_write_native.add_argument("--pid", type=int, required=True)
+    p_write_native.add_argument("--timestamp-ms", type=int)
+
+    # Diagnostic bulk DRM extraction
     p_drm = sub.add_parser("drm-init")
     p_drm.add_argument("--root", default="/mnt/us/documents",
                       help="root directory to scan for DRM books")
@@ -818,11 +743,6 @@ def main():
                       help="cache directory for drm_keys.json")
     p_drm.add_argument("--plugin-dir", default="",
                       help="plugin directory containing lib/ helpers")
-
-    p_pos = sub.add_parser("position")
-    p_pos.add_argument("--yjr", required=True)
-    p_pos.add_argument("--old-percent", type=float, required=True)
-    p_pos.add_argument("--new-percent", type=float, required=True)
 
     p_translate = sub.add_parser("translate-position")
     p_translate.add_argument("--epub", required=True)
@@ -862,7 +782,8 @@ def main():
         "cover": cmd_cover,
         "decrypt": cmd_decrypt,
         "drm-init": cmd_drm_init,
-        "position": cmd_position,
+        "read-native-sidecar": cmd_read_native_sidecar,
+        "write-native-sidecar": cmd_write_native_sidecar,
         "translate-position": cmd_translate_position,
         "translate-positions": cmd_translate_positions,
         "translate-native-position": cmd_translate_native_position,

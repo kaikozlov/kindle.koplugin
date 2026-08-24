@@ -1450,8 +1450,8 @@ describe("ReadingStateSync", function()
             setupPluginSettings(sync)
 
             local orig_write, write_log = mockWriteKindleState(sync)
-            local orig_update = sync.updateYjrPosition
-            sync.updateYjrPosition = function() end -- no-op in test
+            
+             -- no-op in test
 
             local ds = createMockDocSettings("/cache/book.epub", {
                 percent_finished = 0.75,
@@ -1469,7 +1469,7 @@ describe("ReadingStateSync", function()
             assert.equals("reading", write_log[1].status)
 
             restoreWriteKindleState(sync, orig_write)
-            sync.updateYjrPosition = orig_update
+            
         end)
 
         it("should handle 0% progress without crash", function()
@@ -1478,8 +1478,8 @@ describe("ReadingStateSync", function()
             setupPluginSettings(sync)
 
             local orig_write, write_log = mockWriteKindleState(sync)
-            local orig_update = sync.updateYjrPosition
-            sync.updateYjrPosition = function() end
+            
+            
 
             local ds = createMockDocSettings("/cache/book.epub", {
                 percent_finished = 0,
@@ -1494,7 +1494,7 @@ describe("ReadingStateSync", function()
             assert.equals(37, write_log[1].percent)
 
             restoreWriteKindleState(sync, orig_write)
-            sync.updateYjrPosition = orig_update
+            
         end)
 
         it("should handle 100% complete status", function()
@@ -1503,8 +1503,8 @@ describe("ReadingStateSync", function()
             setupPluginSettings(sync)
 
             local orig_write, write_log = mockWriteKindleState(sync)
-            local orig_update = sync.updateYjrPosition
-            sync.updateYjrPosition = function() end
+            
+            
 
             local ds = createMockDocSettings("/cache/book.epub", {
                 percent_finished = 1.0,
@@ -1521,7 +1521,7 @@ describe("ReadingStateSync", function()
             assert.equals("complete", write_log[1].status)
 
             restoreWriteKindleState(sync, orig_write)
-            sync.updateYjrPosition = orig_update
+            
         end)
 
         it("should default to reading status when summary is nil", function()
@@ -1530,8 +1530,8 @@ describe("ReadingStateSync", function()
             setupPluginSettings(sync)
 
             local orig_write, write_log = mockWriteKindleState(sync)
-            local orig_update = sync.updateYjrPosition
-            sync.updateYjrPosition = function() end
+            
+            
 
             local ds = createMockDocSettings("/cache/book.epub", {
                 percent_finished = 0.42,
@@ -1547,7 +1547,7 @@ describe("ReadingStateSync", function()
             assert.equals("reading", write_log[1].status)
 
             restoreWriteKindleState(sync, orig_write)
-            sync.updateYjrPosition = orig_update
+            
         end)
     end)
 
@@ -1726,8 +1726,8 @@ describe("ReadingStateSync", function()
             })
 
             local orig_write, write_log = mockWriteKindleState(sync)
-            local orig_update = sync.updateYjrPosition
-            sync.updateYjrPosition = function() end
+            
+            
 
             local DocSettings = require("docsettings")
             DocSettings:_setSidecarFile("/mnt/us/documents/Throne of Glass_B007N6JEII.kfx", true)
@@ -1742,12 +1742,12 @@ describe("ReadingStateSync", function()
             assert.is_true(result)
             assert.equals(1, #write_log)
             -- A raw KFX DocSettings path has no EPUB position anchors, so
-            -- manual sync correctly uses the percentage/YJR path.
+            -- manual sync correctly updates only the catalog percentage.
             assert.equals(85, write_log[1].percent)
 
             restoreReadKindleState(sync, orig_read)
             restoreWriteKindleState(sync, orig_write)
-            sync.updateYjrPosition = orig_update
+            
             DocSettings:_clearSidecars()
         end)
 
@@ -1856,8 +1856,8 @@ describe("ReadingStateSync", function()
             })
 
             local orig_write, write_log = mockWriteKindleState(sync)
-            local orig_update = sync.updateYjrPosition
-            sync.updateYjrPosition = function() end
+            
+            
 
             local DocSettings = require("docsettings")
             DocSettings:_setSidecarFile("/mnt/us/documents/Throne of Glass_B007N6JEII.kfx", true)
@@ -1873,7 +1873,7 @@ describe("ReadingStateSync", function()
 
             restoreReadKindleState(sync, orig_read)
             restoreWriteKindleState(sync, orig_write)
-            sync.updateYjrPosition = orig_update
+            
             DocSettings:_clearSidecars()
         end)
 
@@ -1978,8 +1978,8 @@ describe("ReadingStateSync", function()
             })
 
             local orig_write = mockWriteKindleState(sync)
-            local orig_update = sync.updateYjrPosition
-            sync.updateYjrPosition = function() end
+            
+            
 
             local DocSettings = require("docsettings")
             DocSettings:_setSidecarFile("KINDLE_VIRTUAL://B007N6JEII/Book.epub", true)
@@ -1994,7 +1994,7 @@ describe("ReadingStateSync", function()
 
             restoreReadKindleState(sync, orig_read)
             restoreWriteKindleState(sync, orig_write)
-            sync.updateYjrPosition = orig_update
+            
             DocSettings:_clearSidecars()
         end)
 

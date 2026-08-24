@@ -97,6 +97,30 @@ def _decode_long_position(eid, offset):
     return base64.b64encode(raw).decode("ascii")
 
 
+def _descendant_text_length(element):
+    total = len(element.text or "")
+    for child in list(element):
+        total += _descendant_text_length(child)
+        total += len(child.tail or "")
+    return total
+
+
+def native_position_percent(epub_path, pid):
+    """Return Kindle's position-space percentage for one converted EPUB PID."""
+    max_pid = 0
+    with zipfile.ZipFile(epub_path) as epub:
+        for document_path in _read_spine(epub):
+            document = ElementTree.fromstring(epub.read(document_path))
+            for element in document.iter():
+                base_pid = element.get("data-kfx-pid")
+                if base_pid is None:
+                    continue
+                end_pid = int(base_pid) + max(1, _descendant_text_length(element))
+                max_pid = max(max_pid, end_pid)
+    if max_pid <= 0:
+        raise PositionTranslationError("EPUB has no KFX position range")
+    return min(100.0, max(0.0, float(pid) * 100.0 / max_pid))
+
 def translate_xpointer(epub_path, xpointer):
     match = _XPOINTER_RE.match(xpointer or "")
     if not match:
@@ -170,6 +194,8 @@ def translate_xpointer(epub_path, xpointer):
 def translate_pair(epub_path, start_xpointer, end_xpointer):
     start = translate_xpointer(epub_path, start_xpointer)
     end = translate_xpointer(epub_path, end_xpointer)
+    start["percent"] = native_position_percent(epub_path, start["pid"])
+    end["percent"] = native_position_percent(epub_path, end["pid"])
     return {"start": start, "end": end}
 
 
@@ -267,5 +293,6 @@ def translate_native_position(epub_path, long_position):
                     "eid_offset": eid_offset,
                     "pid": verified["pid"],
                     "long": long_position,
+                    "percent": native_position_percent(epub_path, verified["pid"]),
                 }
     raise PositionTranslationError("native KFX element is missing from EPUB")

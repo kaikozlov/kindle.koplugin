@@ -125,23 +125,6 @@ function HelperClient:convert(input_path, output_path)
     return result, err
 end
 
-function HelperClient:position(yjr_path, old_percent, new_percent)
-    local result, err = self:_run({
-        self:getBinaryPath(),
-        "position",
-        "--yjr", yjr_path,
-        "--old-percent", string.format("%.4f", old_percent),
-        "--new-percent", string.format("%.4f", new_percent),
-    })
-    if result then
-        if result.ok then
-            logger.info("KindlePlugin: position update succeeded, erl:", result.erl)
-        else
-            logger.warn("KindlePlugin: position update failed:", result.message)
-        end
-    end
-    return result, err
-end
 
 --- Translate a KOReader XPointer into Kindle's exact long and short position.
 function HelperClient:translatePosition(epub_path, xpointer)
@@ -186,9 +169,9 @@ local function readableFile(path)
     return true
 end
 
---- Whether the exact ReaderSDK bridge is usable for this native book.
---- Older Kindle firmware and personal documents may still use the legacy
---- percentage/YJR synchronization path even when this returns false.
+--- Whether an exact Kindle coordinate backend is usable for this native book.
+--- The bundled helper edits Reader Data Store sidecars directly; the Java
+--- ReaderSDK agent remains a compatibility fallback when available.
 function HelperClient:nativeProgressAvailable(asin, native_path)
     if type(asin) ~= "string" or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$")
         or type(native_path) ~= "string"
@@ -211,10 +194,11 @@ function HelperClient:nativeProgressAvailable(asin, native_path)
     end
 
     local plugin = self:getPluginPath()
-    return readableFile("/usr/java/bin/java")
-        and readableFile(plugin .. "/bin/sync-native-progress")
-        and readableFile(plugin .. "/bin/native-reading-progress-agent-v6.jar")
-        and readableFile(plugin .. "/bin/classes/AttachLauncher.class")
+    return readableFile(self:getBinaryPath())
+        or (readableFile("/usr/java/bin/java")
+            and readableFile(plugin .. "/bin/sync-native-progress")
+            and readableFile(plugin .. "/bin/native-reading-progress-agent-v6.jar")
+            and readableFile(plugin .. "/bin/classes/AttachLauncher.class"))
 end
 
 local function readNativeProgressResult(request_id, asin)
@@ -238,7 +222,7 @@ local function readNativeProgressResult(request_id, asin)
     return values
 end
 
---- Save an exact position through the native Kindle ReaderSDK.
+--- Save an exact position through the Kindle Reader Data Store or ReaderSDK.
 function HelperClient:saveNativeProgress(asin, native_path, position)
     if type(asin) ~= "string" or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$") then
         return false, "invalid ASIN"
@@ -254,6 +238,32 @@ function HelperClient:saveNativeProgress(asin, native_path, position)
     end
     if self.native_progress_runner then
         return self.native_progress_runner(asin, native_path, position)
+    end
+
+    if type(position.percent) == "number"
+        and position.percent >= 0 and position.percent <= 100
+    then
+        local direct = self:_run({
+            self:getBinaryPath(),
+            "write-native-sidecar",
+            "--input",
+            native_path,
+            "--long",
+            position.long,
+            "--pid",
+            tostring(position.pid),
+        })
+        if direct and direct.ok
+            and direct.long == position.long
+            and tonumber(direct.pid) == position.pid
+        then
+            logger.info("KindlePlugin: exact sidecar position saved:", asin, position.pid)
+            return true, nil, position.percent, {
+                long = direct.long,
+                pid = tonumber(direct.pid),
+                percent = position.percent,
+            }
+        end
     end
 
     local request_id = tostring(os.time()) .. tostring(math.random(100000, 999999))
@@ -310,6 +320,23 @@ function HelperClient:readNativeProgress(asin, native_path)
     end
     if self.native_progress_reader then
         return self.native_progress_reader(asin, native_path)
+    end
+
+    local direct = self:_run({
+        self:getBinaryPath(),
+        "read-native-sidecar",
+        "--input",
+        native_path,
+    })
+    if direct and direct.ok
+        and type(direct.long) == "string"
+        and tonumber(direct.pid)
+    then
+        return {
+            long = direct.long,
+            pid = tonumber(direct.pid),
+            timestamp_ms = tonumber(direct.timestamp_ms),
+        }
     end
     local request_id = tostring(os.time()) .. tostring(math.random(100000, 999999))
     local payload_path = "/tmp/kindle-progress-" .. request_id .. ".properties"
