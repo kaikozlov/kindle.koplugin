@@ -16,11 +16,24 @@ function KindleLibrary:new(virtual_library, cache_manager)
         cache_manager = cache_manager,
         ui = nil,
         booklist_menu = nil,
+        return_to_library_request = nil,
     }, self)
 end
 
 function KindleLibrary:setUI(ui)
     self.ui = ui
+end
+
+function KindleLibrary:requestReturnToLibrary(origin_path)
+    self.return_to_library_request = {
+        origin_path = origin_path,
+    }
+end
+
+function KindleLibrary:takeReturnToLibraryRequest()
+    local request = self.return_to_library_request
+    self.return_to_library_request = nil
+    return request
 end
 
 local function showInfo(text, timeout)
@@ -126,7 +139,15 @@ function KindleLibrary:openItem(item)
     -- confirmation has been accepted.
     logger.info("KindlePlugin: requesting native open for:", book.source_path)
     local close_callback = self.booklist_menu and self.booklist_menu.close_callback or nil
-    filemanagerutil.openFile(self.ui, book.source_path, close_callback)
+    filemanagerutil.openFile(self.ui, book.source_path, function()
+        -- This callback runs only after confirmation and cache preparation
+        -- succeed, immediately before KOReader opens the real document.
+        local file_chooser = self.ui and self.ui.file_chooser
+        self:requestReturnToLibrary(file_chooser and file_chooser.path or nil)
+        if close_callback then
+            close_callback()
+        end
+    end)
     return true
 end
 

@@ -115,6 +115,28 @@ function KindlePlugin:init()
             local FileChooser = require("ui/widget/filechooser")
             FileChooserExt:init(virtual_library, kindle_library)
             FileChooserExt:apply(FileChooser)
+            local return_request = kindle_library:takeReturnToLibraryRequest()
+            if return_request then
+                local filemanager_ui = self.ui
+                filemanager_ui:registerPostInitCallback(function()
+                    local origin_path = return_request["origin_path"]
+                    if type(origin_path) == "string"
+                        and filemanager_ui.file_chooser
+                        and filemanager_ui.file_chooser.changeToPath
+                    then
+                        filemanager_ui.file_chooser:changeToPath(origin_path)
+                    end
+                    UIManager:nextTick(function()
+                        local FileManager = require("apps/filemanager/filemanager")
+                        if FileManager.instance ~= filemanager_ui then
+                            return
+                        end
+                        logger.info("KindlePlugin: returning to native Kindle Library")
+                        kindle_library:setUI(filemanager_ui)
+                        kindle_library:show(filemanager_ui, false)
+                    end)
+                end)
+            end
         end
     end
 end

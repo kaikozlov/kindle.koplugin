@@ -69,6 +69,37 @@ describe("KindleLibrary native BookList opens", function()
         -- open_file_ext owns preparation after KOReader's optional confirmation.
     end)
 
+    it("requests a library return only when native open begins", function()
+        local book = {
+            id = "kfx",
+            source_path = "/mnt/us/documents/book.kfx",
+            open_mode = "convert",
+        }
+        local manager = makeManager(book)
+        manager.ui.file_chooser = { path = "/mnt/us" }
+        local before_open
+        local closed = 0
+        manager.booklist_menu = {
+            close_callback = function()
+                closed = closed + 1
+            end,
+        }
+        filemanagerutil.openFile = function(_, _, callback)
+            before_open = callback
+        end
+
+        manager:openItem({ kindle_book_id = "kfx" })
+
+        assert.is_function(before_open)
+        assert.is_nil(manager:takeReturnToLibraryRequest())
+        before_open()
+        assert.equals(1, closed)
+        assert.same({
+            origin_path = "/mnt/us",
+        }, manager:takeReturnToLibraryRequest())
+        assert.is_nil(manager:takeReturnToLibraryRequest())
+    end)
+
     it("never forwards a blocked/cloud-only entry to KOReader", function()
         local book = {
             id = "cloud",
