@@ -5,6 +5,7 @@ local UIManager = require("ui/uimanager")
 local filemanagerutil = require("apps/filemanager/filemanagerutil")
 local logger = require("logger")
 local _ = require("gettext")
+local CoverBrowserExt = require("lua/coverbrowser_ext")
 local T = require("ffi/util").template
 
 local KindleLibrary = {}
@@ -106,6 +107,9 @@ function KindleLibrary:show(ui, force)
             manager:show(manager.ui, true)
         end,
     })
+    if CoverBrowserExt.apply(self.booklist_menu) then
+        logger.info("KindlePlugin: Kindle Library uses a CoverBrowser display mode")
+    end
     self.booklist_menu.close_callback = function()
         manager:close()
     end

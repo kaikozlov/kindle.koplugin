@@ -224,9 +224,18 @@ function VirtualLibrary:getBookEntries(force)
         local title = sanitizeDisplayName(book.display_name or book.title or book.id)
         local authors = book.authors and table.concat(book.authors, ", ") or ""
         local mandatory = authors ~= "" and authors or util.getFriendlySize(book.source_size or 0)
+        -- A fresh cached EPUB gives CoverBrowser a real provider-backed path
+        -- for cover/metadata extraction; unprepared books keep the Kindle
+        -- source path and render the placeholder cover.
+        local entry_file = book.source_path or ""
+        if book.open_mode ~= "blocked" and book.open_mode ~= "direct"
+            and self.cache_manager and self:isBookPrepared(book)
+        then
+            entry_file = self.cache_manager:getCachePaths(book) or entry_file
+        end
         table.insert(entries, {
             text = title,
-            file = book.source_path or "",
+            file = entry_file,
             path = book.source_path or "",
             attr = { mode = "file", size = book.source_size or 0 },
             mandatory = mandatory,
