@@ -26,25 +26,6 @@ local SyncDecisionMaker = require("lua/lib/sync_decision_maker")
 local ReadingStateSync = {}
 
 ---
---- Extracts book cdeKey (ASIN or PDOC hash) from virtual path.
---- @param virtual_path string: Virtual path in format KINDLE_VIRTUAL://BOOKID/filename.
---- @return string|nil: Book cdeKey if extracted.
-local function extractCdeKeyFromVirtualPath(virtual_path)
-    if not virtual_path or not virtual_path:match("^KINDLE_VIRTUAL://") then
-        return nil
-    end
-
-    -- Extract book ID from virtual path
-    local book_id = virtual_path:match("^KINDLE_VIRTUAL://([^/]+)/")
-    if book_id then
-        logger.dbg("KindlePlugin: Extracted book ID from virtual path:", book_id)
-        return book_id
-    end
-
-    return nil
-end
-
----
 --- Extracts ASIN from a file path like .../Throne of Glass_B007N6JEII.kfx
 --- @param file_path string: Real file path on device.
 --- @return string|nil: ASIN if found.
@@ -71,15 +52,7 @@ local function extractCdeKeyFromDocPath(doc_settings)
         return nil
     end
 
-    local doc_path = doc_settings.data.doc_path
-    -- Try extracting from virtual path
-    local book_id = extractCdeKeyFromVirtualPath(doc_path)
-    if book_id then
-        return book_id
-    end
-
-    -- Try extracting ASIN from filename pattern like _B007N6JEII.kfx
-    local asin = extractCdeKeyFromPath(doc_path)
+    local asin = extractCdeKeyFromPath(doc_settings.data.doc_path)
     if asin then
         logger.dbg("KindlePlugin: Extracted ASIN from doc_path:", asin)
         return asin
@@ -333,21 +306,17 @@ function ReadingStateSync:isAutomaticSyncEnabled()
 end
 
 ---
---- Extracts book cdeKey from various path formats.
---- @param virtual_path string|nil: Virtual path to check.
+--- Extracts book cdeKey from a real document path.
+--- @param source_path string|nil: Kindle source or cached EPUB path.
 --- @param doc_settings table|nil: Document settings instance.
 --- @return string|nil: Book cdeKey if extraction succeeds.
-function ReadingStateSync:extractCdeKey(virtual_path, doc_settings)
-    if not virtual_path and not doc_settings then
+function ReadingStateSync:extractCdeKey(source_path, doc_settings)
+    if not source_path and not doc_settings then
         return nil
     end
 
-    local cde_key = extractCdeKeyFromVirtualPath(virtual_path)
-    if cde_key then
-        return cde_key
-    end
-
-    cde_key = extractCdeKeyFromDocPath(doc_settings)
+    local cde_key = extractCdeKeyFromPath(source_path)
+        or extractCdeKeyFromDocPath(doc_settings)
     if cde_key then
         return cde_key
     end
@@ -649,21 +618,12 @@ local function getKOReaderTimestampFromHistory(doc_path)
         return 0
     end
 
-    local book_id_from_virtual = nil
-    if doc_path:match("^KINDLE_VIRTUAL://") then
-        book_id_from_virtual = doc_path:match("^KINDLE_VIRTUAL://([^/]+)/")
-    end
-
     for _, entry in ipairs(ReadHistory.hist) do
         if not entry.file then
             goto continue
         end
 
         if entry.file == doc_path then
-            return entry.time or 0
-        end
-
-        if book_id_from_virtual and entry.file:match(book_id_from_virtual) then
             return entry.time or 0
         end
 

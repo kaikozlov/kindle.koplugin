@@ -104,16 +104,7 @@ describe("VirtualLibrary real-path model", function()
         local result = vlib:buildMappings(false)
         assert.equals(1, #result)
         assert.equals(book, vlib:getBook("cc:cloud"))
-        assert.is_nil(vlib:getRealPath("KINDLE_VIRTUAL://cc:cloud/Cloud.epub"))
-    end)
-
-    it("uses KINDLE_VIRTUAL only as a legacy migration identifier", function()
-        local book = { id = "b1", display_name = "A/B", logical_ext = "epub" }
-        local vlib = VirtualLibrary:new({})
-        local legacy = vlib:generateVirtualPath(book)
-        assert.equals("KINDLE_VIRTUAL://b1/A B.epub", legacy)
-        assert.is_true(vlib:isVirtualPath(legacy))
-        assert.equals("b1", vlib:getBookId(legacy))
+        assert.is_nil(vlib:getRealPath("cc:unknown"))
     end)
 
     it("creates a synthetic folder entry whose path remains a real directory", function()

@@ -6,15 +6,11 @@ local _ = require("gettext")
 
 -- Kindle library model.
 --
--- Historical releases exposed KINDLE_VIRTUAL:// paths to KOReader and then
--- patched filesystem/document APIs to make those paths look real.  Keep the
--- legacy path helpers only for migration/compatibility; KOReader-facing code
--- now uses real source paths or prepared cached EPUB paths exclusively.
+-- KOReader only ever sees real document paths: Kindle source files or the
+-- plugin's cached converted EPUBs.
 local VirtualLibrary = {}
 VirtualLibrary.__index = VirtualLibrary
 
-VirtualLibrary.LEGACY_VIRTUAL_PATH_PREFIX = "KINDLE_VIRTUAL://"
-VirtualLibrary.VIRTUAL_PATH_PREFIX = VirtualLibrary.LEGACY_VIRTUAL_PATH_PREFIX
 VirtualLibrary.VIRTUAL_LIBRARY_NAME = "Kindle Library"
 
 function VirtualLibrary:new(library_index)
@@ -52,23 +48,6 @@ local function sanitizeDisplayName(name)
     return cleaned ~= "" and cleaned or "Untitled"
 end
 
-function VirtualLibrary:generateVirtualPath(book)
-    local filename = sanitizeDisplayName(book.display_name or book.title or book.id)
-    local logical_ext = book.logical_ext or book.format or "bin"
-    return self.LEGACY_VIRTUAL_PATH_PREFIX .. book.id .. "/" .. filename .. "." .. logical_ext
-end
-
-function VirtualLibrary:isVirtualPath(path)
-    return type(path) == "string"
-        and path:sub(1, #self.LEGACY_VIRTUAL_PATH_PREFIX) == self.LEGACY_VIRTUAL_PATH_PREFIX
-end
-
-function VirtualLibrary:getBookId(path)
-    if not self:isVirtualPath(path) then
-        return nil
-    end
-    return path:match("^KINDLE_VIRTUAL://([^/]+)/")
-end
 
 function VirtualLibrary:buildMappings(force)
     self.mapping_attempted = true
@@ -123,11 +102,6 @@ function VirtualLibrary:getBook(path_or_id)
         return book
     end
 
-    local legacy_id = self:getBookId(path_or_id)
-    if legacy_id and self.books_by_id[legacy_id] then
-        return self.books_by_id[legacy_id]
-    end
-
     -- Reader startup, History, and Collections can reach us before the Kindle
     -- list has ever been opened in this process. Rebuild lazily only for paths
     -- that can plausibly belong to this plugin; the global open resolver must
@@ -137,43 +111,22 @@ function VirtualLibrary:getBook(path_or_id)
         cache_dir = self.cache_manager:getCacheDir()
     end
     local documents_root = self.settings.documents_root or "/mnt/us/documents"
-    local should_build = legacy_id ~= nil
-        or (type(path_or_id) == "string"
-            and (path_or_id:match("^cc:")
-                or path_or_id:match("^sha1:")
-                or isPathWithin(path_or_id, cache_dir)
-                or isPathWithin(path_or_id, documents_root)))
+    local should_build = type(path_or_id) == "string"
+        and (path_or_id:match("^cc:")
+            or path_or_id:match("^sha1:")
+            or isPathWithin(path_or_id, cache_dir)
+            or isPathWithin(path_or_id, documents_root))
     if not self.mapping_attempted and should_build then
         local books = self:buildMappings(false)
         if books then
             return self.books_by_id[path_or_id]
                 or self.books_by_real_path[path_or_id]
-                or (legacy_id and self.books_by_id[legacy_id])
         end
     end
 
     return nil
 end
 
-function VirtualLibrary:getVirtualPath(real_path)
-    local book = self:getBook(real_path)
-    return book and self:generateVirtualPath(book) or nil
-end
-
-function VirtualLibrary:getCanonicalPath(path)
-    -- Compatibility helper for legacy callers/tests. Real paths are canonical.
-    local book = self:getBook(path)
-    if not book then
-        return path
-    end
-    if book.open_mode == "direct" then
-        return book.source_path or path
-    end
-    if self.cache_manager then
-        return self.cache_manager:getCachePaths(book) or path
-    end
-    return path
-end
 
 function VirtualLibrary:getRealPath(path)
     local book = self:getBook(path)
@@ -251,7 +204,6 @@ function VirtualLibrary:createVirtualFolderEntry(parent_path)
         path = parent_path or Device.home_dir or "/",
         attr = { mode = "directory" },
         is_kindle_library_folder = true,
-        is_kindle_virtual_folder = true, -- compatibility with older specs
         bidi_wrap_func = BD.directory,
     }
     if self.settings.virtual_library_cover_path

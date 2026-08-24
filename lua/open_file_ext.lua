@@ -20,13 +20,11 @@ local OpenFileExt = {
     original_open_file = nil,
     virtual_library = nil,
     cache_manager = nil,
-    legacy_sidecar_migration = nil,
 }
 
-function OpenFileExt:init(virtual_library, cache_manager, legacy_sidecar_migration)
+function OpenFileExt:init(virtual_library, cache_manager)
     self.virtual_library = virtual_library
     self.cache_manager = cache_manager
-    self.legacy_sidecar_migration = legacy_sidecar_migration
 end
 
 local function showFailure(text)
@@ -91,9 +89,6 @@ function OpenFileExt:prepareKnownKindlePath(file)
         end
     end
 
-    if self.legacy_sidecar_migration then
-        self.legacy_sidecar_migration:migrate(book, file)
-    end
     return file
 end
 

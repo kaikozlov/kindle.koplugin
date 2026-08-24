@@ -51,7 +51,6 @@ describe("OpenFileExt real-path cache refresh", function()
         }
         local refreshes = 0
         local resolves = 0
-        local migrations = 0
         local virtual_library = {
             getBook = function(_, path)
                 if path == "/cache/book.epub" or path == book.source_path then
@@ -72,13 +71,6 @@ describe("OpenFileExt real-path cache refresh", function()
             getCachePaths = function() return "/cache/book.epub", "/cache/book.json" end,
             isFresh = function() return false, "/cache/book.epub", "/cache/book.json" end,
         }
-        local migration = {
-            migrate = function(_, migrated_book, path)
-                assert.equals(book, migrated_book)
-                assert.equals("/cache/book.epub", path)
-                migrations = migrations + 1
-            end,
-        }
         local delegated
         local callback = function() end
         filemanagerutil.openFile = function(ui, path, pre_callback, no_dialog)
@@ -86,7 +78,7 @@ describe("OpenFileExt real-path cache refresh", function()
             return "delegated"
         end
 
-        OpenFileExt:init(virtual_library, cache_manager, migration)
+        OpenFileExt:init(virtual_library, cache_manager)
         OpenFileExt:apply()
         local ui = { marker = true }
         local result = filemanagerutil.openFile(ui, "/cache/book.epub", callback, true)
@@ -95,7 +87,6 @@ describe("OpenFileExt real-path cache refresh", function()
         assert.same({ ui, "/cache/book.epub", callback, true }, delegated)
         assert.equals(1, refreshes)
         assert.equals(1, resolves)
-        assert.equals(1, migrations)
     end)
 
     it("trusts CacheManager source stat checks without rescanning an existing source", function()

@@ -300,15 +300,15 @@ describe("ReadingStateSync", function()
     -- extractCdeKey
     -- ========================================================================
     describe("extractCdeKey", function()
-        it("should extract from virtual path", function()
+        it("should extract from a real source path", function()
             local sync = ReadingStateSync:new()
-            local key = sync:extractCdeKey("KINDLE_VIRTUAL://B007N6JEII/Book.epub")
+            local key = sync:extractCdeKey("/mnt/us/documents/Book_B007N6JEII.kfx")
             assert.equals("B007N6JEII", key)
         end)
 
-        it("should extract from doc_settings doc_path (virtual)", function()
+        it("should extract from doc_settings doc_path", function()
             local sync = ReadingStateSync:new()
-            local doc_settings = createMockDocSettings("KINDLE_VIRTUAL://B008PL1YQ0/book.epub")
+            local doc_settings = createMockDocSettings("/mnt/us/documents/Throne of Glass_B008PL1YQ0.kfx")
             local key = sync:extractCdeKey(nil, doc_settings)
             assert.equals("B008PL1YQ0", key)
         end)
@@ -327,10 +327,10 @@ describe("ReadingStateSync", function()
             assert.equals("5AFAFAA13FFE43ECBE78F0FF3761814C", key)
         end)
 
-        it("should prefer virtual_path over doc_settings", function()
+        it("should prefer the supplied path over doc_settings", function()
             local sync = ReadingStateSync:new()
             local doc_settings = createMockDocSettings("/mnt/us/documents/Some_Book_B009NG3090.kfx")
-            local key = sync:extractCdeKey("KINDLE_VIRTUAL://B007N6JEII/Book.epub", doc_settings)
+            local key = sync:extractCdeKey("/mnt/us/documents/Other_Book_B007N6JEII.kfx", doc_settings)
             assert.equals("B007N6JEII", key)
         end)
 
@@ -1965,26 +1965,24 @@ describe("ReadingStateSync", function()
     -- syncBidirectional — virtual path matching
     -- ========================================================================
     describe("syncBidirectional — path matching", function()
-        it("should match virtual path to ReadHistory via book ID", function()
+        it("should match a real source path to ReadHistory", function()
             local sync = ReadingStateSync:new()
             sync:setEnabled(true)
             setupPluginSettings(sync)
 
             local orig_read = mockReadKindleState(sync, {
-                percent_read = 40,
+                percent_read = 10,
                 timestamp = 1762600000, -- older than ReadHistory
                 status = "reading",
                 kindle_status = 1,
             })
 
             local orig_write = mockWriteKindleState(sync)
-            
-            
 
             local DocSettings = require("docsettings")
-            DocSettings:_setSidecarFile("KINDLE_VIRTUAL://B007N6JEII/Book.epub", true)
+            DocSettings:_setSidecarFile("/mnt/us/documents/Throne of Glass_B007N6JEII.kfx", true)
 
-            local ds = createMockDocSettings("KINDLE_VIRTUAL://B007N6JEII/Book.epub", {
+            local ds = createMockDocSettings("/mnt/us/documents/Throne of Glass_B007N6JEII.kfx", {
                 percent_finished = 0.6,
                 summary = { status = "reading" },
             })
@@ -1994,11 +1992,10 @@ describe("ReadingStateSync", function()
 
             restoreReadKindleState(sync, orig_read)
             restoreWriteKindleState(sync, orig_write)
-            
             DocSettings:_clearSidecars()
         end)
 
-        it("should handle virtual paths with no matching history gracefully", function()
+        it("should handle paths with no matching history gracefully", function()
             local sync = ReadingStateSync:new()
             sync:setEnabled(true)
             setupPluginSettings(sync)
@@ -2010,7 +2007,7 @@ describe("ReadingStateSync", function()
                 kindle_status = 1,
             })
 
-            local ds = createMockDocSettings("KINDLE_VIRTUAL://UNKNOWN123/nonexistent.epub", {
+            local ds = createMockDocSettings("/tmp/nonexistent_UNKNOWN123.epub", {
                 percent_finished = 0.3,
                 summary = { status = "reading" },
             })

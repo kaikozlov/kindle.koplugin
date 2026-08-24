@@ -18,7 +18,6 @@ local CacheManager = require("lua/cache_manager")
 local FileChooserExt = require("lua/filechooser_ext")
 local HelperClient = require("lua/helper_client")
 local KindleLibrary = require("lua/kindle_library")
-local LegacySidecarMigration = require("lua/legacy_sidecar_migration")
 local LibraryIndex = require("lua/library_index")
 local OpenFileExt = require("lua/open_file_ext")
 local ReadingStateSync = require("lua/reading_state_sync")
@@ -66,7 +65,6 @@ local library_index = LibraryIndex:new(helper_client)
 local virtual_library = VirtualLibrary:new(library_index)
 local cache_manager = CacheManager:new(helper_client, virtual_library)
 local reading_state_sync = ReadingStateSync:new(helper_client)
-local legacy_sidecar_migration = LegacySidecarMigration:new(virtual_library)
 local kindle_library = KindleLibrary:new(virtual_library, cache_manager)
 virtual_library:setCacheManager(cache_manager)
 reading_state_sync:setVirtualLibrary(virtual_library)
@@ -105,7 +103,7 @@ function KindlePlugin:init()
     -- initialized, so installing this small reversible class hook here keeps
     -- PathChooser/ReaderUI/DocumentRegistry entirely native.
     if self.settings.enable_virtual_library ~= false or self.settings.sync_reading_state then
-        OpenFileExt:init(virtual_library, cache_manager, legacy_sidecar_migration)
+        OpenFileExt:init(virtual_library, cache_manager)
         OpenFileExt:apply()
     end
     if self.settings.enable_virtual_library ~= false then
@@ -387,10 +385,10 @@ end
 function KindlePlugin:loadSettings()
     self.settings = G_reader_settings:readSetting(self.settings_key) or {}
 
-    -- Older releases allowed the synthetic URI to become KOReader's HOME.
-    -- It is no longer a filesystem path, so repair that setting once.
+    -- v0.0.4 and earlier could persist the legacy synthetic URI as KOReader's
+    -- HOME. It is not a filesystem path, so repair that setting.
     local home_dir = G_reader_settings:readSetting("home_dir")
-    if virtual_library:isVirtualPath(home_dir) then
+    if type(home_dir) == "string" and home_dir:sub(1, 17) == "KINDLE_VIRTUAL://" then
         G_reader_settings:saveSetting("home_dir", Device.home_dir)
     end
 
