@@ -199,6 +199,28 @@ func TestRenderSectionFragmentsSelectsActiveConditionalTemplateForFixedLayout(t 
 	}
 }
 
+func TestPromotedBodyContainerDoesNotPromoteSemanticContainers(t *testing.T) {
+	for _, nodeType := range []string{"table", "list"} {
+		nodes := []interface{}{map[string]interface{}{
+			"type": nodeType,
+			"style": "s1",
+			"content_list": []interface{}{map[string]interface{}{"content": "child"}},
+		}}
+		if _, _, ok, _, _ := promotedBodyContainer(nodes, nil); ok {
+			t.Fatalf("semantic %s node must remain a child of body", nodeType)
+		}
+	}
+
+	nodes := []interface{}{map[string]interface{}{
+		"type": "container",
+		"style": "s1",
+		"content_list": []interface{}{map[string]interface{}{"content": "child"}},
+	}}
+	if _, _, ok, _, _ := promotedBodyContainer(nodes, nil); !ok {
+		t.Fatal("generic container should remain eligible for body promotion")
+	}
+}
+
 func TestRenderNodeSupportsListsAndRules(t *testing.T) {
 	renderer := storylineRenderer{
 		contentFragments: map[string][]string{"content": []string{"First", "Second"}},

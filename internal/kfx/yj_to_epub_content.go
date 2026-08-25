@@ -7169,9 +7169,10 @@ func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[st
 	styleID, _ := asString(node["style"])
 	nodeID, _ := asInt(node["id"])
 
-	// Case 1: Container node with content_list children.
-	// Python's process_content creates a <div> that is_top_level renames to <body>.
-	if children, ok := asSlice(node["content_list"]); ok && len(children) > 0 && styleID != "" {
+	// Case 1: Generic container node with content_list children. A semantic table/list/etc.
+	// is not the page-template <div> and must remain a child of body.
+	nodeType, _ := asString(node["type"])
+	if children, ok := asSlice(node["content_list"]); ok && len(children) > 0 && styleID != "" && (nodeType == "" || nodeType == "container") {
 		if _, ok := asMap(node["content"]); !ok {
 			if _, ok := asString(node["resource_name"]); !ok {
 				return styleID, children, true, false, nodeID // container: use renderNode
