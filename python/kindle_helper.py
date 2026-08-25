@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
-"""Kindle Helper — Python replacement for the Go kindle-helper binary.
-
-Exposes the same CLI interface and JSON-over-stdout protocol so the Lua
-plugin layer doesn't need any changes.  Subcommands: scan, convert, cover,
-decrypt, position.
+"""Self-contained Kindle helper for KFX conversion and per-book DRM access.
 
 The KFX→EPUB conversion uses kfxlib (John Howell's Calibre KFX Input plugin)
-directly — no Calibre installation required.
-
-DRM handling: DRMION books are decrypted using cached page keys before being
-passed to kfxlib. Device-specific key extraction is exposed through drm-init.
+directly — no Calibre installation required. DRMION books are decrypted using
+cached page keys, with JIT device-specific extraction exposed through
+``extract-key``.
 """
 
 import argparse
 import base64
-import hashlib
 import json
 import os
 import re
@@ -129,53 +123,6 @@ def _find_page_key(kfx_path, cache_dir):
 def _decrypt_drmion(data, page_key):
     """Decrypt a DRMION blob using the shared DeDRM parser."""
     return decrypt_drmion(data, page_key)
-
-
-# ---------------------------------------------------------------------------
-# scan — walk the Kindle document library
-# ---------------------------------------------------------------------------
-
-SUPPORTED_EXTENSIONS = {".kfx", ".azw", ".azw3", ".mobi", ".prc", ".pdf"}
-
-# Directories to skip during scanning.  These contain Kindle system files
-# (dictionaries, active content, firmware assets) that are not user books.
-EXCLUDED_DIRS = {"dictionaries", "system"}
-
-TRAILING_ID_RE = re.compile(r"_(?:[A-Z0-9]{10}|[A-F0-9]{32})$")
-
-
-def _derive_title(filename):
-    name = os.path.splitext(filename)[0]
-    name = TRAILING_ID_RE.sub("", name)
-    name = name.replace("_", " ").strip()
-    return name or "Untitled"
-
-
-def _sha1_hex(text):
-    return hashlib.sha1(text.encode("utf-8")).hexdigest()
-
-
-def _classify_kfx(path):
-    """Classify a KFX file: return (open_mode, block_reason)."""
-    try:
-        with open(path, "rb") as f:
-            header = f.read(8)
-    except OSError:
-        return ("blocked", "cannot_read")
-
-    if header.startswith(DRMION_SIGNATURE):
-        return ("convert", "")
-    if header.startswith(CONT_SIGNATURE):
-        return ("convert", "")
-    return ("blocked", "unknown_format")
-
-
-def _extract_sidecar_metadata(sidecar_dir):
-    """Try to extract title/authors from the .sdr sidecar metadata."""
-    # TODO: implement metadata.kfx parsing if needed.
-    # For now return None — titles come from filenames.
-    return None
-
 
 
 # ---------------------------------------------------------------------------
@@ -308,164 +255,6 @@ def cmd_convert(args):
 
 
 # ---------------------------------------------------------------------------
-# cover — extract cover JPEG from .sdr/assets/metadata.kfx
-# ---------------------------------------------------------------------------
-
-def cmd_cover(args):
-    if not args.sdr_dir:
-        print("cover: --sdr-dir is required", file=sys.stderr)
-        sys.exit(2)
-
-    sdr_dir = args.sdr_dir
-    output = getattr(args, "output", "") or ""
-
-    # Look for metadata.kfx in the sidecar assets
-    cover_data = None
-    for root, dirs, files in os.walk(sdr_dir):
-        for fname in files:
-            if fname == "metadata.kfx":
-                fpath = os.path.join(root, fname)
-                try:
-                    with open(fpath, "rb") as f:
-                        data = f.read()
-                except OSError:
-                    continue
-
-                # Quick scan for JPEG in the metadata.kfx container
-                # JPEG starts with FF D8 FF and ends with FF D9
-                jpeg_start = data.find(b"\xff\xd8\xff")
-                if jpeg_start >= 0:
-                    jpeg_end = data.find(b"\xff\xd9", jpeg_start)
-                    if jpeg_end >= 0:
-                        cover_data = data[jpeg_start:jpeg_end + 2]
-                        break
-        if cover_data:
-            break
-
-    if cover_data is None:
-        exit_json({
-            "version": VERSION,
-            "ok": False,
-            "message": "no cover image found in metadata.kfx",
-        })
-
-    if output:
-        os.makedirs(os.path.dirname(os.path.abspath(output)), exist_ok=True)
-        with open(output, "wb") as f:
-            f.write(cover_data)
-        exit_json({
-            "version": VERSION,
-            "ok": True,
-            "size": len(cover_data),
-        })
-    else:
-        sys.stdout.buffer.write(cover_data)
-
-
-# ---------------------------------------------------------------------------
-# decrypt — DRMION → KFX-zip (for testing / pre-decryption)
-# ---------------------------------------------------------------------------
-
-def cmd_decrypt(args):
-    if not args.input:
-        print("decrypt: --input is required", file=sys.stderr)
-        sys.exit(2)
-    if not args.output:
-        print("decrypt: --output is required", file=sys.stderr)
-        sys.exit(2)
-
-    input_path = args.input
-    output_path = args.output
-    cache_dir = getattr(args, "cache_dir", "") or ""
-
-    with open(input_path, "rb") as f:
-        data = f.read()
-
-    if not data.startswith(DRMION_SIGNATURE):
-        print("decrypt: not a DRMION file", file=sys.stderr)
-        sys.exit(1)
-
-    page_key = _find_page_key(input_path, cache_dir)
-    try:
-        # PlainText-only DRMION envelopes are valid without a cached key.
-        cont_data = _decrypt_drmion(data, page_key)
-    except Exception as e:
-        if page_key is None:
-            print("decrypt: no cached page key found", file=sys.stderr)
-        else:
-            print(f"decrypt: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"decrypted main container: {len(cont_data)} bytes", file=sys.stderr)
-
-    # Collect sidecar blobs
-    sidecar_root = os.path.splitext(input_path)[0] + ".sdr"
-    entries = [("main.kfx", cont_data)]
-
-    if os.path.isdir(sidecar_root):
-        for dirpath, _, filenames in os.walk(sidecar_root):
-            for fn in sorted(filenames):
-                fpath = os.path.join(dirpath, fn)
-                try:
-                    blob = open(fpath, "rb").read()
-                except OSError:
-                    continue
-                rel = os.path.relpath(fpath, sidecar_root)
-                if blob.startswith(CONT_SIGNATURE):
-                    entries.append((rel, blob))
-                elif blob.startswith(DRMION_SIGNATURE):
-                    try:
-                        dec = _decrypt_drmion(blob, page_key)
-                        entries.append((rel, dec))
-                        print(f"decrypted sidecar {rel}: {len(dec)} bytes", file=sys.stderr)
-                    except Exception as e:
-                        print(f"skipping DRMION sidecar {rel}: {e}", file=sys.stderr)
-
-    # Write KFX-zip
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    with zipfile.ZipFile(output_path, "w") as zf:
-        for name, blob in entries:
-            zf.writestr(name, blob)
-
-    print(f"wrote {output_path} with {len(entries)} entries", file=sys.stderr)
-
-
-# ---------------------------------------------------------------------------
-# position — update reading position in .yjr sidecar file
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# drm-init — extract DRM keys from device
-# ---------------------------------------------------------------------------
-
-def cmd_drm_init(args):
-    root = args.root
-    cache_dir = args.cache_dir or ""
-    plugin_dir = args.plugin_dir or ""
-
-    if not plugin_dir:
-        # Script is in dist/, which is the plugin_dir for DRM helpers
-        plugin_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-
-    try:
-        from dedrm.drm_init import run as drm_init_run
-        result = drm_init_run(root, plugin_dir, cache_dir)
-        exit_json({
-            "version": VERSION,
-            "ok": True,
-            "books_found": result["books_found"],
-            "keys_found": result["keys_found"],
-        })
-    except Exception as e:
-        exit_json({
-            "version": VERSION,
-            "ok": False,
-            "code": "drm_init",
-            "message": str(e),
-        })
-
-
-# ---------------------------------------------------------------------------
 # CLI argument parsing
 # ---------------------------------------------------------------------------
 
@@ -573,26 +362,6 @@ def main():
     p_convert.add_argument("--output", required=True)
     p_convert.add_argument("--cache-dir", default="")
 
-    # cover
-    p_cover = sub.add_parser("cover")
-    p_cover.add_argument("--sdr-dir", required=True)
-    p_cover.add_argument("--output", default="")
-
-    # decrypt
-    p_decrypt = sub.add_parser("decrypt")
-    p_decrypt.add_argument("--input", required=True)
-    p_decrypt.add_argument("--output", required=True)
-    p_decrypt.add_argument("--cache-dir", default="")
-
-    # Diagnostic bulk DRM extraction
-    p_drm = sub.add_parser("drm-init")
-    p_drm.add_argument("--root", default="/mnt/us/documents",
-                      help="root directory to scan for DRM books")
-    p_drm.add_argument("--cache-dir", default="",
-                      help="cache directory for drm_keys.json")
-    p_drm.add_argument("--plugin-dir", default="",
-                      help="plugin directory containing lib/ helpers")
-
     p_translates = sub.add_parser("translate-positions")
     p_translates.add_argument("--epub", required=True)
     p_translates.add_argument("--request", required=True)
@@ -618,9 +387,6 @@ def main():
 
     dispatch = {
         "convert": cmd_convert,
-        "cover": cmd_cover,
-        "decrypt": cmd_decrypt,
-        "drm-init": cmd_drm_init,
         "translate-positions": cmd_translate_positions,
         "translate-native-positions": cmd_translate_native_positions,
         "extract-key": cmd_extract_key,

@@ -47,10 +47,10 @@ KOReader only sees **real document paths**. The historical `KINDLE_VIRTUAL://` s
 ┌──────────────────────▼──────────────────────────────┐
 │ kindle-helper (C launcher + bundled ARM CPython)     │
 │ python/kindle_helper.py                              │
-│ KFX conversion / DRM / covers / annotation batches  │
+│ KFX conversion / DRM / annotation batches           │
 │ emits EPUB + text-free exact-position map            │
 └──────────────────────┬──────────────────────────────┘
-                       │ DRM init only
+                       │ JIT key extraction only
 ┌──────────────────────▼──────────────────────────────┐
 │ Kindle firmware services                             │
 │ KFXVoucherExtractor + crypto hook                    │
@@ -186,13 +186,12 @@ The DRM approach uses **on-device key extraction via LD_PRELOAD** with **just-in
 1. Device stores DRM vouchers in `*.sdr/assets/voucher` alongside each `.kfx` file
 2. Device serial available at `/proc/usid`
 3. Account secret (ACSR) stored at `/var/local/java/prefs/acsr`
-4. The `drm-init` command runs the device's `cvm` JVM with an LD_PRELOAD hook that intercepts AES key usage
+4. On a cache miss, `extract-key` runs the device's `cvm` JVM for that book's voucher with an LD_PRELOAD hook that intercepts AES key usage
 5. The hook logs keys to `/mnt/us/crypto_keys.log`
 6. A tiny Java class (`KFXVoucherExtractor.jar`) exercises the DRM SDK, triggering key usage
-7. Python code (`dedrm/drm_init.py`) parses the log, matches keys to vouchers, extracts 16-byte page keys
-8. Page keys are cached in `drm_keys.json`
-9. **JIT retry loop**: when conversion fails due to stale keys, the Lua layer auto-triggers
-   key extraction for that specific book and retries — transparent to the user
+7. Python code (`dedrm/drm_init.py`) parses the log, matches the key to that voucher, and extracts the 16-byte page key
+8. The page key is cached in `drm_keys.json`
+9. The Lua JIT retry loop then retries conversion transparently
 
 ### DRM File Signatures
 
@@ -340,7 +339,7 @@ The ARM package contains:
 | `REFERENCE/kobo.koplugin/spec/` | Test patterns, mocking approach, spec structure reference |
 | `REFERENCE/koreader/` | When you need to understand KOReader internals |
 | `REFERENCE/DeDRM_tools/` | Python DRM removal reference (source of our ion.py) |
-| `REFERENCE/Calibre_KFX_Input/` | Source of our kfxlib |
+| `REFERENCE/KFX_Input/` | Source of our kfxlib |
 
 ---
 

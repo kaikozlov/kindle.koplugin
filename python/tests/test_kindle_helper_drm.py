@@ -125,24 +125,7 @@ class PlaintextDrmIonTests(unittest.TestCase):
             self.assertEqual("drm", result["code"])
             self.assertIn("no cached page key", result["message"])
 
-    def test_decrypt_accepts_plaintext_drmion_without_cached_key(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            input_path = os.path.join(tmpdir, "book.kfx")
-            output_path = os.path.join(tmpdir, "book.kfx-zip")
-            drmion_data = kindle_helper.DRMION_SIGNATURE + b"plaintext-envelope"
-            with open(input_path, "wb") as input_file:
-                input_file.write(drmion_data)
 
-            with mock.patch.object(kindle_helper, "_find_page_key", return_value=None), \
-                    mock.patch.object(
-                        kindle_helper,
-                        "_decrypt_drmion",
-                        return_value=b"CONT plaintext book",
-                    ) as decrypt:
-                kindle_helper.cmd_decrypt(self.make_args(input_path, output_path))
-
-            decrypt.assert_called_once_with(drmion_data, None)
-            self.assertTrue(os.path.isfile(output_path))
 
 
 if __name__ == "__main__":

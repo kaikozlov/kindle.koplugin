@@ -98,14 +98,3 @@ def normalize_annotation_ends(epub_path, positions):
             item.get("start"), item.get("end"), lengths)
         normalized.append(item)
     return normalized
-
-
-def normalize_annotation_end(epub_path, start, end):
-    """Convert a terminal exclusive KOReader end into Kindle's last character.
-
-    The native factory resolves the boundary after a KFX element with short PID
-    zero, and KPP renders such a highlight as ``[Image]``. Other end positions
-    retain their exact kfxlib translation.
-    """
-    return _normalize_with_lengths(
-        start, end, _terminal_element_lengths(epub_path))

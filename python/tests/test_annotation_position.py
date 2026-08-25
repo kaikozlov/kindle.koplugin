@@ -9,7 +9,7 @@ PYTHON_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PYTHON_DIR not in sys.path:
     sys.path.insert(0, PYTHON_DIR)
 
-from annotation_position import normalize_annotation_end, normalize_annotation_ends
+from annotation_position import normalize_annotation_ends
 
 
 CONTAINER = b'''<?xml version="1.0"?>
@@ -39,8 +39,9 @@ class AnnotationPositionTests(unittest.TestCase):
 
     def test_moves_terminal_exclusive_end_to_last_selected_character(self):
         end = {"eid": 1139, "eid_offset": 17, "pid": 27132, "long": "old"}
-        result = normalize_annotation_end(
-            self.make_epub(), {"pid": 27116}, end)
+        result = normalize_annotation_ends(
+            self.make_epub(), [{"start": {"pid": 27116}, "end": end}]
+        )[0]["end"]
         self.assertEqual(16, result["eid_offset"])
         self.assertEqual(27131, result["pid"])
         self.assertEqual("AXMEAAAQAAAA", result["long"])
@@ -48,17 +49,17 @@ class AnnotationPositionTests(unittest.TestCase):
 
     def test_preserves_nonterminal_end(self):
         end = {"eid": 1139, "eid_offset": 11, "pid": 27126, "long": "same"}
-        self.assertIs(
-            end,
-            normalize_annotation_end(self.make_epub(), {"pid": 27116}, end),
-        )
+        result = normalize_annotation_ends(
+            self.make_epub(), [{"start": {"pid": 27116}, "end": end}]
+        )[0]["end"]
+        self.assertIs(end, result)
 
     def test_does_not_move_zero_length_range_backwards(self):
         end = {"eid": 1139, "eid_offset": 17, "pid": 27132, "long": "same"}
-        self.assertIs(
-            end,
-            normalize_annotation_end(self.make_epub(), {"pid": 27132}, end),
-        )
+        result = normalize_annotation_ends(
+            self.make_epub(), [{"start": {"pid": 27132}, "end": end}]
+        )[0]["end"]
+        self.assertIs(end, result)
 
     def test_normalizes_a_batch_without_mutating_translated_positions(self):
         positions = [

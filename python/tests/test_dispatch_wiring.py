@@ -35,13 +35,22 @@ class DispatchWiringTests(unittest.TestCase):
             "dispatch entries without a registered subcommand",
         )
 
-    def test_sync_commands_stay_out_of_the_helper(self):
-        # Exact open/close sync runs in-process in Lua; these helper commands
-        # existed only to serve it and must not creep back.
+    def test_obsolete_commands_stay_out_of_the_helper(self):
+        # Exact open/close sync runs in-process in Lua, and library-wide DRM,
+        # standalone decryption, and cover extraction are no longer plugin
+        # workflows. Keep these retired helper surfaces from creeping back.
         dispatched = _dispatch_commands()
-        for command in ("read-native-sidecar", "write-native-sidecar",
-                        "read-close-state", "translate-position",
-                        "translate-native-position"):
+        for command in (
+            "read-native-sidecar",
+            "write-native-sidecar",
+            "read-close-state",
+            "translate-position",
+            "translate-native-position",
+            "drm-init",
+            "decrypt",
+            "cover",
+            "scan",
+        ):
             self.assertNotIn(command, dispatched, command + " must stay removed")
 
 

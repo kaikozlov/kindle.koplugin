@@ -410,35 +410,6 @@ class NativeFallbackTests(unittest.TestCase):
         self.assertIn("java secret diagnostic", result["detail"])
         self.assertIn("native secret diagnostic", result["detail"])
 
-    def test_bulk_native_fallback_writes_matching_keys(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            voucher_path = os.path.join(tmpdir, "Book_B001234567.sdr", "assets", "voucher")
-            kfx_path = os.path.join(tmpdir, "Book_B001234567.kfx")
-            with mock.patch.object(
-                drm_init.native_extractor,
-                "extract_page_keys",
-                return_value={"key-id": b"p" * 16},
-            ), mock.patch.object(
-                drm_init,
-                "_find_kfx_for_voucher",
-                return_value=kfx_path,
-            ), mock.patch.object(
-                drm_init,
-                "_select_native_page_key",
-                return_value=b"p" * 16,
-            ), mock.patch.object(
-                drm_init,
-                "_encryption_key_ids_for_book",
-                return_value=["key-id"],
-            ):
-                result = drm_init._run_native_fallback(
-                    [voucher_path], tmpdir, tmpdir, "SERIAL", "cvm failed"
-                )
-
-            self.assertEqual(1, result["keys_found"])
-            self.assertEqual("native", result["extractor"])
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "drm_keys.json")))
-
     def test_primary_extraction_failure_invokes_native_fallback(self):
         native_result = {"ok": True, "book_id": "BOOK", "extractor": "native"}
         with mock.patch.object(drm_init, "_preflight_check"), \

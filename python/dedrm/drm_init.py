@@ -1,12 +1,8 @@
-"""DRM key extraction for Kindle KFX books.
+"""Just-in-time DRM key extraction for one Kindle KFX book.
 
-Ports the Go drm-init command to Python. The workflow:
-1. Scan for voucher files under the documents root
-2. Read device serial from /proc/usid
-3. Run the device's cvm JVM with LD_PRELOAD hook to capture AES keys
-4. Parse captured keys from the log
-5. Decrypt vouchers and extract 16-byte page keys
-6. Write drm_keys.json cache
+The extractor reads the device identity, exercises the Kindle DRM SDK for one
+voucher, validates the derived page key against that book, and updates the
+local ``drm_keys.json`` cache.
 """
 
 import contextlib
@@ -76,7 +72,7 @@ def _preflight_check(secrets):
         return
 
     print(
-        "drm-init: WARNING: Account secret is missing or empty; "
+        "DRM key extraction: WARNING: Account secret is missing or empty; "
         "continuing with device serial only (expected on older Kindle firmware).",
         file=sys.stderr,
         flush=True,
@@ -95,15 +91,6 @@ def _find_voucher_for_kfx(kfx_path):
     if os.path.isfile(voucher_path):
         return voucher_path
     return None
-
-
-def _find_kfx_for_voucher(voucher_path):
-    """Return the KFX file adjacent to an assets/voucher path, if present."""
-    sdr_dir = os.path.dirname(os.path.dirname(voucher_path))
-    if not sdr_dir.endswith(".sdr"):
-        return None
-    kfx_path = os.path.splitext(sdr_dir)[0] + ".kfx"
-    return kfx_path if os.path.isfile(kfx_path) else None
 
 
 def _iter_book_drmion_data(kfx_path):
@@ -269,47 +256,6 @@ def _native_book_fallback(kfx_path, voucher_path, plugin_dir, cache_dir, serial,
         }
 
 
-def _run_native_fallback(vouchers, plugin_dir, cache_dir, serial, primary_error):
-    """Populate a fresh cache from an installed native KUAL extractor."""
-    try:
-        page_keys = native_extractor.extract_page_keys(plugin_dir=plugin_dir)
-        cache = _new_key_cache(serial)
-        keys_found = 0
-        for voucher_path in vouchers:
-            kfx_path = _find_kfx_for_voucher(voucher_path)
-            if not kfx_path:
-                continue
-            try:
-                page_key = _select_native_page_key(kfx_path, page_keys)
-            except Exception as error:
-                print(f"drm-init: native key rejected for {kfx_path}: {error}", file=sys.stderr, flush=True)
-                continue
-            _store_page_key(
-                cache,
-                _derive_book_id(voucher_path),
-                voucher_path,
-                None,
-                page_key,
-                kfx_path,
-            )
-            keys_found += 1
-
-        if keys_found == 0:
-            raise RuntimeError("native extractor keys did not match any books")
-        os.makedirs(cache_dir, exist_ok=True)
-        with open(os.path.join(cache_dir, "drm_keys.json"), "w") as cache_file:
-            json.dump(cache, cache_file, indent=2)
-        return {
-            "books_found": len(vouchers),
-            "keys_found": keys_found,
-            "extractor": "native",
-        }
-    except Exception as native_error:
-        raise RuntimeError(
-            f"{primary_error}; native fallback failed: {native_error}"
-        ) from native_error
-
-
 def extract_book_key(kfx_path, plugin_dir, cache_dir):
     """Extract the decryption key for a single book.
 
@@ -424,103 +370,6 @@ def _load_key_cache(cache_path):
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return None
-
-
-def run(documents_root, plugin_dir, cache_dir):
-    """Execute the drm-init workflow. Returns dict with books_found, keys_found."""
-    # Step 1: Find voucher files
-    vouchers = _find_vouchers(documents_root)
-    if not vouchers:
-        return {"books_found": 0, "keys_found": 0}
-
-    secrets = _read_account_secrets()
-    _preflight_check(secrets)
-
-    # Step 2: Read device serial
-    serial = _read_device_serial()
-
-    with _temporary_key_log() as key_log_path:
-        # Step 3: Run the Java extractor with LD_PRELOAD hook. No probe:
-        # a library-wide init must cover vouchers bound to every secret, so
-        # every secret gets its own JVM run and the key log accumulates.
-        try:
-            _extract_keys_with_hook(serial, vouchers, plugin_dir, secrets)
-        except Exception as error:
-            return _run_native_fallback(vouchers, plugin_dir, cache_dir, serial, error)
-
-        # Step 4: Parse captured AES keys from the log
-        keys = _parse_captured_keys(key_log_path)
-        if not keys:
-            primary_error = (
-                "No encryption keys were captured from the device. "
-                "This may indicate a problem with the DRM helper."
-            )
-            return _run_native_fallback(
-                vouchers, plugin_dir, cache_dir, serial, primary_error
-            )
-
-        # Step 5: Decrypt vouchers and extract page keys
-        cache = _new_key_cache(serial)
-
-        keys_found = 0
-        for voucher_path in vouchers:
-            voucher_key = _find_voucher_key(voucher_path, keys)
-            if voucher_key is None:
-                print(f"drm-init: skipping {voucher_path}: no matching key", file=sys.stderr, flush=True)
-                continue
-
-            try:
-                page_key = _extract_page_key(voucher_path, voucher_key)
-            except Exception as e:
-                print(f"drm-init: page key extraction failed for {voucher_path}: {e}", file=sys.stderr, flush=True)
-                continue
-
-            kfx_path = _find_kfx_for_voucher(voucher_path)
-            if not kfx_path:
-                print(f"drm-init: skipping {voucher_path}: adjacent KFX not found", file=sys.stderr, flush=True)
-                continue
-            valid, validation_error = _validate_page_key(kfx_path, page_key)
-            if not valid:
-                print(f"drm-init: skipping {voucher_path}: {validation_error}", file=sys.stderr, flush=True)
-                continue
-
-            book_id = _derive_book_id(voucher_path)
-
-            # Prefer non-tmp vouchers over tmp_ ones
-            if book_id in cache["books"]:
-                new_is_tmp = "tmp_" in voucher_path
-                existing_is_tmp = "tmp_" in cache["books"][book_id].get("voucher_path", "")
-                if not existing_is_tmp and new_is_tmp:
-                    print(f"drm-init: skipping tmp voucher {voucher_path}", file=sys.stderr, flush=True)
-                    continue
-
-            _store_page_key(
-                cache,
-                book_id,
-                voucher_path,
-                voucher_key,
-                page_key,
-                kfx_path,
-            )
-            keys_found += 1
-
-        # Step 6: Write the cache file
-        cache_path = os.path.join(cache_dir, "drm_keys.json")
-        with open(cache_path, "w") as f:
-            json.dump(cache, f, indent=2)
-
-        return {"books_found": len(vouchers), "keys_found": keys_found}
-
-
-def _find_vouchers(root):
-    """Walk the documents root looking for voucher files under assets/ dirs."""
-    vouchers = []
-    for dirpath, _, filenames in os.walk(root):
-        for fname in filenames:
-            if fname == "voucher" and "assets" in dirpath:
-                vouchers.append(os.path.join(dirpath, fname))
-    vouchers.sort()
-    return vouchers
 
 
 def _read_device_serial():

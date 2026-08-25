@@ -59,11 +59,13 @@ Exact-position translation runs entirely in Lua. At conversion time the helper
 emits a text-free position map (`<cache-id>.positions.json`) next to each
 converted EPUB; at sync time the plugin translates XPointers and native KFX
 coordinates in-process from that map, and reads/writes Kindle's Reader Data
-Store sidecars with its own byte-exact KRDS codec. The bundled Python runtime
-spawns only for KFX conversion, covers, decryption, and DRM key extraction —
-opening a book's position state or closing the reader never starts the
-interpreter. KOReader and Kindle calculate percentages against different
-rendered content lengths, so exact sync never copies one reader's percentage
+Store sidecars with its own byte-exact KRDS codec. During normal plugin use,
+the bundled Python runtime spawns only for KFX conversion and JIT DRM key
+extraction — opening a book's position state or closing the reader never starts
+the interpreter. The optional annotation batch commands described below also
+run through the helper. KOReader and Kindle calculate percentages against
+different rendered content lengths, so exact sync never copies one reader's
+percentage
 into the other. On a pull, only the translated XPointer is staged before
 `ReadSettings`; after KOReader renders the destination, its own rendered
 percentage is read back. On a push, the Kindle shelf is written with the
