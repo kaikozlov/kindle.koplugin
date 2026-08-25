@@ -101,7 +101,11 @@ User selects a book
 ├── README.md
 ├── _meta.lua
 ├── main.lua                       ← plugin lifecycle + menus + sync events
-├── KOREADER_TEST_COMMIT           ← pinned KOReader Lua contract for tests
+├── justfile                       ← plugin contract: composes shared recipes with the
+│                                    derived test image, Python/Java suite, ARM hook matrix
+├── just/shared.just               ← vendored koplugin-dev recipes (refresh: just sync-shared)
+├── Dockerfile.test                ← koplugin-dev + Python/JDK toolchains for the test container
+├── .stylua.toml / .githooks/      ← formatting policy and just verify hooks
 ├── python_build.sh
 │
 ├── lua/
@@ -132,9 +136,10 @@ User selects a book
 │   └── dedrm/
 │
 ├── lib/                           ← DRM/native helper assets
+├── test/
+│   └── drm/crypto_hook_harness.c  ← executable ARM test for the shipped crypto_hook.so
 ├── scripts/
-│   ├── test                       ← current KOReader-contract Lua tests
-│   └── koreader-test-container    ← overlays pinned Lua source on native runtime
+│   └── build_voucher_extractor    ← KFXVoucherExtractor.jar packaging (just build-voucher)
 ├── spec/
 ├── .github/
 └── REFERENCE/                     ← local reference checkouts; not release payload
@@ -157,9 +162,11 @@ There is deliberately **no plugin-local `patches/` directory**. KOReader's user-
 
 ### 2. Every Change Must Be Tested
 
-- Python: `python3 python/kindle_helper.py convert --input <kfx> --output <epub>`
-- Lua: `make test` or `./scripts/test` (koplugin-dev Docker image with real headless KOReader)
-- ARM binary: Docker build via `./python_build.sh`
+- Python/Java: `just test-python` (derived Docker test container; includes the voucher-extractor Java contract tests)
+- Lua: `just test` — the pinned koplugin-dev image's real headless KOReader; `just test-file spec/<name>_spec.lua` for one spec
+- Full validation: `just verify` (formatting, lint, Lua specs, Python/Java suite, ARMv7 DRM hook matrix)
+- ARM release package: `just build` (Docker cross-build via `python_build.sh`)
+- Voucher extractor JAR: `just build-voucher`
 - Some tests require KFX fixture files not in the repo — these auto-skip
 - New Lua modules **must** include a corresponding `spec/*_spec.lua`
 - Spec structure and mocking patterns follow `REFERENCE/kobo.koplugin/spec/`
@@ -238,21 +245,29 @@ Key KOReader APIs:
 
 ## Testing
 
-### Running Tests
-
 ```sh
-# Lua tests: pinned current KOReader Lua contract over the koplugin-dev native runtime
-make test
-./scripts/test
+# One-time setup: install git hooks and pull the pinned koplugin-dev image
+just setup
 
-# Python local test
-python3 python/kindle_helper.py convert --input <kfx> --output <epub>
+# Canonical validation: formatting, luacheck, all non-e2e Lua specs on the
+# real KOReader runtime, the Python/Java suite, and the ARMv7 DRM hook matrix
+just verify
 
-# Run a single spec file
-./scripts/test spec/virtual_library_spec.lua
+# Focused commands
+just test                                # all non-e2e Lua specs
+just test-file spec/virtual_library_spec.lua   # one exact spec file
+just test-python                         # Python/Java suite (Dockerfile.test container)
+just test-drm-hook                       # shipped crypto_hook.so under ARMv7 OpenSSL 1.1 + 3
 ```
 
-**Always use `make test` or `./scripts/test` for validation.** `scripts/koreader-test-container` verifies `REFERENCE/koreader` is exactly the commit in `KOREADER_TEST_COMMIT`, overlays the current FileManager/ReaderUI/DocSettings/BookList/CoverBrowser Lua surface onto the known-good koplugin-dev native runtime, and then runs Busted. Initialize `REFERENCE/koreader/base` before testing (`git -C REFERENCE/koreader submodule update --init base`).
+**Always use `just verify` for validation.** Lua specs run under the pinned koplugin-dev
+image's real KOReader runtime — its own LuaJIT, native FFI libraries, framework modules,
+plugin symlink, and `commonrequire.lua` headless device initialization — with no source
+overlay or reference checkout. The Python/Java suite runs in the derived `Dockerfile.test`
+container (koplugin-dev plus Python, pycryptodome, and a headless JDK). The ARM DRM hook
+targets stay host-side because the test container has no nested Docker; they build
+`.github/Dockerfile.crypto_hook` for `linux/arm/v7` and require QEMU/binfmt.
+
 
 ### Test Structure
 
@@ -277,11 +292,14 @@ construction failures.
 ## Build & Deploy
 
 ```sh
-# Build the self-contained ARMv7 package
-./python_build.sh
+# One-time: install git hooks and pull the pinned development image
+just setup
 
-# Run all tests
-./scripts/test          # Lua
+# Rebuild the DRM voucher extractor JAR
+just build-voucher
+
+# Build the self-contained ARMv7 package
+just build
 
 # Deploy to device
 # Copy the zip contents to /mnt/us/koreader/plugins/kindle.koplugin/ on the Kindle

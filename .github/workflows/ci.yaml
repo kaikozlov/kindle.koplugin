@@ -14,52 +14,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test-lua:
-    name: Lua Tests
+  test:
+    name: Docker Test Suite
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Checkout pinned KOReader contract
-        uses: actions/checkout@v7
+      - name: Install just
+        uses: extractions/setup-just@v4
         with:
-          repository: koreader/koreader
-          ref: c4f11272c6b6c8d98ff947a75efe23e212b3686e
-          path: REFERENCE/koreader
-          persist-credentials: false
+          just-version: 1.57.0
 
-      - name: Initialize KOReader base submodule
-        run: git -C REFERENCE/koreader submodule update --init base
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
 
-      - name: Pull koplugin-dev image
-        run: make setup
+      - name: Pull development image
+        run: just pull-image
 
-      - name: Run Lua tests
-        run: make test
-
-  test-drm-compatibility:
-    name: DRM Compatibility Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-python@v6
-        with:
-          # Match the CPython runtime bundled by python_build.sh.
-          python-version: "3.11"
-
-      - name: Install Python test dependencies
-        run: python3 -m pip install --disable-pip-version-check pycryptodome==3.23.0
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Run DRM compatibility tests
-        run: python3 -m unittest discover -s python/tests -p 'test_*.py' -v
+      - name: Verify
+        run: just verify

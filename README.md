@@ -113,17 +113,25 @@ MIT License
 
 ## Building from source
 
+No local toolchain is required — just Docker and [just](https://github.com/casey/just).
+All tests run against the real KOReader runtime from the pinned [koplugin-dev](https://github.com/kaikozlov/koplugin-dev) image.
+
 ```sh
-# Rebuild the DRM voucher extractor (JDK 8+)
-./scripts/build_voucher_extractor
+just setup     # one-time: install git hooks and pull the development image
 
-# Build the self-contained ARMv7 package
-./python_build.sh
+just verify    # canonical: formatting, lint, Lua specs on real KOReader,
+               # Python/Java suite, and the ARMv7 DRM hook matrix
 
-# Initialize the pinned KOReader reference contract once
-# (REFERENCE/koreader must be checked out at KOREADER_TEST_COMMIT)
-git -C REFERENCE/koreader submodule update --init base
+# Focused commands
+just test                               # all non-e2e Lua tests
+just test-file spec/virtual_library_spec.lua   # one exact spec file
+just test-python                        # Python/Java tests (also runs Java voucher contract tests)
+just test-drm-hook                      # shipped crypto_hook.so under ARMv7 OpenSSL 1.1 + 3
 
-# Run Lua tests against that KOReader Lua contract
-./scripts/test
+# Product builds
+just build-voucher   # rebuild the DRM voucher extractor JAR (JDK 8+)
+just build           # build the self-contained ARMv7 release package
 ```
+
+`just --list` shows every recipe, including `shell` (drop into the container)
+and `lua` (KOReader's LuaJIT REPL).
