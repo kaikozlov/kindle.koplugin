@@ -747,6 +747,7 @@ def main():
         "drm-init": cmd_drm_init,
         "read-native-sidecar": cmd_read_native_sidecar,
         "read-close-state": cmd_read_close_state,
+        "write-native-sidecar": cmd_write_native_sidecar,
         "translate-position": cmd_translate_position,
         "translate-positions": cmd_translate_positions,
         "translate-native-position": cmd_translate_native_position,
