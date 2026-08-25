@@ -41,11 +41,19 @@ This is intended for controlled, one-feature-at-a-time experiments. It complemen
 # Compare the historical Go catalog with the live Amazon KAF table
 ./scripts/kp3/compare_catalog.py
 
+# Generate Amazon KDF/KFX fixtures, then compare Python and Go reverse output
+./scripts/kp3/reverse_compare.py --all --workdir /tmp/kp3-reverse
+./scripts/kp3/reverse_compare.py --fixture footnote --diff
+
 # Probe an existing EPUB instead of a built-in fixture
 ./scripts/kp3/run_probe.py --epub /path/to/book.epub --workdir /tmp/kp3-custom
 ```
 
 The work directory preserves Amazon's conversion log, preprocessed source, wrapped KDF, unwrapped SQLite copy, and compiled probe classes.
+
+`reverse_compare.py` adds a differential reverse path. It packages the Amazon-generated KDF as KPF, asks current KFX Input to serialize the decoded fragment graph into a single unencrypted KFX `CONT` container, then feeds that exact KFX to both current Python KFX Input and the historical Go implementation. This makes controlled Amazon-generated fixtures usable as parity tests even though the Go decoder does not understand KDF directly.
+
+The KFX Input serializer is only a storage bridge in this experiment; both reverse implementations receive the same serialized KFX bytes. A mismatch therefore identifies a KFX->EPUB behavioral difference rather than an Amazon-producer difference.
 
 ## Native KAF caution
 

@@ -1594,6 +1594,99 @@ This changes the practical corpus problem. A random corpus is still needed for h
 
 The next useful corpus should therefore be a **semantic fixture matrix**, not merely a larger pile of arbitrary books: one controlled input for tables, footnotes, fixed layout, page spread, conditional content, images, SVG/KVG, navigation, links, drop caps, bidi, writing modes, and so on. Real books then become compatibility/adversarial cases layered on top of an explicit canonical baseline.
 
+### Differential reverse harness: Amazon-generated fixtures expose gaps the ten-book corpus missed
+
+The KDF fixtures can also be turned into inputs for the historical Go reverse implementation. `scripts/kp3/reverse_compare.py` now automates this path:
+
+```text
+controlled EPUB
+    |
+    v
+Amazon EpubAdapterApp
+    |
+    v
+book.kdf + resources
+    |
+    v
+minimal KPF ZIP
+    |
+    |  current KFX Input decodes KDF and serializes fragments only
+    v
+single unencrypted CONT KFX
+    |                         |
+    v                         v
+current Python KFX Input      historical Go port
+    |                         |
+    v                         v
+python.epub                 go.epub
+    \_________________________/
+                 |
+                 v
+          structural diff
+```
+
+The Python serializer is deliberately only the storage bridge. Both reverse implementations receive the **same KFX bytes**, so differences after that point are reverse-conversion parity differences.
+
+This immediately found behavior outside the old ten-book corpus, despite that corpus having reached zero structural differences before the branch was abandoned.
+
+Current Previewer 3.106 results for the first five fixtures are:
+
+| Fixture | Go reverse result | Non-timestamp structural diffs | Important semantic difference |
+| --- | --- | ---: | --- |
+| `minimal` | converts | 3 | fallback metadata/TOC behavior differs |
+| `footnote` | converts | 5 | Go loses the footnote `<aside epub:type="footnote">` wrapper/style |
+| `table` | converts | 4 | Go loses the `<table>` wrapper and leaves `thead`/`tbody` directly under `body` |
+| `fixed-layout` | **fails** | n/a | Go reports no readable sections for this current Amazon fixed-layout form |
+| `vertical-ruby` | converts | 5 | Go emits an empty `<rt/>`; pronunciation text is lost |
+
+The meaningful content differences are concrete.
+
+For the footnote specimen Python emits:
+
+```html
+<p class="class_s6">Main text<a href="c0.xhtml#aA" epub:type="noteref">1</a>.</p>
+<aside id="aA" epub:type="footnote" class="class_s8">Footnote text.</aside>
+```
+
+while Go emits:
+
+```html
+<p class="class_s6">Main text<a href="c0.xhtml#aA" epub:type="noteref">1</a>.</p>
+<p id="aA">Footnote text.</p>
+```
+
+So link reconstruction works, but the target's `footnote` classification and footer semantics are not being converted into the EPUB note element/style.
+
+For the table specimen Python reconstructs a normal table tree:
+
+```html
+<table class="class_s11">
+  <caption ...>...</caption>
+  <thead ...>...</thead>
+  <tbody ...>...</tbody>
+</table>
+```
+
+while Go puts the table's style on `<body>`, emits the caption as a `<div>`, and places `<thead>` / `<tbody>` directly under `<body>`. The row/column spans themselves survive. This isolates the missing behavior to table/container reconstruction rather than span decoding.
+
+For vertical ruby, Python emits:
+
+```html
+<ruby><rb>漢</rb><rt>かん</rt></ruby>
+```
+
+while Go emits:
+
+```html
+<ruby><rb>漢</rb><rt/></ruby>
+```
+
+The KAF/raw-Ion probe already showed that the pronunciation is present in the KFX as a separate `ruby_content` object, so this is unambiguously a Go reverse-path loss rather than missing source data.
+
+There are also lower-severity systematic differences in these synthetic books: Python generates an opaque fallback identifier and `Unknown` author where Go derives an identifier from the input path; Python uses `Content` as the synthesized navigation label while Go derives text such as `Hello`, `Probe table`, or the first paragraph. The vertical fixture additionally differs in how document writing mode/default margins are emitted. Those need source-level comparison before deciding which are functional bugs versus output-normalization choices.
+
+This experiment is important for the maintenance question. A green arbitrary-book corpus did not mean the old port had captured the semantic space. The Amazon producer can now generate small canonical cases that exercise branches absent from those books, and the first few such cases already found several real gaps. That makes a systematic generated corpus much more valuable than another hand-picked pile of books, while still leaving historical/consumer compatibility to real samples.
+
 ## Generated KDF storage format: SQLite plus Amazon fingerprint records
 
 The synthetic `book.kdf` is recognizable as SQLite 3, but opening the file directly with stock `sqlite3` reports a malformed schema. The reason is visible at file offset 1024:
@@ -1851,6 +1944,7 @@ This would not remove the need for historical compatibility handling, but it wou
 - The historical Go symbol catalog matches the live Previewer 3.106 KAF table exactly for all 842 IDs it contains (10..851); Previewer adds `page_regions` at 852 and `bcSequenceNumber` at 853.
 - Previewer's current renderer directly consumes property 852 `page_regions` as fixed-page rectangles plus optional layout hints and scales them into rendered-page coordinates.
 - A controlled EPUB 3 footnote compiles into a `yj.note` style event linking to an anchor whose target is a footer-classified `footnote` text structure.
+- Bridging Amazon-generated KDF through current KFX Input's serializer into one shared KFX input exposes real historical-Go parity gaps: footnote target semantics are lost, table wrapping is malformed, ruby pronunciation is dropped, and the simple current fixed-layout fixture is not readable by the Go converter.
 
 ### Strong inferences
 
