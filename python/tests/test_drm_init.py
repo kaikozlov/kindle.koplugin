@@ -291,7 +291,8 @@ class PageKeyValidationTests(unittest.TestCase):
                 result = drm_init.extract_book_key(kfx_path, tmpdir, tmpdir)
 
             self.assertFalse(result["ok"])
-            self.assertIn("rejected", result["message"])
+            self.assertEqual("drm_key_extraction_failed", result["code"])
+            self.assertIn("rejected", result["detail"])
             self.assertFalse(os.path.exists(os.path.join(tmpdir, "drm_keys.json")))
 
 
@@ -362,6 +363,52 @@ class NativeFallbackTests(unittest.TestCase):
                 cache = json.load(cache_file)
             self.assertEqual("70" * 16, cache["keys"]["key-id"]["page_key_128"])
             self.assertEqual("", cache["books"][result["book_id"]]["voucher_key_256"])
+
+    def test_missing_cvm_and_native_extractor_returns_actionable_code(self):
+        primary_error = FileNotFoundError(2, "No such file or directory", "/usr/java/bin/cvm")
+        with tempfile.TemporaryDirectory() as tmpdir, mock.patch.object(
+            drm_init.native_extractor,
+            "extract_page_keys",
+            side_effect=drm_init.native_extractor.NativeExtractorUnavailable(
+                "no native extractor binaries found"
+            ),
+        ):
+            result = drm_init._native_book_fallback(
+                "/book.kfx",
+                "/book.sdr/assets/voucher",
+                tmpdir,
+                tmpdir,
+                "SERIAL",
+                primary_error,
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("drm_extractor_unavailable", result["code"])
+        self.assertIn("does not provide the Java DRM runtime", result["message"])
+        self.assertIn("/usr/java/bin/cvm", result["detail"])
+        self.assertIn("no native extractor binaries found", result["detail"])
+
+    def test_other_native_fallback_failure_is_sanitized(self):
+        with tempfile.TemporaryDirectory() as tmpdir, mock.patch.object(
+            drm_init.native_extractor,
+            "extract_page_keys",
+            side_effect=RuntimeError("native secret diagnostic"),
+        ):
+            result = drm_init._native_book_fallback(
+                "/book.kfx",
+                "/book.sdr/assets/voucher",
+                tmpdir,
+                tmpdir,
+                "SERIAL",
+                RuntimeError("java secret diagnostic"),
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("drm_key_extraction_failed", result["code"])
+        self.assertEqual("Book access key extraction failed.", result["message"])
+        self.assertNotIn("secret diagnostic", result["message"])
+        self.assertIn("java secret diagnostic", result["detail"])
+        self.assertIn("native secret diagnostic", result["detail"])
 
     def test_bulk_native_fallback_writes_matching_keys(self):
         with tempfile.TemporaryDirectory() as tmpdir:

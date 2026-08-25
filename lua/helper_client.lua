@@ -480,7 +480,7 @@ function HelperClient:extractBookKey(kfx_path)
         if result.ok then
             logger.info("KindlePlugin: key extracted for", result.book_id)
         else
-            logger.warn("KindlePlugin: key extraction failed:", result.message)
+            logger.warn("KindlePlugin: key extraction failed:", result.message, result.detail or "")
         end
     else
         logger.warn("KindlePlugin: key extraction failed:", err)

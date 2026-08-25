@@ -247,6 +247,76 @@ describe("CacheManager", function()
         end)
     end)
 
+    describe("ensureCachedEpub DRM failures", function()
+        local function newDrmManager(extract_result, extract_err, retry_result, retry_err)
+            local converts = 0
+            local helper_client = {
+                convert = function()
+                    converts = converts + 1
+                    if converts == 1 then
+                        return { ok = false, code = "drm", message = "no cached page key" }
+                    end
+                    return retry_result, retry_err
+                end,
+                extractBookKey = function()
+                    return extract_result, extract_err
+                end,
+            }
+            local cm = CacheManager:new(helper_client, {})
+            cm:setSettings({ cache_dir = "/cache" })
+            cm.isFresh = function()
+                return false, "/cache/book.epub", "/cache/book.json"
+            end
+            cm.ensureCacheDir = function()
+                return true
+            end
+            return cm
+        end
+
+        it("preserves an unavailable-extractor error for the UI", function()
+            local cm = newDrmManager({
+                ok = false,
+                code = "drm_extractor_unavailable",
+                message = "no extractor",
+            })
+
+            local path, err = cm:ensureCachedEpub({
+                id = "book",
+                source_path = "/documents/book.kfx",
+                open_mode = "convert",
+            })
+
+            assert.is_nil(path)
+            assert.equals("drm_extractor_unavailable", err)
+        end)
+
+        it("uses a stable error when the extraction helper itself fails", function()
+            local cm = newDrmManager(nil, "invalid helper JSON")
+
+            local path, err = cm:ensureCachedEpub({
+                id = "book",
+                source_path = "/documents/book.kfx",
+                open_mode = "convert",
+            })
+
+            assert.is_nil(path)
+            assert.equals("drm_key_extraction_failed", err)
+        end)
+
+        it("distinguishes decryption failure after a key was extracted", function()
+            local cm = newDrmManager({ ok = true, book_id = "book" }, nil, { ok = false, code = "drm", message = "still encrypted" })
+
+            local path, err = cm:ensureCachedEpub({
+                id = "book",
+                source_path = "/documents/book.kfx",
+                open_mode = "convert",
+            })
+
+            assert.is_nil(path)
+            assert.equals("drm_after_key_extraction", err)
+        end)
+    end)
+
     describe("getDrmKeysPath", function()
         it("should return path under cache dir", function()
             local cm = CacheManager:new({}, {})

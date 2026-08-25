@@ -243,9 +243,29 @@ def _native_book_fallback(kfx_path, voucher_path, plugin_dir, cache_dir, serial,
             "extractor": "native",
         }
     except Exception as native_error:
+        detail = f"{primary_error}; native fallback failed: {native_error}"
+        cvm_missing = (
+            isinstance(primary_error, FileNotFoundError)
+            and getattr(primary_error, "filename", None) == "/usr/java/bin/cvm"
+        )
+        native_missing = isinstance(
+            native_error, native_extractor.NativeExtractorUnavailable
+        )
+        if cvm_missing and native_missing:
+            return {
+                "ok": False,
+                "code": "drm_extractor_unavailable",
+                "message": (
+                    "This Kindle firmware does not provide the Java DRM runtime, "
+                    "and no compatible kfxdedrm native extractor was found."
+                ),
+                "detail": detail,
+            }
         return {
             "ok": False,
-            "message": f"{primary_error}; native fallback failed: {native_error}",
+            "code": "drm_key_extraction_failed",
+            "message": "Book access key extraction failed.",
+            "detail": detail,
         }
 
 

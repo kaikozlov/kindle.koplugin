@@ -156,7 +156,7 @@ function CacheManager:ensureCachedEpub(book)
         -- JIT key extraction: if DRM-protected and no key, try extracting it
         if result.code == "drm" and book.source_path then
             logger.info("KindlePlugin: DRM key missing, attempting JIT extraction for", book.id)
-            local key_result = self.helper_client:extractBookKey(book.source_path)
+            local key_result, key_err = self.helper_client:extractBookKey(book.source_path)
             if key_result and key_result.ok then
                 logger.info("KindlePlugin: JIT key extracted, retrying preparation")
                 -- Invalidate any stale cache
@@ -171,15 +171,16 @@ function CacheManager:ensureCachedEpub(book)
                     logger.info("KindlePlugin: preparation succeeded after key extraction:", result.output_path or epub_path)
                     return result.output_path or epub_path
                 end
-                -- Retry also failed
                 logger.warn("KindlePlugin: preparation failed after key extraction:", result and result.code, result and result.message or err)
-            else
-                logger.warn("KindlePlugin: JIT key extraction failed:", key_result and key_result.message or err or "unknown")
+                return nil, "drm_after_key_extraction"
             end
+
+            logger.warn("KindlePlugin: JIT key extraction failed:", key_result and key_result.message or key_err or "unknown")
+            return nil, key_result and key_result.code or "drm_key_extraction_failed"
         end
 
         logger.warn("KindlePlugin: preparation error:", result.code, result.message)
-        return nil, result.code or result.message or "conversion_failed"
+        return nil, result.code or "conversion_failed"
     end
 
     local ok, write_err = self:writeMetadata(meta_path, book)

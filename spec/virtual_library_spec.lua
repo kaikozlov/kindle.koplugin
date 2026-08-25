@@ -134,6 +134,20 @@ describe("VirtualLibrary real-path model", function()
         assert.equals("directory", entry.attr.mode)
     end)
 
+    it("formats actionable DRM preparation failures", function()
+        local vlib = VirtualLibrary:new({})
+
+        assert.is_truthy(vlib:getBlockedReasonText({
+            block_reason = "drm_extractor_unavailable",
+        }):match("kfxdedrm"))
+        assert.is_truthy(vlib:getBlockedReasonText({
+            block_reason = "drm_key_extraction_failed",
+        }):match("debug log"))
+        assert.is_truthy(vlib:getBlockedReasonText({
+            block_reason = "drm_after_key_extraction",
+        }):match("re%-downloading"))
+    end)
+
     it("returns direct paths unchanged and converts only on explicit open", function()
         local direct = { id = "pdf", source_path = "/documents/book.pdf", open_mode = "direct" }
         local convert = { id = "kfx", source_path = "/documents/book.kfx", open_mode = "convert" }

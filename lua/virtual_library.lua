@@ -132,13 +132,22 @@ function VirtualLibrary:getRealPath(path)
     return book and book.source_path or nil
 end
 
-function VirtualLibrary.getBlockedReasonText(_, book)
+function VirtualLibrary:getBlockedReasonText(book)
     local reason = book and book.block_reason or "unsupported_kfx_layout"
     local text = {
         drm = _("This DRM-protected Kindle format is not supported."),
         unsupported_kfx_layout = _("This KFX layout is not supported yet."),
         missing_source = _("The source file is missing."),
         conversion_failed = _("Failed to prepare this book for reading."),
+        drm_extractor_unavailable = _(
+            "This Kindle firmware cannot extract this book's access key by itself. "
+                .. "Install a compatible kfxdedrm native extractor, then reopen the book."
+        ),
+        drm_key_extraction_failed = _("Could not extract this book's access key. Check the KOReader debug log for details."),
+        drm_after_key_extraction = _(
+            "A book access key was extracted, but the book still could not be decrypted. "
+                .. "Try re-downloading the book in the Kindle reader and opening it again."
+        ),
         cannot_read = _("The source file could not be read."),
         unknown_format = _("This Kindle file format is not supported yet."),
     }
