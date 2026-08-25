@@ -20,7 +20,7 @@ class AccountSecretPreflightTests(unittest.TestCase):
         stderr = io.StringIO()
         with mock.patch.object(drm_init, "_ACSR_PATH", acsr_path):
             with contextlib.redirect_stderr(stderr):
-                drm_init._preflight_check()
+                drm_init._preflight_check(drm_init._read_account_secrets())
         return stderr.getvalue()
 
     def test_missing_account_secret_warns_and_continues(self):
@@ -44,6 +44,173 @@ class AccountSecretPreflightTests(unittest.TestCase):
             warning = self.run_preflight(acsr_file.name)
 
         self.assertEqual("", warning)
+
+
+class AccountSecretSplittingTests(unittest.TestCase):
+    def read_secrets(self, content=None):
+        if content is None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                missing = os.path.join(tmpdir, "missing-acsr")
+                with mock.patch.object(drm_init, "_ACSR_PATH", missing):
+                    return drm_init._read_account_secrets()
+        with tempfile.NamedTemporaryFile(mode="w") as acsr_file:
+            acsr_file.write(content)
+            acsr_file.flush()
+            with mock.patch.object(drm_init, "_ACSR_PATH", acsr_file.name):
+                return drm_init._read_account_secrets()
+    def test_comma_separated_secrets_are_split(self):
+        self.assertEqual(
+            ["secret-one", "secret-two", "secret-three"],
+            self.read_secrets("secret-one, secret-two,secret-three\n"),
+        )
+
+
+    def test_empty_parts_are_dropped(self):
+        self.assertEqual(
+            ["secret-one"], self.read_secrets(", ,secret-one,,")
+        )
+
+    def test_missing_file_yields_empty_list(self):
+        self.assertEqual([], self.read_secrets())
+
+
+class MultiSecretHookIterationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.key_log = os.path.join(self.tmpdir.name, "crypto_keys.log")
+        patcher = mock.patch.object(drm_init, "_KEY_LOG_PATH", self.key_log)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_hook(self, secrets, probe=None, results=None):
+        if results is None:
+            results = [mock.Mock(returncode=0, stdout="All vouchers attached", stderr="")]
+        patches = [
+            mock.patch.object(drm_init.os.path, "isfile", return_value=True),
+            mock.patch.object(
+                drm_init.subprocess, "run", side_effect=results
+            ),
+        ]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        drm_init._extract_keys_with_hook(
+            "SERIAL", ["/book.sdr/assets/voucher"], "/plugin", secrets, probe=probe
+        )
+        return drm_init.subprocess.run.call_args_list
+
+    def cvm_secrets(self, calls):
+        secrets = []
+        for call in calls:
+            cmd = call.args[0]
+            self.assertEqual("KFXVoucherExtractor", cmd[4])
+            self.assertEqual("SERIAL", cmd[5])
+            if "--acsr" in cmd:
+                secrets.append(cmd[cmd.index("--acsr") + 1])
+            else:
+                secrets.append(None)
+        return secrets
+
+    def test_single_secret_runs_once_with_override(self):
+        calls = self.run_hook(["secret-one"])
+        self.assertEqual(["secret-one"], self.cvm_secrets(calls))
+
+    def test_missing_acsr_runs_once_without_override(self):
+        calls = self.run_hook([])
+        self.assertEqual([None], self.cvm_secrets(calls))
+
+    def test_probe_stops_iteration_once_satisfied(self):
+        probe_state = {"calls": 0}
+
+        def probe():
+            probe_state["calls"] += 1
+            return probe_state["calls"] >= 2
+        calls = self.run_hook(
+            ["secret-one", "secret-two"],
+            probe=probe,
+            results=[
+                mock.Mock(returncode=0, stdout="All vouchers attached", stderr=""),
+                mock.Mock(returncode=0, stdout="All vouchers attached", stderr=""),
+            ],
+        )
+        # Probe returns False after run one, True after run two: both ran.
+        self.assertEqual(["secret-one", "secret-two"], self.cvm_secrets(calls))
+
+
+    def test_probe_short_circuits_remaining_secrets(self):
+        calls = self.run_hook(
+            ["secret-one", "secret-two", "secret-three"],
+            probe=lambda: True,
+        )
+        self.assertEqual(["secret-one"], self.cvm_secrets(calls))
+
+    def test_failed_run_falls_through_to_next_secret(self):
+        results = [
+            mock.Mock(returncode=1, stdout="", stderr="boom"),
+            mock.Mock(returncode=0, stdout="All vouchers attached", stderr=""),
+        ]
+        calls = self.run_hook(["secret-one", "secret-two"], results=results)
+        self.assertEqual(["secret-one", "secret-two"], self.cvm_secrets(calls))
+
+    def test_all_runs_failing_raises_last_error(self):
+        results = [
+            mock.Mock(returncode=1, stdout="", stderr="boom-one"),
+            mock.Mock(returncode=1, stdout="", stderr="boom-two"),
+        ]
+        with self.assertRaisesRegex(RuntimeError, "boom-two"):
+            self.run_hook(["secret-one", "secret-two"], results=results)
+
+    def test_unregistered_device_error_raises_immediately(self):
+        results = [
+            mock.Mock(
+                returncode=1,
+                stdout="",
+                stderr="java.nio.file.NoSuchFileException: /var/local/java/prefs/acsr",
+            ),
+            mock.Mock(returncode=0, stdout="All vouchers attached", stderr=""),
+        ]
+        with mock.patch.object(drm_init.os.path, "isfile", return_value=True), \
+                mock.patch.object(
+                    drm_init.subprocess, "run", side_effect=results
+                ) as run:
+            with self.assertRaisesRegex(RuntimeError, "not registered"):
+                drm_init._extract_keys_with_hook(
+                    "SERIAL", ["/book.sdr/assets/voucher"], "/plugin",
+                    ["secret-one", "secret-two"],
+                )
+        self.assertEqual(1, run.call_count)
+class VoucherKeyMatchingTests(unittest.TestCase):
+    def test_lone_candidate_is_still_trial_decrypted(self):
+        """A single captured key may come from a wrong account secret."""
+        with tempfile.NamedTemporaryFile() as voucher_file:
+            with mock.patch.object(
+                drm_init,
+                "_extract_page_key_from_data",
+                side_effect=ValueError("bad padding"),
+            ):
+                matched = drm_init._find_voucher_key(
+                    voucher_file.name, [{"key": b"v" * 32, "iv": None}]
+                )
+
+        self.assertIsNone(matched)
+
+    def test_matching_key_is_returned(self):
+        with tempfile.NamedTemporaryFile() as voucher_file:
+            with mock.patch.object(
+                drm_init,
+                "_extract_page_key_from_data",
+                side_effect=[ValueError("bad padding"), None],
+            ):
+                matched = drm_init._find_voucher_key(
+                    voucher_file.name,
+                    [
+                        {"key": b"w" * 32, "iv": None},
+                        {"key": b"v" * 32, "iv": None},
+                    ],
+                )
+
+        self.assertEqual(b"v" * 32, matched)
 
 
 class KeyLogCleanupTests(unittest.TestCase):

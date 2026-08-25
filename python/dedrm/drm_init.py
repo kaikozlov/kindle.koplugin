@@ -44,19 +44,36 @@ def _temporary_key_log():
             pass
 
 
-def _preflight_check():
+def _read_account_secrets():
+    """Read account secrets from ACSR, split into individual secrets.
+
+    Newer Kindle firmware can store several comma-separated account secrets
+    in one file, while the SDK accepts a single ACCOUNT_SECRET lock parameter
+    per JVM run. Callers iterate the returned list with one cvm run each.
+    Returns an empty list when the file is missing or empty; older firmware
+    legitimately has no ACSR and derives keys from the device serial alone.
+    """
+    try:
+        with open(_ACSR_PATH, "rb") as acsr_file:
+            raw = acsr_file.read()
+    except OSError:
+        return []
+    secrets = [
+        part.strip()
+        for part in raw.decode("utf-8", errors="replace").split(",")
+    ]
+    return [secret for secret in secrets if secret]
+
+
+def _preflight_check(secrets):
     """Warn when the account secret is unavailable, but allow extraction.
 
     Older Kindle firmware derives book access from the device serial alone and
     legitimately has no ACSR file. Newer firmware supplies ACSR as an additional
     lock parameter, so a populated file remains supported without a warning.
     """
-    try:
-        with open(_ACSR_PATH, "rb") as acsr_file:
-            if acsr_file.read().strip():
-                return
-    except OSError:
-        pass
+    if secrets:
+        return
 
     print(
         "drm-init: WARNING: Account secret is missing or empty; "
@@ -279,7 +296,8 @@ def extract_book_key(kfx_path, plugin_dir, cache_dir):
     Runs the device JVM with just that book's voucher, captures the key,
     and updates drm_keys.json. Returns dict with success, book_id, etc.
     """
-    _preflight_check()
+    secrets = _read_account_secrets()
+    _preflight_check(secrets)
 
     # Step 1: Find the voucher for this specific book
     voucher_path = _find_voucher_for_kfx(kfx_path)
@@ -290,9 +308,20 @@ def extract_book_key(kfx_path, plugin_dir, cache_dir):
     serial = _read_device_serial()
 
     with _temporary_key_log() as key_log_path:
-        # Step 3: Run the Java extractor with just this voucher
+        # Step 3: Run the Java extractor with just this voucher. The probe
+        # stops the per-secret iteration as soon as one run's captured keys
+        # actually decrypt this book's voucher.
         try:
-            _extract_keys_with_hook(serial, [voucher_path], plugin_dir)
+            _extract_keys_with_hook(
+                serial,
+                [voucher_path],
+                plugin_dir,
+                secrets,
+                probe=lambda: _find_voucher_key(
+                    voucher_path, _parse_captured_keys(key_log_path)
+                )
+                is not None,
+            )
         except Exception as error:
             return _native_book_fallback(
                 kfx_path, voucher_path, plugin_dir, cache_dir, serial, error
@@ -384,15 +413,18 @@ def run(documents_root, plugin_dir, cache_dir):
     if not vouchers:
         return {"books_found": 0, "keys_found": 0}
 
-    _preflight_check()
+    secrets = _read_account_secrets()
+    _preflight_check(secrets)
 
     # Step 2: Read device serial
     serial = _read_device_serial()
 
     with _temporary_key_log() as key_log_path:
-        # Step 3: Run the Java extractor with LD_PRELOAD hook
+        # Step 3: Run the Java extractor with LD_PRELOAD hook. No probe:
+        # a library-wide init must cover vouchers bound to every secret, so
+        # every secret gets its own JVM run and the key log accumulates.
         try:
-            _extract_keys_with_hook(serial, vouchers, plugin_dir)
+            _extract_keys_with_hook(serial, vouchers, plugin_dir, secrets)
         except Exception as error:
             return _run_native_fallback(vouchers, plugin_dir, cache_dir, serial, error)
 
@@ -489,8 +521,15 @@ def _read_device_serial():
     return serial
 
 
-def _extract_keys_with_hook(serial, vouchers, plugin_dir):
-    """Run the device's cvm JVM with LD_PRELOAD hook to capture AES keys."""
+def _extract_keys_with_hook(serial, vouchers, plugin_dir, secrets, probe=None):
+    """Run the device's cvm JVM with LD_PRELOAD hook to capture AES keys.
+
+    Newer firmware may hold several account secrets; each gets its own JVM
+    run because the SDK binds a single ACCOUNT_SECRET per run. The hook
+    appends, so key candidates accumulate in the log across runs and the
+    caller's voucher trial-decryption picks the working one. When ``probe``
+    is supplied, stop after the first run whose captured keys satisfy it.
+    """
     hook_path = os.path.join(plugin_dir, "lib", "crypto_hook.so")
     jar_path = os.path.join(plugin_dir, "lib", "KFXVoucherExtractor.jar")
 
@@ -499,45 +538,64 @@ def _extract_keys_with_hook(serial, vouchers, plugin_dir):
     if not os.path.isfile(jar_path):
         raise FileNotFoundError(f"KFXVoucherExtractor.jar not found: {jar_path}")
 
-    # Clear the key log
+    # Clear the key log once, before the first run; candidates from every
+    # per-secret run accumulate in the same log afterwards.
     try:
         os.remove(_KEY_LOG_PATH)
     except OSError:
         pass
 
-    args = [serial] + vouchers
-
-    cmd = [
-        "/usr/java/bin/cvm",
-        "-Djava.library.path=/usr/lib:/usr/java/lib",
-        "-cp", jar_path + ":/opt/amazon/ebook/lib/YJReader-impl.jar",
-        "KFXVoucherExtractor",
-    ] + args
-
     env = os.environ.copy()
     env["LD_PRELOAD"] = hook_path + ":/usr/java/lib/arm/libdlopen_global.so"
     env["LD_LIBRARY_PATH"] = "/usr/lib:/usr/java/lib"
 
-    result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
+    last_error = None
+    succeeded = False
+    for secret in secrets or [None]:
+        cmd = [
+            "/usr/java/bin/cvm",
+            "-Djava.library.path=/usr/lib:/usr/java/lib",
+            "-cp", jar_path + ":/opt/amazon/ebook/lib/YJReader-impl.jar",
+            "KFXVoucherExtractor",
+            serial,
+        ]
+        if secret is not None:
+            cmd += ["--acsr", secret]
+        cmd += vouchers
 
-    if result.returncode != 0:
-        combined = result.stderr + "\n" + result.stdout
-        # Parse for known failure modes and return user-friendly messages
-        if "NoSuchFileException" in combined and "acsr" in combined:
-            raise RuntimeError(
-                "Your Kindle is not registered to an Amazon account. "
-                "Register your device, run Refresh Book Access, "
-                "then you can deregister again."
-            )
-        if "NoSuchFileException" in combined and "/proc/usid" in combined:
-            raise RuntimeError(
-                "Device serial not found (/proc/usid). "
-                "This feature only works on Kindle devices."
-            )
-        raise RuntimeError(f"cvm failed (exit {result.returncode}): {result.stderr}\n{result.stdout}")
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
 
-    if "All vouchers attached" not in result.stdout:
-        raise RuntimeError(f"voucher extraction may have failed: {result.stdout}")
+        if result.returncode != 0:
+            combined = result.stderr + "\n" + result.stdout
+            # Parse for known failure modes and return user-friendly messages
+            if "NoSuchFileException" in combined and "acsr" in combined:
+                raise RuntimeError(
+                    "Your Kindle is not registered to an Amazon account. "
+                    "Register your device, run Refresh Book Access, "
+                    "then you can deregister again."
+                )
+            if "NoSuchFileException" in combined and "/proc/usid" in combined:
+                raise RuntimeError(
+                    "Device serial not found (/proc/usid). "
+                    "This feature only works on Kindle devices."
+                )
+            last_error = RuntimeError(
+                f"cvm failed (exit {result.returncode}): {result.stderr}\n{result.stdout}"
+            )
+            continue
+
+        if "All vouchers attached" not in result.stdout:
+            last_error = RuntimeError(f"voucher extraction may have failed: {result.stdout}")
+            continue
+
+        succeeded = True
+        if probe is not None and probe():
+            return
+
+    # One successful run is enough: a later secret's failure must not
+    # discard the key candidates already captured for earlier ones.
+    if not succeeded and last_error is not None:
+        raise last_error
 
 
 def _parse_captured_keys(log_path):
@@ -573,9 +631,6 @@ def _find_voucher_key(voucher_path, captured_keys):
     """Find the AES-256 key that decrypts the given voucher."""
     if not captured_keys:
         return None
-
-    if len(captured_keys) == 1:
-        return captured_keys[0]["key"]
 
     # Try each key to find which one decrypts the voucher
     with open(voucher_path, "rb") as f:

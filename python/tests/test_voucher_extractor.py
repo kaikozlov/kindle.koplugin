@@ -20,6 +20,22 @@ public class VoucherExtractorAccountSecretHarness {
 }
 """
 
+ARGUMENTS_HARNESS_SOURCE = """
+public class VoucherExtractorArgumentsHarness {
+    public static void main(String[] args) {
+        KFXVoucherExtractor.Arguments parsed = KFXVoucherExtractor.parseArguments(args);
+        if (parsed == null) {
+            System.out.println("null");
+            return;
+        }
+        System.out.println(parsed.serial);
+        System.out.println(parsed.accountSecretOverride == null ? "-" : parsed.accountSecretOverride);
+        System.out.println(String.join("|", parsed.voucherPaths));
+    }
+}
+"""
+
+
 
 @unittest.skipUnless(shutil.which("javac") and shutil.which("java"), "Java toolchain is required")
 class VoucherExtractorAccountSecretTests(unittest.TestCase):
@@ -30,8 +46,12 @@ class VoucherExtractorAccountSecretTests(unittest.TestCase):
         os.makedirs(cls.classes_dir)
 
         harness_path = os.path.join(cls.tempdir, "VoucherExtractorAccountSecretHarness.java")
+        arguments_harness_path = os.path.join(cls.tempdir, "VoucherExtractorArgumentsHarness.java")
         with open(harness_path, "w") as harness_file:
             harness_file.write(textwrap.dedent(HARNESS_SOURCE))
+        with open(arguments_harness_path, "w") as harness_file:
+            harness_file.write(textwrap.dedent(ARGUMENTS_HARNESS_SOURCE))
+
 
         stub_sources = []
         for dirpath, _, filenames in os.walk(JAVA_STUBS):
@@ -49,6 +69,8 @@ class VoucherExtractorAccountSecretTests(unittest.TestCase):
                 *sorted(stub_sources),
                 JAVA_SOURCE,
                 harness_path,
+                arguments_harness_path,
+
             ],
             check=True,
             capture_output=True,
@@ -68,6 +90,8 @@ class VoucherExtractorAccountSecretTests(unittest.TestCase):
                 cls.jar_classes_dir,
                 *sorted(stub_sources),
                 harness_path,
+                arguments_harness_path,
+
             ],
             check=True,
             capture_output=True,
@@ -85,6 +109,48 @@ class VoucherExtractorAccountSecretTests(unittest.TestCase):
             capture_output=True,
             text=True,
         )
+
+    def parse_arguments(self, args):
+        result = subprocess.run(
+            ["java", "-cp", self.classes_dir, "VoucherExtractorArgumentsHarness", *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.splitlines()
+
+    def test_acsr_override_and_vouchers_are_parsed(self):
+        lines = self.parse_arguments(["SERIAL", "--acsr", "secret-one", "/v1", "/v2"])
+        self.assertEqual(["SERIAL", "secret-one", "/v1|/v2"], lines)
+
+    def test_missing_override_falls_back_to_device_file(self):
+        lines = self.parse_arguments(["SERIAL", "/v1"])
+        self.assertEqual(["SERIAL", "-", "/v1"], lines)
+
+    def test_flag_position_is_independent(self):
+        lines = self.parse_arguments(["SERIAL", "/v0", "--acsr", "s", "/v1"])
+        self.assertEqual(["SERIAL", "s", "/v0|/v1"], lines)
+
+    def test_dangling_acsr_flag_is_rejected(self):
+        self.assertEqual(["null"], self.parse_arguments(["SERIAL", "--acsr"]))
+
+    def test_bundled_jar_parses_acsr_override(self):
+        classpath = os.pathsep.join([JAVA_JAR, self.jar_classes_dir])
+        result = subprocess.run(
+            [
+                "java", "-cp", classpath, "VoucherExtractorArgumentsHarness",
+                "SERIAL", "--acsr", "secret-one", "/v1",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(["SERIAL", "secret-one", "/v1"], result.stdout.splitlines())
+
+    def test_bundled_jar_contains_nested_argument_class(self):
+        with zipfile.ZipFile(JAVA_JAR) as jar_file:
+            names = jar_file.namelist()
+        self.assertIn("KFXVoucherExtractor$Arguments.class", names)
 
     def test_missing_account_secret_warns_and_returns_empty(self):
         path = os.path.join(self.tempdir, "missing-acsr")

@@ -95,7 +95,9 @@ annotation text.
 > Designed for Kindle devices running KOReader alongside stock firmware.
 
 Book-key extraction normally uses the Kindle Java DRM SDK bundled with the
-firmware. If that route fails and
+firmware. Devices whose `/var/local/java/prefs/acsr` holds several
+comma-separated account secrets are handled by running the extractor once per
+secret. If that route fails and
 [Satsuoni's `kfxdedrm` tooling](https://github.com/Satsuoni/DeDRM_tools/tree/master/Other_Tools/KRFKeyExtractor/kindle_device)
 is installed — either the original KUAL extension at
 `/mnt/us/extensions/kfxdedrm/` or the newer kfx-dedrm scriptlet at

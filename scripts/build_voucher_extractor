@@ -23,7 +23,7 @@ javac --release 8 \
     "${stub_sources[@]}" \
     "$SOURCE"
 
-cp "$BUILD_DIR/classes/KFXVoucherExtractor.class" "$BUILD_DIR/jar/"
+cp "$BUILD_DIR/classes/KFXVoucherExtractor"*.class "$BUILD_DIR/jar/"
 cp "$SOURCE" "$BUILD_DIR/jar/KFXVoucherExtractor.java"
 printf 'Manifest-Version: 1.0\nMain-Class: KFXVoucherExtractor\n\n' \
     > "$BUILD_DIR/jar/META-INF/MANIFEST.MF"
@@ -31,7 +31,7 @@ printf 'Manifest-Version: 1.0\nMain-Class: KFXVoucherExtractor\n\n' \
 rm -f "$OUTPUT"
 (
     cd "$BUILD_DIR/jar"
-    jar cfm "$OUTPUT" META-INF/MANIFEST.MF KFXVoucherExtractor.class KFXVoucherExtractor.java
+    jar cfm "$OUTPUT" META-INF/MANIFEST.MF KFXVoucherExtractor*.class KFXVoucherExtractor.java
 )
 
 echo "Built $OUTPUT"
