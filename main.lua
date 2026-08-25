@@ -642,7 +642,11 @@ function KindlePlugin:createClearKeysMenuItem()
                 text = _("Clear all cached book keys? Required keys will be extracted again when a book is next opened."),
                 ok_text = _("Clear keys"),
                 ok_callback = function()
-                    os.remove(keys_path)
+                    local ok, err = os.remove(keys_path)
+                    if not ok then
+                        self:showInfo(_("Failed to clear book keys:\n") .. (err or _("unknown error")))
+                        return
+                    end
                     self:showInfo(_("Book keys cleared."), 2)
                 end,
             }))
@@ -655,7 +659,9 @@ end
 function KindlePlugin:createClearCacheMenuItem()
     return {
         text = _("Clear Kindle Cache"),
-        help_text = _("Removes all cached converted EPUBs. Books will be re-converted on next access."),
+        help_text = _(
+            "Removes cached converted EPUBs and position metadata. Book access keys are preserved. " .. "Books will be re-converted on next access."
+        ),
         callback = function()
             local stats = cache_manager:getCacheStats()
 

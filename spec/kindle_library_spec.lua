@@ -102,6 +102,36 @@ describe("KindleLibrary native BookList opens", function()
         assert.is_nil(manager:takeReturnToLibraryRequest())
     end)
 
+    it("reports a per-book cache removal failure", function()
+        local book = {
+            id = "kfx",
+            source_path = "/mnt/us/documents/book.kfx",
+            open_mode = "convert",
+        }
+        local manager = makeManager(book)
+        manager.cache_manager = {
+            clearBookCache = function()
+                return false, "permission denied"
+            end,
+        }
+        local reshows = 0
+        manager.show = function()
+            reshows = reshows + 1
+        end
+        local UIManager = require("ui/uimanager")
+        UIManager:_reset()
+
+        assert.is_true(manager:showBookDialog({ kindle_book_id = "kfx" }))
+        local dialog = UIManager._shown_widgets[#UIManager._shown_widgets]
+        assert.is_truthy(dialog)
+        dialog.buttons[2][1].callback()
+
+        local info = UIManager._shown_widgets[#UIManager._shown_widgets]
+        assert.is_truthy(info.text:match("Failed to clear cache"))
+        assert.is_truthy(info.text:match("permission denied"))
+        assert.equals(0, reshows)
+    end)
+
     it("never forwards a blocked/cloud-only entry to KOReader", function()
         local book = {
             id = "cloud",

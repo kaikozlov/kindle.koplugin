@@ -326,16 +326,85 @@ describe("CacheManager", function()
         end)
     end)
 
-    describe("clearBookCache", function()
-        it("should remove epub and metadata files", function()
+    describe("cache clearing", function()
+        local function makeTempDir()
+            local dir = os.tmpname()
+            os.remove(dir)
+            assert.equals(0, os.execute("mkdir -p " .. dir))
+            return dir
+        end
+
+        local function writeRealFile(path, data)
+            local file = assert(_test_real_io_open(path, "wb"))
+            file:write(data or "x")
+            file:close()
+        end
+
+        it("removes EPUB, metadata, and position map for one book", function()
+            local cache_dir = makeTempDir()
             local cm = CacheManager:new({}, {})
-            cm:setSettings({ cache_dir = "/cache" })
+            cm:setSettings({ cache_dir = cache_dir })
             local book = { id = "b1" }
+            local epub_path, meta_path = cm:getCachePaths(book)
+            local position_path = epub_path:gsub("%.epub$", ".positions.json")
+            writeRealFile(epub_path)
+            writeRealFile(meta_path)
+            writeRealFile(position_path)
 
-            -- os.remove will just return nil in test env, but we verify it doesn't crash
-            local ok = cm:clearBookCache(book)
+            local ok, err = cm:clearBookCache(book)
 
-            assert.is_true(ok)
+            assert.is_true(ok, err)
+            assert.is_nil(_test_real_io_open(epub_path, "rb"))
+            assert.is_nil(_test_real_io_open(meta_path, "rb"))
+            assert.is_nil(_test_real_io_open(position_path, "rb"))
+            os.execute("rm -rf " .. cache_dir)
+        end)
+
+        it("preserves DRM keys when clearing converted-book cache", function()
+            local cache_dir = makeTempDir()
+            local cm = CacheManager:new({}, {})
+            cm:setSettings({ cache_dir = cache_dir })
+            local book = { id = "b1" }
+            local epub_path, meta_path = cm:getCachePaths(book)
+            local position_path = epub_path:gsub("%.epub$", ".positions.json")
+            local keys_path = cm:getDrmKeysPath()
+            writeRealFile(epub_path)
+            writeRealFile(meta_path)
+            writeRealFile(position_path)
+            writeRealFile(keys_path, "{}")
+
+            local ok, err = cm:clearAllCache()
+
+            assert.is_true(ok, err)
+            assert.is_nil(_test_real_io_open(epub_path, "rb"))
+            assert.is_nil(_test_real_io_open(meta_path, "rb"))
+            assert.is_nil(_test_real_io_open(position_path, "rb"))
+            local keys_file = assert(_test_real_io_open(keys_path, "rb"))
+            keys_file:close()
+            os.execute("rm -rf " .. cache_dir)
+        end)
+
+        it("reports removal failures instead of claiming success", function()
+            local cache_dir = makeTempDir()
+            local cm = CacheManager:new({}, {})
+            cm:setSettings({ cache_dir = cache_dir })
+            local book = { id = "b1" }
+            local epub_path = cm:getCachePaths(book)
+            writeRealFile(epub_path)
+
+            local original_remove = os.remove
+            rawset(os, "remove", function(path)
+                if path == epub_path then
+                    return nil, "permission denied"
+                end
+                return original_remove(path)
+            end)
+            local ok, err = cm:clearAllCache()
+            rawset(os, "remove", original_remove)
+
+            assert.is_false(ok)
+            assert.equals("permission denied", err)
+            os.execute("rm -rf " .. cache_dir)
         end)
     end)
 

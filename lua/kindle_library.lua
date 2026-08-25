@@ -189,7 +189,11 @@ function KindleLibrary:showBookDialog(item)
                     callback = function()
                         UIManager:close(dialog)
                         if self.cache_manager then
-                            self.cache_manager:clearBookCache(book)
+                            local ok, err = self.cache_manager:clearBookCache(book)
+                            if not ok then
+                                showInfo(_("Failed to clear cache:\n") .. (err or _("unknown error")))
+                                return
+                            end
                         end
                         self:show(self.ui, false)
                     end,

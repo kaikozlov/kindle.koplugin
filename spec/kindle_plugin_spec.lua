@@ -142,6 +142,64 @@ describe("KindlePlugin", function()
         assert.is_nil(library:takeReturnToLibraryRequest())
     end)
 
+    it("clears book keys only after confirmation", function()
+        local cache_dir = os.tmpname()
+        os.remove(cache_dir)
+        assert.equals(0, os.execute("mkdir -p " .. cache_dir))
+        local keys_path = cache_dir .. "/drm_keys.json"
+        local keys_file = assert(io.open(keys_path, "wb"))
+        keys_file:write("{}")
+        keys_file:close()
+
+        local instance = newPlugin({ cache_dir = cache_dir })
+        local menu_item = instance:createClearKeysMenuItem()
+        UIManager:_reset()
+        menu_item.callback()
+
+        local confirm = UIManager._shown_widgets[#UIManager._shown_widgets]
+        assert.is_truthy(confirm)
+        assert.is_function(confirm.ok_callback)
+        confirm.ok_callback()
+
+        assert.is_nil(io.open(keys_path, "rb"))
+        local info = UIManager._shown_widgets[#UIManager._shown_widgets]
+        assert.is_truthy(info.text:match("Book keys cleared"))
+        os.execute("rm -rf " .. cache_dir)
+    end)
+
+    it("reports a book-key removal failure", function()
+        local cache_dir = os.tmpname()
+        os.remove(cache_dir)
+        assert.equals(0, os.execute("mkdir -p " .. cache_dir))
+        local keys_path = cache_dir .. "/drm_keys.json"
+        local keys_file = assert(io.open(keys_path, "wb"))
+        keys_file:write("{}")
+        keys_file:close()
+
+        local instance = newPlugin({ cache_dir = cache_dir })
+        local menu_item = instance:createClearKeysMenuItem()
+        UIManager:_reset()
+        menu_item.callback()
+        local confirm = UIManager._shown_widgets[#UIManager._shown_widgets]
+
+        local original_remove = os.remove
+        rawset(os, "remove", function(path)
+            if path == keys_path then
+                return nil, "permission denied"
+            end
+            return original_remove(path)
+        end)
+        confirm.ok_callback()
+        rawset(os, "remove", original_remove)
+
+        local still_there = assert(io.open(keys_path, "rb"))
+        still_there:close()
+        local info = UIManager._shown_widgets[#UIManager._shown_widgets]
+        assert.is_truthy(info.text:match("Failed to clear book keys"))
+        assert.is_truthy(info.text:match("permission denied"))
+        os.execute("rm -rf " .. cache_dir)
+    end)
+
     it("keeps the menu available while the library view is disabled", function()
         local instance = newPlugin({ enable_virtual_library = false })
         instance.ui = { document = nil }

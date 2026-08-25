@@ -198,9 +198,17 @@ end
 
 function CacheManager:clearBookCache(book)
     local epub_path, meta_path = self:getCachePaths(book)
+    local position_path = epub_path:gsub("%.epub$", ".positions.json")
     logger.info("KindlePlugin: clearing cache for", book.id)
-    os.remove(epub_path)
-    os.remove(meta_path)
+
+    for _, path in ipairs({ epub_path, meta_path, position_path }) do
+        if fileExists(path) then
+            local ok, err = os.remove(path)
+            if not ok then
+                return false, err or "failed to remove cache file"
+            end
+        end
+    end
     return true
 end
 
@@ -219,9 +227,17 @@ function CacheManager:clearAllCache()
     handle:close()
 
     local count = 0
+    local drm_keys_path = self:getDrmKeysPath()
     for file_path in output:gmatch("[^\r\n]+") do
-        os.remove(file_path)
-        count = count + 1
+        -- Book-access keys have their own explicit clear action and may be
+        -- expensive or impossible to re-extract on older firmware.
+        if file_path ~= drm_keys_path then
+            local ok, err = os.remove(file_path)
+            if not ok then
+                return false, err or "failed to remove cache file"
+            end
+            count = count + 1
+        end
     end
     logger.info("KindlePlugin: cleared", count, "cache files")
     return true
