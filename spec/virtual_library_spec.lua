@@ -21,7 +21,6 @@ describe("VirtualLibrary real-path model", function()
                 display_name = "Book One",
                 source_path = "/documents/book.kfx",
                 open_mode = "convert",
-                logical_ext = "epub",
             },
         }
         local vlib = VirtualLibrary:new({
@@ -122,7 +121,7 @@ describe("VirtualLibrary real-path model", function()
         local result = vlib:buildMappings(false)
         assert.equals(1, #result)
         assert.equals(book, vlib:getBook("cc:cloud"))
-        assert.is_nil(vlib:getRealPath("cc:unknown"))
+        assert.is_nil(vlib:getBook("cc:unknown"))
     end)
 
     it("creates a synthetic folder entry whose path remains a real directory", function()

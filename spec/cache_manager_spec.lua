@@ -25,8 +25,8 @@ describe("CacheManager", function()
     end)
 
     describe("initialization", function()
-        it("should create a new instance with helper and virtual_library", function()
-            local cm = CacheManager:new({}, {})
+        it("should create a new instance with a helper", function()
+            local cm = CacheManager:new({})
 
             assert.is_not_nil(cm)
             assert.is_table(cm)
@@ -35,7 +35,7 @@ describe("CacheManager", function()
 
     describe("setSettings", function()
         it("should store settings", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             local settings = { cache_dir = "/test/cache" }
 
             cm:setSettings(settings)
@@ -44,7 +44,7 @@ describe("CacheManager", function()
         end)
 
         it("should default to empty table for nil", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
 
             cm:setSettings(nil)
 
@@ -54,14 +54,14 @@ describe("CacheManager", function()
 
     describe("getCacheDir", function()
         it("should return settings cache_dir", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/custom/cache" })
 
             assert.equals("/custom/cache", cm:getCacheDir())
         end)
 
         it("should return default when not set", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({})
 
             assert.equals("/tmp/kindle.koplugin.cache", cm:getCacheDir())
@@ -70,7 +70,7 @@ describe("CacheManager", function()
 
     describe("getCachePaths", function()
         it("should generate epub and json paths from book id", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             local book = { id = "test_book_id" }
 
             local epub_path, meta_path = cm:getCachePaths(book)
@@ -80,7 +80,7 @@ describe("CacheManager", function()
         end)
 
         it("should sanitize special chars in id", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             local book = { id = "book/with:special" }
 
             local epub_path = cm:getCachePaths(book)
@@ -92,7 +92,7 @@ describe("CacheManager", function()
 
     describe("isFresh", function()
         it("should return false when epub is missing", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             local book = { id = "b1", source_mtime = 1000, source_size = 42 }
 
             -- epub doesn't exist (no mock file set)
@@ -102,7 +102,7 @@ describe("CacheManager", function()
         end)
 
         it("should return false when metadata is missing", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/cache" })
             local book = { id = "b1", source_mtime = 1000, source_size = 42 }
 
@@ -121,7 +121,7 @@ describe("CacheManager", function()
         end)
 
         it("should return false when converter version changed", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/cache" })
             local book = { id = "b1", source_mtime = 1000, source_size = 42 }
 
@@ -148,7 +148,7 @@ describe("CacheManager", function()
         end)
 
         it("should return false when source mtime changed", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/cache" })
             local book = { id = "b1", source_mtime = 2000, source_size = 42 }
 
@@ -180,7 +180,7 @@ describe("CacheManager", function()
             local lfs = require("libs/libkoreader-lfs")
             local attr = assert(lfs.attributes(source_path))
 
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/cache" })
             local book = {
                 id = "b1",
@@ -213,7 +213,7 @@ describe("CacheManager", function()
         end)
 
         it("should return true when cache is valid", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/cache" })
             local book = { id = "b1", source_mtime = 1000, source_size = 42 }
 
@@ -262,7 +262,7 @@ describe("CacheManager", function()
                     return extract_result, extract_err
                 end,
             }
-            local cm = CacheManager:new(helper_client, {})
+            local cm = CacheManager:new(helper_client)
             cm:setSettings({ cache_dir = "/cache" })
             cm.isFresh = function()
                 return false, "/cache/book.epub", "/cache/book.json"
@@ -319,7 +319,7 @@ describe("CacheManager", function()
 
     describe("getDrmKeysPath", function()
         it("should return path under cache dir", function()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/test/cache" })
 
             assert.equals("/test/cache/drm_keys.json", cm:getDrmKeysPath())
@@ -342,7 +342,7 @@ describe("CacheManager", function()
 
         it("removes EPUB, metadata, and position map for one book", function()
             local cache_dir = makeTempDir()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = cache_dir })
             local book = { id = "b1" }
             local epub_path, meta_path = cm:getCachePaths(book)
@@ -362,7 +362,7 @@ describe("CacheManager", function()
 
         it("preserves DRM keys when clearing converted-book cache", function()
             local cache_dir = makeTempDir()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = cache_dir })
             local book = { id = "b1" }
             local epub_path, meta_path = cm:getCachePaths(book)
@@ -386,7 +386,7 @@ describe("CacheManager", function()
 
         it("reports removal failures instead of claiming success", function()
             local cache_dir = makeTempDir()
-            local cm = CacheManager:new({}, {})
+            local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = cache_dir })
             local book = { id = "b1" }
             local epub_path = cm:getCachePaths(book)

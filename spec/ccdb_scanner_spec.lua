@@ -57,11 +57,8 @@ describe("CcDbScanner", function()
                 j_credits = { '[{"name":{"display":"Test Author"},"kind":"Author"}]' },
                 p_mimeType = { "application/x-kfx-ebook" },
                 p_cdeKey = { "B00TEST" },
-                p_cdeType = { "EBOK" },
                 p_isDRMProtected = { "1" },
                 p_isArchived = { "0" },
-                p_percentFinished = { "42" },
-                p_thumbnail = { "/mnt/us/documents/Downloads/Items01/Book_B00TEST.kfx.sdr/icon.png" },
                 p_diskUsage = { "1048576" },
                 p_contentSize = { "900000" },
                 p_modificationTime = { "1700000000" },
@@ -78,12 +75,8 @@ describe("CcDbScanner", function()
             assert.equals("/mnt/us/documents/Downloads/Items01/Book_B00TEST.kfx", book.source_path)
             assert.equals("The Test Book", book.title)
             assert.same({ "Test Author" }, book.authors)
-            assert.equals("kfx", book.format)
-            assert.equals("epub", book.logical_ext)
             assert.equals("convert", book.open_mode)
             assert.equals("B00TEST", book.cde_key)
-            assert.equals("EBOK", book.cde_type)
-            assert.equals(42, book.percent_finished)
             assert.is_nil(book.block_reason)
         end)
 
@@ -95,11 +88,8 @@ describe("CcDbScanner", function()
                 j_credits = { "" },
                 p_mimeType = { "application/x-mobipocket-ebook" },
                 p_cdeKey = { "B00CLOUD" },
-                p_cdeType = { "EBOK" },
                 p_isDRMProtected = { nil },
                 p_isArchived = { "0" },
-                p_percentFinished = { nil },
-                p_thumbnail = { "" },
                 p_diskUsage = { "0" },
                 p_contentSize = { "0" },
                 p_modificationTime = { "1700000000" },
@@ -121,11 +111,8 @@ describe("CcDbScanner", function()
                 j_credits = { "" },
                 p_mimeType = { "application/x-mobipocket-ebook" },
                 p_cdeKey = { "B00DRM" },
-                p_cdeType = { "EBOK" },
                 p_isDRMProtected = { "1" },
                 p_isArchived = { "0" },
-                p_percentFinished = { nil },
-                p_thumbnail = { "" },
                 p_diskUsage = { "500000" },
                 p_contentSize = { "400000" },
                 p_modificationTime = { "1700000000" },
@@ -147,11 +134,8 @@ describe("CcDbScanner", function()
                 j_credits = { "" },
                 p_mimeType = { "application/x-mobipocket-ebook" },
                 p_cdeKey = { "B00FREE" },
-                p_cdeType = { "PDOC" },
                 p_isDRMProtected = { nil },
                 p_isArchived = { "0" },
-                p_percentFinished = { "0" },
-                p_thumbnail = { "" },
                 p_diskUsage = { "300000" },
                 p_contentSize = { "250000" },
                 p_modificationTime = { "1700000000" },
@@ -182,11 +166,8 @@ describe("CcDbScanner", function()
                 j_credits = { "", "", "" },
                 p_mimeType = { "application/x-kfx-ebook", "application/x-kfx-ebook", "application/x-mobipocket-ebook" },
                 p_cdeKey = { "B001", "B002", "B003" },
-                p_cdeType = { "EBOK", "EBOK", "PDOC" },
                 p_isDRMProtected = { "1", "1", nil },
                 p_isArchived = { "0", "0", "0" },
-                p_percentFinished = { "10", "0", "0" },
-                p_thumbnail = { "", "", "" },
                 p_diskUsage = { "1000000", "800000", "500000" },
                 p_contentSize = { "900000", "700000", "400000" },
                 p_modificationTime = { "1700000000", "1700000001", "1700000002" },

@@ -49,7 +49,6 @@ local default_settings = {
     documents_root = "/mnt/us/documents",
     cache_dir = DataStorage:getFullDataDir() .. "/cache/kindle.koplugin",
     index_ttl_seconds = 300,
-    last_scan_at = 0,
     sync_reading_state = false,
     enable_auto_sync = true,
     enable_sync_from_kindle = false,
@@ -63,7 +62,7 @@ local default_settings = {
 local helper_client = HelperClient:new()
 local library_index = LibraryIndex:new()
 local virtual_library = VirtualLibrary:new(library_index)
-local cache_manager = CacheManager:new(helper_client, virtual_library)
+local cache_manager = CacheManager:new(helper_client)
 local reading_state_sync = ReadingStateSync:new(helper_client)
 local kindle_library = KindleLibrary:new(virtual_library, cache_manager)
 virtual_library:setCacheManager(cache_manager)
@@ -794,8 +793,6 @@ function KindlePlugin:createRefreshLibraryMenuItem()
         end,
         callback = function()
             local _, err = virtual_library:refresh(true)
-            self.settings.last_scan_at = os.time()
-            self:saveSettings()
             if err then
                 self:showInfo(_("Failed to refresh Kindle library:\n") .. err)
                 return

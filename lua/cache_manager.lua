@@ -8,10 +8,9 @@ CacheManager.__index = CacheManager
 
 CacheManager.CONVERTER_VERSION = "5"
 
-function CacheManager:new(helper_client, virtual_library)
+function CacheManager:new(helper_client)
     local instance = {
         helper_client = helper_client,
-        virtual_library = virtual_library,
         settings = {},
     }
     setmetatable(instance, self)

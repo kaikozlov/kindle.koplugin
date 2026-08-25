@@ -62,10 +62,6 @@ function PositionMap.load(epub_path)
     return decoded
 end
 
-function PositionMap.forget(epub_path)
-    cache[epub_path] = nil
-end
-
 local function encode_long(eid, offset)
     -- Mirrors Python: b64(0x01 + eid_le32 + offset_le32).
     local raw = string.char(

@@ -1,6 +1,6 @@
 --- Scanner that reads the Kindle content catalog (cc.db) directly.
 --- Uses KOReader's built-in lua-ljsqlite3 to query /var/local/cc.db.
---- Provides proper titles, authors, DRM status, thumbnails, and reading progress
+--- Provides the catalog identity, metadata, DRM status, and local source paths
 --- that the Kindle's own scanner has already indexed.
 
 local logger = require("logger")
@@ -11,12 +11,6 @@ CcDbScanner.__index = CcDbScanner
 --- Path to the Kindle content catalog database.
 CcDbScanner.CC_DB_PATH = "/var/local/cc.db"
 
---- MIME types we show in the virtual library, mapped to logical format.
-CcDbScanner.BOOK_MIME_TYPES = {
-    ["application/x-kfx-ebook"] = "kfx",
-    ["application/x-mobipocket-ebook"] = "azw",
-}
-
 --- Query to fetch visible, non-archived book entries.
 --- Filters out dictionaries and system entries by requiring p_type = 'Entry:Item'.
 local QUERY = [[
@@ -24,14 +18,10 @@ SELECT
     p_uuid,
     p_location,
     p_titles_0_nominal,
-    j_titles,
     j_credits,
     p_mimeType,
     p_cdeKey,
-    p_cdeType,
     p_isDRMProtected,
-    p_percentFinished,
-    p_thumbnail,
     p_diskUsage,
     p_contentSize,
     p_modificationTime
@@ -102,18 +92,6 @@ local function classifyBook(mime_type, is_drm, location)
     return "blocked", "unsupported_format"
 end
 
---- Get the file extension for a given MIME type.
---- @param mime_type string
---- @return string
-local function mimeToExt(mime_type)
-    if mime_type == "application/x-kfx-ebook" then
-        return "kfx"
-    elseif mime_type == "application/x-mobipocket-ebook" then
-        return "azw"
-    end
-    return "bin"
-end
-
 --- Query cc.db and return a list of book entries.
 --- @return table|nil: List of book tables, or nil on error.
 --- @return string|nil: Error message if nil.
@@ -149,10 +127,7 @@ function CcDbScanner:scan()
         local title = results.p_titles_0_nominal[i] or "Untitled"
         local mime_type = results.p_mimeType[i] or ""
         local cde_key = results.p_cdeKey[i] or ""
-        local cde_type = results.p_cdeType[i] or ""
         local is_drm = results.p_isDRMProtected[i]
-        local percent_finished = results.p_percentFinished[i]
-        local thumbnail = results.p_thumbnail[i]
         local disk_usage = results.p_diskUsage[i]
         local content_size = results.p_contentSize[i]
         local modification_time = results.p_modificationTime[i]
@@ -161,10 +136,7 @@ function CcDbScanner:scan()
 
         local open_mode, block_reason = classifyBook(mime_type, is_drm, location)
 
-        local ext = mimeToExt(mime_type)
-        local logical_ext = ext == "kfx" and "epub" or ext
-
-        -- For scripts, use the script path directly. For books, use the file path.
+        -- Cloud-only entries have no local source path.
         local source_path = (location and location ~= "") and location or nil
 
         -- Build a stable ID from the cc.db UUID
@@ -174,18 +146,13 @@ function CcDbScanner:scan()
             id = book_id,
             source_path = source_path,
             uuid = uuid,
-            format = ext,
-            logical_ext = logical_ext,
             title = title,
             authors = authors,
             display_name = title,
             cde_key = cde_key,
-            cde_type = cde_type,
             open_mode = open_mode,
             source_mtime = tonumber(modification_time) or 0,
             source_size = tonumber(disk_usage) or tonumber(content_size) or 0,
-            thumbnail_path = (thumbnail and thumbnail ~= "") and thumbnail or nil,
-            percent_finished = tonumber(percent_finished) or 0,
         }
 
         if block_reason then

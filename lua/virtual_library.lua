@@ -79,10 +79,6 @@ function VirtualLibrary:buildMappings(force)
     return books
 end
 
-function VirtualLibrary:buildPathMappings()
-    return self:buildMappings(false)
-end
-
 function VirtualLibrary:refresh(force)
     return self:buildMappings(force)
 end
@@ -127,11 +123,6 @@ function VirtualLibrary:getBook(path_or_id)
     return nil
 end
 
-function VirtualLibrary:getRealPath(path)
-    local book = self:getBook(path)
-    return book and book.source_path or nil
-end
-
 function VirtualLibrary:getBlockedReasonText(book)
     local reason = book and book.block_reason or "unsupported_kfx_layout"
     local text = {
@@ -166,20 +157,6 @@ function VirtualLibrary:isBookPrepared(book)
     end
     local fresh = self.cache_manager:isFresh(book)
     return fresh == true
-end
-
-function VirtualLibrary:getPreparedPath(book)
-    if not book then
-        return nil
-    end
-    if book.open_mode == "direct" then
-        return book.source_path
-    end
-    if book.open_mode == "blocked" or not self.cache_manager then
-        return nil
-    end
-    local fresh, cached_path = self.cache_manager:isFresh(book)
-    return fresh and cached_path or nil
 end
 
 function VirtualLibrary:resolveBookPath(book)
