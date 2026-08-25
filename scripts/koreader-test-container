@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE="ghcr.io/kaikozlov/koplugin-dev:v2026.03_7"
+IMAGE="ghcr.io/kaikozlov/koplugin-dev:v2026.07.1_1"
 REFERENCE_DIR="$ROOT_DIR/REFERENCE/koreader"
 EXPECTED_COMMIT="$(tr -d '[:space:]' < "$ROOT_DIR/KOREADER_TEST_COMMIT")"
 
