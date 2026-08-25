@@ -140,9 +140,6 @@ end
 
 --- Translate a KOReader XPointer into Kindle's exact long and short position.
 function HelperClient:translatePosition(epub_path, xpointer)
-    if self.translate_position then
-        return self.translate_position(epub_path, xpointer)
-    end
     local map, map_error = self:_positionMap(epub_path)
     if not map then
         return nil, map_error
@@ -151,14 +148,10 @@ function HelperClient:translatePosition(epub_path, xpointer)
     if not result then
         return nil, err
     end
-    self._last_native_percent = result.percent
     return result
 end
 
 function HelperClient:translateNativePosition(epub_path, long_position)
-    if self.translate_native then
-        return self.translate_native(epub_path, long_position)
-    end
     local map, map_error = self:_positionMap(epub_path)
     if not map then
         return nil, map_error
@@ -431,10 +424,6 @@ end
 --- Kindle position sidecar, its reverse translation, and the forward
 --- translation of KOReader's XPointer.
 function HelperClient:readCloseState(native_path, epub_path, xpointer)
-    if self.read_close_state then
-        return self.read_close_state(native_path, epub_path, xpointer)
-    end
-
     local result = { ok = true }
     local native = self:readNativeProgress("B000000000", native_path)
     if native then
