@@ -1,16 +1,22 @@
-"""Adapter for the optional native libYJSDK KUAL key extractor.
+"""Adapter for the optional native libYJSDK KUAL/scriptlet key extractor.
 
 The plugin does not bundle ABI-specific native binaries. If Satsuoni's tested
-kfxdedrm KUAL extension is installed, this module can use it as a fallback when
-the primary cvm/Java extraction route fails, import its key-ID mappings, and
-remove the temporary plaintext keyfile afterward.
+kfxdedrm tooling is installed — either the original KUAL extension or the
+newer kfx-dedrm scriptlet packaging — this module can use it as a fallback
+when the primary cvm/Java extraction route fails, import its key-ID mappings,
+and remove the temporary plaintext keyfile afterward.
 """
 
 import os
 import subprocess
 
 
-DEFAULT_NATIVE_DIR = "/mnt/us/extensions/kfxdedrm/bin"
+DEFAULT_NATIVE_DIRS = (
+    # Original KUAL extension layout.
+    "/mnt/us/extensions/kfxdedrm/bin",
+    # Jadehawk kfx-dedrm scriptlet layout (same binary names, newer install).
+    "/mnt/us/extensions/kfxdedrm-scriptlet/bin",
+)
 DEFAULT_KEY_FILE = "/mnt/us/dedrm/keyfile.txt"
 CANDIDATE_NAMES = (
     "kfxdedrmhf_c11",
@@ -28,7 +34,10 @@ def _candidate_paths(plugin_dir=None, native_dir=None):
     directories = []
     if plugin_dir:
         directories.append(os.path.join(plugin_dir, "lib"))
-    directories.append(native_dir or DEFAULT_NATIVE_DIR)
+    if native_dir:
+        directories.append(native_dir)
+    else:
+        directories.extend(DEFAULT_NATIVE_DIRS)
 
     for directory in directories:
         for name in CANDIDATE_NAMES:

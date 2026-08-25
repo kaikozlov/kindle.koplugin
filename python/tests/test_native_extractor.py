@@ -102,6 +102,37 @@ class NativeExtractorTests(unittest.TestCase):
 
             self.assertFalse(os.path.exists(key_file))
 
+    def test_default_candidates_include_scriptlet_layout(self):
+        paths = list(native_extractor._candidate_paths())
+        kual = "/mnt/us/extensions/kfxdedrm/bin/kfxdedrmhf_c11"
+        scriptlet = "/mnt/us/extensions/kfxdedrm-scriptlet/bin/kfxdedrmhf_c11"
+        self.assertIn(scriptlet, paths)
+        # The original KUAL layout keeps probe priority.
+        self.assertLess(paths.index(kual), paths.index(scriptlet))
+
+    def test_find_executable_uses_scriptlet_layout_when_kual_missing(self):
+        with mock.patch.object(
+            native_extractor.os.path,
+            "isfile",
+            side_effect=lambda path: "kfxdedrm-scriptlet" in path,
+        ), mock.patch.object(
+            native_extractor.subprocess,
+            "run",
+            return_value=mock.Mock(returncode=0),
+        ) as run:
+            executable = native_extractor.find_executable()
+
+        self.assertEqual(
+            "/mnt/us/extensions/kfxdedrm-scriptlet/bin/kfxdedrmhf_c11",
+            executable,
+        )
+        run.assert_called_once_with(
+            [executable, "test"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

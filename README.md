@@ -96,10 +96,12 @@ annotation text.
 
 Book-key extraction normally uses the Kindle Java DRM SDK bundled with the
 firmware. If that route fails and
-[Satsuoni's `kfxdedrm` KUAL extension](https://github.com/Satsuoni/DeDRM_tools/tree/master/Other_Tools/KRFKeyExtractor/kindle_device)
-is installed at `/mnt/us/extensions/kfxdedrm/`, the plugin can automatically
-use its tested native `libYJSDK` extractor as a fallback. The external binaries
-are optional and are not bundled with this plugin.
+[Satsuoni's `kfxdedrm` tooling](https://github.com/Satsuoni/DeDRM_tools/tree/master/Other_Tools/KRFKeyExtractor/kindle_device)
+is installed — either the original KUAL extension at
+`/mnt/us/extensions/kfxdedrm/` or the newer kfx-dedrm scriptlet at
+`/mnt/us/extensions/kfxdedrm-scriptlet/` — the plugin can automatically use its
+tested native `libYJSDK` extractor as a fallback. The external binaries are
+optional and are not bundled with this plugin.
 
 ### License
 
