@@ -58,7 +58,7 @@ function KindleLibrary:buildEntries(force)
         if book and book.open_mode == "blocked" then
             item.text = item.text .. " [blocked]"
             item.mandatory = self.virtual_library:getBlockedReasonText(book)
-        elseif book and (book.open_mode == "convert" or book.open_mode == "drm") then
+        elseif book and book.open_mode == "convert" then
             local cache_state = self.virtual_library:isBookPrepared(book) and " · cached" or " · prepare on open"
             item.mandatory = item.mandatory .. cache_state
         end
@@ -82,7 +82,7 @@ function KindleLibrary:show(ui, force)
         return false
     end
     if #entries == 0 then
-        showInfo(_("No Kindle books were found in the configured documents root."))
+        showInfo(_("No Kindle books were found in the Kindle content catalog."))
         return false
     end
 

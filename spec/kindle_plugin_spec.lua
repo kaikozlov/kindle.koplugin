@@ -74,7 +74,6 @@ describe("KindlePlugin", function()
         })
         assert.is_false(instance.settings.enable_virtual_library)
         assert.equals("preserved", instance.settings.custom_setting)
-        assert.is_not_nil(instance.settings.documents_root)
         assert.is_not_nil(instance.settings.cache_dir)
     end)
 

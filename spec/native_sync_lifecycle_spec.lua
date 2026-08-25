@@ -82,7 +82,6 @@ describe("native KOReader sync lifecycle", function()
             sync_reading_state = true,
             enable_auto_sync = true,
             cache_dir = "/cache",
-            documents_root = "/documents",
         }
         for key, value in pairs(overrides or {}) do
             settings[key] = value
@@ -161,7 +160,7 @@ describe("native KOReader sync lifecycle", function()
         local book = {
             id = "pdf",
             cde_key = "B000000002",
-            source_path = "/documents/book.pdf",
+            source_path = "/mnt/us/documents/book.pdf",
             open_mode = "direct",
         }
         local settings = fakeSettings({ percent_finished = 0.2, last_page = 20 })
@@ -291,7 +290,7 @@ describe("native KOReader sync lifecycle", function()
         local book = {
             id = "pdf",
             cde_key = "B000000002",
-            source_path = "/documents/book.pdf",
+            source_path = "/mnt/us/documents/book.pdf",
             open_mode = "direct",
         }
         local settings = fakeSettings({ percent_finished = 0.2, last_page = 20 })

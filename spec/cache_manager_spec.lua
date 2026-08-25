@@ -91,9 +91,22 @@ describe("CacheManager", function()
     end)
 
     describe("isFresh", function()
+        local function bookWithSource(modification, size)
+            local source_path = "/source/b1.kfx"
+            require("libs/libkoreader-lfs")._setFileState(source_path, {
+                exists = true,
+                attributes = {
+                    mode = "file",
+                    modification = modification,
+                    size = size,
+                },
+            })
+            return { id = "b1", source_path = source_path }
+        end
+
         it("should return false when epub is missing", function()
             local cm = CacheManager:new({})
-            local book = { id = "b1", source_mtime = 1000, source_size = 42 }
+            local book = { id = "b1" }
 
             -- epub doesn't exist (no mock file set)
             local fresh = cm:isFresh(book)
@@ -104,7 +117,7 @@ describe("CacheManager", function()
         it("should return false when metadata is missing", function()
             local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/cache" })
-            local book = { id = "b1", source_mtime = 1000, source_size = 42 }
+            local book = { id = "b1" }
 
             -- Set epub file but not metadata
             local epub_path = cm:getCachePaths(book)
@@ -123,13 +136,19 @@ describe("CacheManager", function()
         it("should return false when converter version changed", function()
             local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/cache" })
-            local book = { id = "b1", source_mtime = 1000, source_size = 42 }
+            local book = bookWithSource(1000, 42)
 
             local epub_path, meta_path = cm:getCachePaths(book)
 
             io_mocker.setMockFile(epub_path, {
                 read = function()
                     return ""
+                end,
+                close = function() end,
+            })
+            io_mocker.setMockFile(epub_path:gsub("%.epub$", ".positions.json"), {
+                read = function()
+                    return "{}"
                 end,
                 close = function() end,
             })
@@ -150,7 +169,7 @@ describe("CacheManager", function()
         it("should return false when source mtime changed", function()
             local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/cache" })
-            local book = { id = "b1", source_mtime = 2000, source_size = 42 }
+            local book = bookWithSource(2000, 42)
 
             local epub_path, meta_path = cm:getCachePaths(book)
 
@@ -160,9 +179,15 @@ describe("CacheManager", function()
                 end,
                 close = function() end,
             })
+            io_mocker.setMockFile(epub_path:gsub("%.epub$", ".positions.json"), {
+                read = function()
+                    return "{}"
+                end,
+                close = function() end,
+            })
             io_mocker.setMockFile(meta_path, {
                 read = function()
-                    return '{"converter_version":"3","source_mtime":1000,"source_size":42}'
+                    return '{"converter_version":"5","source_mtime":1000,"source_size":42}'
                 end,
                 close = function() end,
             })
@@ -185,8 +210,6 @@ describe("CacheManager", function()
             local book = {
                 id = "b1",
                 source_path = source_path,
-                source_mtime = 1,
-                source_size = 1,
             }
             local epub_path, meta_path = cm:getCachePaths(book)
             io_mocker.setMockFile(epub_path, {
@@ -215,7 +238,7 @@ describe("CacheManager", function()
         it("should return true when cache is valid", function()
             local cm = CacheManager:new({})
             cm:setSettings({ cache_dir = "/cache" })
-            local book = { id = "b1", source_mtime = 1000, source_size = 42 }
+            local book = bookWithSource(1000, 42)
 
             local epub_path, meta_path = cm:getCachePaths(book)
 

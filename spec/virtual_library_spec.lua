@@ -72,10 +72,7 @@ describe("VirtualLibrary real-path model", function()
                 return {}
             end,
         })
-        vlib:setSettings({
-            cache_dir = "/cache",
-            documents_root = "/mnt/us/documents",
-        })
+        vlib:setSettings({ cache_dir = "/cache" })
 
         assert.is_nil(vlib:getBook("/mnt/us/books/unrelated.epub"))
         assert.equals(0, calls)

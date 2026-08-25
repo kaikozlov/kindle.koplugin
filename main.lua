@@ -46,7 +46,6 @@ end
 local default_settings = {
     enable_virtual_library = true,
     virtual_library_cover_path = "",
-    documents_root = "/mnt/us/documents",
     cache_dir = DataStorage:getFullDataDir() .. "/cache/kindle.koplugin",
     index_ttl_seconds = 300,
     sync_reading_state = false,
@@ -685,33 +684,6 @@ function KindlePlugin:createClearCacheMenuItem()
     }
 end
 
---- Creates documents root directory picker menu item.
---- @return table: Menu item configuration.
-function KindlePlugin:createDocumentsRootMenuItem()
-    return {
-        text_func = function()
-            return T(_("Documents root: %1"), self.settings.documents_root or default_settings.documents_root)
-        end,
-        callback = function()
-            local path_chooser = PathChooser:new({
-                title = _("Select documents root directory"),
-                select_file = false,
-                select_directory = true,
-                path = self.settings.documents_root or default_settings.documents_root,
-                onConfirm = function(path)
-                    if not path or path == "" then
-                        return
-                    end
-                    self.settings.documents_root = path
-                    self:saveSettings()
-                    self:showInfo(T(_("Documents root set to:\n%1\n\nRestart KOReader to apply."), path), 4)
-                end,
-            })
-            UIManager:show(path_chooser)
-        end,
-    }
-end
-
 --- Creates cache directory info menu item.
 --- @return table: Menu item configuration.
 function KindlePlugin:createCacheInfoMenuItem()
@@ -734,16 +706,13 @@ function KindlePlugin:createAboutMenuItem()
         callback = function()
             local books, _ = library_index:getBooks(false)
             local total = books and #books or 0
-            local drm_count = 0
             local convert_count = 0
             local direct_count = 0
             local blocked_count = 0
 
             if books then
                 for _, book in ipairs(books) do
-                    if book.open_mode == "drm" then
-                        drm_count = drm_count + 1
-                    elseif book.open_mode == "convert" then
+                    if book.open_mode == "convert" then
                         convert_count = convert_count + 1
                     elseif book.open_mode == "direct" then
                         direct_count = direct_count + 1
@@ -759,22 +728,18 @@ function KindlePlugin:createAboutMenuItem()
                 _([[Kindle Virtual Library
 
 Total books: %d
-  DRM-protected: %d
   Convertible: %d
   Direct open: %d
   Blocked: %d
 
 Cached EPUBs: %d (%s)
-Root: %s
 Cache: %s]]),
                 total,
-                drm_count,
                 convert_count,
                 direct_count,
                 blocked_count,
                 cache_stats.count,
                 util.getFriendlySize(cache_stats.total_size),
-                self.settings.documents_root or default_settings.documents_root,
                 self.settings.cache_dir or default_settings.cache_dir
             )
 
@@ -842,7 +807,6 @@ function KindlePlugin:addToMainMenu(menu_items)
         self:createSyncToggleMenuItem(),
         self:createManualSyncMenuItem(),
         self:createSyncBehaviorMenuItem(),
-        self:createDocumentsRootMenuItem(),
         self:createCacheInfoMenuItem(),
         self:createAboutMenuItem(),
     }

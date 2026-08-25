@@ -23,8 +23,7 @@ SELECT
     p_cdeKey,
     p_isDRMProtected,
     p_diskUsage,
-    p_contentSize,
-    p_modificationTime
+    p_contentSize
 FROM Entries
 WHERE p_type = 'Entry:Item'
     AND p_mimeType IN ('application/x-kfx-ebook', 'application/x-mobipocket-ebook')
@@ -130,7 +129,6 @@ function CcDbScanner:scan()
         local is_drm = results.p_isDRMProtected[i]
         local disk_usage = results.p_diskUsage[i]
         local content_size = results.p_contentSize[i]
-        local modification_time = results.p_modificationTime[i]
 
         local authors = parseAuthors(results.j_credits[i])
 
@@ -145,13 +143,11 @@ function CcDbScanner:scan()
         local book = {
             id = book_id,
             source_path = source_path,
-            uuid = uuid,
             title = title,
             authors = authors,
             display_name = title,
             cde_key = cde_key,
             open_mode = open_mode,
-            source_mtime = tonumber(modification_time) or 0,
             source_size = tonumber(disk_usage) or tonumber(content_size) or 0,
         }
 

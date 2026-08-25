@@ -61,7 +61,6 @@ describe("CcDbScanner", function()
                 p_isArchived = { "0" },
                 p_diskUsage = { "1048576" },
                 p_contentSize = { "900000" },
-                p_modificationTime = { "1700000000" },
             }, 1)
 
             local scanner = CcDbScanner:new()
@@ -92,7 +91,6 @@ describe("CcDbScanner", function()
                 p_isArchived = { "0" },
                 p_diskUsage = { "0" },
                 p_contentSize = { "0" },
-                p_modificationTime = { "1700000000" },
             }, 1)
 
             local scanner = CcDbScanner:new()
@@ -115,7 +113,6 @@ describe("CcDbScanner", function()
                 p_isArchived = { "0" },
                 p_diskUsage = { "500000" },
                 p_contentSize = { "400000" },
-                p_modificationTime = { "1700000000" },
             }, 1)
 
             local scanner = CcDbScanner:new()
@@ -138,7 +135,6 @@ describe("CcDbScanner", function()
                 p_isArchived = { "0" },
                 p_diskUsage = { "300000" },
                 p_contentSize = { "250000" },
-                p_modificationTime = { "1700000000" },
             }, 1)
 
             local scanner = CcDbScanner:new()
@@ -170,7 +166,6 @@ describe("CcDbScanner", function()
                 p_isArchived = { "0", "0", "0" },
                 p_diskUsage = { "1000000", "800000", "500000" },
                 p_contentSize = { "900000", "700000", "400000" },
-                p_modificationTime = { "1700000000", "1700000001", "1700000002" },
             }, 3)
 
             local scanner = CcDbScanner:new()

@@ -68,16 +68,16 @@ function CacheManager:readMetadata(meta_path)
 end
 
 local function getSourceSignature(book)
-    if book.source_path then
-        local attr = lfs.attributes(book.source_path)
-        if attr and attr.mode == "file" then
-            return attr.modification, attr.size
-        end
-        -- A catalog entry pointing at a missing source must never bless an old
-        -- derived EPUB as fresh.
+    if not book.source_path then
         return nil, nil
     end
-    return book.source_mtime, book.source_size
+    local attr = lfs.attributes(book.source_path)
+    if attr and attr.mode == "file" then
+        return attr.modification, attr.size
+    end
+    -- A catalog entry pointing at a missing source must never bless an old
+    -- derived EPUB as fresh.
+    return nil, nil
 end
 
 function CacheManager:writeMetadata(meta_path, book)

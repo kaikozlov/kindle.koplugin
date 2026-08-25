@@ -12,6 +12,7 @@ local VirtualLibrary = {}
 VirtualLibrary.__index = VirtualLibrary
 
 VirtualLibrary.VIRTUAL_LIBRARY_NAME = "Kindle Library"
+VirtualLibrary.KINDLE_DOCUMENTS_ROOT = "/mnt/us/documents"
 
 function VirtualLibrary:new(library_index)
     local instance = {
@@ -20,7 +21,6 @@ function VirtualLibrary:new(library_index)
         cache_manager = nil,
         books_by_id = {},
         books_by_real_path = {},
-        mappings_built = false,
         mapping_attempted = false,
     }
     setmetatable(instance, self)
@@ -40,6 +40,14 @@ local function isPathWithin(path, root)
         return false
     end
     return path == root or path:sub(1, #root + 1) == root .. "/"
+end
+
+local function isKindleSourcePath(path)
+    if type(path) ~= "string" then
+        return false
+    end
+    local extension = path:lower():match("%.([%w]+)$")
+    return extension == "kfx" or extension == "azw" or extension == "azw3" or extension == "mobi"
 end
 
 local function sanitizeDisplayName(name)
@@ -74,7 +82,6 @@ function VirtualLibrary:buildMappings(force)
         end
     end
 
-    self.mappings_built = true
     logger.info("KindlePlugin: built real-path mappings for", #books, "books")
     return books
 end
@@ -105,13 +112,13 @@ function VirtualLibrary:getBook(path_or_id)
     if not cache_dir and self.cache_manager and self.cache_manager.getCacheDir then
         cache_dir = self.cache_manager:getCacheDir()
     end
-    local documents_root = self.settings.documents_root or "/mnt/us/documents"
     local should_build = type(path_or_id) == "string"
         and (
             path_or_id:match("^cc:")
             or path_or_id:match("^sha1:")
             or isPathWithin(path_or_id, cache_dir)
-            or isPathWithin(path_or_id, documents_root)
+            or isPathWithin(path_or_id, self.KINDLE_DOCUMENTS_ROOT)
+            or isKindleSourcePath(path_or_id)
         )
     if not self.mapping_attempted and should_build then
         local books = self:buildMappings(false)
@@ -124,11 +131,11 @@ function VirtualLibrary:getBook(path_or_id)
 end
 
 function VirtualLibrary:getBlockedReasonText(book)
-    local reason = book and book.block_reason or "unsupported_kfx_layout"
+    local reason = book and book.block_reason or "conversion_failed"
     local text = {
         drm = _("This DRM-protected Kindle format is not supported."),
-        unsupported_kfx_layout = _("This KFX layout is not supported yet."),
         missing_source = _("The source file is missing."),
+        unsupported_format = _("This Kindle file format is not supported."),
         conversion_failed = _("Failed to prepare this book for reading."),
         drm_extractor_unavailable = _(
             "This Kindle firmware cannot extract this book's access key by itself. "
@@ -139,8 +146,6 @@ function VirtualLibrary:getBlockedReasonText(book)
             "A book access key was extracted, but the book still could not be decrypted. "
                 .. "Try re-downloading the book in the Kindle reader and opening it again."
         ),
-        cannot_read = _("The source file could not be read."),
-        unknown_format = _("This Kindle file format is not supported yet."),
     }
     return text[reason] or _("This book cannot be opened yet.")
 end
@@ -164,7 +169,7 @@ function VirtualLibrary:resolveBookPath(book)
         return nil, "missing book"
     end
     if book.open_mode == "blocked" then
-        return nil, book.block_reason or "unsupported_kfx_layout"
+        return nil, book.block_reason or "conversion_failed"
     end
     if book.open_mode == "direct" then
         return book.source_path
@@ -222,8 +227,6 @@ function VirtualLibrary:getBookEntries(force)
             attr = { mode = "file", size = book.source_size or 0 },
             mandatory = mandatory,
             kindle_book_id = book.id,
-            kindle_open_mode = book.open_mode,
-            kindle_block_reason = book.block_reason,
         })
     end
     return entries

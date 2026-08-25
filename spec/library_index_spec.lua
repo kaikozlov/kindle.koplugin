@@ -34,17 +34,12 @@ describe("LibraryIndex", function()
             p_uuid = {},
             p_location = {},
             p_titles_0_nominal = {},
-            j_titles = {},
             j_credits = {},
             p_mimeType = {},
             p_cdeKey = {},
-            p_cdeType = {},
             p_isDRMProtected = {},
-            p_percentFinished = {},
-            p_thumbnail = {},
             p_diskUsage = {},
             p_contentSize = {},
-            p_modificationTime = {},
         }
         for i, name in ipairs(names) do
             for column, values in pairs(columns) do

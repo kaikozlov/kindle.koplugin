@@ -70,7 +70,7 @@ describe("KindlePlugin native KOReader lifecycle", function()
         -- reads current settings without relying on the first instance.
         G_reader_settings:saveSetting("kindle_plugin", {
             enable_virtual_library = false,
-            documents_root = "/tmp/recreated-kindle-library",
+            cache_dir = "/tmp/recreated-kindle-cache",
         })
         local KindlePlugin = getmetatable(instance)
         local registered = false
@@ -84,7 +84,7 @@ describe("KindlePlugin native KOReader lifecycle", function()
             },
         })
         assert.is_true(registered)
-        assert.are.equal("/tmp/recreated-kindle-library", recreated.settings.documents_root)
+        assert.are.equal("/tmp/recreated-kindle-cache", recreated.settings.cache_dir)
     end)
 
     it("adds a native Kindle Library entry without replacing FileChooser.path", function()
