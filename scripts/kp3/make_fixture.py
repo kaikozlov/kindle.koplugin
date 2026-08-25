@@ -15,6 +15,19 @@ CONTAINER_XML = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+FIXTURE_NAMES = [
+    "minimal",
+    "footnote",
+    "table",
+    "fixed-layout",
+    "vertical-ruby",
+    "link",
+    "bidi",
+    "list",
+    "svg",
+]
+
+
 def fixture(name: str) -> tuple[str, str, str]:
     if name == "minimal":
         metadata = ""
@@ -59,6 +72,35 @@ def fixture(name: str) -> tuple[str, str, str]:
             '<p><ruby style="-webkit-ruby-position: over"><rb>漢</rb><rt>かん</rt></ruby>字と'
             '<span style="-webkit-text-emphasis-style: filled dot">強調</span>。</p>'
         )
+    elif name == "link":
+        metadata = ""
+        language = "en"
+        body = (
+            '<p><a href="#target">Jump to target</a>.</p>'
+            '<h2 id="target">Target heading</h2><p>Destination.</p>'
+        )
+    elif name == "bidi":
+        metadata = ""
+        language = "ar"
+        body = (
+            '<p dir="rtl" style="direction: rtl">مرحبا بالعالم '
+            '<span dir="ltr" style="direction: ltr; unicode-bidi: isolate">ABC 123</span></p>'
+        )
+    elif name == "list":
+        metadata = ""
+        language = "en"
+        body = (
+            '<ol start="3"><li>Three</li><li>Four<ul><li>Nested</li></ul></li></ol>'
+        )
+    elif name == "svg":
+        metadata = ""
+        language = "en"
+        body = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80" viewBox="0 0 120 80">'
+            '<rect x="5" y="5" width="110" height="70" fill="none" stroke="black"/>'
+            '<circle cx="30" cy="40" r="12" fill="black"/>'
+            '<text x="52" y="45">SVG probe</text></svg>'
+        )
     else:
         raise ValueError(name)
 
@@ -93,7 +135,7 @@ def write_epub(name: str, output: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("fixture", choices=["minimal", "footnote", "table", "fixed-layout", "vertical-ruby"])
+    parser.add_argument("fixture", choices=FIXTURE_NAMES)
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     write_epub(args.fixture, args.output)

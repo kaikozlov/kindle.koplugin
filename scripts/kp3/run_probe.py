@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 
-from make_fixture import write_epub
+from make_fixture import FIXTURE_NAMES, write_epub
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -157,7 +157,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=False)
     source.add_argument("--epub", type=Path, help="use an existing EPUB")
-    source.add_argument("--fixture", choices=["minimal", "footnote", "table", "fixed-layout", "vertical-ruby"], default="minimal")
+    source.add_argument("--fixture", choices=FIXTURE_NAMES, default="minimal")
     parser.add_argument("--previewer", type=Path, default=DEFAULT_PREVIEWER)
     parser.add_argument("--workdir", type=Path, help="retain all producer output here")
     parser.add_argument("--catalog", action="store_true", help="also dump the live KAF property catalog")

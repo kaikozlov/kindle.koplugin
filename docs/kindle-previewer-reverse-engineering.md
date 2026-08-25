@@ -1528,13 +1528,17 @@ scripts/kp3/
     └── KafSemanticProbe.java
 ```
 
-`make_fixture.py` currently provides five deliberately small source fixtures:
+`make_fixture.py` currently provides nine deliberately small source fixtures:
 
 - `minimal`: one H1 and one paragraph;
 - `footnote`: EPUB 3 `noteref` + `footnote` semantics and generated anchor targeting;
 - `table`: caption, header/body rows, `rowspan`, and `colspan`;
 - `fixed-layout`: a minimal pre-paginated page used to probe current fixed-layout producer behavior;
 - `vertical-ruby`: Japanese vertical-writing metadata, explicit `rb`/`rt` ruby, ruby-position styling, and text emphasis.
+- `link`: a same-document anchor link and target heading;
+- `bidi`: RTL paragraph direction plus an isolated LTR range;
+- `list`: ordered-list start offset plus a nested unordered list;
+- `svg`: simple inline SVG used to observe current producer normalization.
 
 `run_probe.py` performs the entire experiment:
 
@@ -1580,7 +1584,7 @@ styleEvent offset=kScalar:3 length=kScalar:2 props=1
   style = sG
 ```
 
-The `minimal`, `footnote`, `table`, `fixed-layout`, and `vertical-ruby` fixtures have all been rerun through the checked-in harness successfully. The minimal KDF also reproduces the expected single fingerprint record and three-table SQLite schema. The current simple fixed-layout specimen is normalized to a scale-fit container containing an image and does **not** emit `page_regions`; that negative result is useful because it shows property 852 is not a generic fixed-layout requirement.
+The `minimal`, `footnote`, `table`, `fixed-layout`, `vertical-ruby`, `link`, `bidi`, `list`, and `svg` fixtures have all been run through the checked-in harness successfully. The minimal KDF also reproduces the expected single fingerprint record and three-table SQLite schema. The current simple fixed-layout specimen is normalized to a scale-fit container containing an image and does **not** emit `page_regions`; that negative result is useful because it shows property 852 is not a generic fixed-layout requirement.
 
 The harness can additionally dump the current live Amazon property catalog:
 
@@ -1629,7 +1633,7 @@ The Python serializer is deliberately only the storage bridge. Both reverse impl
 
 This immediately found behavior outside the old ten-book corpus, despite that corpus having reached zero structural differences before the branch was abandoned.
 
-Current Previewer 3.106 results for the first five fixtures are:
+Current Previewer 3.106 results for the first nine fixtures are:
 
 | Fixture | Go reverse result | Non-timestamp structural diffs | Important semantic difference |
 | --- | --- | ---: | --- |
@@ -1638,6 +1642,10 @@ Current Previewer 3.106 results for the first five fixtures are:
 | `table` | converts | 4 | Go loses the `<table>` wrapper and leaves `thead`/`tbody` directly under `body` |
 | `fixed-layout` | **fails** | n/a | Go reports no readable sections for this current Amazon fixed-layout form |
 | `vertical-ruby` | converts | 5 | Go emits an empty `<rt/>`; pronunciation text is lost |
+| `link` | converts | 3 | content XHTML matches; only fallback metadata/TOC behavior differs |
+| `bidi` | converts | 5 | Go loses the paragraph/nested LTR range structure and leaves bidi CSS on `body` |
+| `list` | converts | 5 | Go drops the top-level `<ol start="3">` wrapper; nested list survives |
+| `svg` | converts | 4 | rasterized image survives; Go promotes the containing style to `body` and drops the wrapper `<div>` |
 
 The meaningful content differences are concrete.
 
@@ -1682,6 +1690,24 @@ while Go emits:
 ```
 
 The KAF/raw-Ion probe already showed that the pronunciation is present in the KFX as a separate `ruby_content` object, so this is unambiguously a Go reverse-path loss rather than missing source data.
+
+Four additional fixtures make the pattern clearer:
+
+- **Internal link:** Amazon compiles the linked text as a range style event with `link_to = aE`, and Go reconstructs the content XHTML identically to Python. This is a useful negative control: the differential harness does not manufacture a content mismatch for every fixture.
+- **Bidi:** Amazon stores the RTL paragraph direction on one style and the embedded LTR range as a separate style event. Python reconstructs `<body dir="rtl"><p ...>...<span dir="ltr">ABC 123</span></p></body>`, while Go promotes the paragraph style/content into `body`, loses the nested span, and leaves `direction`/`unicode-bidi` in CSS.
+- **List:** Amazon emits a typed `LIST` with `list_start_offset = 3`, `list_style = numeric`, nested `LIST_ITEM` objects, and a nested `LIST` with `list_style = circle`. Python reconstructs `<ol start="3">...`, while Go emits the top-level `<li>` children directly under `body`; the nested `<ul>` remains.
+- **SVG:** this simple inline SVG is not retained as KVG/SVG by the current producer; Amazon rasterizes/normalizes it to an image resource inside a `CONTAINER`. Python keeps the containing `<div>` around the `<img>`, while Go promotes the container style to `body` and places the image directly there.
+
+These are not four unrelated mysteries. Source comparison identifies a common architectural divergence in Go's top-level handling. `internal/kfx/yj_to_epub_content.go::promotedBodyContainer` promotes a single styled raw YJ node into the XHTML `body` based largely on the raw node's shape: a styled node with `content_list`, a styled leaf text node, or a styled resource node. That shortcut was introduced to approximate Python's later DOM simplification, but it makes the HTML tag decision before the node has been rendered.
+
+Python does the opposite in `REFERENCE/KFX_Input/kfxlib/yj_to_epub_content.py::process_content`. It first constructs the semantic HTML element (`table`, `ol`, `div`, text container, and so on), applies the detailed `COMBINE_NESTED_DIVS` gates, and only then handles `is_top_level`. If the resulting top-level tag is not `aside`, `div`, or `figure`, Python wraps it and renames the **outer** element to `body`; the original `table`, `ol`, etc. remains a child. Only an actual top-level `aside`/`div`/`figure` can itself become `body`.
+
+That distinction directly explains the table and list failures and plausibly accounts for much of the bidi/SVG wrapper behavior. It is a strong example of a parity shortcut that looked valid against the ten-book corpus but encoded the wrong abstraction. The correct invariant is not “one styled top-level YJ node can be promoted”; it is “perform Python's rendered-element merge and top-level-tag rules in the same order.”
+
+Two other gaps can already be localized precisely rather than attributed to the broad promotion issue:
+
+- **Ruby:** current Amazon's `ruby_content` group contains a child structure whose `content` is the direct Ion string `"かん"`. Go's `rubyContentParts` only accepts `content` when it is a map/reference or accepts a `content_list`; it never handles a direct string. Python's generic `process_content` does. The empty `<rt/>` is therefore a concrete omitted IonString branch.
+- **Footnote:** Python initially builds ordinary text content as a `div`, applies `yj.classification = footnote` while it is still a `div`, changes it to `aside epub:type="footnote"`, and only later simplifies ordinary unclassified divs toward paragraphs. Go's `renderTextNode` eagerly constructs a `<p>` and then calls `applyStructuralNodeAttrs`; that helper only changes a classified element to `aside` when its tag is `div`. The semantic transition is already impossible by the time classification is applied.
 
 There are also lower-severity systematic differences in these synthetic books: Python generates an opaque fallback identifier and `Unknown` author where Go derives an identifier from the input path; Python uses `Content` as the synthesized navigation label while Go derives text such as `Hello`, `Probe table`, or the first paragraph. The vertical fixture additionally differs in how document writing mode/default margins are emitted. Those need source-level comparison before deciding which are functional bugs versus output-normalization choices.
 
@@ -1945,6 +1971,8 @@ This would not remove the need for historical compatibility handling, but it wou
 - Previewer's current renderer directly consumes property 852 `page_regions` as fixed-page rectangles plus optional layout hints and scales them into rendered-page coordinates.
 - A controlled EPUB 3 footnote compiles into a `yj.note` style event linking to an anchor whose target is a footer-classified `footnote` text structure.
 - Bridging Amazon-generated KDF through current KFX Input's serializer into one shared KFX input exposes real historical-Go parity gaps: footnote target semantics are lost, table wrapping is malformed, ruby pronunciation is dropped, and the simple current fixed-layout fixture is not readable by the Go converter.
+- Additional controlled link/bidi/list/SVG fixtures show that ordinary internal-link content round-trips, while top-level bidi/list/container cases expose a common over-broad Go body-promotion heuristic that differs from Python's rendered-element-first top-level rules.
+- The ruby pronunciation loss is specifically caused by Go `rubyContentParts` omitting direct IonString `content`; the footnote loss is specifically caused by Go choosing `<p>` before applying the classification that Python applies while the node is still a `<div>`.
 
 ### Strong inferences
 

@@ -29,11 +29,9 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from make_fixture import write_epub  # noqa: E402
+from make_fixture import FIXTURE_NAMES, write_epub  # noqa: E402
 from run_probe import DEFAULT_PREVIEWER, fc_paths, produce_kdf  # noqa: E402
 from parity_diff import diff_epubs, print_text_diff  # noqa: E402
-
-FIXTURES = ["minimal", "footnote", "table", "fixed-layout", "vertical-ruby"]
 
 
 def python_paths() -> None:
@@ -143,14 +141,14 @@ def compare_fixture(name: str, root: Path, previewer: Path, show_diff: bool) -> 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--fixture", choices=FIXTURES)
+    group.add_argument("--fixture", choices=FIXTURE_NAMES)
     group.add_argument("--all", action="store_true")
     parser.add_argument("--previewer", type=Path, default=DEFAULT_PREVIEWER)
     parser.add_argument("--workdir", type=Path)
     parser.add_argument("--diff", action="store_true", help="print structural unified diffs")
     args = parser.parse_args()
 
-    names = FIXTURES if args.all or args.fixture is None else [args.fixture]
+    names = FIXTURE_NAMES if args.all or args.fixture is None else [args.fixture]
     if args.workdir:
         root = args.workdir.resolve()
         root.mkdir(parents=True, exist_ok=True)

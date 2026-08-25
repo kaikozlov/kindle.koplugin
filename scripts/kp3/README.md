@@ -63,6 +63,18 @@ Add new getters incrementally and validate them in an isolated subprocess before
 
 ## Fixture philosophy
 
+Built-in fixtures currently cover:
+
+- `minimal`: heading + paragraph baseline;
+- `footnote`: EPUB 3 noteref/footnote mapping;
+- `table`: caption, header/body rows, rowspan, and colspan;
+- `fixed-layout`: minimal pre-paginated image-backed page;
+- `vertical-ruby`: vertical Japanese, ruby, and emphasis;
+- `link`: ordinary internal anchor link;
+- `bidi`: RTL paragraph with an isolated LTR range;
+- `list`: ordered-list start offset plus nested unordered list;
+- `svg`: simple inline SVG normalization/rasterization.
+
 Prefer a matrix of small semantic specimens over a few large synthetic books. A useful fixture should make one question easy to answer, for example:
 
 - table structure and spans;
