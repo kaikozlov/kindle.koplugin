@@ -415,6 +415,70 @@ class NativeFallbackTests(unittest.TestCase):
         fallback.assert_called_once()
 
 
+class ParseCapturedKeysTests(unittest.TestCase):
+    """Direct coverage of the crypto_hook.so wire format consumer.
+
+    The exact log line asserted here is the one produced by the ARMv7 harness
+    in .github/Dockerfile.crypto_hook (key 00..1f, IV a0..af), so the C hook,
+    its wire format, and this parser are kept in lockstep without mocks.
+    """
+
+    HOOK_LINE = (
+        "EVP_256_KEY:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f "
+        "IV:a0a1a2a3a4a5a6a7a8a9aaabacadaeaf"
+    )
+
+    def parse_log(self, *lines):
+        with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as log_file:
+            log_file.write("\n".join(lines) + "\n")
+            path = log_file.name
+        try:
+            return drm_init._parse_captured_keys(path)
+        finally:
+            os.unlink(path)
+
+    def test_exact_hook_line_is_decoded(self):
+        keys = self.parse_log(self.HOOK_LINE)
+
+        self.assertEqual(
+            [{"key": bytes(range(32)), "iv": bytes(0xA0 + i for i in range(16))}],
+            keys,
+        )
+
+    def test_malformed_lines_are_ignored(self):
+        keys = self.parse_log(
+            "garbage without any format",
+            "EVP_128_KEY:000102030405060708090a0b0c0d0e0f IV:a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+            "EVP_256_KEY:zz02030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f IV:a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+            "EVP_256_KEY:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f IV:none",
+            "AES_DEC_256_KEY:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        )
+        self.assertEqual([], keys)
+
+    def test_multiple_valid_lines_are_kept_in_order(self):
+        second = (
+            "EVP_256_KEY:ff0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f "
+            "IV:00000000000000000000000000000000"
+        )
+        keys = self.parse_log(self.HOOK_LINE, second)
+
+        self.assertEqual(2, len(keys))
+        self.assertEqual(bytes([0xFF]) + bytes(range(1, 32)), keys[1]["key"])
+        self.assertEqual(bytes(16), keys[1]["iv"])
+
+    def test_shared_metadata_key_is_rejected(self):
+        keys = self.parse_log(
+            "EVP_256_KEY:6533356635"
+            "000102030405060708090a0b0c0d0e0f101112131415161718"
+            " IV:a0a1a2a3a4a5a6a7a8a9aaabacadaeaf"
+        )
+
+        self.assertEqual([], keys)
+
+    def test_missing_log_yields_no_keys(self):
+        self.assertEqual([], drm_init._parse_captured_keys("/nonexistent/crypto_keys.log"))
+
+
 class DeviceSerialTests(unittest.TestCase):
     def test_serial_removes_firmware_artifacts(self):
         serial_file = mock.mock_open(read_data="  G090G10512345678\r\n\x00é")
