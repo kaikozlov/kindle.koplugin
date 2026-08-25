@@ -7,7 +7,7 @@ local PositionMap = require("lua/lib/position_map")
 -- p and a trailing top-level p anchor.
 local MAP = {
     version = 1,
-    max_pid = 27200 + 16,
+    max_pid = 27309,
     fragments = {
         {
             path = "OEBPS/one.xhtml",
@@ -29,6 +29,16 @@ local MAP = {
                   } },
                 { p = "p", eid = 1140, pid = 27200, t = 16,
                   nodes = { { p = "p", n = 1, c = 0, v = 16 } } },
+            },
+        },
+        {
+            path = "OEBPS/two.xhtml",
+            elements = {
+                ["p"] = { a = 1, s = 0, l = { 9 } },
+            },
+            anchors = {
+                { p = "p", eid = 1141, pid = 27300, t = 9,
+                  nodes = { { p = "p", n = 1, c = 0, v = 9 } } },
             },
         },
     },
@@ -56,6 +66,18 @@ describe("PositionMap", function()
         assert.is_not_nil(result, err)
         assert.equals(14, result.eid_offset) -- 6 + 5 + 3
         assert.equals(27129, result.pid)
+    end)
+
+    it("uses the indexed spine fragment", function()
+        local result, err = PositionMap.translate_xpointer(
+            MAP, "/body/DocFragment[2]/body/p/text().4")
+        assert.is_not_nil(result, err)
+        assert.equals(1141, result.eid)
+        assert.equals(4, result.eid_offset)
+        assert.equals(27304, result.pid)
+
+        local restored = assert(PositionMap.translate_native(MAP, result.long))
+        assert.equals("/body/DocFragment[2]/body/p/text().4", restored.xpointer)
     end)
 
     it("rejects XPointers on unanchored elements", function()

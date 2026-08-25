@@ -141,7 +141,7 @@ function PositionMap.translate_xpointer(map, xpointer)
     end
     local fragment_step = steps[2]
     local fragment_name = fragment_step:match("^([^%[]+)")
-    local fragment_index = tonumber((fragment_step:match(STEP_RE)) or 1)
+    local fragment_index = tonumber(fragment_step:match("%[(%d+)%]")) or 1
     if fragment_name ~= "DocFragment" then
         return nil, "XPointer does not identify an EPUB document"
     end
