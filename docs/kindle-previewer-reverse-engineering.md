@@ -1709,6 +1709,47 @@ Two other gaps can already be localized precisely rather than attributed to the 
 - **Ruby:** current Amazon's `ruby_content` group contains a child structure whose `content` is the direct Ion string `"かん"`. Go's `rubyContentParts` only accepts `content` when it is a map/reference or accepts a `content_list`; it never handles a direct string. Python's generic `process_content` does. The empty `<rt/>` is therefore a concrete omitted IonString branch.
 - **Footnote:** Python initially builds ordinary text content as a `div`, applies `yj.classification = footnote` while it is still a `div`, changes it to `aside epub:type="footnote"`, and only later simplifies ordinary unclassified divs toward paragraphs. Go's `renderTextNode` eagerly constructs a `<p>` and then calls `applyStructuralNodeAttrs`; that helper only changes a classified element to `aside` when its tag is `div`. The semantic transition is already impossible by the time classification is applied.
 
+#### Fixed-layout failure localized: the decoded data is present, the Go page-spread result is never rendered
+
+The fixed-layout failure is now localized well enough that it should not be described as an input-decoding failure. The generated KFX contains:
+
+```text
+kindle_capability_metadata/yj_fixed_layout = 3
+
+section c0 page template:
+  id            = 863
+  story_name    = l4
+  writing_mode  = horizontal_tb
+  direction     = ltr
+  font_size     = 16
+  fixed_width   = 450
+  fixed_height  = 600
+  virtual_panel = enabled
+  layout        = scale_fit
+  type          = container
+```
+
+Go decodes the metadata correctly: `FixedLayout=true`, `IsPDFBacked=true`, `IsPDFBackedFixedLayout=true`, `VirtualPanelsAllowed=true`, and book type `comic`. An earlier Go trace incorrectly printed `is_pdf_backed=false` and put the book ID in `cde_content_type`; that was a trace-capture bug, not a decoder bug. The trace helpers have now been corrected to report the actual decoded-book flags.
+
+Python's behavior for this exact template is also clear. Although the book is dispatched through the comic/page-spread path, the special PDF-backed `scale_fit` branch only applies when `fixed_width` and `fixed_height` are absent. Here both are present, so `process_page_spread_page_template` takes its ordinary leaf path and calls `process_content` on the complete page-template object. Current KFX Input consequently produces `/c0.xhtml` with:
+
+```text
+viewport: width=450, height=600
+OPF property: rendition:layout-pre-paginated
+body style: font-size: 0.16px
+content: <div><img ... height="48px" width="48px"/></div>
+```
+
+The historical Go path loses this in three separate integration steps:
+
+1. `parseSectionFragment` stores `PageTemplateValues` through `filterBodyStyleValues`. For this template that leaves only `font_size=16`; `type`, `layout`, `story_name`, dimensions, direction, writing mode, virtual-panel state, and ID are not carried into `processSectionComic`.
+2. `processSectionComic` does call `processPageSpreadPageTemplate`, but `processSectionWithType` explicitly discards the returned `pageSpreadResult` and returns `(renderedStoryline{}, nil, false)`. `processReadingOrder` therefore adds no section. Existing Go tests explicitly codify zero `RenderedSections` for comic dispatch as the expected behavior.
+3. Even when the full raw page-template map is supplied experimentally, this fixture correctly lands in `processPageSpreadLeaf`, but that Go function only records a `pageSpreadSection` plan (`TemplateData`, CSS-link flag, position marker, etc.). It does not invoke the actual storyline/content renderer or append a rendered XHTML section.
+
+An isolated call confirmed both forms: the currently parsed template produces a leaf result containing only `{font_size:16}`, while supplying the complete raw template produces a leaf result containing all of the data above. Neither result can reach EPUB output because the page-spread result is not integrated into `RenderedSections`.
+
+So the fixed-layout failure is not “Go cannot parse current Amazon fixed layout.” It is a partially implemented page-spread architecture whose intermediate result type never became an output path, compounded by prematurely filtering the page-template structure. This is another case where branch-level unit tests can be green while end-to-end semantics are absent.
+
 There are also lower-severity systematic differences in these synthetic books: Python generates an opaque fallback identifier and `Unknown` author where Go derives an identifier from the input path; Python uses `Content` as the synthesized navigation label while Go derives text such as `Hello`, `Probe table`, or the first paragraph. The vertical fixture additionally differs in how document writing mode/default margins are emitted. Those need source-level comparison before deciding which are functional bugs versus output-normalization choices.
 
 This experiment is important for the maintenance question. A green arbitrary-book corpus did not mean the old port had captured the semantic space. The Amazon producer can now generate small canonical cases that exercise branches absent from those books, and the first few such cases already found several real gaps. That makes a systematic generated corpus much more valuable than another hand-picked pile of books, while still leaving historical/consumer compatibility to real samples.
@@ -1971,6 +2012,8 @@ This would not remove the need for historical compatibility handling, but it wou
 - Previewer's current renderer directly consumes property 852 `page_regions` as fixed-page rectangles plus optional layout hints and scales them into rendered-page coordinates.
 - A controlled EPUB 3 footnote compiles into a `yj.note` style event linking to an anchor whose target is a footer-classified `footnote` text structure.
 - Bridging Amazon-generated KDF through current KFX Input's serializer into one shared KFX input exposes real historical-Go parity gaps: footnote target semantics are lost, table wrapping is malformed, ruby pronunciation is dropped, and the simple current fixed-layout fixture is not readable by the Go converter.
+- The fixed-layout failure is now localized after decode: Go correctly recognizes `yj_fixed_layout=3` as PDF-backed fixed-layout/comic, but `parseSectionFragment` strips the structural page-template fields, `processSectionWithType` discards the resulting `pageSpreadResult`, and the leaf result type itself does not render XHTML.
+- The Go trace implementation previously misreported PDF-backed/CDE state because `captureContentFeatures` populated only `CDEContentType: book.BookID`; trace capture now reports the actual decoded flags and detected book type.
 - Additional controlled link/bidi/list/SVG fixtures show that ordinary internal-link content round-trips, while top-level bidi/list/container cases expose a common over-broad Go body-promotion heuristic that differs from Python's rendered-element-first top-level rules.
 - The ruby pronunciation loss is specifically caused by Go `rubyContentParts` omitting direct IonString `content`; the footnote loss is specifically caused by Go choosing `<p>` before applying the classification that Python applies while the node is still a `<div>`.
 

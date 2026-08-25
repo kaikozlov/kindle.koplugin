@@ -8,34 +8,34 @@
 //
 // Function mapping (Python → Go):
 //
-//   Core pipeline (ported):
-//     KFX_EPUB.__init__           → renderBookState + organizeFragments (yj_book.go)
-//     decompile_to_epub           → ConvertFile → epub.Write
-//     organize_fragments_by_type  → organizeFragments (yj_book.go:211)
-//     determine_book_symbol_format → determineBookSymbolFormat (L571)
-//     unique_part_of_local_symbol → uniquePartOfLocalSymbol (L600)
-//     prefix_unique_part_of_symbol → prefixUniquePartOfSymbol (L623)
-//     replace_ion_data            → mergeIonReferencedStringSymbols (yj_book.go)
+//	Core pipeline (ported):
+//	  KFX_EPUB.__init__           → renderBookState + organizeFragments (yj_book.go)
+//	  decompile_to_epub           → ConvertFile → epub.Write
+//	  organize_fragments_by_type  → organizeFragments (yj_book.go:211)
+//	  determine_book_symbol_format → determineBookSymbolFormat (L571)
+//	  unique_part_of_local_symbol → uniquePartOfLocalSymbol (L600)
+//	  prefix_unique_part_of_symbol → prefixUniquePartOfSymbol (L623)
+//	  replace_ion_data            → mergeIonReferencedStringSymbols (yj_book.go)
 //
-//   Fragment access helpers (design difference — Go uses typed catalog):
-//     get_fragment                → Direct typed map access (e.g., contentFragments[name])
-//     get_named_fragment          → Direct typed map access + notebook callbacks
-//     get_fragment_name           → chooseFragmentIdentity (yj_book.go:1593)
-//     check_fragment_name         → chooseFragmentIdentity (validation in organizeFragments)
-//     get_structure_name          → Inline map access (value["name_key"])
+//	Fragment access helpers (design difference — Go uses typed catalog):
+//	  get_fragment                → Direct typed map access (e.g., contentFragments[name])
+//	  get_named_fragment          → Direct typed map access + notebook callbacks
+//	  get_fragment_name           → chooseFragmentIdentity (yj_book.go:1593)
+//	  check_fragment_name         → chooseFragmentIdentity (validation in organizeFragments)
+//	  get_structure_name          → Inline map access (value["name_key"])
 //
-//   Progress (excluded — Go has no interactive progress callback):
-//     progress_countdown          → N/A
-//     update_progress             → N/A
+//	Progress (excluded — Go has no interactive progress callback):
+//	  progress_countdown          → N/A
+//	  update_progress             → N/A
 //
-//   Validation (excluded — Go uses typed catalog, no generic book_data map):
-//     check_empty                 → N/A (Python validates generic dict emptiness)
+//	Validation (excluded — Go uses typed catalog, no generic book_data map):
+//	  check_empty                 → N/A (Python validates generic dict emptiness)
 //
-//   __init__ cleanup sequence (L86-174, design difference):
-//     Python pops fragment types from a generic book_data dict and validates emptiness.
-//     Go uses typed fragmentCatalog maps consumed directly during rendering. The cleanup
-//     validation (check_empty calls) is not needed because Go's typed maps are consumed
-//     explicitly by each processing stage.
+//	__init__ cleanup sequence (L86-174, design difference):
+//	  Python pops fragment types from a generic book_data dict and validates emptiness.
+//	  Go uses typed fragmentCatalog maps consumed directly during rendering. The cleanup
+//	  validation (check_empty calls) is not needed because Go's typed maps are consumed
+//	  explicitly by each processing stage.
 package kfx
 
 import (
@@ -70,15 +70,15 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	symFmt := state.BookSymbolFormat
 
 	book.fragmentMaps = map[string]map[string]map[string]interface{}{
-		"style":             styleFragments,
-		"storyline":         storylines,
-		"nav_container":     navContainers,
-		"external_resource": state.Fragments.ResourceRawData,
+		"style":               styleFragments,
+		"storyline":           storylines,
+		"nav_container":       navContainers,
+		"external_resource":   state.Fragments.ResourceRawData,
 		"format_capabilities": state.Fragments.FormatCapabilities,
-		"container":         state.Fragments.Generators,
-		"path_bundle":       state.Fragments.PathBundles,
-		"structure":         rubyContents,
-		"ruby_content":      rubyGroups,
+		"container":           state.Fragments.Generators,
+		"path_bundle":         state.Fragments.PathBundles,
+		"structure":           rubyContents,
+		"ruby_content":        rubyGroups,
 	}
 	book.usedFragmentAccess = map[string]bool{}
 	organizeFragmentsByType(book)
@@ -105,7 +105,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 		trace.addStage("content_features", captureContentFeatures(book))
 		trace.addStage("fonts", captureFonts(book))
 		trace.addStage("document_data", captureDocumentData(book))
-		trace.addStage("metadata", captureMetadata(book))
+		trace.addStage("metadata", captureMetadata(book, &state.Fragments))
 	}
 
 	positionToSectionID := map[int]string{}
@@ -406,27 +406,27 @@ func ConvertFile(inputPath, outputPath string, cacheDir string) error {
 	}
 
 	return epub.Write(outputPath, epub.Book{
-		Identifier:              book.Identifier,
-		Title:                   book.Title,
-		Language:                book.Language,
-		Authors:                 book.Authors,
-		Published:               book.Published,
-		Description:             book.Description,
-		Publisher:               book.Publisher,
-		OverrideKindleFonts:     book.OverrideKindleFonts,
-		CoverImageHref:          book.CoverImageHref,
-		Stylesheet:              book.Stylesheet,
-		Sections:                book.Sections,
-		Resources:               book.Resources,
-		Navigation:              book.Navigation,
-		Guide:                   book.Guide,
-		PageList:                book.PageList,
-		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
-		Epub2Desired:            false, // Python: epub2_desired defaults to False
-		GenerateEpub2:           book.GenerateEpub2,
-		TitlePronunciation:      book.TitlePronunciation,
-		AuthorPronunciations:    book.AuthorPronunciations,
-		FixedLayout:             book.FixedLayout,
+		Identifier:               book.Identifier,
+		Title:                    book.Title,
+		Language:                 book.Language,
+		Authors:                  book.Authors,
+		Published:                book.Published,
+		Description:              book.Description,
+		Publisher:                book.Publisher,
+		OverrideKindleFonts:      book.OverrideKindleFonts,
+		CoverImageHref:           book.CoverImageHref,
+		Stylesheet:               book.Stylesheet,
+		Sections:                 book.Sections,
+		Resources:                book.Resources,
+		Navigation:               book.Navigation,
+		Guide:                    book.Guide,
+		PageList:                 book.PageList,
+		GenerateEpub2Compatible:  true,  // Python: GENERATE_EPUB2_COMPATIBLE = True
+		Epub2Desired:             false, // Python: epub2_desired defaults to False
+		GenerateEpub2:            book.GenerateEpub2,
+		TitlePronunciation:       book.TitlePronunciation,
+		AuthorPronunciations:     book.AuthorPronunciations,
+		FixedLayout:              book.FixedLayout,
 		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
@@ -456,27 +456,27 @@ func ConvertFileWithTrace(inputPath string, outputPath string, tracePath string)
 		return fmt.Errorf("write trace: %w", err)
 	}
 	return epub.Write(outputPath, epub.Book{
-		Identifier:              book.Identifier,
-		Title:                   book.Title,
-		Language:                book.Language,
-		Authors:                 book.Authors,
-		Published:               book.Published,
-		Description:             book.Description,
-		Publisher:               book.Publisher,
-		OverrideKindleFonts:     book.OverrideKindleFonts,
-		CoverImageHref:          book.CoverImageHref,
-		Stylesheet:              book.Stylesheet,
-		Sections:                book.Sections,
-		Resources:               book.Resources,
-		Navigation:              book.Navigation,
-		Guide:                   book.Guide,
-		PageList:                book.PageList,
-		GenerateEpub2Compatible: true,
-		Epub2Desired:            false,
-		GenerateEpub2:           book.GenerateEpub2,
-		TitlePronunciation:      book.TitlePronunciation,
-		AuthorPronunciations:    book.AuthorPronunciations,
-		FixedLayout:             book.FixedLayout,
+		Identifier:               book.Identifier,
+		Title:                    book.Title,
+		Language:                 book.Language,
+		Authors:                  book.Authors,
+		Published:                book.Published,
+		Description:              book.Description,
+		Publisher:                book.Publisher,
+		OverrideKindleFonts:      book.OverrideKindleFonts,
+		CoverImageHref:           book.CoverImageHref,
+		Stylesheet:               book.Stylesheet,
+		Sections:                 book.Sections,
+		Resources:                book.Resources,
+		Navigation:               book.Navigation,
+		Guide:                    book.Guide,
+		PageList:                 book.PageList,
+		GenerateEpub2Compatible:  true,
+		Epub2Desired:             false,
+		GenerateEpub2:            book.GenerateEpub2,
+		TitlePronunciation:       book.TitlePronunciation,
+		AuthorPronunciations:     book.AuthorPronunciations,
+		FixedLayout:              book.FixedLayout,
 		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
@@ -594,27 +594,27 @@ func convertFromDRMIONData(contData []byte, outputPath string, originalPath stri
 	}
 
 	return epub.Write(outputPath, epub.Book{
-		Identifier:          book.Identifier,
-		Title:               book.Title,
-		Language:            book.Language,
-		Authors:             book.Authors,
-		Published:           book.Published,
-		Description:         book.Description,
-		Publisher:           book.Publisher,
-		OverrideKindleFonts: book.OverrideKindleFonts,
-		CoverImageHref:      book.CoverImageHref,
-		Stylesheet:          book.Stylesheet,
-		Sections:            book.Sections,
-		Resources:           book.Resources,
-		Navigation:          book.Navigation,
-		Guide:               book.Guide,
-		PageList:                book.PageList,
-		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
-		Epub2Desired:            false,
-		GenerateEpub2:           book.GenerateEpub2,
-		TitlePronunciation:      book.TitlePronunciation,
-		AuthorPronunciations:    book.AuthorPronunciations,
-		FixedLayout:             book.FixedLayout,
+		Identifier:               book.Identifier,
+		Title:                    book.Title,
+		Language:                 book.Language,
+		Authors:                  book.Authors,
+		Published:                book.Published,
+		Description:              book.Description,
+		Publisher:                book.Publisher,
+		OverrideKindleFonts:      book.OverrideKindleFonts,
+		CoverImageHref:           book.CoverImageHref,
+		Stylesheet:               book.Stylesheet,
+		Sections:                 book.Sections,
+		Resources:                book.Resources,
+		Navigation:               book.Navigation,
+		Guide:                    book.Guide,
+		PageList:                 book.PageList,
+		GenerateEpub2Compatible:  true, // Python: GENERATE_EPUB2_COMPATIBLE = True
+		Epub2Desired:             false,
+		GenerateEpub2:            book.GenerateEpub2,
+		TitlePronunciation:       book.TitlePronunciation,
+		AuthorPronunciations:     book.AuthorPronunciations,
+		FixedLayout:              book.FixedLayout,
 		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
@@ -639,27 +639,27 @@ func convertFromCONTData(contData []byte, outputPath string) error {
 	}
 
 	return epub.Write(outputPath, epub.Book{
-		Identifier:          book.Identifier,
-		Title:               book.Title,
-		Language:            book.Language,
-		Authors:             book.Authors,
-		Published:           book.Published,
-		Description:         book.Description,
-		Publisher:           book.Publisher,
-		OverrideKindleFonts: book.OverrideKindleFonts,
-		CoverImageHref:      book.CoverImageHref,
-		Stylesheet:          book.Stylesheet,
-		Sections:            book.Sections,
-		Resources:           book.Resources,
-		Navigation:          book.Navigation,
-		Guide:               book.Guide,
-		PageList:                book.PageList,
-		GenerateEpub2Compatible: true, // Python: GENERATE_EPUB2_COMPATIBLE = True
-		Epub2Desired:            false,
-		GenerateEpub2:           book.GenerateEpub2,
-		TitlePronunciation:      book.TitlePronunciation,
-		AuthorPronunciations:    book.AuthorPronunciations,
-		FixedLayout:             book.FixedLayout,
+		Identifier:               book.Identifier,
+		Title:                    book.Title,
+		Language:                 book.Language,
+		Authors:                  book.Authors,
+		Published:                book.Published,
+		Description:              book.Description,
+		Publisher:                book.Publisher,
+		OverrideKindleFonts:      book.OverrideKindleFonts,
+		CoverImageHref:           book.CoverImageHref,
+		Stylesheet:               book.Stylesheet,
+		Sections:                 book.Sections,
+		Resources:                book.Resources,
+		Navigation:               book.Navigation,
+		Guide:                    book.Guide,
+		PageList:                 book.PageList,
+		GenerateEpub2Compatible:  true, // Python: GENERATE_EPUB2_COMPATIBLE = True
+		Epub2Desired:             false,
+		GenerateEpub2:            book.GenerateEpub2,
+		TitlePronunciation:       book.TitlePronunciation,
+		AuthorPronunciations:     book.AuthorPronunciations,
+		FixedLayout:              book.FixedLayout,
 		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
