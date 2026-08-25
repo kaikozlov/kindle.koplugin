@@ -4,8 +4,18 @@
 #
 # The Kindle's glibc is typically ~2.20-2.35 depending on device generation.
 # Bullseye's glibc 2.31 is old enough for all Kindle models.
+#
+# Targets:
+#   (default)      — final artifact at /build/crypto_hook.so (copied by python_build.sh)
+#   test-openssl11 — compile+run the hook harness against Debian Bullseye OpenSSL 1.1
+#   test-openssl3  — compile+run the hook harness against Debian Bookworm OpenSSL 3
+#
+# The test targets execute the exact shipped ARM ELF under QEMU (linux/arm/v7),
+# validating dlsym(RTLD_NEXT) interception, key-length selection, IV capture,
+# and the /mnt/us/crypto_keys.log path against both OpenSSL generations used
+# across supported Kindle firmware.
 
-FROM arm32v7/debian:bullseye
+FROM arm32v7/debian:bullseye AS hook-build
 
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 
@@ -14,3 +24,67 @@ COPY lib/crypto_hook.c /build/crypto_hook.c
 
 RUN gcc -shared -fPIC -O2 -o /build/crypto_hook.so /build/crypto_hook.c -ldl -lpthread && \
     strip /build/crypto_hook.so
+
+# --- Hermetic executable tests -------------------------------------------------
+#
+# Each target installs its own native compiler and OpenSSL headers, copies the
+# single shipped crypto_hook.so from hook-build, compiles the same harness, and
+# runs it with the hook preloaded. The run must log exactly one EVP_256_KEY
+# record for the harness's fixed key (00..1f) and IV (a0..af); unrelated
+# AES_DEC_* records are permitted when the target's OpenSSL routes the EVP call
+# through the separately intercepted low-level AES API.
+
+FROM arm32v7/debian:bullseye AS test-openssl11
+
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libssl-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY --from=hook-build /build/crypto_hook.so /build/crypto_hook.so
+COPY test/drm/crypto_hook_harness.c /build/crypto_hook_harness.c
+
+RUN gcc -O2 -o /build/crypto_hook_harness /build/crypto_hook_harness.c -lcrypto && \
+    mkdir -p /mnt/us && \
+    rm -f /mnt/us/crypto_keys.log && \
+    LD_PRELOAD=/build/crypto_hook.so /build/crypto_hook_harness && \
+    expected='EVP_256_KEY:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f IV:a0a1a2a3a4a5a6a7a8a9aaabacadaeaf' && \
+    count="$(grep -c -x "$expected" /mnt/us/crypto_keys.log || true)" && \
+    if [ "$count" != 1 ]; then \
+        echo "openssl1.1: expected exactly 1 hook record, got $count:" >&2; \
+        cat /mnt/us/crypto_keys.log >&2; \
+        exit 1; \
+    fi && \
+    if grep -v -x -e "$expected" -e 'AES_DEC_.*' /mnt/us/crypto_keys.log | grep -q .; then \
+        echo "openssl1.1: unexpected hook records:" >&2; \
+        grep -v -x -e "$expected" -e 'AES_DEC_.*' /mnt/us/crypto_keys.log >&2; \
+        exit 1; \
+    fi
+
+FROM arm32v7/debian:bookworm AS test-openssl3
+
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libssl-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY --from=hook-build /build/crypto_hook.so /build/crypto_hook.so
+COPY test/drm/crypto_hook_harness.c /build/crypto_hook_harness.c
+
+RUN gcc -O2 -o /build/crypto_hook_harness /build/crypto_hook_harness.c -lcrypto && \
+    mkdir -p /mnt/us && \
+    rm -f /mnt/us/crypto_keys.log && \
+    LD_PRELOAD=/build/crypto_hook.so /build/crypto_hook_harness && \
+    expected='EVP_256_KEY:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f IV:a0a1a2a3a4a5a6a7a8a9aaabacadaeaf' && \
+    count="$(grep -c -x "$expected" /mnt/us/crypto_keys.log || true)" && \
+    if [ "$count" != 1 ]; then \
+        echo "openssl3: expected exactly 1 hook record, got $count:" >&2; \
+        cat /mnt/us/crypto_keys.log >&2; \
+        exit 1; \
+    fi && \
+    if grep -v -x -e "$expected" -e 'AES_DEC_.*' /mnt/us/crypto_keys.log | grep -q .; then \
+        echo "openssl3: unexpected hook records:" >&2; \
+        grep -v -x -e "$expected" -e 'AES_DEC_.*' /mnt/us/crypto_keys.log >&2; \
+        exit 1; \
+    fi
+
+# Default target: the release artifact python_build.sh copies from /build.
+FROM hook-build
