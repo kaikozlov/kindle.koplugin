@@ -7806,6 +7806,13 @@ func (r *storylineRenderer) rubyContentParts(rubyName string, rubyID int) []html
 	if content == nil {
 		return nil
 	}
+	// Python process_content distinguishes IonString from IonSymbol and renders a direct
+	// IonString as text. normalizeIon represents both as Go strings, so handle a direct
+	// string here before the existing referenced-content path. Current Previewer-generated
+	// ruby_content uses this form for pronunciation text.
+	if text, ok := asString(content["content"]); ok && text != "" {
+		return splitTextHTMLParts(text)
+	}
 	if ref, ok := asMap(content["content"]); ok {
 		if text := r.resolveText(ref); text != "" {
 			return splitTextHTMLParts(text)

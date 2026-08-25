@@ -1318,6 +1318,26 @@ func TestMaterializeRenderedSectionsUsesDOMAfterLateMutation(t *testing.T) {
 	}
 }
 
+func TestRubyContentPartsSupportsDirectIonStringContent(t *testing.T) {
+	renderer := storylineRenderer{
+		rubyGroups: map[string]map[string]interface{}{
+			"ruby-set": {
+				"content_list": []interface{}{
+					map[string]interface{}{
+						"ruby_id": 1,
+						"content": "かん",
+					},
+				},
+			},
+		},
+	}
+
+	got := renderHTMLParts(renderer.rubyContentParts("ruby-set", 1), false)
+	if got != "かん" {
+		t.Fatalf("ruby pronunciation = %q, want %q", got, "かん")
+	}
+}
+
 func TestRenderTextNodeSupportsRubyAnnotations(t *testing.T) {
 	renderer := storylineRenderer{
 		contentFragments: map[string][]string{"content": {"漢字", "かんじ"}},
