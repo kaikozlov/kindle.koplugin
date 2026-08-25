@@ -103,7 +103,10 @@ is installed — either the original KUAL extension at
 `/mnt/us/extensions/kfxdedrm/` or the newer kfx-dedrm scriptlet at
 `/mnt/us/extensions/kfxdedrm-scriptlet/` — the plugin can automatically use its
 tested native `libYJSDK` extractor as a fallback. The external binaries are
-optional and are not bundled with this plugin.
+optional and are not bundled with this plugin. Some older firmware does not
+provide `/usr/java/bin/cvm` at all; on those devices this native fallback is
+required for encrypted KFX books. DRM-free KFX and plaintext-only DRMION books
+do not require key extraction.
 
 ### License
 
