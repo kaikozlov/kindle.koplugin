@@ -12,14 +12,14 @@ import (
 
 // symTypeNames maps symType values to their Python-equivalent string representations.
 var symTypeNames = map[symType]string{
-	"":            "none",
-	symShared:     "shared",
-	symCommon:     "common",
+	"":         "none",
+	symShared:  "shared",
+	symCommon:  "common",
 	symDictionary: "dictionary",
-	symOriginal:   "original",
-	symBase64:     "base64",
-	symShort:      "short",
-	symUnknown:    "unknown",
+	symOriginal: "original",
+	symBase64:  "base64",
+	symShort:   "short",
+	symUnknown: "unknown",
 }
 
 // traceWriter accumulates pipeline stage snapshots for parity comparison with Python.
@@ -72,10 +72,10 @@ type traceBookSymbolFormat struct {
 }
 
 type traceContentFeatures struct {
-	IsPrintReplica         bool   `json:"is_print_replica"`
-	IsPDFBacked            bool   `json:"is_pdf_backed"`
-	IsPDFBackedFixedLayout bool   `json:"is_pdf_backed_fixed_layout"`
-	CDEContentType         string `json:"cde_content_type"`
+	IsPrintReplica bool   `json:"is_print_replica"`
+	IsPDFBacked    bool   `json:"is_pdf_backed"`
+	IsPDFBackedFixedLayout bool `json:"is_pdf_backed_fixed_layout"`
+	CDEContentType string `json:"cde_content_type"`
 }
 
 type traceFonts struct {
@@ -85,44 +85,44 @@ type traceFonts struct {
 }
 
 type traceDocumentData struct {
-	OrientationLock      string `json:"orientation_lock"`
-	FixedLayout          bool   `json:"fixed_layout"`
-	IllustratedLayout    bool   `json:"illustrated_layout"`
-	OriginalWidth        *int   `json:"original_width"`
-	OriginalHeight       *int   `json:"original_height"`
-	RegionMagnification  bool   `json:"region_magnification"`
-	VirtualPanels        bool   `json:"virtual_panels"`
-	VirtualPanelsAllowed bool   `json:"virtual_panels_allowed"`
-	GuidedViewNative     bool   `json:"guided_view_native"`
-	ScrolledContinuous   bool   `json:"scrolled_continuous"`
+	OrientationLock    string `json:"orientation_lock"`
+	FixedLayout        bool   `json:"fixed_layout"`
+	IllustratedLayout  bool   `json:"illustrated_layout"`
+	OriginalWidth      *int   `json:"original_width"`
+	OriginalHeight     *int   `json:"original_height"`
+	RegionMagnification bool  `json:"region_magnification"`
+	VirtualPanels      bool   `json:"virtual_panels"`
+	VirtualPanelsAllowed bool `json:"virtual_panels_allowed"`
+	GuidedViewNative   bool   `json:"guided_view_native"`
+	ScrolledContinuous bool   `json:"scrolled_continuous"`
 }
 
 type traceMetadata struct {
-	Title              string   `json:"title"`
-	Authors            []string `json:"authors"`
-	Language           string   `json:"language"`
-	Publisher          string   `json:"publisher"`
-	PubDate            string   `json:"pubdate"`
-	Description        string   `json:"description"`
-	ASIN               string   `json:"asin"`
-	BookID             string   `json:"book_id"`
-	OrientationLock    string   `json:"orientation_lock"`
-	FixedLayout        bool     `json:"fixed_layout"`
-	IllustratedLayout  bool     `json:"illustrated_layout"`
-	OverrideKindleFont bool     `json:"override_kindle_font"`
-	HTMLCover          bool     `json:"html_cover"`
-	BookType           string   `json:"book_type"`
-	SourceLanguage     string   `json:"source_language"`
-	TargetLanguage     string   `json:"target_language"`
-	CoverResource      string   `json:"cover_resource"`
-	WritingMode        string   `json:"writing_mode"`
+	Title            string   `json:"title"`
+	Authors          []string `json:"authors"`
+	Language         string   `json:"language"`
+	Publisher        string   `json:"publisher"`
+	PubDate          string   `json:"pubdate"`
+	Description      string   `json:"description"`
+	ASIN             string   `json:"asin"`
+	BookID           string   `json:"book_id"`
+	OrientationLock  string   `json:"orientation_lock"`
+	FixedLayout      bool     `json:"fixed_layout"`
+	IllustratedLayout bool    `json:"illustrated_layout"`
+	OverrideKindleFont bool   `json:"override_kindle_font"`
+	HTMLCover        bool     `json:"html_cover"`
+	BookType         string   `json:"book_type"`
+	SourceLanguage    string   `json:"source_language"`
+	TargetLanguage    string   `json:"target_language"`
+	CoverResource    string   `json:"cover_resource"`
+	WritingMode      string   `json:"writing_mode"`
 }
 
 type traceNavPoint struct {
-	Title    string          `json:"title"`
-	Target   string          `json:"target,omitempty"`
-	Anchor   string          `json:"anchor,omitempty"`
-	Children []traceNavPoint `json:"children"`
+	Title    string           `json:"title"`
+	Target   string           `json:"target,omitempty"`
+	Anchor   string           `json:"anchor,omitempty"`
+	Children []traceNavPoint  `json:"children"`
 }
 
 type traceGuideEntry struct {
@@ -139,17 +139,17 @@ type tracePageTarget struct {
 }
 
 type traceNavigation struct {
-	NCXToc  []traceNavPoint   `json:"ncx_toc"`
-	Guide   []traceGuideEntry `json:"guide"`
-	Pagemap []tracePageTarget `json:"pagemap"`
+	NCXToc  []traceNavPoint    `json:"ncx_toc"`
+	Guide   []traceGuideEntry  `json:"guide"`
+	Pagemap []tracePageTarget  `json:"pagemap"`
 }
 
 type traceSection struct {
-	Filename      string   `json:"filename"`
-	BodyHTML      string   `json:"body_html"`
-	BodyClass     string   `json:"body_class"`
+	Filename     string   `json:"filename"`
+	BodyHTML     string   `json:"body_html"`
+	BodyClass    string   `json:"body_class"`
 	OPFProperties []string `json:"opf_properties"`
-	IsCoverPage   bool     `json:"is_cover_page"`
+	IsCoverPage  bool     `json:"is_cover_page"`
 }
 
 type traceStylesheet struct {
@@ -183,10 +183,10 @@ func captureBookSymbolFormat(state *bookState) traceBookSymbolFormat {
 
 func captureContentFeatures(book *decodedBook) traceContentFeatures {
 	return traceContentFeatures{
-		IsPrintReplica:         book.IsPrintReplica,
-		IsPDFBacked:            book.IsPDFBacked,
+		IsPrintReplica: book.IsPrintReplica,
+		IsPDFBacked: book.IsPDFBacked,
 		IsPDFBackedFixedLayout: book.IsPDFBackedFixedLayout,
-		CDEContentType:         book.CDEContentType,
+		CDEContentType: book.CDEContentType,
 	}
 }
 
@@ -217,36 +217,36 @@ func captureDocumentData(book *decodedBook) traceDocumentData {
 		originalHeight = &v
 	}
 	return traceDocumentData{
-		OrientationLock:      book.OrientationLock,
-		FixedLayout:          book.FixedLayout,
-		IllustratedLayout:    book.IllustratedLayout,
-		OriginalWidth:        originalWidth,
-		OriginalHeight:       originalHeight,
-		RegionMagnification:  book.RegionMagnification,
+		OrientationLock:    book.OrientationLock,
+		FixedLayout:        book.FixedLayout,
+		IllustratedLayout:  book.IllustratedLayout,
+		OriginalWidth:      originalWidth,
+		OriginalHeight:     originalHeight,
+		RegionMagnification: book.RegionMagnification,
 		VirtualPanelsAllowed: book.VirtualPanelsAllowed,
-		GuidedViewNative:     book.GuidedViewNative,
-		ScrolledContinuous:   book.ScrolledContinuous,
+		GuidedViewNative:   book.GuidedViewNative,
+		ScrolledContinuous: book.ScrolledContinuous,
 	}
 }
 
 func captureMetadata(book *decodedBook, fragments *fragmentCatalog) traceMetadata {
 	bookType := string(detectBookTypeFull(book, fragments))
 	return traceMetadata{
-		Title:              book.Title,
-		Authors:            book.Authors,
-		Language:           book.Language,
-		Publisher:          book.Publisher,
-		PubDate:            book.Published,
-		Description:        book.Description,
-		ASIN:               book.ASIN,
-		BookID:             book.BookID,
-		OrientationLock:    book.OrientationLock,
-		FixedLayout:        book.FixedLayout,
-		IllustratedLayout:  book.IllustratedLayout,
+		Title:             book.Title,
+		Authors:           book.Authors,
+		Language:          book.Language,
+		Publisher:         book.Publisher,
+		PubDate:           book.Published,
+		Description:       book.Description,
+		ASIN:              book.ASIN,
+		BookID:            book.BookID,
+		OrientationLock:   book.OrientationLock,
+		FixedLayout:       book.FixedLayout,
+		IllustratedLayout: book.IllustratedLayout,
 		OverrideKindleFont: book.OverrideKindleFonts,
-		BookType:           bookType,
-		CoverResource:      book.CoverImageID,
-		WritingMode:        book.WritingMode,
+		BookType:          bookType,
+		CoverResource:     book.CoverImageID,
+		WritingMode:       book.WritingMode,
 	}
 }
 
