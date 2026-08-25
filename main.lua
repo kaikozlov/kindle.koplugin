@@ -329,14 +329,24 @@ local function runPendingCloseSync(pending)
         return true
     end
 
-    reading_state_sync:syncToKindleAutomatic(
-        pending.cde_key,
-        pending.source_path,
-        pending.doc_settings,
-        pending.epub_path,
-        approval_handler,
-        conflict_handler
-    )
+    -- The helper spawns run inside a coroutine: _run yields while a forked,
+    -- niced child does the work, so the UI thread only polls and never
+    -- blocks on interpreter startup.
+    local thread = coroutine.create(function()
+        reading_state_sync:syncToKindleAutomatic(
+            pending.cde_key,
+            pending.source_path,
+            pending.doc_settings,
+            pending.epub_path,
+            approval_handler,
+            conflict_handler
+        )
+    end)
+    helper_client.async = true
+    local ok, err = coroutine.resume(thread)
+    if not ok then
+        logger.warn("KindlePlugin: deferred close sync failed:", err)
+    end
 end
 
 function KindlePlugin:syncPendingClose()

@@ -163,6 +163,36 @@ describe("HelperClient", function()
             assert.equals(27124, result.koreader.pid)
         end)
 
+        it("runs the helper without blocking when called from a coroutine", function()
+            local payload = '{"ok":true,"pid":27124}'
+            local client = HelperClient:new({
+                async = true,
+                binary_path = "/bin/echo",
+            })
+
+            local thread
+            local decoded
+            thread = coroutine.create(function()
+                decoded = client:_run({ client.binary_path, "-n", payload })
+            end)
+            assert.is_truthy(coroutine.resume(thread))
+            assert.is_true(coroutine.status(thread) == "suspended",
+                "helper call must yield while the child runs")
+
+            local ffiUtil = require("ffi/util")
+            local waited = 0
+            while coroutine.status(thread) ~= "dead" and waited < 40 do
+                ffiUtil.usleep(100000)
+                helper.get_uimanager():_checkTasks()
+                waited = waited + 1
+            end
+
+            assert.is_true(coroutine.status(thread) == "dead")
+            assert.is_not_nil(decoded)
+            assert.is_true(decoded.ok)
+            assert.equals(27124, decoded.pid)
+        end)
+
         it("should expose a native progress runner seam", function()
             local client = HelperClient:new({
                 native_progress_runner = function(asin, path, position)

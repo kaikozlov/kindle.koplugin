@@ -2,6 +2,8 @@ local DataStorage = require("datastorage")
 local json = require("json")
 local logger = require("logger")
 local util = require("util")
+local ffiUtil = require("ffi/util")
+local UIManager = require("ui/uimanager")
 
 local HelperClient = {}
 HelperClient.__index = HelperClient
@@ -38,9 +40,90 @@ function HelperClient:binaryExists()
     return false
 end
 
+--- Run the helper and call `callback(decoded, err)` without ever blocking the
+--- UI thread: the command runs in a forked, niced child writing to a
+--- temporary file, polled through UIManager until it exits.
+function HelperClient:_runAsyncSubprocess(command, callback)
+    local outfile = os.tmpname() .. ".kindle-helper." .. tostring(os.time())
+    local redirected = command .. " >" .. util.shell_escape({ outfile }) .. " 2>/dev/null"
+
+    local pid = ffiUtil.runInSubProcess(function()
+        os.execute(redirected)
+    end)
+    if type(pid) ~= "number" or pid <= 0 then
+        os.remove(outfile)
+        return false
+    end
+
+    local poll
+    poll = function()
+        if ffiUtil.isSubProcessDone(pid) then
+        local handle = io.open(outfile, "rb")
+            local output = handle and handle:read("*a") or ""
+            if handle then
+                handle:close()
+            end
+            os.remove(outfile)
+            local ok, decoded = pcall(json.decode, output)
+            if ok then
+                callback(decoded, nil)
+            else
+                callback(nil, "invalid helper JSON")
+            end
+        else
+            UIManager:scheduleIn(0.3, poll)
+        end
+    end
+    UIManager:scheduleIn(0.3, poll)
+    return true
+end
+
+--- Run the helper from inside a coroutine without blocking the UI thread.
+--- Yields until the forked child exits, then resumes with the decoded JSON.
+--- Returns false when async execution is unavailable (caller falls back to
+--- the blocking path).
+function HelperClient:_runYield(args)
+    if not ffiUtil.runInSubProcess
+        or not ffiUtil.isSubProcessDone
+        or not self:binaryExists()
+    then
+        return false
+    end
+
+    local thread = coroutine.running()
+    if not thread then
+        return false
+    end
+
+    local command = util.shell_escape(args)
+    local resumed = false
+    local ok_launch = self:_runAsyncSubprocess(command, function(decoded, err)
+        if coroutine.status(thread) == "suspended" and not resumed then
+            resumed = true
+            coroutine.resume(thread, decoded, err)
+        end
+    end)
+    if not ok_launch then
+        return false
+    end
+    local decoded, err = coroutine.yield()
+    return true, decoded, err
+end
+
 function HelperClient:_run(args)
     if self.runner then
         return self.runner(args)
+    end
+
+    if self.async then
+        local launched, decoded, err = self:_runYield(args)
+        if launched then
+            if decoded == nil then
+                return nil, err or "helper subprocess failed"
+            end
+            return decoded
+        end
+        -- Async launch unavailable; fall through to the blocking path.
     end
 
     if not self:binaryExists() then
