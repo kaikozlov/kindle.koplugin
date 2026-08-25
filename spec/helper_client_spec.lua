@@ -134,6 +134,35 @@ describe("HelperClient", function()
             assert.equals(75.5, result.percent)
         end)
 
+        it("should read both close-sync authorities in one helper spawn", function()
+            local seen = nil
+            local client = HelperClient:new({
+                runner = function(args)
+                    seen = args
+                    return {
+                        ok = true,
+                        native = { long = "AXMEAAAAAAAA", pid = 27115, timestamp_ms = 1100 },
+                        native_xpointer = "/body/DocFragment/body/p/text().1",
+                        native_pid = 27115,
+                        native_percent = 8.1,
+                        koreader = { long = "AXMEAAAJAAAA", pid = 27124, percent = 8.2 },
+                    }
+                end,
+            })
+
+            local result = client:readCloseState(
+                "/documents/book.kfx",
+                "/cache/book.epub",
+                "/body/DocFragment/body/p/text().1"
+            )
+
+            assert.is_not_nil(result)
+            assert.equals("read-close-state", seen[2])
+            assert.equals("/documents/book.kfx", seen[4])
+            assert.equals(27115, result.native.pid)
+            assert.equals(27124, result.koreader.pid)
+        end)
+
         it("should expose a native progress runner seam", function()
             local client = HelperClient:new({
                 native_progress_runner = function(asin, path, position)

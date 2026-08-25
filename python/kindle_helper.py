@@ -35,7 +35,8 @@ if os.path.isdir(_PLUGIN_MODULES) and _PLUGIN_MODULES not in sys.path:
     sys.path.insert(0, _PLUGIN_MODULES)
 
 from epub_position import (
-    PositionTranslationError, translate_native_position, translate_pair)
+    PositionTranslationError, native_position_percent, translate_native_position,
+    translate_pair, translate_xpointer)
 from annotation_position import normalize_annotation_ends
 from kfx_position_adapter import position_metadata_conversion
 from krds_position import KrdsError, read_position_file, write_position_file
@@ -496,6 +497,40 @@ def cmd_write_native_sidecar(args):
             "message": str(error),
         }, code=1)
 
+def cmd_read_close_state(args):
+    """One-spawn read of everything an exact open/close sync needs.
+
+    Interpreter startup dominates each helper invocation on the device, so
+    the Kindle sidecar, its reverse translation, and the forward translation
+    of KOReader's XPointer are returned together.
+    """
+    result = {"version": VERSION, "ok": True}
+    try:
+        native = read_position_file(args.input)
+    except (OSError, KrdsError) as error:
+        result["native_error"] = str(error)
+    else:
+        result["native"] = {
+            "long": native["long"],
+            "pid": native["pid"],
+            "timestamp_ms": native.get("timestamp_ms"),
+        }
+        try:
+            translated = translate_native_position(args.epub, native["long"])
+            result["native_xpointer"] = translated["xpointer"]
+            result["native_pid"] = translated["pid"]
+            result["native_percent"] = translated["percent"]
+        except (OSError, zipfile.BadZipFile, PositionTranslationError, ValueError) as error:
+            result["native_translate_error"] = str(error)
+    try:
+        koreader = translate_xpointer(args.epub, args.xpointer)
+        result["koreader"] = dict(koreader)
+        result["koreader"]["percent"] = native_position_percent(args.epub, koreader["pid"])
+    except (OSError, zipfile.BadZipFile, PositionTranslationError, ValueError) as error:
+        result["ok"] = False
+        result["koreader_error"] = str(error)
+    exit_json(result, code=0 if result["ok"] else 1)
+
 
 # ---------------------------------------------------------------------------
 # CLI argument parsing
@@ -658,6 +693,12 @@ def main():
     p_write_native.add_argument("--pid", type=int, required=True)
     p_write_native.add_argument("--timestamp-ms", type=int)
 
+    # One-spawn batched read for exact open/close sync
+    p_close_state = sub.add_parser("read-close-state")
+    p_close_state.add_argument("--input", required=True)
+    p_close_state.add_argument("--epub", required=True)
+    p_close_state.add_argument("--xpointer", required=True)
+
     # Diagnostic bulk DRM extraction
     p_drm = sub.add_parser("drm-init")
     p_drm.add_argument("--root", default="/mnt/us/documents",
@@ -705,7 +746,7 @@ def main():
         "decrypt": cmd_decrypt,
         "drm-init": cmd_drm_init,
         "read-native-sidecar": cmd_read_native_sidecar,
-        "write-native-sidecar": cmd_write_native_sidecar,
+        "read-close-state": cmd_read_close_state,
         "translate-position": cmd_translate_position,
         "translate-positions": cmd_translate_positions,
         "translate-native-position": cmd_translate_native_position,

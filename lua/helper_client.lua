@@ -355,6 +355,27 @@ function HelperClient:readNativeProgress(asin, native_path)
     }
 end
 
+--- One-spawn read of everything an exact open/close sync needs: the Kindle
+--- position sidecar, its reverse translation, and the forward translation of
+--- KOReader's XPointer. Interpreter startup dominates each helper spawn, so
+--- batching matters on device.
+function HelperClient:readCloseState(native_path, epub_path, xpointer)
+    local result, err = self:_run({
+        self:getBinaryPath(),
+        "read-close-state",
+        "--input",
+        native_path,
+        "--epub",
+        epub_path,
+        "--xpointer",
+        xpointer,
+    })
+    if result and result.ok then
+        return result
+    end
+    return nil, (result and result.message) or err
+end
+
 
 --- Extracts the decryption key for a single book (JIT key extraction).
 --- @param kfx_path string: Path to the KFX file.

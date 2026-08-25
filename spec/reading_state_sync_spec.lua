@@ -1229,6 +1229,76 @@ describe("ReadingStateSync", function()
             restoreWriteKindleState(sync, original_write)
         end)
 
+        it("should batch the close read into one helper spawn when available", function()
+            local spawns = { reads = 0, singles = 0 }
+            local sync = ReadingStateSync:new({
+                nativeProgressAvailable = function() return true end,
+                readCloseState = function()
+                    spawns.reads = spawns.reads + 1
+                    return {
+                        ok = true,
+                        native = { long = "AXMEAAAAAAAA", pid = 27115, timestamp_ms = 2000 },
+                        native_xpointer = "/body/DocFragment/body/p/text().1",
+                        native_pid = 27115,
+                        native_percent = 8.1,
+                        koreader = { long = "AXMEAAAJAAAA", pid = 27124, percent = 8.2 },
+                    }
+                end,
+                readNativeProgress = function()
+                    spawns.singles = spawns.singles + 1
+                    return { long = "AXMEAAAAAAAA", pid = 27115 }
+                end,
+                translatePosition = function()
+                    spawns.singles = spawns.singles + 1
+                    return { long = "AXMEAAAJAAAA", pid = 27124, percent = 8.2 }
+                end,
+                translateNativePosition = function()
+                    spawns.singles = spawns.singles + 1
+                    return nil, "unused"
+                end,
+                saveNativeProgress = function(_, _asin, _path, position)
+                    return true, nil, 8.2, {
+                        long = position.long,
+                        pid = position.pid,
+                        percent = 8.2,
+                    }
+                end,
+            })
+            sync.saveAuthoritativeNativePosition = function(_, _cde, _src, _epub, _ds, pretranslated)
+                return 8.2, { long = pretranslated.long, pid = pretranslated.pid, percent = 8.2 }
+            end
+            sync:setEnabled(true)
+            local plugin = setupPluginSettings(sync)
+            plugin.settings.position_sync_receipts = {
+                B007N6JEII = { long = "AXMEAAAAAAAA", pid = 27115, percent = 8.1, timestamp = 2000 },
+            }
+            local original_read = mockReadKindleState(sync, {
+                percent_read = 8,
+                timestamp = 1000,
+                status = "reading",
+                kindle_status = 1,
+            })
+            local original_write, writes = mockWriteKindleState(sync)
+            local ds = createMockDocSettings("/cache/book.epub", {
+                percent_finished = 0.082,
+                last_xpointer = "/body/DocFragment/body/p/text().1",
+                summary = { status = "reading" },
+            })
+
+            assert.is_true(sync:syncToKindleAutomatic(
+                "B007N6JEII",
+                "/mnt/us/documents/Throne of Glass_B007N6JEII.kfx",
+                ds,
+                "/cache/book.epub"
+            ))
+            assert.equals(1, spawns.reads)
+            assert.equals(0, spawns.singles)
+            assert.equals(8.2, writes[1].percent)
+
+            restoreReadKindleState(sync, original_read)
+            restoreWriteKindleState(sync, original_write)
+        end)
+
         it("should persist a push receipt even before ReadHistory flushes", function()
             local sync = ReadingStateSync:new()
             sync:setEnabled(true)
