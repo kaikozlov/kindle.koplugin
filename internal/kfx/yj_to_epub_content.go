@@ -5767,9 +5767,22 @@ func (r *storylineRenderer) renderTextNode(node map[string]interface{}, depth in
 	}
 
 	firstVisible := r.consumeVisibleElement()
+	tag := "p"
+	attrs := map[string]string{}
+	// Python applies $615/yj.classification while text content is still a generic
+	// <div>, before simplify_styles can turn an ordinary text div into <p>. A note
+	// classification therefore changes that div to <aside> and prevents paragraph
+	// promotion. Go normally emits text directly as <p>, so preserve the same semantic
+	// ordering explicitly for classified note content.
+	if classification, ok := asString(node["yj.classification"]); ok {
+		if epubType := classificationEPUBType[classification]; epubType != "" {
+			tag = "aside"
+			attrs["epub:type"] = epubType
+		}
+	}
 	element := &htmlElement{
-		Tag:      "p",
-		Attrs:    map[string]string{},
+		Tag:      tag,
+		Attrs:    attrs,
 		Children: content,
 	}
 	if styleID != "" {

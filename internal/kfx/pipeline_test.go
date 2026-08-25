@@ -368,6 +368,29 @@ func TestRenderTableNodePreservesColumnAndCellSpanAttributes(t *testing.T) {
 	}
 }
 
+func TestRenderTextNodePromotesFootnoteClassificationToAside(t *testing.T) {
+	renderer := storylineRenderer{
+		contentFragments: map[string][]string{"content": {"Footnote text."}},
+		resourceHrefByID: map[string]string{},
+		anchorToFilename: map[string]string{},
+		positionToSection: map[int]string{},
+		positionAnchors: map[int]map[int][]string{},
+		positionAnchorID: map[int]map[int]string{},
+		emittedAnchorIDs: map[string]bool{},
+		styleFragments: map[string]map[string]interface{}{},
+		styles: newStyleCatalog(),
+	}
+
+	node := renderer.renderTextNode(map[string]interface{}{
+		"content": map[string]interface{}{"name": "content", "index": 0},
+		"yj.classification": "footnote",
+	}, 0)
+	got := renderHTMLPart(node)
+	if got != "<aside epub:type=\"footnote\">Footnote text.</aside>" {
+		t.Fatalf("footnote html = %q", got)
+	}
+}
+
 func TestRenderNodePromotesClassifiedContainersToAside(t *testing.T) {
 	renderer := storylineRenderer{
 		contentFragments: map[string][]string{"content": {"Note"}},
