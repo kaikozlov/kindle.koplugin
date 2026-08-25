@@ -329,10 +329,9 @@ local function runPendingCloseSync(pending)
         return true
     end
 
-    -- The helper spawns run inside a coroutine: _run yields while a forked,
-    -- niced child does the work, so the UI thread only polls and never
-    -- blocks on interpreter startup.
-    local thread = coroutine.create(function()
+    -- Close sync is fully in-process (position map + KRDS sidecar codec),
+    -- so it runs to completion without spawning the bundled helper.
+    local ok, err = pcall(function()
         reading_state_sync:syncToKindleAutomatic(
             pending.cde_key,
             pending.source_path,
@@ -342,8 +341,6 @@ local function runPendingCloseSync(pending)
             conflict_handler
         )
     end)
-    helper_client.async = true
-    local ok, err = coroutine.resume(thread)
     if not ok then
         logger.warn("KindlePlugin: deferred close sync failed:", err)
     end
@@ -356,11 +353,9 @@ function KindlePlugin:syncPendingClose()
     end
     self._pending_close_sync = nil
 
-    -- Exact close sync spawns the bundled helper twice (batched position read
-    -- plus sidecar write); each cold interpreter start costs seconds on the
-    -- device. Run it after the reader widget has closed so the exit gesture
-    -- returns to the library immediately instead of blocking on the sync.
-    -- An interrupted run is recovered by the receipt system on the next open.
+    -- Run the push after the reader widget has closed so the exit gesture
+    -- returns to the library immediately. An interrupted run is recovered by
+    -- the receipt system on the next open.
     UIManager:scheduleIn(0.1, function()
         runPendingCloseSync(pending)
     end)

@@ -35,10 +35,14 @@ class DispatchWiringTests(unittest.TestCase):
             "dispatch entries without a registered subcommand",
         )
 
-    def test_sidecar_and_batch_commands_are_wired(self):
+    def test_sync_commands_stay_out_of_the_helper(self):
+        # Exact open/close sync runs in-process in Lua; these helper commands
+        # existed only to serve it and must not creep back.
         dispatched = _dispatch_commands()
-        for command in ("read-native-sidecar", "write-native-sidecar", "read-close-state"):
-            self.assertIn(command, dispatched, command + " must stay dispatchable")
+        for command in ("read-native-sidecar", "write-native-sidecar",
+                        "read-close-state", "translate-position",
+                        "translate-native-position"):
+            self.assertNotIn(command, dispatched, command + " must stay removed")
 
 
 if __name__ == "__main__":

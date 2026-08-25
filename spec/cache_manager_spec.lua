@@ -183,10 +183,14 @@ describe("CacheManager", function()
                 read = function() return "" end,
                 close = function() end,
             })
+            io_mocker.setMockFile(epub_path:gsub("%.epub$", ".positions.json"), {
+                read = function() return "{}" end,
+                close = function() end,
+            })
             io_mocker.setMockFile(meta_path, {
                 read = function()
                     return string.format(
-                        '{"converter_version":"3","source_mtime":%d,"source_size":%d}',
+                        '{"converter_version":"4","source_mtime":%d,"source_size":%d}',
                         attr.modification,
                         attr.size
                     )
@@ -209,9 +213,13 @@ describe("CacheManager", function()
                 read = function() return "" end,
                 close = function() end,
             })
+            io_mocker.setMockFile(epub_path:gsub("%.epub$", ".positions.json"), {
+                read = function() return "{}" end,
+                close = function() end,
+            })
             -- The real json.decode is used, so provide valid JSON that decodes to the right table
             io_mocker.setMockFile(meta_path, {
-                read = function() return '{"converter_version":"3","source_mtime":1000,"source_size":42}' end,
+                read = function() return '{"converter_version":"4","source_mtime":1000,"source_size":42}' end,
                 close = function() end,
             })
 

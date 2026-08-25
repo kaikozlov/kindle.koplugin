@@ -6,7 +6,7 @@ local util = require("util")
 local CacheManager = {}
 CacheManager.__index = CacheManager
 
-CacheManager.CONVERTER_VERSION = "3"
+CacheManager.CONVERTER_VERSION = "4"
 
 function CacheManager:new(helper_client, virtual_library)
     local instance = {
@@ -102,6 +102,12 @@ function CacheManager:isFresh(book)
     local epub_path, meta_path = self:getCachePaths(book)
     if not fileExists(epub_path) or not fileExists(meta_path) then
         logger.dbg("KindlePlugin: cache miss for", book.id, "(epub or meta missing)")
+        return false, epub_path, meta_path
+    end
+    -- Sync translates positions in-process from the conversion-time map; a
+    -- cached EPUB without one cannot support exact sync.
+    if not fileExists(epub_path:gsub("%.epub$", ".positions.json")) then
+        logger.dbg("KindlePlugin: cache miss for", book.id, "(position map missing)")
         return false, epub_path, meta_path
     end
 

@@ -1,9 +1,11 @@
-local DataStorage = require("datastorage")
 local json = require("json")
 local logger = require("logger")
 local util = require("util")
-local ffiUtil = require("ffi/util")
-local UIManager = require("ui/uimanager")
+
+local KindleSidecar = require("lua/lib/kindle_sidecar")
+local PositionMap = require("lua/lib/position_map")
+
+local DataStorage = require("datastorage")
 
 local HelperClient = {}
 HelperClient.__index = HelperClient
@@ -40,90 +42,9 @@ function HelperClient:binaryExists()
     return false
 end
 
---- Run the helper and call `callback(decoded, err)` without ever blocking the
---- UI thread: the command runs in a forked, niced child writing to a
---- temporary file, polled through UIManager until it exits.
-function HelperClient:_runAsyncSubprocess(command, callback)
-    local outfile = os.tmpname() .. ".kindle-helper." .. tostring(os.time())
-    local redirected = command .. " >" .. util.shell_escape({ outfile }) .. " 2>/dev/null"
-
-    local pid = ffiUtil.runInSubProcess(function()
-        os.execute(redirected)
-    end)
-    if type(pid) ~= "number" or pid <= 0 then
-        os.remove(outfile)
-        return false
-    end
-
-    local poll
-    poll = function()
-        if ffiUtil.isSubProcessDone(pid) then
-        local handle = io.open(outfile, "rb")
-            local output = handle and handle:read("*a") or ""
-            if handle then
-                handle:close()
-            end
-            os.remove(outfile)
-            local ok, decoded = pcall(json.decode, output)
-            if ok then
-                callback(decoded, nil)
-            else
-                callback(nil, "invalid helper JSON")
-            end
-        else
-            UIManager:scheduleIn(0.3, poll)
-        end
-    end
-    UIManager:scheduleIn(0.3, poll)
-    return true
-end
-
---- Run the helper from inside a coroutine without blocking the UI thread.
---- Yields until the forked child exits, then resumes with the decoded JSON.
---- Returns false when async execution is unavailable (caller falls back to
---- the blocking path).
-function HelperClient:_runYield(args)
-    if not ffiUtil.runInSubProcess
-        or not ffiUtil.isSubProcessDone
-        or not self:binaryExists()
-    then
-        return false
-    end
-
-    local thread = coroutine.running()
-    if not thread then
-        return false
-    end
-
-    local command = util.shell_escape(args)
-    local resumed = false
-    local ok_launch = self:_runAsyncSubprocess(command, function(decoded, err)
-        if coroutine.status(thread) == "suspended" and not resumed then
-            resumed = true
-            coroutine.resume(thread, decoded, err)
-        end
-    end)
-    if not ok_launch then
-        return false
-    end
-    local decoded, err = coroutine.yield()
-    return true, decoded, err
-end
-
 function HelperClient:_run(args)
     if self.runner then
         return self.runner(args)
-    end
-
-    if self.async then
-        local launched, decoded, err = self:_runYield(args)
-        if launched then
-            if decoded == nil then
-                return nil, err or "helper subprocess failed"
-            end
-            return decoded
-        end
-        -- Async launch unavailable; fall through to the blocking path.
     end
 
     if not self:binaryExists() then
@@ -167,7 +88,6 @@ function HelperClient:_run(args)
     return decoded
 end
 
-
 function HelperClient:convert(input_path, output_path)
     logger.info("KindlePlugin: converting", input_path, "->", output_path)
     local result, err = self:_run({
@@ -192,39 +112,46 @@ function HelperClient:convert(input_path, output_path)
     return result, err
 end
 
+--- Load the conversion-time position map for a cached EPUB.
+function HelperClient:_positionMap(epub_path)
+    if self._position_map_path == epub_path and self._position_map then
+        return self._position_map
+    end
+    local map, err = PositionMap.load(epub_path)
+    if not map then
+        return nil, err
+    end
+    self._position_map_path = epub_path
+    self._position_map = map
+    return map
+end
 
 --- Translate a KOReader XPointer into Kindle's exact long and short position.
 function HelperClient:translatePosition(epub_path, xpointer)
-    local result, err = self:_run({
-        self:getBinaryPath(),
-        "translate-position",
-        "--epub", epub_path,
-        "--start", xpointer,
-        "--end", xpointer,
-    })
-    if not result or not result.ok or not result.start then
-        return nil, err or (result and result.message) or "position translation failed"
+    if self.translate_position then
+        return self.translate_position(epub_path, xpointer)
     end
-    return result.start
-end
-
-function HelperClient:translateNativePosition(epub_path, long_position)
-    local result, err = self:_run({
-        self:getBinaryPath(),
-        "translate-native-position",
-        "--epub", epub_path,
-        "--long", long_position,
-    })
-    if not result or not result.ok or not result.xpointer then
-        return nil, err or (result and result.message) or "reverse position translation failed"
+    local map, map_error = self:_positionMap(epub_path)
+    if not map then
+        return nil, map_error
     end
+    local result, err = PositionMap.translate_xpointer(map, xpointer)
+    if not result then
+        return nil, err
+    end
+    self._last_native_percent = result.percent
     return result
 end
 
-local function hexEncode(value)
-    return (value:gsub(".", function(character)
-        return string.format("%02x", string.byte(character))
-    end))
+function HelperClient:translateNativePosition(epub_path, long_position)
+    if self.translate_native then
+        return self.translate_native(epub_path, long_position)
+    end
+    local map, map_error = self:_positionMap(epub_path)
+    if not map then
+        return nil, map_error
+    end
+    return PositionMap.translate_native(map, long_position)
 end
 
 local function readableFile(path)
@@ -236,9 +163,149 @@ local function readableFile(path)
     return true
 end
 
+--- Find every KRDS reading-position sidecar next to a Kindle book.
+local function positionSidecars(native_path)
+    local stem = native_path:gsub("%.%w+$", "")
+    local sidecar_dir = stem .. ".sdr"
+    local candidates = {}
+    local opened = io.open(sidecar_dir, "rb")
+    if not opened then
+        -- lfs.dir requires the dir to exist; a plain open won't list it, so
+        -- fall back to lfs below.
+        opened = nil
+    else
+        opened:close()
+    end
+    local lfs = require("libs/libkoreader-lfs")
+    if lfs.attributes(sidecar_dir, "mode") ~= "directory" then
+        return candidates
+    end
+    for name in lfs.dir(sidecar_dir) do
+        local extension = name:match("%.(%w+)$")
+        if extension == "yjf" or extension == "yjr"
+            or extension == "azw3f" or extension == "azw3r"
+        then
+            local path = sidecar_dir .. "/" .. name
+            if lfs.attributes(path, "mode") == "file" then
+                table.insert(candidates, path)
+            end
+        end
+    end
+    -- Newest first; the freshly written sidecar is the authority.
+    table.sort(candidates, function(a, b)
+        return (lfs.attributes(a, "modification") or 0)
+            > (lfs.attributes(b, "modification") or 0)
+    end)
+    return candidates
+end
+
+local function readSidecarBytes(data)
+    local store, err = KindleSidecar.parse(data)
+    if not store then
+        return nil, err
+    end
+    -- Match the helper's policy: lpr wins regardless of timestamp, then the
+    local best_position, best_timestamp, best_score
+    for _, name in ipairs({ "lpr", "updated_lpr", "erl" }) do
+        for _, obj in ipairs(KindleSidecar.objects(store, name)) do
+            local position, timestamp = KindleSidecar.position_from_object(obj)
+            if position then
+                local long, pid = position:match("^([^:]+):(%d+)$")
+                if long and pid then
+                    local score = (name == "lpr" and 1e15 or 0)
+                        + (timestamp or -1)
+                    if not best_score or score > best_score then
+                        best_score = score
+                        best_timestamp = timestamp
+                        best_position = position
+                    end
+                end
+            end
+        end
+    end
+    if not best_position then
+        return nil, "sidecar has no readable last-page position"
+    end
+    local long, pid = best_position:match("^([^:]+):(%d+)$")
+    return {
+        store = store,
+        long = long,
+        pid = tonumber(pid),
+        timestamp_ms = best_timestamp,
+    }
+end
+
+local function readSidecarPosition(path)
+    local handle = io.open(path, "rb")
+    if not handle then
+        return nil, "cannot open sidecar"
+    end
+    local data = handle:read("*a")
+    handle:close()
+    return readSidecarBytes(data)
+end
+
+local function writeSidecarPosition(path, long_position, pid, timestamp_ms)
+    local handle = io.open(path, "rb")
+    if not handle then
+        return nil, "cannot open sidecar"
+    end
+    local data = handle:read("*a")
+    handle:close()
+    local store, err = KindleSidecar.parse(data)
+    if not store then
+        return nil, err
+    end
+    local roundtrip = KindleSidecar.encode(store)
+    if roundtrip ~= data then
+        return nil, "KRDS round-trip changed unmodified data"
+    end
+    local position = long_position .. ":" .. pid
+    local timestamp = timestamp_ms or math.floor(os.time() * 1000)
+    for _, name in ipairs({ "lpr", "updated_lpr", "erl" }) do
+        for _, obj in ipairs(KindleSidecar.objects(store, name)) do
+            KindleSidecar.set_object_position(obj, position, timestamp)
+        end
+    end
+    for _, obj in ipairs(KindleSidecar.objects(store, "fpr")) do
+        local current = KindleSidecar.position_from_object(obj)
+        local current_pid = current and tonumber((current:match(":(%d+)$"))) or -1
+        if current_pid < pid then
+            KindleSidecar.set_object_position(obj, position, timestamp)
+        end
+    end
+    for _, obj in ipairs(KindleSidecar.objects(store, "sync_lpr")) do
+        local first = obj.values and obj.values[1]
+        if first and first.tag == 0 then
+            first.value = true
+        end
+    end
+
+    local encoded = KindleSidecar.encode(store)
+    if not encoded then
+        return nil, "KRDS re-encode failed"
+    end
+    -- Verify the rewrite on the encoded bytes before replacing the file.
+    local verified = readSidecarBytes(encoded)
+    if not verified or verified.long ~= long_position or verified.pid ~= pid then
+        return nil, "KRDS position readback mismatch"
+    end
+    local temp_path = path .. ".kindle-tmp." .. tostring(os.time())
+    local temp = io.open(temp_path, "wb")
+    if not temp then
+        os.remove(temp_path)
+        return nil, "cannot create temporary sidecar"
+    end
+    temp:write(encoded)
+    temp:flush()
+    temp:close()
+    os.rename(temp_path, path)
+    return true
+end
+
 --- Whether an exact Kindle coordinate backend is usable for this native book.
---- The bundled helper edits Reader Data Store sidecars directly; the Java
---- ReaderSDK agent remains a compatibility fallback when available.
+--- Position translation and Reader Data Store sidecars run in-process; the
+--- Java ReaderSDK agent remains a compatibility fallback when available.
 function HelperClient:nativeProgressAvailable(asin, native_path)
     if type(asin) ~= "string" or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$")
         or type(native_path) ~= "string"
@@ -268,34 +335,14 @@ function HelperClient:nativeProgressAvailable(asin, native_path)
             and readableFile(plugin .. "/bin/classes/AttachLauncher.class"))
 end
 
-local function readNativeProgressResult(request_id, asin)
-    local result_file = io.open(
-        "/mnt/us/koreader/settings/kindle_native_progress_debug.log", "rb"
-    )
-    if not result_file then
-        return nil, "native progress result unavailable"
-    end
-    local values = {}
-    for line in result_file:lines() do
-        local key, value = line:match("^([a-z_]+)=(.*)$")
-        if key then values[key] = value end
-    end
-    result_file:close()
-    if values.request_id ~= request_id or values.asin ~= asin
-        or values.success ~= "true" or not values.long_position
-    then
-        return nil, "native progress result mismatch"
-    end
-    return values
-end
-
---- Save an exact position through the Kindle Reader Data Store or ReaderSDK.
+--- Save an exact position through the Kindle Reader Data Store sidecars.
 function HelperClient:saveNativeProgress(asin, native_path, position)
     if type(asin) ~= "string" or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$") then
         return false, "invalid ASIN"
     end
+    local pattern = self.native_path_pattern or "^/mnt/us/documents/.+%.kfx$"
     if type(native_path) ~= "string"
-        or not native_path:match("^/mnt/us/documents/.+%.kfx$")
+        or not native_path:match(pattern)
     then
         return false, "invalid native path"
     end
@@ -310,69 +357,26 @@ function HelperClient:saveNativeProgress(asin, native_path, position)
     if type(position.percent) == "number"
         and position.percent >= 0 and position.percent <= 100
     then
-        local direct = self:_run({
-            self:getBinaryPath(),
-            "write-native-sidecar",
-            "--input",
-            native_path,
-            "--long",
-            position.long,
-            "--pid",
-            tostring(position.pid),
-        })
-        if direct and direct.ok
-            and direct.long == position.long
-            and tonumber(direct.pid) == position.pid
-        then
+        local written_any = false
+        for _, sidecar in ipairs(positionSidecars(native_path)) do
+            local ok = writeSidecarPosition(sidecar, position.long, position.pid)
+            if ok then
+                written_any = true
+            else
+                logger.warn("KindlePlugin: sidecar position write failed:", sidecar)
+            end
+        end
+        if written_any then
             logger.info("KindlePlugin: exact sidecar position saved:", asin, position.pid)
             return true, nil, position.percent, {
-                long = direct.long,
-                pid = tonumber(direct.pid),
+                long = position.long,
+                pid = position.pid,
                 percent = position.percent,
             }
         end
     end
 
-    local request_id = tostring(os.time()) .. tostring(math.random(100000, 999999))
-    local payload_path = "/tmp/kindle-progress-" .. request_id .. ".properties"
-    local payload = io.open(payload_path, "wb")
-    if not payload then
-        return false, "cannot create native progress payload"
-    end
-    payload:write("version=1\n")
-    payload:write("request_id=", request_id, "\n")
-    payload:write("asin=", asin, "\n")
-    payload:write("operation=save\n")
-    payload:write("native_path_hex=", hexEncode(native_path), "\n")
-    payload:write("long_position=", position.long, "\n")
-    payload:write("short_position=", tostring(position.pid), "\n")
-    payload:close()
-    os.execute("chmod 600 " .. util.shell_escape({ payload_path }))
-
-    local helper = self:getPluginPath() .. "/bin/sync-native-progress"
-    local result = os.execute(util.shell_escape({ helper, payload_path }))
-    os.remove(payload_path)
-    if result ~= 0 then
-        self._native_progress_failed = true
-        logger.warn("KindlePlugin: authoritative native progress save failed with status", result)
-        return false, "native progress save failed"
-    end
-    local values, result_error = readNativeProgressResult(request_id, asin)
-    local native_percent = values and tonumber(values.native_percent)
-    if not values or values.catalog_progress_saved ~= "true"
-        or tonumber(values.saved_short) ~= position.pid
-        or values.long_position ~= position.long or not native_percent
-        or native_percent < 0 or native_percent > 100
-    then
-        self._native_progress_failed = true
-        return false, result_error or "native progress result mismatch"
-    end
-    logger.info("KindlePlugin: authoritative native progress saved:", asin, position.pid)
-    return true, nil, native_percent, {
-        long = values.long_position,
-        pid = tonumber(values.saved_short),
-        percent = native_percent,
-    }
+    return false, "no Kindle position sidecar is writable"
 end
 
 --- Read Kindle's authoritative local last-page-read position.
@@ -380,8 +384,9 @@ function HelperClient:readNativeProgress(asin, native_path)
     if type(asin) ~= "string" or #asin ~= 10 or not asin:match("^B[A-Z0-9]+$") then
         return nil, "invalid ASIN"
     end
+    local pattern = self.native_path_pattern or "^/mnt/us/documents/.+%.kfx$"
     if type(native_path) ~= "string"
-        or not native_path:match("^/mnt/us/documents/.+%.kfx$")
+        or not native_path:match(pattern)
     then
         return nil, "invalid native path"
     end
@@ -389,76 +394,52 @@ function HelperClient:readNativeProgress(asin, native_path)
         return self.native_progress_reader(asin, native_path)
     end
 
-    local direct = self:_run({
-        self:getBinaryPath(),
-        "read-native-sidecar",
-        "--input",
-        native_path,
-    })
-    if direct and direct.ok
-        and type(direct.long) == "string"
-        and tonumber(direct.pid)
-    then
-        return {
-            long = direct.long,
-            pid = tonumber(direct.pid),
-            timestamp_ms = tonumber(direct.timestamp_ms),
-        }
+    for _, sidecar in ipairs(positionSidecars(native_path)) do
+        local result = readSidecarPosition(sidecar)
+        if result then
+            return {
+                long = result.long,
+                pid = result.pid,
+                timestamp_ms = result.timestamp_ms,
+            }
+        end
     end
-    local request_id = tostring(os.time()) .. tostring(math.random(100000, 999999))
-    local payload_path = "/tmp/kindle-progress-" .. request_id .. ".properties"
-    local payload = io.open(payload_path, "wb")
-    if not payload then
-        return nil, "cannot create native progress payload"
-    end
-    payload:write("version=1\n")
-    payload:write("request_id=", request_id, "\n")
-    payload:write("asin=", asin, "\n")
-    payload:write("operation=read\n")
-    payload:write("native_path_hex=", hexEncode(native_path), "\n")
-    payload:close()
-    os.execute("chmod 600 " .. util.shell_escape({ payload_path }))
-
-    local helper = self:getPluginPath() .. "/bin/sync-native-progress"
-    local status = os.execute(util.shell_escape({ helper, payload_path }))
-    os.remove(payload_path)
-    if status ~= 0 then
-        self._native_progress_failed = true
-        return nil, "native progress read failed"
-    end
-    local values, result_error = readNativeProgressResult(request_id, asin)
-    if not values then
-        self._native_progress_failed = true
-        return nil, result_error
-    end
-    return {
-        long = values.long_position,
-        pid = tonumber(values.saved_short),
-        percent = tonumber(values.native_percent),
-    }
+    return nil, "Kindle position sidecar is unavailable"
 end
 
---- One-spawn read of everything an exact open/close sync needs: the Kindle
---- position sidecar, its reverse translation, and the forward translation of
---- KOReader's XPointer. Interpreter startup dominates each helper spawn, so
---- batching matters on device.
+--- One in-process read of everything an exact open/close sync needs: the
+--- Kindle position sidecar, its reverse translation, and the forward
+--- translation of KOReader's XPointer.
 function HelperClient:readCloseState(native_path, epub_path, xpointer)
-    local result, err = self:_run({
-        self:getBinaryPath(),
-        "read-close-state",
-        "--input",
-        native_path,
-        "--epub",
-        epub_path,
-        "--xpointer",
-        xpointer,
-    })
-    if result and result.ok then
-        return result
+    if self.read_close_state then
+        return self.read_close_state(native_path, epub_path, xpointer)
     end
-    return nil, (result and result.message) or err
-end
 
+    local result = { ok = true }
+    local native = self:readNativeProgress("B000000000", native_path)
+    if native then
+        result.native = native
+        local translated = self:translateNativePosition(epub_path, native.long)
+        if translated then
+            result.native_xpointer = translated.xpointer
+            result.native_pid = translated.pid
+            result.native_percent = translated.percent
+        else
+            result.native_translate_error = "native reverse translation failed"
+        end
+    else
+        result.native_error = "Kindle position sidecar is unavailable"
+    end
+
+    local koreader = self:translatePosition(epub_path, xpointer)
+    if koreader then
+        result.koreader = koreader
+    else
+        result.ok = false
+        result.koreader_error = "forward translation failed"
+    end
+    return result
+end
 
 --- Extracts the decryption key for a single book (JIT key extraction).
 --- @param kfx_path string: Path to the KFX file.
@@ -485,51 +466,6 @@ function HelperClient:extractBookKey(kfx_path)
         logger.warn("KindlePlugin: key extraction failed:", err)
     end
     return result, err
-end
-
---- Extracts cover JPEG from a book's .sdr/assets/metadata.kfx sidecar.
---- Caches the result in the cache directory as <safe_id>_cover.jpg.
---- @param sidecar_dir string: Path to the .sdr directory.
---- @param book_id string: Book ID for cache key.
---- @return string|nil: Path to cached cover JPEG, or nil on failure.
-function HelperClient:extractCover(sidecar_dir, book_id)
-    if not sidecar_dir or sidecar_dir == "" then
-        return nil
-    end
-
-    local cache_dir = self.settings.cache_dir or "/tmp/kindle.koplugin.cache"
-    local safe_id = (book_id or "unknown"):gsub("[^%w%.%-_]", "_")
-    local cover_path = cache_dir .. "/" .. safe_id .. "_cover.jpg"
-
-    -- Check cache first
-    local f = io.open(cover_path, "rb")
-    if f then
-        f:close()
-        return cover_path
-    end
-
-    -- Ensure cache dir exists
-    util.shell_escape({ "mkdir", "-p", cache_dir })
-    os.execute(util.shell_escape({ "mkdir", "-p", cache_dir }))
-
-    -- Run the cover extraction
-    local result, err = self:_run({
-        self:getBinaryPath(),
-        "cover",
-        "--sdr-dir",
-        sidecar_dir,
-        "--output",
-        cover_path,
-    })
-
-    if result and result.ok then
-        logger.info("KindlePlugin: cover extracted:", cover_path, "size:", result.size)
-        return cover_path
-    end
-
-    logger.dbg("KindlePlugin: no cover in sidecar:", sidecar_dir,
-        result and result.message or err or "unknown")
-    return nil
 end
 
 return HelperClient
