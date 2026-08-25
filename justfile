@@ -41,15 +41,27 @@ _test_image := "kindle-koplugin-test:" + koplugin_dev_version
 [private]
 _test_run := if _in_container == "1" { "" } else { "docker run --rm " + _sdl_env + " " + _mount + " " + _test_image }
 
+# Layer-cache flags for CI builds. GitHub Actions runners expose the type=gha
+# cache backend (backed by ACTIONS_RUNTIME_TOKEN) so unchanged Dockerfile.test
+# and crypto-hook layers — including the QEMU-emulated apt/compile/test steps —
+# are reused across runs instead of being rebuilt from scratch every time.
+# Locally the builder's own layer cache serves the same role, so this stays
+# empty outside CI.
+[private]
+_ci_cache := if env("GITHUB_ACTIONS", "") == "true" { "--cache-from type=gha --cache-to type=gha,mode=max" } else { "" }
+
 # Build the derived test image from the pinned koplugin-dev image.
 # A future pin changes koplugin_dev_version above and nothing else.
-[group('setup')]
 test-image:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "$(docker images -q '{{ _test_image }}' 2>/dev/null)" ]; then
-        docker build \
+        # buildx (not plain docker build) so the CI cache flags apply; --load
+        # keeps the image in the local store for the _test_run container.
+        docker buildx build \
             --build-arg KOPLUGIN_DEV_IMAGE='{{ _image }}' \
+            {{ _ci_cache }} \
+            --load \
             -t '{{ _test_image }}' \
             -f Dockerfile.test \
             .
@@ -129,11 +141,12 @@ test-drm-hook:
     fi
     build() {
         echo "Building ARM DRM hook target: $1"
-        docker buildx build --platform linux/arm/v7 --target "$1" -f .github/Dockerfile.crypto_hook .
+        docker buildx build --platform linux/arm/v7 {{ _ci_cache }} --target "$1" -f .github/Dockerfile.crypto_hook .
     }
     build test-openssl11
     build test-openssl3
     echo "ARM DRM hook matrix passed (OpenSSL 1.1 + OpenSSL 3)"
+
 
 # =============================================================================
 # Setup (plugin-local)
