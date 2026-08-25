@@ -141,7 +141,7 @@ describe("CacheManager", function()
                 close = function() end,
             })
 
-            -- Current CONVERTER_VERSION is "3".
+            -- Current CONVERTER_VERSION is "5".
             local fresh = cm:isFresh(book)
 
             assert.is_false(fresh)
@@ -203,7 +203,7 @@ describe("CacheManager", function()
             })
             io_mocker.setMockFile(meta_path, {
                 read = function()
-                    return string.format('{"converter_version":"4","source_mtime":%d,"source_size":%d}', attr.modification, attr.size)
+                    return string.format('{"converter_version":"5","source_mtime":%d,"source_size":%d}', attr.modification, attr.size)
                 end,
                 close = function() end,
             })
@@ -234,7 +234,7 @@ describe("CacheManager", function()
             -- The real json.decode is used, so provide valid JSON that decodes to the right table
             io_mocker.setMockFile(meta_path, {
                 read = function()
-                    return '{"converter_version":"4","source_mtime":1000,"source_size":42}'
+                    return '{"converter_version":"5","source_mtime":1000,"source_size":42}'
                 end,
                 close = function() end,
             })
