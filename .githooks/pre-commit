@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#
+# Fast, read-only checks for the commit loop. Full tests run before push and in CI.
+#
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "[pre-commit] Running read-only formatting and lint checks..."
+just verify-static
+echo "[pre-commit] Static checks passed."

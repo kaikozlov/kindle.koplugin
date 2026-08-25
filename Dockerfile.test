@@ -1,0 +1,21 @@
+# Derived test image for kindle.koplugin.
+#
+# Extends the pinned koplugin-dev image (real KOReader runtime, Lua tooling,
+# plugin symlink entrypoint) with the Python and Java toolchains needed by the
+# DRM compatibility suite, so Lua, Python, and Java tests share one container
+# over the same KOReader runtime. The inherited entrypoint, working directory,
+# and KOReader tree are unchanged.
+#
+# Built by `just test-image`; KOPLUGIN_DEV_IMAGE is passed from the root
+# justfile's pin so a version bump changes exactly one assignment.
+
+ARG KOPLUGIN_DEV_IMAGE=ghcr.io/kaikozlov/koplugin-dev:v2026.07.1_1
+FROM ${KOPLUGIN_DEV_IMAGE}
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        default-jdk-headless && \
+    rm -rf /var/lib/apt/lists/* && \
+    python3 -m pip install --break-system-packages --no-cache-dir pycryptodome==3.23.0
