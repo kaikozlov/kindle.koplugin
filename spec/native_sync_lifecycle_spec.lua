@@ -39,7 +39,11 @@ describe("native KOReader sync lifecycle", function()
     end)
 
     after_each(function()
-        if instance then pcall(function() instance:stopPlugin() end) end
+        if instance then
+            pcall(function()
+                instance:stopPlugin()
+            end)
+        end
         LibraryIndex.getBooks = original_get_books
         ReadingStateSync.syncFromKindleAutomatic = original_pull
         ReadingStateSync.syncToKindleAutomatic = original_push
@@ -53,16 +57,26 @@ describe("native KOReader sync lifecycle", function()
         local flushes = 0
         return {
             data = { doc_path = "/cache/book.epub" },
-            readSetting = function(_, key) return data[key] end,
-            saveSetting = function(_, key, value) data[key] = value end,
-            flush = function() flushes = flushes + 1 end,
+            readSetting = function(_, key)
+                return data[key]
+            end,
+            saveSetting = function(_, key, value)
+                data[key] = value
+            end,
+            flush = function()
+                flushes = flushes + 1
+            end,
             _data = data,
-            _flushes = function() return flushes end,
+            _flushes = function()
+                return flushes
+            end,
         }
     end
 
     local function buildReaderPlugin(book, document_path, doc_settings, overrides)
-        LibraryIndex.getBooks = function() return { book } end
+        LibraryIndex.getBooks = function()
+            return { book }
+        end
         local settings = {
             enable_virtual_library = true,
             sync_reading_state = true,
@@ -96,11 +110,14 @@ describe("native KOReader sync lifecycle", function()
         }
         local settings = fakeSettings({ last_xpointer = "old" })
         local pull_args
-        ReadingStateSync.syncFromKindleAutomatic = function(
-            _, cde_key, source_path, ds, epub_path, approval_handler, conflict_handler
-        )
+        ReadingStateSync.syncFromKindleAutomatic = function(_, cde_key, source_path, ds, epub_path, approval_handler, conflict_handler)
             pull_args = {
-                cde_key, source_path, ds, epub_path, approval_handler, conflict_handler,
+                cde_key,
+                source_path,
+                ds,
+                epub_path,
+                approval_handler,
+                conflict_handler,
             }
             ds:saveSetting("last_xpointer", "synced")
             return true
@@ -172,24 +189,19 @@ describe("native KOReader sync lifecycle", function()
         local settings = fakeSettings({ last_xpointer = "old", percent_finished = 0.2 })
         local confirm
         local next_tick
-        UIManager.show = function(_, widget) confirm = widget end
-        UIManager.nextTick = function(_, callback) next_tick = callback end
+        UIManager.show = function(_, widget)
+            confirm = widget
+        end
+        UIManager.nextTick = function(_, callback)
+            next_tick = callback
+        end
         local live_xpointer
 
-        ReadingStateSync.syncFromKindleAutomatic = function(
-            _, _, _, ds, _, approval_handler
-        )
-            return approval_handler(
-                instance,
-                SYNC_DIRECTION,
-                true,
-                true,
-                function()
-                    ds:saveSetting("last_xpointer", "native-xpointer")
-                    ds:saveSetting("percent_finished", 0.6)
-                end,
-                { book_title = "Book", source_percent = 60, dest_percent = 20 }
-            )
+        ReadingStateSync.syncFromKindleAutomatic = function(_, _, _, ds, _, approval_handler)
+            return approval_handler(instance, SYNC_DIRECTION, true, true, function()
+                ds:saveSetting("last_xpointer", "native-xpointer")
+                ds:saveSetting("percent_finished", 0.6)
+            end, { book_title = "Book", source_percent = 60, dest_percent = 20 })
         end
 
         buildReaderPlugin(book, "/cache/book.epub", settings, {
@@ -197,8 +209,12 @@ describe("native KOReader sync lifecycle", function()
             sync_from_kindle_newer = SYNC_DIRECTION.PROMPT,
         })
         instance.ui.rolling = {
-            onGotoXPointer = function(_, xpointer) live_xpointer = xpointer end,
-            onGotoPercent = function() error("exact pull should use xpointer") end,
+            onGotoXPointer = function(_, xpointer)
+                live_xpointer = xpointer
+            end,
+            onGotoPercent = function()
+                error("exact pull should use xpointer")
+            end,
         }
 
         instance:onDocSettingsLoad(settings, instance.ui.document)
@@ -226,32 +242,34 @@ describe("native KOReader sync lifecycle", function()
         local next_tick
         local live_xpointer
         local verified = 0
-        UIManager.show = function(_, widget) conflict_dialog = widget end
-        UIManager.nextTick = function(_, callback) next_tick = callback end
+        UIManager.show = function(_, widget)
+            conflict_dialog = widget
+        end
+        UIManager.nextTick = function(_, callback)
+            next_tick = callback
+        end
         ReadingStateSync.verifyOpenedKOReaderPosition = function()
             verified = verified + 1
             return true
         end
-        ReadingStateSync.syncFromKindleAutomatic = function(
-            _, _, _, ds, _, _, conflict_handler
-        )
-            return conflict_handler(
-                {
-                    book_title = "Book",
-                    kindle_percent = 38,
-                    koreader_percent = 52,
-                },
-                function()
-                    ds:saveSetting("last_xpointer", "kindle-xpointer")
-                    return true
-                end,
-                function() error("KOReader choice should not run") end
-            )
+        ReadingStateSync.syncFromKindleAutomatic = function(_, _, _, ds, _, _, conflict_handler)
+            return conflict_handler({
+                book_title = "Book",
+                kindle_percent = 38,
+                koreader_percent = 52,
+            }, function()
+                ds:saveSetting("last_xpointer", "kindle-xpointer")
+                return true
+            end, function()
+                error("KOReader choice should not run")
+            end)
         end
 
         buildReaderPlugin(book, "/cache/book.epub", settings)
         instance.ui.rolling = {
-            onGotoXPointer = function(_, xpointer) live_xpointer = xpointer end,
+            onGotoXPointer = function(_, xpointer)
+                live_xpointer = xpointer
+            end,
         }
 
         instance:onDocSettingsLoad(settings, instance.ui.document)
@@ -280,22 +298,17 @@ describe("native KOReader sync lifecycle", function()
         local confirm
         local next_tick
         local goto_percent
-        UIManager.show = function(_, widget) confirm = widget end
-        UIManager.nextTick = function(_, callback) next_tick = callback end
+        UIManager.show = function(_, widget)
+            confirm = widget
+        end
+        UIManager.nextTick = function(_, callback)
+            next_tick = callback
+        end
 
-        ReadingStateSync.syncFromKindleAutomatic = function(
-            _, _, _, ds, _, approval_handler
-        )
-            return approval_handler(
-                instance,
-                SYNC_DIRECTION,
-                true,
-                true,
-                function()
-                    ds:saveSetting("percent_finished", 0.6)
-                end,
-                { book_title = "PDF", source_percent = 60, dest_percent = 20 }
-            )
+        ReadingStateSync.syncFromKindleAutomatic = function(_, _, _, ds, _, approval_handler)
+            return approval_handler(instance, SYNC_DIRECTION, true, true, function()
+                ds:saveSetting("percent_finished", 0.6)
+            end, { book_title = "PDF", source_percent = 60, dest_percent = 20 })
         end
 
         buildReaderPlugin(book, book.source_path, settings, {
@@ -304,7 +317,9 @@ describe("native KOReader sync lifecycle", function()
         })
         instance.ui.paging = {
             number_of_pages = 200,
-            onGotoPercent = function(_, percent) goto_percent = percent end,
+            onGotoPercent = function(_, percent)
+                goto_percent = percent
+            end,
         }
 
         instance:onDocSettingsLoad(settings, instance.ui.document)
@@ -381,24 +396,24 @@ describe("native KOReader sync lifecycle", function()
         local conflict_dialog
         local next_tick
         local selected
-        UIManager.show = function(_, widget) conflict_dialog = widget end
-        UIManager.nextTick = function(_, callback) next_tick = callback end
+        UIManager.show = function(_, widget)
+            conflict_dialog = widget
+        end
+        UIManager.nextTick = function(_, callback)
+            next_tick = callback
+        end
 
-        ReadingStateSync.syncToKindleAutomatic = function(
-            _, _, _, ds, _, _, conflict_handler
-        )
-            return conflict_handler(
-                {
-                    book_title = "Book",
-                    kindle_percent = 38,
-                    koreader_percent = 73,
-                },
-                function() selected = "kindle" end,
-                function()
-                    selected = ds:readSetting("last_xpointer")
-                    return true
-                end
-            )
+        ReadingStateSync.syncToKindleAutomatic = function(_, _, _, ds, _, _, conflict_handler)
+            return conflict_handler({
+                book_title = "Book",
+                kindle_percent = 38,
+                koreader_percent = 73,
+            }, function()
+                selected = "kindle"
+            end, function()
+                selected = ds:readSetting("last_xpointer")
+                return true
+            end)
         end
 
         buildReaderPlugin(book, "/cache/book.epub", settings)
@@ -431,22 +446,17 @@ describe("native KOReader sync lifecycle", function()
         local confirm
         local next_tick
         local pushed_xpointer
-        UIManager.show = function(_, widget) confirm = widget end
-        UIManager.nextTick = function(_, callback) next_tick = callback end
+        UIManager.show = function(_, widget)
+            confirm = widget
+        end
+        UIManager.nextTick = function(_, callback)
+            next_tick = callback
+        end
 
-        ReadingStateSync.syncToKindleAutomatic = function(
-            _, _, _, ds, _, approval_handler
-        )
-            return approval_handler(
-                instance,
-                SYNC_DIRECTION,
-                false,
-                true,
-                function()
-                    pushed_xpointer = ds:readSetting("last_xpointer")
-                end,
-                { book_title = "Book", source_percent = 70, dest_percent = 20 }
-            )
+        ReadingStateSync.syncToKindleAutomatic = function(_, _, _, ds, _, approval_handler)
+            return approval_handler(instance, SYNC_DIRECTION, false, true, function()
+                pushed_xpointer = ds:readSetting("last_xpointer")
+            end, { book_title = "Book", source_percent = 70, dest_percent = 20 })
         end
 
         buildReaderPlugin(book, "/cache/book.epub", settings, {

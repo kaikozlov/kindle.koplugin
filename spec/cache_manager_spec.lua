@@ -1,6 +1,6 @@
 -- Tests for CacheManager module
 
-require('busted.runner')()
+require("busted.runner")()
 local helper = require("spec/test_helper")
 
 describe("CacheManager", function()
@@ -109,7 +109,9 @@ describe("CacheManager", function()
             -- Set epub file but not metadata
             local epub_path = cm:getCachePaths(book)
             io_mocker.setMockFile(epub_path, {
-                read = function() return "" end,
+                read = function()
+                    return ""
+                end,
                 close = function() end,
             })
 
@@ -126,12 +128,16 @@ describe("CacheManager", function()
             local epub_path, meta_path = cm:getCachePaths(book)
 
             io_mocker.setMockFile(epub_path, {
-                read = function() return "" end,
+                read = function()
+                    return ""
+                end,
                 close = function() end,
             })
             -- Version 2 predates exact-position metadata in converted EPUBs.
             io_mocker.setMockFile(meta_path, {
-                read = function() return '{"converter_version":"2","source_mtime":1000,"source_size":42}' end,
+                read = function()
+                    return '{"converter_version":"2","source_mtime":1000,"source_size":42}'
+                end,
                 close = function() end,
             })
 
@@ -149,11 +155,15 @@ describe("CacheManager", function()
             local epub_path, meta_path = cm:getCachePaths(book)
 
             io_mocker.setMockFile(epub_path, {
-                read = function() return "" end,
+                read = function()
+                    return ""
+                end,
                 close = function() end,
             })
             io_mocker.setMockFile(meta_path, {
-                read = function() return '{"converter_version":"3","source_mtime":1000,"source_size":42}' end,
+                read = function()
+                    return '{"converter_version":"3","source_mtime":1000,"source_size":42}'
+                end,
                 close = function() end,
             })
 
@@ -180,20 +190,20 @@ describe("CacheManager", function()
             }
             local epub_path, meta_path = cm:getCachePaths(book)
             io_mocker.setMockFile(epub_path, {
-                read = function() return "" end,
+                read = function()
+                    return ""
+                end,
                 close = function() end,
             })
             io_mocker.setMockFile(epub_path:gsub("%.epub$", ".positions.json"), {
-                read = function() return "{}" end,
+                read = function()
+                    return "{}"
+                end,
                 close = function() end,
             })
             io_mocker.setMockFile(meta_path, {
                 read = function()
-                    return string.format(
-                        '{"converter_version":"4","source_mtime":%d,"source_size":%d}',
-                        attr.modification,
-                        attr.size
-                    )
+                    return string.format('{"converter_version":"4","source_mtime":%d,"source_size":%d}', attr.modification, attr.size)
                 end,
                 close = function() end,
             })
@@ -210,16 +220,22 @@ describe("CacheManager", function()
             local epub_path, meta_path = cm:getCachePaths(book)
 
             io_mocker.setMockFile(epub_path, {
-                read = function() return "" end,
+                read = function()
+                    return ""
+                end,
                 close = function() end,
             })
             io_mocker.setMockFile(epub_path:gsub("%.epub$", ".positions.json"), {
-                read = function() return "{}" end,
+                read = function()
+                    return "{}"
+                end,
                 close = function() end,
             })
             -- The real json.decode is used, so provide valid JSON that decodes to the right table
             io_mocker.setMockFile(meta_path, {
-                read = function() return '{"converter_version":"4","source_mtime":1000,"source_size":42}' end,
+                read = function()
+                    return '{"converter_version":"4","source_mtime":1000,"source_size":42}'
+                end,
                 close = function() end,
             })
 

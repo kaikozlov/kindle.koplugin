@@ -123,10 +123,7 @@ function CacheManager:isFresh(book)
     end
 
     local source_mtime, source_size = getSourceSignature(book)
-    if source_mtime == nil or source_size == nil
-        or metadata.source_mtime ~= source_mtime
-        or metadata.source_size ~= source_size
-    then
+    if source_mtime == nil or source_size == nil or metadata.source_mtime ~= source_mtime or metadata.source_size ~= source_size then
         logger.dbg("KindlePlugin: cache stale for", book.id, "(source file changed or missing)")
         return false, epub_path, meta_path
     end
@@ -136,8 +133,7 @@ function CacheManager:isFresh(book)
 end
 
 function CacheManager:ensureCachedEpub(book)
-    logger.info("KindlePlugin: ensuring cached EPUB for", book.id,
-        "mode:", book.open_mode, "source:", book.source_path)
+    logger.info("KindlePlugin: ensuring cached EPUB for", book.id, "mode:", book.open_mode, "source:", book.source_path)
 
     local fresh, epub_path, meta_path = self:isFresh(book)
     if fresh then
@@ -176,11 +172,9 @@ function CacheManager:ensureCachedEpub(book)
                     return result.output_path or epub_path
                 end
                 -- Retry also failed
-                logger.warn("KindlePlugin: preparation failed after key extraction:",
-                    result and result.code, result and result.message or err)
+                logger.warn("KindlePlugin: preparation failed after key extraction:", result and result.code, result and result.message or err)
             else
-                logger.warn("KindlePlugin: JIT key extraction failed:",
-                    key_result and key_result.message or err or "unknown")
+                logger.warn("KindlePlugin: JIT key extraction failed:", key_result and key_result.message or err or "unknown")
             end
         end
 
@@ -215,11 +209,7 @@ function CacheManager:clearAllCache()
         return false, "failed to create cache directory"
     end
 
-    local handle = io.popen(
-        "find "
-            .. util.shell_escape({ cache_dir })
-            .. " -maxdepth 1 -type f \\( -name '*.epub' -o -name '*.json' \\) -print"
-    )
+    local handle = io.popen("find " .. util.shell_escape({ cache_dir }) .. " -maxdepth 1 -type f \\( -name '*.epub' -o -name '*.json' \\) -print")
     if not handle then
         return false, "failed to enumerate cache files"
     end
@@ -242,11 +232,7 @@ function CacheManager:getCacheStats()
     local cache_dir = self:getCacheDir()
     local stats = { count = 0, total_size = 0 }
 
-    local handle = io.popen(
-        "find "
-            .. util.shell_escape({ cache_dir })
-            .. " -maxdepth 1 -type f -name '*.epub' -exec ls -l {} \\; 2>/dev/null"
-    )
+    local handle = io.popen("find " .. util.shell_escape({ cache_dir }) .. " -maxdepth 1 -type f -name '*.epub' -exec ls -l {} \\; 2>/dev/null")
     if not handle then
         return stats
     end

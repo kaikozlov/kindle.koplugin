@@ -134,11 +134,19 @@ describe("VirtualLibrary CoverBrowser entries", function()
                 display_name = "Direct",
             },
         }
-        local vlib = VirtualLibrary:new({ getBooks = function() return books end })
+        local vlib = VirtualLibrary:new({
+            getBooks = function()
+                return books
+            end,
+        })
         vlib:setSettings({ cache_dir = "/cache" })
         vlib:setCacheManager({
-            getCachePaths = function(_, book) return "/cache/" .. book.id .. ".epub" end,
-            isFresh = function(_, book) return book.id == "fresh" end,
+            getCachePaths = function(_, book)
+                return "/cache/" .. book.id .. ".epub"
+            end,
+            isFresh = function(_, book)
+                return book.id == "fresh"
+            end,
         })
 
         local entries = vlib:getBookEntries(false)

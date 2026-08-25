@@ -1,6 +1,6 @@
 -- Tests for LibraryIndex module
 
-require('busted.runner')()
+require("busted.runner")()
 local helper = require("spec/test_helper")
 
 describe("LibraryIndex", function()
@@ -72,7 +72,9 @@ describe("LibraryIndex", function()
         it("should return cached books when within TTL", function()
             local scans = 0
             local idx = LibraryIndex:new({
-                isAvailable = function() return true end,
+                isAvailable = function()
+                    return true
+                end,
                 scan = function()
                     scans = scans + 1
                     return { { id = "b1" } }
@@ -102,8 +104,12 @@ describe("LibraryIndex", function()
 
         it("propagates catalog scan errors", function()
             local idx = LibraryIndex:new({
-                isAvailable = function() return true end,
-                scan = function() return nil, "catalog locked" end,
+                isAvailable = function()
+                    return true
+                end,
+                scan = function()
+                    return nil, "catalog locked"
+                end,
             })
             idx:setSettings({ index_ttl_seconds = 0 })
 

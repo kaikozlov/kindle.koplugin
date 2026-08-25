@@ -21,7 +21,9 @@ describe("KindleLibrary native BookList opens", function()
 
     local function makeManager(book)
         local vlib = {
-            getBook = function(_, id) return id == book.id and book or nil end,
+            getBook = function(_, id)
+                return id == book.id and book or nil
+            end,
             getBlockedReasonText = function(_, blocked)
                 return blocked and blocked.block_reason or "blocked"
             end,

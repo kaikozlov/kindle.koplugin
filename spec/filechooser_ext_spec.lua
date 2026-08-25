@@ -18,7 +18,9 @@ describe("FileChooserExt native library entry", function()
         local show_calls = 0
         local shown_ui
         local vlib = {
-            isActive = function() return true end,
+            isActive = function()
+                return true
+            end,
             createVirtualFolderEntry = function(_, parent)
                 return {
                     text = "Kindle Library/",
@@ -29,7 +31,9 @@ describe("FileChooserExt native library entry", function()
             end,
         }
         local library = {
-            setUI = function(_, ui) shown_ui = ui end,
+            setUI = function(_, ui)
+                shown_ui = ui
+            end,
             show = function(_, ui)
                 show_calls = show_calls + 1
                 shown_ui = ui
@@ -53,7 +57,9 @@ describe("FileChooserExt native library entry", function()
         }
         FileChooserExt:init(vlib, library)
         FileChooserExt:apply(fc)
-        return fc, function() return show_calls, shown_ui, delegated_select, delegated_hold end
+        return fc, function()
+            return show_calls, shown_ui, delegated_select, delegated_hold
+        end
     end
 
     after_each(function()
@@ -106,15 +112,25 @@ describe("FileChooserExt native library entry", function()
     end)
 
     it("restores KOReader methods on live plugin stop", function()
-        local original_gen = function() return {} end
-        local original_select = function() return false end
-        local original_hold = function() return false end
+        local original_gen = function()
+            return {}
+        end
+        local original_select = function()
+            return false
+        end
+        local original_hold = function()
+            return false
+        end
         local fc = {
             genItemTable = original_gen,
             onMenuSelect = original_select,
             onMenuHold = original_hold,
         }
-        FileChooserExt:init({ isActive = function() return true end }, { show = function() end })
+        FileChooserExt:init({
+            isActive = function()
+                return true
+            end,
+        }, { show = function() end })
         FileChooserExt:apply(fc)
         assert.not_equals(original_gen, fc.genItemTable)
 

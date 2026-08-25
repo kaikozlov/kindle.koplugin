@@ -12,7 +12,9 @@ local KindleSidecar = require("lua/lib/kindle_sidecar")
 local PositionMap = require("lua/lib/position_map")
 
 local C = ffi.C
-if not pcall(function() return C.fchmod end) then
+if not pcall(function()
+    return C.fchmod
+end) then
     -- Older KOReader ffi headers did not expose fchmod.
     ffi.cdef("int fchmod(int fd, unsigned int mode);")
 end
@@ -64,7 +66,7 @@ function HelperClient:_run(args)
 
     -- Capture stdout (JSON) cleanly; redirect stderr to temp file for debug
     local tmp_stderr = os.tmpname()
-    local command = util.shell_escape(args) .. " 2>" .. util.shell_escape({tmp_stderr})
+    local command = util.shell_escape(args) .. " 2>" .. util.shell_escape({ tmp_stderr })
     logger.dbg("KindlePlugin: running helper:", util.shell_escape(args))
     local handle = io.popen(command)
     if not handle then
@@ -164,18 +166,13 @@ function HelperClient:translateNativePosition(epub_path, long_position)
     return PositionMap.translate_native(map, long_position)
 end
 
-
 --- Find every KRDS reading-position sidecar next to a Kindle book.
 local function positionSidecars(native_path)
     local stem = native_path:gsub("%.%w+$", "")
     local sidecar_dir = stem .. ".sdr"
     local candidates = {}
     local opened = io.open(sidecar_dir, "rb")
-    if not opened then
-        -- lfs.dir requires the dir to exist; a plain open won't list it, so
-        -- fall back to lfs below.
-        opened = nil
-    else
+    if opened then
         opened:close()
     end
     if lfs.attributes(sidecar_dir, "mode") ~= "directory" then
@@ -183,9 +180,7 @@ local function positionSidecars(native_path)
     end
     for name in lfs.dir(sidecar_dir) do
         local extension = name:match("%.(%w+)$")
-        if extension == "yjf" or extension == "yjr"
-            or extension == "azw3f" or extension == "azw3r"
-        then
+        if extension == "yjf" or extension == "yjr" or extension == "azw3f" or extension == "azw3r" then
             local path = sidecar_dir .. "/" .. name
             if lfs.attributes(path, "mode") == "file" then
                 table.insert(candidates, path)
@@ -194,8 +189,7 @@ local function positionSidecars(native_path)
     end
     -- Newest first; the freshly written sidecar is the authority.
     table.sort(candidates, function(a, b)
-        return (lfs.attributes(a, "modification") or 0)
-            > (lfs.attributes(b, "modification") or 0)
+        return (lfs.attributes(a, "modification") or 0) > (lfs.attributes(b, "modification") or 0)
     end)
     return candidates
 end
@@ -213,8 +207,7 @@ local function readSidecarBytes(data)
             if position then
                 local long, pid = position:match("^([^:]+):(%d+)$")
                 if long and pid then
-                    local score = (name == "lpr" and 1e15 or 0)
-                        + (timestamp or -1)
+                    local score = (name == "lpr" and 1e15 or 0) + (timestamp or -1)
                     if not best_score or score > best_score then
                         best_score = score
                         best_timestamp = timestamp
@@ -336,7 +329,8 @@ end
 --- Whether a readable Kindle Reader Data Store sidecar exists for this book.
 function HelperClient:nativeProgressAvailable(asin, native_path)
     local pattern = self.native_path_pattern or "^/mnt/us/documents/.+%.kfx$"
-    if type(asin) ~= "string"
+    if
+        type(asin) ~= "string"
         or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$")
         or type(native_path) ~= "string"
         or not native_path:match(pattern)
@@ -368,47 +362,41 @@ function HelperClient:saveNativeProgress(asin, native_path, position)
         return false, "invalid ASIN"
     end
     local pattern = self.native_path_pattern or "^/mnt/us/documents/.+%.kfx$"
-    if type(native_path) ~= "string"
-        or not native_path:match(pattern)
-    then
+    if type(native_path) ~= "string" or not native_path:match(pattern) then
         return false, "invalid native path"
     end
-    if type(position) ~= "table" or type(position.long) ~= "string"
-        or type(position.pid) ~= "number" then
+    if type(position) ~= "table" or type(position.long) ~= "string" or type(position.pid) ~= "number" then
         return false, "invalid native position"
     end
     if self.native_progress_runner then
         return self.native_progress_runner(asin, native_path, position)
     end
 
-    if type(position.percent) ~= "number"
-        or position.percent < 0 or position.percent > 100
-    then
+    if type(position.percent) ~= "number" or position.percent < 0 or position.percent > 100 then
         return false, "invalid native percent"
     end
 
     local written_any = false
     local last_error
     for _, sidecar in ipairs(positionSidecars(native_path)) do
-        local ok, write_error =
-            writeSidecarPosition(sidecar, position.long, position.pid)
+        local ok, write_error = writeSidecarPosition(sidecar, position.long, position.pid)
         if ok then
             written_any = true
         else
             last_error = write_error
-            logger.warn(
-                "KindlePlugin: sidecar position write failed:",
-                sidecar, write_error
-            )
+            logger.warn("KindlePlugin: sidecar position write failed:", sidecar, write_error)
         end
     end
     if written_any then
         logger.info("KindlePlugin: exact sidecar position saved:", asin, position.pid)
-        return true, nil, position.percent, {
-            long = position.long,
-            pid = position.pid,
-            percent = position.percent,
-        }
+        return true,
+            nil,
+            position.percent,
+            {
+                long = position.long,
+                pid = position.pid,
+                percent = position.percent,
+            }
     end
     return false, last_error or "no Kindle position sidecar is writable"
 end
@@ -419,9 +407,7 @@ function HelperClient:readNativeProgress(asin, native_path)
         return nil, "invalid ASIN"
     end
     local pattern = self.native_path_pattern or "^/mnt/us/documents/.+%.kfx$"
-    if type(native_path) ~= "string"
-        or not native_path:match(pattern)
-    then
+    if type(native_path) ~= "string" or not native_path:match(pattern) then
         return nil, "invalid native path"
     end
     if self.native_progress_reader then

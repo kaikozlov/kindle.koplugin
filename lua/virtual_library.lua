@@ -48,7 +48,6 @@ local function sanitizeDisplayName(name)
     return cleaned ~= "" and cleaned or "Untitled"
 end
 
-
 function VirtualLibrary:buildMappings(force)
     self.mapping_attempted = true
     local books, err = self.library_index:getBooks(force)
@@ -112,21 +111,21 @@ function VirtualLibrary:getBook(path_or_id)
     end
     local documents_root = self.settings.documents_root or "/mnt/us/documents"
     local should_build = type(path_or_id) == "string"
-        and (path_or_id:match("^cc:")
+        and (
+            path_or_id:match("^cc:")
             or path_or_id:match("^sha1:")
             or isPathWithin(path_or_id, cache_dir)
-            or isPathWithin(path_or_id, documents_root))
+            or isPathWithin(path_or_id, documents_root)
+        )
     if not self.mapping_attempted and should_build then
         local books = self:buildMappings(false)
         if books then
-            return self.books_by_id[path_or_id]
-                or self.books_by_real_path[path_or_id]
+            return self.books_by_id[path_or_id] or self.books_by_real_path[path_or_id]
         end
     end
 
     return nil
 end
-
 
 function VirtualLibrary:getRealPath(path)
     local book = self:getBook(path)
@@ -206,8 +205,7 @@ function VirtualLibrary:createVirtualFolderEntry(parent_path)
         is_kindle_library_folder = true,
         bidi_wrap_func = BD.directory,
     }
-    if self.settings.virtual_library_cover_path
-        and self.settings.virtual_library_cover_path ~= "" then
+    if self.settings.virtual_library_cover_path and self.settings.virtual_library_cover_path ~= "" then
         entry.pt_cover_path = self.settings.virtual_library_cover_path
     end
     return entry
@@ -228,9 +226,7 @@ function VirtualLibrary:getBookEntries(force)
         -- for cover/metadata extraction; unprepared books keep the Kindle
         -- source path and render the placeholder cover.
         local entry_file = book.source_path or ""
-        if book.open_mode ~= "blocked" and book.open_mode ~= "direct"
-            and self.cache_manager and self:isBookPrepared(book)
-        then
+        if book.open_mode ~= "blocked" and book.open_mode ~= "direct" and self.cache_manager and self:isBookPrepared(book) then
             entry_file = self.cache_manager:getCachePaths(book) or entry_file
         end
         table.insert(entries, {

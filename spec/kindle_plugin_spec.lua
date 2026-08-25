@@ -29,7 +29,9 @@ describe("KindlePlugin", function()
 
     after_each(function()
         for _, instance in ipairs(instances) do
-            pcall(function() instance:stopPlugin() end)
+            pcall(function()
+                instance:stopPlugin()
+            end)
         end
         FileManager.instance = original_filemanager_instance
         KindleLibrary.show = original_library_show

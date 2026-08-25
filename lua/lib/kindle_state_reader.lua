@@ -55,9 +55,7 @@ function KindleStateReader.readByUuid(uuid)
     if not uuid or uuid == "" then
         return nil
     end
-    return KindleStateReader._read(
-        "p_uuid = (SELECT p_sourceUuid FROM Entries WHERE p_uuid = ?)", uuid
-    )
+    return KindleStateReader._read("p_uuid = (SELECT p_sourceUuid FROM Entries WHERE p_uuid = ?)", uuid)
 end
 
 ---
@@ -89,10 +87,7 @@ function KindleStateReader._readWithSQ3(SQ3, where_clause, where_value)
 
     local ok, result = pcall(function()
         local stmt = conn:prepare(
-            string.format(
-                "SELECT p_percentFinished, p_lastAccess, p_readState, p_titles_0_nominal, p_cdeKey FROM Entries WHERE %s",
-                where_clause
-            )
+            string.format("SELECT p_percentFinished, p_lastAccess, p_readState, p_titles_0_nominal, p_cdeKey FROM Entries WHERE %s", where_clause)
         )
         if not stmt then
             return nil
@@ -125,7 +120,9 @@ function KindleStateReader._readWithSQ3(SQ3, where_clause, where_value)
         }
     end)
 
-    pcall(function() conn:close() end)
+    pcall(function()
+        conn:close()
+    end)
 
     if not ok then
         logger.warn("KindlePlugin: Error reading cc.db:", result)
@@ -160,8 +157,8 @@ function KindleStateReader._readAllWithSQ3(SQ3)
     local ok, result = pcall(function()
         local stmt = conn:prepare(
             "SELECT p_cdeKey, p_cdeType, p_titles_0_nominal, p_percentFinished, p_lastAccess, p_location "
-            .. "FROM Entries WHERE p_cdeType IN ('EBOK','PDOC') AND p_isLatestItem = 1 "
-            .. "AND p_location IS NOT NULL AND p_type NOT LIKE '%Dictionary%'"
+                .. "FROM Entries WHERE p_cdeType IN ('EBOK','PDOC') AND p_isLatestItem = 1 "
+                .. "AND p_location IS NOT NULL AND p_type NOT LIKE '%Dictionary%'"
         )
         if not stmt then
             return nil
@@ -187,7 +184,9 @@ function KindleStateReader._readAllWithSQ3(SQ3)
         return books
     end)
 
-    pcall(function() conn:close() end)
+    pcall(function()
+        conn:close()
+    end)
 
     if not ok then
         logger.warn("KindlePlugin: Error reading all from cc.db:", result)

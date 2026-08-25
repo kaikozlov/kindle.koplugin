@@ -59,8 +59,7 @@ function KindleLibrary:buildEntries(force)
             item.text = item.text .. " [blocked]"
             item.mandatory = self.virtual_library:getBlockedReasonText(book)
         elseif book and (book.open_mode == "convert" or book.open_mode == "drm") then
-            local cache_state = self.virtual_library:isBookPrepared(book)
-                and " · cached" or " · prepare on open"
+            local cache_state = self.virtual_library:isBookPrepared(book) and " · cached" or " · prepare on open"
             item.mandatory = item.mandatory .. cache_state
         end
     end
@@ -113,11 +112,7 @@ function KindleLibrary:show(ui, force)
     self.booklist_menu.close_callback = function()
         manager:close()
     end
-    self.booklist_menu:switchItemTable(
-        T(_("Kindle Library (%1)"), #entries),
-        entries,
-        -1
-    )
+    self.booklist_menu:switchItemTable(T(_("Kindle Library (%1)"), #entries), entries, -1)
     UIManager:show(self.booklist_menu)
     return true
 end

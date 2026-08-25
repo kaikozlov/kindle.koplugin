@@ -68,22 +68,30 @@ end
 
 local function encode_long(eid, offset)
     -- Mirrors Python: b64(0x01 + eid_le32 + offset_le32).
-    local raw = string.char(1,
-        eid % 256, math.floor(eid / 256) % 256,
-        math.floor(eid / 65536) % 256, math.floor(eid / 16777216) % 256,
-        offset % 256, math.floor(offset / 256) % 256,
-        math.floor(offset / 65536) % 256, math.floor(offset / 16777216) % 256)
+    local raw = string.char(
+        1,
+        eid % 256,
+        math.floor(eid / 256) % 256,
+        math.floor(eid / 65536) % 256,
+        math.floor(eid / 16777216) % 256,
+        offset % 256,
+        math.floor(offset / 256) % 256,
+        math.floor(offset / 65536) % 256,
+        math.floor(offset / 16777216) % 256
+    )
     local mime = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-    return (raw:gsub("...", function(chunk)
-        local b1, b2, b3 = chunk:byte(1, 3)
-        local n = b1 * 65536 + b2 * 256 + b3
-        return table.concat({
-            mime:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1),
-            mime:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1),
-            mime:sub(math.floor(n / 64) % 64 + 1, math.floor(n / 64) % 64 + 1),
-            mime:sub(n % 64 + 1, n % 64 + 1),
-        })
-    end))
+    return (
+        raw:gsub("...", function(chunk)
+            local b1, b2, b3 = chunk:byte(1, 3)
+            local n = b1 * 65536 + b2 * 256 + b3
+            return table.concat({
+                mime:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1),
+                mime:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1),
+                mime:sub(math.floor(n / 64) % 64 + 1, math.floor(n / 64) % 64 + 1),
+                mime:sub(n % 64 + 1, n % 64 + 1),
+            })
+        end)
+    )
 end
 
 function PositionMap.decode_long(long_position)
@@ -293,10 +301,9 @@ function PositionMap.translate_native(map, long_position)
     if node.n > 1 then
         node_step = "text()[" .. node.n .. "]"
     end
-    local xpointer = "/body/" .. fragment_step .. "/body/"
-        .. node.p .. "/" .. node_step .. "." .. text_offset
+    local xpointer = "/body/" .. fragment_step .. "/body/" .. node.p .. "/" .. node_step .. "." .. text_offset
 
-    local verified, verify_error = PositionMap.translate_xpointer(map, xpointer)
+    local verified = PositionMap.translate_xpointer(map, xpointer)
     if not verified or verified.long ~= long_position then
         return nil, "reverse position verification failed"
     end

@@ -44,7 +44,6 @@ local function registerCatalogTriggerFunctions(conn)
     end
 end
 
-
 local function openSqlite()
     local SQ3 = package.loaded["lua-ljsqlite3/init"]
     if SQ3 then
@@ -83,13 +82,7 @@ function KindleStateWriter.writeByCdeKey(cde_key, percent_read, timestamp, statu
     if not cde_key or cde_key == "" then
         return false
     end
-    return KindleStateWriter._write(
-        "p_cdeKey = ? AND p_isLatestItem = 1",
-        cde_key,
-        percent_read,
-        timestamp,
-        status
-    )
+    return KindleStateWriter._write("p_cdeKey = ? AND p_isLatestItem = 1", cde_key, percent_read, timestamp, status)
 end
 
 --- Writes reading state for a catalog entry identified by p_uuid.
@@ -99,13 +92,7 @@ function KindleStateWriter.writeByUuid(uuid, percent_read, timestamp, status)
     if not uuid or uuid == "" then
         return false
     end
-    return KindleStateWriter._write(
-        "p_uuid = (SELECT p_sourceUuid FROM Entries WHERE p_uuid = ?)",
-        uuid,
-        percent_read,
-        timestamp,
-        status
-    )
+    return KindleStateWriter._write("p_uuid = (SELECT p_sourceUuid FROM Entries WHERE p_uuid = ?)", uuid, percent_read, timestamp, status)
 end
 
 ---
@@ -155,10 +142,7 @@ function KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent
         conn:exec("BEGIN IMMEDIATE")
         transaction_open = true
 
-        local sql = string.format(
-            "UPDATE Entries SET p_percentFinished = ?, p_readState = ? WHERE %s",
-            where_clause
-        )
+        local sql = string.format("UPDATE Entries SET p_percentFinished = ?, p_readState = ? WHERE %s", where_clause)
 
         local stmt = conn:prepare(sql)
         if not stmt then
@@ -166,11 +150,7 @@ function KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent
             return false
         end
 
-        stmt:reset():bind(
-            percent_read,
-            read_state,
-            where_value
-        ):step()
+        stmt:reset():bind(percent_read, read_state, where_value):step()
         stmt:close()
 
         local changed = tonumber(conn:rowexec("SELECT changes()")) or 0
@@ -186,10 +166,14 @@ function KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent
     end)
 
     if transaction_open then
-        pcall(function() conn:exec("ROLLBACK") end)
+        pcall(function()
+            conn:exec("ROLLBACK")
+        end)
     end
 
-    pcall(function() conn:close() end)
+    pcall(function()
+        conn:close()
+    end)
 
     if not ok then
         logger.warn("KindlePlugin: Error writing to cc.db:", result)
@@ -197,11 +181,7 @@ function KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent
     end
 
     if result then
-        logger.info(
-            "KindlePlugin: Wrote Kindle reading progress:",
-            "percent:", percent_read,
-            "read_state:", read_state
-        )
+        logger.info("KindlePlugin: Wrote Kindle reading progress:", "percent:", percent_read, "read_state:", read_state)
     else
         logger.warn("KindlePlugin: No matching Kindle catalog entry to update")
     end

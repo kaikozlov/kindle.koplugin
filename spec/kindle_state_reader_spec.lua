@@ -1,7 +1,7 @@
 -- Tests for KindleStateReader module
 -- cc.db access is virtualized through the shared lua-ljsqlite3 mock.
 
-require('busted.runner')()
+require("busted.runner")()
 local helper = require("spec/test_helper")
 
 describe("KindleStateReader", function()

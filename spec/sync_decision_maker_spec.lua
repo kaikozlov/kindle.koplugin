@@ -1,6 +1,6 @@
 -- Tests for SyncDecisionMaker module
 
-require('busted.runner')()
+require("busted.runner")()
 local helper = require("spec/test_helper")
 
 describe("SyncDecisionMaker", function()
@@ -55,18 +55,19 @@ describe("SyncDecisionMaker", function()
         it("shows both renderer percentages and explicit resolution choices", function()
             local shown
             local selected
-            UIManager.show = function(_, widget) shown = widget end
+            UIManager.show = function(_, widget)
+                shown = widget
+            end
 
-            assert.is_true(SyncDecisionMaker.promptForConflict(
-                {
-                    book_title = "Book",
-                    kindle_percent = 38,
-                    koreader_percent = 52,
-                },
-                function() selected = "kindle" end,
-                function() selected = "koreader" end,
-                true
-            ))
+            assert.is_true(SyncDecisionMaker.promptForConflict({
+                book_title = "Book",
+                kindle_percent = 38,
+                koreader_percent = 52,
+            }, function()
+                selected = "kindle"
+            end, function()
+                selected = "koreader"
+            end, true))
 
             assert.is_truthy(shown)
             assert.is_truthy(shown.text:find("Kindle: 38.0%%"))
@@ -99,9 +100,7 @@ describe("SyncDecisionMaker", function()
         end)
 
         it("should deny sync when sync_direction is nil", function()
-            assert.is_false(
-                SyncDecisionMaker.syncIfApproved({ settings = {} }, nil, true, true, function() end)
-            )
+            assert.is_false(SyncDecisionMaker.syncIfApproved({ settings = {} }, nil, true, true, function() end))
         end)
 
         it("should silently execute when direction is SILENT", function()
@@ -113,10 +112,9 @@ describe("SyncDecisionMaker", function()
                 },
             }
 
-            local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, true, true,
-                function() executed = true end
-            )
+            local ok = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, true, true, function()
+                executed = true
+            end)
 
             assert.is_true(ok)
             assert.is_true(executed)
@@ -131,10 +129,9 @@ describe("SyncDecisionMaker", function()
                 },
             }
 
-            local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, true, true,
-                function() executed = true end
-            )
+            local ok = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, true, true, function()
+                executed = true
+            end)
 
             assert.is_false(ok)
             assert.is_false(executed)
@@ -149,10 +146,9 @@ describe("SyncDecisionMaker", function()
                 },
             }
 
-            local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, true, true,
-                function() executed = true end
-            )
+            local ok = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, true, true, function()
+                executed = true
+            end)
 
             assert.is_false(ok)
             assert.is_false(executed)
@@ -167,10 +163,9 @@ describe("SyncDecisionMaker", function()
                 },
             }
 
-            local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, false, true,
-                function() executed = true end
-            )
+            local ok = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, false, true, function()
+                executed = true
+            end)
 
             assert.is_false(ok)
             assert.is_false(executed)
@@ -185,10 +180,7 @@ describe("SyncDecisionMaker", function()
             }
 
             -- In test env, Trapper:confirm returns true by default.
-            local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, true, true,
-                function() end
-            )
+            local ok = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, true, true, function() end)
 
             assert.is_true(ok)
             -- ConfirmBox path is async, so only the approval result is asserted.
@@ -204,8 +196,13 @@ describe("SyncDecisionMaker", function()
             }
 
             local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, true, false, -- FROM Kindle, older
-                function() executed = true end
+                plugin,
+                SYNC_DIRECTION,
+                true,
+                false, -- FROM Kindle, older
+                function()
+                    executed = true
+                end
             )
 
             assert.is_true(ok)
@@ -221,10 +218,9 @@ describe("SyncDecisionMaker", function()
                 },
             }
 
-            local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, true, false,
-                function() executed = true end
-            )
+            local ok = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, true, false, function()
+                executed = true
+            end)
 
             assert.is_false(ok)
             assert.is_false(executed)
@@ -240,8 +236,13 @@ describe("SyncDecisionMaker", function()
             }
 
             local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, false, true, -- TO Kindle, newer
-                function() executed = true end
+                plugin,
+                SYNC_DIRECTION,
+                false,
+                true, -- TO Kindle, newer
+                function()
+                    executed = true
+                end
             )
 
             assert.is_true(ok)
@@ -257,10 +258,9 @@ describe("SyncDecisionMaker", function()
                 },
             }
 
-            local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, false, true,
-                function() executed = true end
-            )
+            local ok = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, false, true, function()
+                executed = true
+            end)
 
             assert.is_false(ok)
             assert.is_false(executed)
@@ -276,8 +276,13 @@ describe("SyncDecisionMaker", function()
             }
 
             local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, false, false, -- TO Kindle, older
-                function() executed = true end
+                plugin,
+                SYNC_DIRECTION,
+                false,
+                false, -- TO Kindle, older
+                function()
+                    executed = true
+                end
             )
 
             assert.is_true(ok)
@@ -293,10 +298,9 @@ describe("SyncDecisionMaker", function()
                 },
             }
 
-            local ok = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, false, false,
-                function() executed = true end
-            )
+            local ok = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, false, false, function()
+                executed = true
+            end)
 
             assert.is_false(ok)
             assert.is_false(executed)
@@ -318,19 +322,17 @@ describe("SyncDecisionMaker", function()
 
             -- PULL newer: should succeed
             local pull_executed = false
-            local ok1 = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, true, true,
-                function() pull_executed = true end
-            )
+            local ok1 = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, true, true, function()
+                pull_executed = true
+            end)
             assert.is_true(ok1)
             assert.is_true(pull_executed)
 
             -- PUSH older: should be denied
             local push_executed = false
-            local ok2 = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, false, false,
-                function() push_executed = true end
-            )
+            local ok2 = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, false, false, function()
+                push_executed = true
+            end)
             assert.is_false(ok2)
             assert.is_false(push_executed)
         end)
@@ -347,19 +349,17 @@ describe("SyncDecisionMaker", function()
 
             -- FROM Kindle: should succeed
             local from_executed = false
-            local ok1 = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, true, true,
-                function() from_executed = true end
-            )
+            local ok1 = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, true, true, function()
+                from_executed = true
+            end)
             assert.is_true(ok1)
             assert.is_true(from_executed)
 
             -- TO Kindle: should be denied
             local to_executed = false
-            local ok2 = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, false, true,
-                function() to_executed = true end
-            )
+            local ok2 = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, false, true, function()
+                to_executed = true
+            end)
             assert.is_false(ok2)
             assert.is_false(to_executed)
         end)
@@ -376,19 +376,17 @@ describe("SyncDecisionMaker", function()
 
             -- FROM Kindle: should be denied
             local from_executed = false
-            local ok1 = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, true, true,
-                function() from_executed = true end
-            )
+            local ok1 = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, true, true, function()
+                from_executed = true
+            end)
             assert.is_false(ok1)
             assert.is_false(from_executed)
 
             -- TO Kindle: should succeed
             local to_executed = false
-            local ok2 = SyncDecisionMaker.syncIfApproved(
-                plugin, SYNC_DIRECTION, false, true,
-                function() to_executed = true end
-            )
+            local ok2 = SyncDecisionMaker.syncIfApproved(plugin, SYNC_DIRECTION, false, true, function()
+                to_executed = true
+            end)
             assert.is_true(ok2)
             assert.is_true(to_executed)
         end)

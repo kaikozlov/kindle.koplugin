@@ -28,13 +28,19 @@ describe("OpenFileExt real-path cache refresh", function()
         helper.before_each()
         package.loaded["lua/open_file_ext"] = nil
         OpenFileExt = require("lua/open_file_ext")
-        Trapper.wrap = function(_, fn) return fn() end
-        Trapper.info = function() return true end
+        Trapper.wrap = function(_, fn)
+            return fn()
+        end
+        Trapper.info = function()
+            return true
+        end
         Trapper.clear = function() end
     end)
 
     after_each(function()
-        pcall(function() OpenFileExt:unapply() end)
+        pcall(function()
+            OpenFileExt:unapply()
+        end)
         filemanagerutil.openFile = original_open_file
         Trapper.wrap = original_wrap
         Trapper.info = original_info
@@ -65,11 +71,17 @@ describe("OpenFileExt real-path cache refresh", function()
                 resolves = resolves + 1
                 return "/cache/book.epub"
             end,
-            getBlockedReasonText = function() return "blocked" end,
+            getBlockedReasonText = function()
+                return "blocked"
+            end,
         }
         local cache_manager = {
-            getCachePaths = function() return "/cache/book.epub", "/cache/book.json" end,
-            isFresh = function() return false, "/cache/book.epub", "/cache/book.json" end,
+            getCachePaths = function()
+                return "/cache/book.epub", "/cache/book.json"
+            end,
+            isFresh = function()
+                return false, "/cache/book.epub", "/cache/book.json"
+            end,
         }
         local delegated
         local callback = function() end
@@ -102,7 +114,9 @@ describe("OpenFileExt real-path cache refresh", function()
         }
         local refreshes = 0
         local virtual_library = {
-            getBook = function() return book end,
+            getBook = function()
+                return book
+            end,
             refresh = function()
                 refreshes = refreshes + 1
                 return { book }
@@ -111,17 +125,23 @@ describe("OpenFileExt real-path cache refresh", function()
                 assert.equals(book, resolved_book)
                 return "/cache/book.epub"
             end,
-            getBlockedReasonText = function() return "blocked" end,
+            getBlockedReasonText = function()
+                return "blocked"
+            end,
         }
         local checked_book
         local cache_manager = {
-            getCachePaths = function() return "/cache/book.epub" end,
+            getCachePaths = function()
+                return "/cache/book.epub"
+            end,
             isFresh = function(_, candidate)
                 checked_book = candidate
                 return false, "/cache/book.epub"
             end,
         }
-        filemanagerutil.openFile = function(_, path) return path end
+        filemanagerutil.openFile = function(_, path)
+            return path
+        end
 
         OpenFileExt:init(virtual_library, cache_manager, nil)
         OpenFileExt:apply()
@@ -138,12 +158,18 @@ describe("OpenFileExt real-path cache refresh", function()
             open_mode = "direct",
         }
         local virtual_library = {
-            getBook = function(_, path) return path == book.source_path and book or nil end,
+            getBook = function(_, path)
+                return path == book.source_path and book or nil
+            end,
         }
         local cache_calls = 0
         local cache_manager = {
-            getCachePaths = function() cache_calls = cache_calls + 1 end,
-            isFresh = function() cache_calls = cache_calls + 1 end,
+            getCachePaths = function()
+                cache_calls = cache_calls + 1
+            end,
+            isFresh = function()
+                cache_calls = cache_calls + 1
+            end,
         }
         local delegated
         filemanagerutil.openFile = function(_, path)
@@ -175,17 +201,27 @@ describe("OpenFileExt real-path cache refresh", function()
                     return book
                 end
             end,
-            isActive = function() return true end,
-            refresh = function() return { book } end,
+            isActive = function()
+                return true
+            end,
+            refresh = function()
+                return { book }
+            end,
             resolveBookPath = function()
                 resolves = resolves + 1
                 return "/cache/book.epub"
             end,
-            getBlockedReasonText = function() return "blocked" end,
+            getBlockedReasonText = function()
+                return "blocked"
+            end,
         }
         local cache_manager = {
-            getCachePaths = function() return "/cache/book.epub" end,
-            isFresh = function() return false, "/cache/book.epub" end,
+            getCachePaths = function()
+                return "/cache/book.epub"
+            end,
+            isFresh = function()
+                return false, "/cache/book.epub"
+            end,
         }
         local delegated
         filemanagerutil.openFile = function(_, path)
@@ -221,13 +257,23 @@ describe("OpenFileExt real-path cache refresh", function()
         }
         local resolves = 0
         local virtual_library = {
-            getBook = function(_, path) return path == source_path and book or nil end,
-            isActive = function() return false end,
-            getBlockedReasonText = function() return "blocked" end,
+            getBook = function(_, path)
+                return path == source_path and book or nil
+            end,
+            isActive = function()
+                return false
+            end,
+            getBlockedReasonText = function()
+                return "blocked"
+            end,
         }
         local cache_manager = {
-            getCachePaths = function() return "/cache/book.epub" end,
-            isFresh = function() error("disabled source open must not inspect conversion cache") end,
+            getCachePaths = function()
+                return "/cache/book.epub"
+            end,
+            isFresh = function()
+                error("disabled source open must not inspect conversion cache")
+            end,
         }
         virtual_library.resolveBookPath = function()
             resolves = resolves + 1
@@ -248,7 +294,9 @@ describe("OpenFileExt real-path cache refresh", function()
     end)
 
     it("restores the original KOReader open function on stop", function()
-        local sentinel = function() return "original" end
+        local sentinel = function()
+            return "original"
+        end
         filemanagerutil.openFile = sentinel
         OpenFileExt:init({ getBook = function() end }, {}, nil)
         OpenFileExt:apply()

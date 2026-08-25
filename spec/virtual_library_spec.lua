@@ -24,9 +24,15 @@ describe("VirtualLibrary real-path model", function()
                 logical_ext = "epub",
             },
         }
-        local vlib = VirtualLibrary:new({ getBooks = function() return books end })
+        local vlib = VirtualLibrary:new({
+            getBooks = function()
+                return books
+            end,
+        })
         vlib:setCacheManager({
-            getCachePaths = function() return "/cache/b1.epub", "/cache/b1.json" end,
+            getCachePaths = function()
+                return "/cache/b1.epub", "/cache/b1.json"
+            end,
         })
 
         vlib:buildMappings(false)
@@ -49,7 +55,11 @@ describe("VirtualLibrary real-path model", function()
             end,
         })
         vlib:setSettings({ cache_dir = "/cache" })
-        vlib:setCacheManager({ getCachePaths = function() return "/cache/b1.epub" end })
+        vlib:setCacheManager({
+            getCachePaths = function()
+                return "/cache/b1.epub"
+            end,
+        })
 
         assert.equals(books[1], vlib:getBook("/cache/b1.epub"))
         assert.equals(1, calls)
@@ -81,7 +91,11 @@ describe("VirtualLibrary real-path model", function()
             end,
         })
         vlib:setSettings({ cache_dir = "/cache" })
-        vlib:setCacheManager({ getCachePaths = function() return "/cache/book.epub" end })
+        vlib:setCacheManager({
+            getCachePaths = function()
+                return "/cache/book.epub"
+            end,
+        })
 
         assert.is_nil(vlib:getBook("/cache/book.epub"))
         assert.is_nil(vlib:getBook("/cache/book.epub"))
@@ -100,7 +114,11 @@ describe("VirtualLibrary real-path model", function()
             open_mode = "blocked",
             block_reason = "missing_source",
         }
-        local vlib = VirtualLibrary:new({ getBooks = function() return { book } end })
+        local vlib = VirtualLibrary:new({
+            getBooks = function()
+                return { book }
+            end,
+        })
         local result = vlib:buildMappings(false)
         assert.equals(1, #result)
         assert.equals(book, vlib:getBook("cc:cloud"))
@@ -120,13 +138,21 @@ describe("VirtualLibrary real-path model", function()
         local direct = { id = "pdf", source_path = "/documents/book.pdf", open_mode = "direct" }
         local convert = { id = "kfx", source_path = "/documents/book.kfx", open_mode = "convert" }
         local conversions = 0
-        local vlib = VirtualLibrary:new({ getBooks = function() return { direct, convert } end })
+        local vlib = VirtualLibrary:new({
+            getBooks = function()
+                return { direct, convert }
+            end,
+        })
         vlib:setCacheManager({
             isFresh = function(_, book)
-                if book.id == "kfx" then return false, "/cache/kfx.epub" end
+                if book.id == "kfx" then
+                    return false, "/cache/kfx.epub"
+                end
                 return false
             end,
-            getCachePaths = function(_, book) return "/cache/" .. book.id .. ".epub" end,
+            getCachePaths = function(_, book)
+                return "/cache/" .. book.id .. ".epub"
+            end,
             ensureCachedEpub = function()
                 conversions = conversions + 1
                 return "/cache/kfx.epub"

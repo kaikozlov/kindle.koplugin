@@ -21,12 +21,13 @@ end
 local function long(number)
     local lo = number % 4294967296
     local hi = (number - lo) / 4294967296
-    return value(2, table.concat({
-        string.char(math.floor(hi / 16777216) % 256, math.floor(hi / 65536) % 256,
-            math.floor(hi / 256) % 256, hi % 256),
-        string.char(math.floor(lo / 16777216) % 256, math.floor(lo / 65536) % 256,
-            math.floor(lo / 256) % 256, lo % 256),
-    }))
+    return value(
+        2,
+        table.concat({
+            string.char(math.floor(hi / 16777216) % 256, math.floor(hi / 65536) % 256, math.floor(hi / 256) % 256, hi % 256),
+            string.char(math.floor(lo / 16777216) % 256, math.floor(lo / 65536) % 256, math.floor(lo / 256) % 256, lo % 256),
+        })
+    )
 end
 
 local function byte(number)
@@ -53,16 +54,25 @@ local function make_store(lpr, fpr)
         object_value("sync_lpr", { boolean(false) }),
         object_value("lpr", { byte(2), utf(lpr), long(1100) }),
         object_value("unknown.future.object", {
-            byte(7), utf("preserve-me"), empty_utf(),
+            byte(7),
+            utf("preserve-me"),
+            empty_utf(),
         }),
     }
-    return SIGNATURE .. long(1) ..
-        value(1, table.concat({
-            string.char(math.floor(#objects / 16777216) % 256,
-                math.floor(#objects / 65536) % 256,
-                math.floor(#objects / 256) % 256,
-                #objects % 256),
-        })) .. table.concat(objects)
+    return SIGNATURE
+        .. long(1)
+        .. value(
+            1,
+            table.concat({
+                string.char(
+                    math.floor(#objects / 16777216) % 256,
+                    math.floor(#objects / 65536) % 256,
+                    math.floor(#objects / 256) % 256,
+                    #objects % 256
+                ),
+            })
+        )
+        .. table.concat(objects)
 end
 
 describe("KindleSidecar", function()
@@ -103,8 +113,7 @@ describe("KindleSidecar", function()
         local reencoded = assert(KindleSidecar.encode(store))
         local reparsed = assert(KindleSidecar.parse(reencoded))
         for _, name in ipairs({ "lpr", "updated_lpr" }) do
-            local position, timestamp =
-                KindleSidecar.position_from_object(KindleSidecar.objects(reparsed, name)[1])
+            local position, timestamp = KindleSidecar.position_from_object(KindleSidecar.objects(reparsed, name)[1])
             assert.equals("ATwFAACbAAAA:442741", position, name)
             assert.equals(2000, timestamp, name)
         end

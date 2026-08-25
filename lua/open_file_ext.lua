@@ -49,9 +49,7 @@ function OpenFileExt:prepareKnownKindlePath(file)
         expected_cache = self.cache_manager:getCachePaths(book)
     end
 
-    local needs_prepare = book.open_mode ~= "direct"
-        and (file == expected_cache
-            or (file == book.source_path and self.virtual_library:isActive()))
+    local needs_prepare = book.open_mode ~= "direct" and (file == expected_cache or (file == book.source_path and self.virtual_library:isActive()))
 
     if needs_prepare then
         -- CacheManager compares against the real source file's size/mtime, so
@@ -64,9 +62,7 @@ function OpenFileExt:prepareKnownKindlePath(file)
         else
             local refreshed = self.virtual_library:refresh(true)
             if refreshed then
-                book = self.virtual_library:getBook(file)
-                    or self.virtual_library:getBook(book.id)
-                    or book
+                book = self.virtual_library:getBook(file) or self.virtual_library:getBook(book.id) or book
             end
         end
 
@@ -81,9 +77,10 @@ function OpenFileExt:prepareKnownKindlePath(file)
             end)
             if not resolved then
                 logger.warn("KindlePlugin: failed to refresh persisted Kindle path:", err or "unknown")
-                return nil, self.virtual_library:getBlockedReasonText({
-                    block_reason = err or "conversion_failed",
-                })
+                return nil,
+                    self.virtual_library:getBlockedReasonText({
+                        block_reason = err or "conversion_failed",
+                    })
             end
             file = resolved
         end

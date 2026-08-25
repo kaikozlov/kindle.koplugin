@@ -1,6 +1,6 @@
 -- Tests for HelperClient module
 
-require('busted.runner')()
+require("busted.runner")()
 local helper = require("spec/test_helper")
 
 -- Fixture: one converted EPUB with its conversion-time position map, plus a
@@ -19,16 +19,19 @@ local MAP = {
                 ["p"] = { a = 3, s = 0, l = { 16 } },
             },
             anchors = {
-                { p = "div", eid = 1138, pid = 27100, t = 32,
-                  nodes = { { p = "div/p[2]", n = 1, c = 21, v = 11 } } },
-                { p = "div/p", eid = 1139, pid = 27115, t = 21,
-                  nodes = {
-                      { p = "div/p", n = 1, c = 0, v = 6 },
-                      { p = "div/p/em", n = 1, c = 6, v = 5 },
-                      { p = "div/p", n = 2, c = 11, v = 10 },
-                  } },
-                { p = "p", eid = 1140, pid = 27200, t = 16,
-                  nodes = { { p = "p", n = 1, c = 0, v = 16 } } },
+                { p = "div", eid = 1138, pid = 27100, t = 32, nodes = { { p = "div/p[2]", n = 1, c = 21, v = 11 } } },
+                {
+                    p = "div/p",
+                    eid = 1139,
+                    pid = 27115,
+                    t = 21,
+                    nodes = {
+                        { p = "div/p", n = 1, c = 0, v = 6 },
+                        { p = "div/p/em", n = 1, c = 6, v = 5 },
+                        { p = "div/p", n = 2, c = 11, v = 10 },
+                    },
+                },
+                { p = "p", eid = 1140, pid = 27200, t = 16, nodes = { { p = "p", n = 1, c = 0, v = 16 } } },
             },
         },
     },
@@ -122,8 +125,7 @@ describe("HelperClient", function()
     describe("native position sync", function()
         it("translates an XPointer through the in-process position map", function()
             local client = HelperClient:new(client_opts)
-            local result, err = client:translatePosition(
-                epub_path, "/body/DocFragment/body/div/p/em/text().4")
+            local result, err = client:translatePosition(epub_path, "/body/DocFragment/body/div/p/em/text().4")
 
             assert.is_not_nil(result, err)
             assert.equals(1139, result.eid)
@@ -133,8 +135,7 @@ describe("HelperClient", function()
 
         it("reverse-translates a native long position", function()
             local client = HelperClient:new(client_opts)
-            local forward = assert(client:translatePosition(
-                epub_path, "/body/DocFragment/body/div/p/em/text().4"))
+            local forward = assert(client:translatePosition(epub_path, "/body/DocFragment/body/div/p/em/text().4"))
             local restored, err = client:translateNativePosition(epub_path, forward.long)
 
             assert.is_not_nil(restored, err)
@@ -160,8 +161,7 @@ describe("HelperClient", function()
                 percent = 75.5,
             }
 
-            local ok, err, percent, saved =
-                client:saveNativeProgress("B007N6JEII", kfx_path, position)
+            local ok, err, percent, saved = client:saveNativeProgress("B007N6JEII", kfx_path, position)
 
             assert.is_true(ok, err)
             assert.is_nil(err)
@@ -180,17 +180,11 @@ describe("HelperClient", function()
         it("should expose a native progress runner seam", function()
             local client = HelperClient:new({
                 native_progress_runner = function(asin, path, position)
-                    return asin == "B007N6JEII" and path:match("%.kfx$")
-                        and position.pid == 442741
+                    return asin == "B007N6JEII" and path:match("%.kfx$") and position.pid == 442741
                 end,
             })
-            assert.is_true(client:nativeProgressAvailable(
-                "B007N6JEII", "/mnt/us/documents/book.kfx"
-            ))
-            assert.is_true(client:saveNativeProgress(
-                "B007N6JEII", "/mnt/us/documents/book.kfx",
-                { long = "ATwFAACbAAAA", pid = 442741 }
-            ))
+            assert.is_true(client:nativeProgressAvailable("B007N6JEII", "/mnt/us/documents/book.kfx"))
+            assert.is_true(client:saveNativeProgress("B007N6JEII", "/mnt/us/documents/book.kfx", { long = "ATwFAACbAAAA", pid = 442741 }))
         end)
 
         it("reports exact sync only for a readable KRDS sidecar", function()
@@ -205,19 +199,13 @@ describe("HelperClient", function()
 
         it("should capability-gate exact sync for unsupported books", function()
             local client = HelperClient:new({ native_progress_available = true })
-            assert.is_false(client:nativeProgressAvailable(
-                "personal-document", "/mnt/us/documents/book.kfx"
-            ))
-            assert.is_false(client:nativeProgressAvailable(
-                "B007N6JEII", "/tmp/book.kfx"
-            ))
+            assert.is_false(client:nativeProgressAvailable("personal-document", "/mnt/us/documents/book.kfx"))
+            assert.is_false(client:nativeProgressAvailable("B007N6JEII", "/tmp/book.kfx"))
         end)
 
         it("should allow device capability to be overridden for compatibility tests", function()
             local client = HelperClient:new({ native_progress_available = false })
-            assert.is_false(client:nativeProgressAvailable(
-                "B007N6JEII", "/mnt/us/documents/book.kfx"
-            ))
+            assert.is_false(client:nativeProgressAvailable("B007N6JEII", "/mnt/us/documents/book.kfx"))
         end)
 
         it("should reject native progress paths outside the Kindle library", function()
@@ -228,10 +216,7 @@ describe("HelperClient", function()
                     return true
                 end,
             })
-            local ok, err = client:saveNativeProgress(
-                "B007N6JEII", "/tmp/book.kfx",
-                { long = "ATwFAACbAAAA", pid = 442741 }
-            )
+            local ok, err = client:saveNativeProgress("B007N6JEII", "/tmp/book.kfx", { long = "ATwFAACbAAAA", pid = 442741 })
             assert.is_false(ok)
             assert.equals("invalid native path", err)
             assert.is_false(invoked)
@@ -240,11 +225,7 @@ describe("HelperClient", function()
         it("reads both close-sync authorities in-process", function()
             local client = HelperClient:new(client_opts)
 
-            local result, err = client:readCloseState(
-                kfx_path,
-                epub_path,
-                "/body/DocFragment/body/div/p/em/text().4"
-            )
+            local result, err = client:readCloseState(kfx_path, epub_path, "/body/DocFragment/body/div/p/em/text().4")
 
             assert.is_not_nil(result, err)
             assert.is_truthy(result.ok)

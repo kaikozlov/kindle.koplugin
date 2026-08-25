@@ -344,9 +344,7 @@ function KindleSidecar.position_from_object(obj)
         if values[1] and values[1].tag == TAG_UTF then
             return values[1].value, nil
         end
-        if #values >= 3 and values[1].tag == TAG_BYTE and values[1].value <= 2
-            and values[2].tag == TAG_UTF and values[3].tag == TAG_LONG
-        then
+        if #values >= 3 and values[1].tag == TAG_BYTE and values[1].value <= 2 and values[2].tag == TAG_UTF and values[3].tag == TAG_LONG then
             return values[2].value, values[3].value
         end
     elseif obj.name == "updated_lpr" or obj.name == "fpr" then
