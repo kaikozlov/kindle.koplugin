@@ -22,7 +22,7 @@ from .yj_symbol_catalog import (IonSharedSymbolTable, YJ_SYMBOLS)
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
@@ -39,6 +39,7 @@ class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
         self.is_entity_dependencies_modified = False
         self.yj_containers = []
         self.kpf_container = None
+        self.pdf_cache = {}
 
         self.load_symbol_catalog()
 
@@ -76,23 +77,24 @@ class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
         temp_file_cleanup()
 
     def convert_to_single_kfx(self):
-        self.decode_book()
+        self.decode_book(skip_dictionary_checks=True)
 
         if self.is_dictionary:
-            log.error("Cannot serialize a dictionary as a KFX container")
-            return None
-
-        if self.is_scribe_notebook:
+            if len(self.yj_containers) == 1:
+                result = self.yj_containers[0].serialize()
+            else:
+                log.error("A KFX dictionary should have only one container")
+                result = None
+        elif self.is_scribe_notebook:
             log.error("Cannot serialize a Scribe notebook as a KFX container")
-            return None
-
-        if self.is_kpf_prepub:
+            result = None
+        elif self.is_kpf_prepub:
             log.error("Cannot serialize KPF as a KFX container without fix-up")
-            return None
+            result = None
+        else:
+            result = KfxContainer(self.symtab, fragments=self.fragments).serialize()
 
-        result = KfxContainer(self.symtab, fragments=self.fragments).serialize()
-
-        if len(result) > MAX_KFX_CONTAINER_SIZE:
+        if (not self.is_dictionary) and result is not None and len(result) > MAX_KFX_CONTAINER_SIZE:
             log.warning("KFX container created may be too large for some devices (%d bytes)" % len(result))
             pass
 
@@ -131,7 +133,7 @@ class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
             try:
                 container = self.get_container(datafile, ignore_drm=True)
                 if container is not None:
-                    container.deserialize(ignore_drm=True)
+                    container.deserialize()
                     yj_datafile_containers.append((datafile, container))
 
             except Exception as e:
@@ -201,7 +203,8 @@ class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
         self.final_actions()
         return result
 
-    def decode_book(self, set_metadata=None, set_approximate_pages=None, pure=False, retain_yj_locals=False):
+    def decode_book(self, set_metadata=None, set_approximate_pages=None, pure=False, retain_yj_locals=False,
+                    skip_book_checks=False, skip_dictionary_checks=False):
         if self.fragments:
             if set_metadata is not None or set_approximate_pages is not None or retain_yj_locals:
                 raise Exception("Attempt to change metadata after book has already been decoded")
@@ -214,7 +217,11 @@ class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
             log.info("Processing container: %s" % datafile.name)
             container = self.get_container(datafile)
             if container is not None:
-                container.deserialize()
+                if skip_dictionary_checks and container.is_drm_free_dictionary():
+                    skip_book_checks = True
+                else:
+                    container.deserialize()
+
                 self.yj_containers.append(container)
             else:
                 missing_container = True
@@ -225,10 +232,10 @@ class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
         for container in self.yj_containers:
             self.fragments.extend(container.get_fragments())
 
-        if self.is_kpf_prepub:
-            self.fix_kpf_prepub_book(not pure, retain_yj_locals)
+        if not skip_book_checks:
+            if self.is_kpf_prepub:
+                self.fix_kpf_prepub_book(not pure, retain_yj_locals)
 
-        if True:
             self.check_consistency()
 
         if not pure:
@@ -242,14 +249,15 @@ class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
                     traceback.print_exc()
                     log.error("Exception creating approximate page numbers: %s" % repr(e))
 
-        try:
-            self.report_features_and_metadata(unknown_only=False)
-        except Exception as e:
-            traceback.print_exc()
-            log.error("Exception checking book features and metadata: %s" % repr(e))
+        if not skip_book_checks:
+            try:
+                self.report_features_and_metadata(unknown_only=False)
+            except Exception as e:
+                traceback.print_exc()
+                log.error("Exception checking book features and metadata: %s" % repr(e))
 
-        self.check_fragment_usage(rebuild=not pure, ignore_extra=False)
-        self.check_symbol_table(rebuild=not pure, ignore_unused=self.is_scribe_notebook)
+            self.check_fragment_usage(rebuild=not pure, ignore_extra=False)
+            self.check_symbol_table(rebuild=not pure, ignore_unused=self.is_scribe_notebook)
 
         self.final_actions()
 
@@ -316,12 +324,12 @@ class YJ_Book(BookStructure, BookPosLoc, BookMetadata, KpfBook):
                 for info in zf.infolist():
                     if posixpath.basename(info.filename).lower() in ["book.ion", "book.kdf"]:
                         if info.filename.lower().endswith(".kdf"):
-                            return KpfContainer(self.symtab, datafile, book=self)
+                            return KpfContainer(self.symtab, datafile, book=self, ignore_drm=ignore_drm)
                         else:
                             return ZipUnpackContainer(self.symtab, datafile)
 
         if data.startswith(KpfContainer.KDF_SIGNATURE):
-            return KpfContainer(self.symtab, datafile, book=self)
+            return KpfContainer(self.symtab, datafile, book=self, ignore_drm=ignore_drm)
 
         if data.startswith(KfxContainer.SIGNATURE):
             return KfxContainer(self.symtab, datafile)

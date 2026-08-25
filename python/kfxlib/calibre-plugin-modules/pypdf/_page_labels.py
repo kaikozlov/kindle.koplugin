@@ -58,7 +58,8 @@ a       Lowercase letters (a to z for the first 26 pages,
                            aa to zz for the next 26, and so on)
 """
 
-from typing import Iterator, List, Optional, Tuple, cast
+from collections.abc import Callable, Iterator
+from typing import Optional, cast
 
 from ._protocols import PdfCommonDocProtocol
 from ._utils import logger_warning
@@ -132,20 +133,26 @@ def get_label_from_nums(dictionary_object: DictionaryObject, index: int) -> str:
     # analogously to the arrangement of keys in a name tree
     # as described in 7.9.6, "Name Trees."
     nums = cast(ArrayObject, dictionary_object["/Nums"])
+    nums_length = len(nums)
     i = 0
     value = None
     start_index = 0
-    while i < len(nums):
+    while i < nums_length:
+        if i + 1 >= nums_length:
+            logger_warning(
+                "Ignoring last /Nums key without a value.", source=__name__
+            )
+            break
         start_index = nums[i]
         value = nums[i + 1].get_object()
-        if i + 2 == len(nums):
+        if i + 2 == nums_length:
             break
         if nums[i + 2] > index:
             break
         i += 2
-    m = {
+    m: dict[Optional[str], Callable[[int], str]] = {
         None: lambda _: "",
-        "/D": lambda n: str(n),
+        "/D": str,
         "/R": number2uppercase_roman_numeral,
         "/r": number2lowercase_roman_numeral,
         "/A": number2uppercase_letter,
@@ -155,8 +162,27 @@ def get_label_from_nums(dictionary_object: DictionaryObject, index: int) -> str:
     if not isinstance(value, dict):
         return str(index + 1)  # Fallback
     start = value.get("/St", 1)
-    prefix = value.get("/P", "")
-    return prefix + m[value.get("/S")](index - start_index + start)
+    prefix = cast(str, value.get("/P", ""))
+    mapping_function = m.get(value.get("/S"))
+    if mapping_function is None:
+        # Unknown /S numbering style; fall back to the page position.
+        logger_warning(
+            "Ignoring unknown page label numbering style %(style)r in /Nums.",
+            source=__name__,
+            style=value.get("/S"),
+        )
+        return str(index + 1)  # Fallback
+    try:
+        return prefix + mapping_function(index - start_index + start)
+    except (TypeError, ValueError):
+        # Malformed /St or /P value; fall back to the page position.
+        logger_warning(
+            "Ignoring malformed page label entry in /Nums (/St=%(start)r, /P=%(prefix)r).",
+            source=__name__,
+            start=start,
+            prefix=prefix,
+        )
+        return str(index + 1)  # Fallback
 
 
 def index2label(reader: PdfCommonDocProtocol, index: int) -> str:
@@ -182,10 +208,17 @@ def index2label(reader: PdfCommonDocProtocol, index: int) -> str:
         # Limit maximum depth.
         level = 0
         while level < 100:
-            kids = cast(List[DictionaryObject], number_tree["/Kids"])
+            kids = cast(list[DictionaryObject], number_tree["/Kids"])
             for kid in kids:
                 # kid = {'/Limits': [0, 63], '/Nums': [0, {'/P': 'C1'}, ...]}
-                limits = cast(List[int], kid["/Limits"])
+                limits = kid.get("/Limits", NullObject()).get_object()
+                if not isinstance(limits, list) or len(limits) < 2:
+                    # Skip kids whose /Limits range is missing or malformed.
+                    logger_warning(
+                        "Ignoring kid with missing or malformed /Limits in /PageLabels.",
+                        source=__name__,
+                    )
+                    continue
                 if limits[0] <= index <= limits[1]:
                     if not is_null_or_none(kid.get("/Kids", None)):
                         # Recursive definition.
@@ -204,7 +237,7 @@ def index2label(reader: PdfCommonDocProtocol, index: int) -> str:
                 # and continue with the fallback.
                 break
 
-    logger_warning(f"Could not reliably determine page label for {index}.", __name__)
+    logger_warning("Could not reliably determine page label for %(index)d.", source=__name__, index=index)
     return str(index + 1)  # Fallback if neither /Nums nor /Kids is in the number_tree
 
 
@@ -268,7 +301,7 @@ def nums_clear_range(
 def nums_next(
     key: NumberObject,
     nums: ArrayObject,
-) -> Tuple[Optional[NumberObject], Optional[DictionaryObject]]:
+) -> tuple[Optional[NumberObject], Optional[DictionaryObject]]:
     """
     Return the (key, value) pair of the entry after the given one.
 

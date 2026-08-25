@@ -20,7 +20,7 @@ else:
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 COMBINE_TILES_LOSSLESS = True
 MIN_JPEG_QUALITY = 90
@@ -320,9 +320,9 @@ def convert_jxr_to_tiff(jxr_data, resource_name):
     return outfile.getvalue()
 
 
-def convert_pdf_page_to_image(location, pdf_data, page_num, reported_errors=None, force_jpeg=False):
+def convert_pdf_page_to_image(location, pdf_data, page_num, reported_errors=None, force_jpeg=False, pdf_cache=None):
     default_image = (convert_pdf_page_to_jpeg(location, pdf_data, page_num, reported_errors), "$285")
-    return get_pdf_page_image(location, pdf_data, page_num, force_jpeg, default_image)
+    return get_pdf_page_image(location, pdf_data, page_num, force_jpeg, default_image, pdf_cache)
 
 
 def convert_pdf_page_to_jpeg(location, pdf_data, page_num, reported_errors=None):
@@ -363,12 +363,28 @@ def convert_pdf_page_to_jpeg(location, pdf_data, page_num, reported_errors=None)
     return jpeg_data
 
 
-def get_pdf_page_image(location, pdf_data, page_num, force_jpeg, default_image):
+def get_pdf_reader(pdf_data, pdf_cache):
+    with disable_debug_log():
+        pdf_data = bytes(pdf_data)
+        if pdf_cache is not None:
+            pdf = pdf_cache.get(pdf_data)
+            if pdf is not None:
+                return pdf
+
+        pdf = pypdf.PdfReader(io.BytesIO(pdf_data))
+
+        if pdf_cache is not None:
+            pdf_cache[pdf_data] = pdf
+
+    return pdf
+
+
+def get_pdf_page_image(location, pdf_data, page_num, force_jpeg, default_image, pdf_cache):
 
     try:
+        pdf = get_pdf_reader(pdf_data, pdf_cache)
+
         with disable_debug_log():
-            raw_media_file = io.BytesIO(pdf_data)
-            pdf = pypdf.PdfReader(raw_media_file)
             page = pdf.pages[page_num - 1]
 
             if box_tuple(page.cropbox) != box_tuple(page.mediabox):
@@ -654,9 +670,8 @@ def optimize_jpeg_image_quality(jpeg_image, desired_size):
     return best_raw_media, best_quality
 
 
-def get_pdf_page_size(pdf_data, resource_name, page_num):
-    raw_media_file = io.BytesIO(pdf_data)
-    pdf = pypdf.PdfReader(raw_media_file)
+def get_pdf_page_size(pdf_data, resource_name, page_num, pdf_cache=None):
+    pdf = get_pdf_reader(pdf_data, pdf_cache)
     page = pdf.pages[page_num - 1]
 
     if page.user_unit != 1:
@@ -669,9 +684,8 @@ def get_pdf_page_size(pdf_data, resource_name, page_num):
     return (crop_width, crop_height) if crop_width * crop_height <= media_width * media_height else (media_width, media_height)
 
 
-def show_pdf_page_boxes(pdf_data, resource_name, page_num):
-    raw_media_file = io.BytesIO(pdf_data)
-    pdf = pypdf.PdfReader(raw_media_file)
+def show_pdf_page_boxes(pdf_data, resource_name, page_num, pdf_cache=None):
+    pdf = get_pdf_reader(pdf_data, pdf_cache)
     page = pdf.pages[page_num - 1]
 
     def box_repr(box):

@@ -11,11 +11,11 @@ from .yj_container import (YJContainer, YJFragment)
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 class IonTextContainer(YJContainer):
-    def deserialize(self, ignore_drm=False):
+    def deserialize(self):
         self.fragments.clear()
         for annot in IonText(self.symtab).deserialize_multiple_values(self.datafile.get_data(), import_symbols=True):
             if not isinstance(annot, IonAnnotation):
@@ -30,7 +30,7 @@ class IonTextContainer(YJContainer):
 class ZipUnpackContainer(YJContainer):
     ADDED_EXT_FLAG_CHAR = "."
 
-    def deserialize(self, ignore_drm=False):
+    def deserialize(self):
         with self.datafile.as_ZipFile() as zf:
             for info in zf.infolist():
                 if info.filename == "book.ion":

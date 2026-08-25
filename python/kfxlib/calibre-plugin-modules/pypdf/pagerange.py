@@ -7,7 +7,7 @@ see https://github.com/py-pdf/pypdf/blob/main/LICENSE
 """
 
 import re
-from typing import Any, List, Tuple, Union
+from typing import Any, Optional, Union
 
 from .errors import ParseError
 
@@ -99,7 +99,7 @@ class PageRange:
     def __str__(self) -> str:
         """A string like "1:2:3"."""
         s = self._slice
-        indices: Union[Tuple[int, int], Tuple[int, int, int]]
+        indices: Union[tuple[int, int], tuple[int, int, int]]
         if s.step is None:
             if s.start is not None and s.stop == s.start + 1:
                 return str(s.start)
@@ -113,7 +113,7 @@ class PageRange:
         """A string like "PageRange('1:2:3')"."""
         return "PageRange(" + repr(str(self)) + ")"
 
-    def indices(self, n: int) -> Tuple[int, int, int]:
+    def indices(self, n: int) -> tuple[int, int, int]:
         """
         Assuming a sequence of length n, calculate the start and stop indices,
         and the stride length of the PageRange.
@@ -145,22 +145,30 @@ class PageRange:
         a = self._slice.start, self._slice.stop
         b = other._slice.start, other._slice.stop
 
-        if a[0] > b[0]:
+        # None start means "beginning" (-inf for ordering); None stop means "end" (+inf).
+        def _start_key(v: Optional[int]) -> float:
+            return float("-inf") if v is None else v
+
+        def _stop_key(v: Optional[int]) -> float:
+            return float("inf") if v is None else v
+
+        if _start_key(a[0]) > _start_key(b[0]):
             a, b = b, a
 
-        # Now a[0] is the smallest
-        if b[0] > a[1]:
+        # Now `a` has the smaller (or equal) start.
+        if _start_key(b[0]) > _stop_key(a[1]):
             # There is a gap between a and b.
             raise ValueError("Can't add PageRanges with gap")
-        return PageRange(slice(a[0], max(a[1], b[1])))
+        stop = b[1] if _stop_key(b[1]) > _stop_key(a[1]) else a[1]
+        return PageRange(slice(a[0], stop))
 
 
 PAGE_RANGE_ALL = PageRange(":")  # The range of all pages.
 
 
 def parse_filename_page_ranges(
-    args: List[Union[str, PageRange, None]]
-) -> List[Tuple[str, PageRange]]:
+    args: list[Union[str, PageRange, None]]
+) -> list[tuple[str, PageRange]]:
     """
     Given a list of filenames and page ranges, return a list of (filename, page_range) pairs.
 
@@ -173,7 +181,7 @@ def parse_filename_page_ranges(
         A list of (filename, page_range) pairs.
 
     """
-    pairs: List[Tuple[str, PageRange]] = []
+    pairs: list[tuple[str, PageRange]] = []
     pdf_filename: Union[str, None] = None
     did_page_range = False
     for arg in [*args, None]:
@@ -197,4 +205,4 @@ def parse_filename_page_ranges(
     return pairs
 
 
-PageRangeSpec = Union[str, PageRange, Tuple[int, int], Tuple[int, int, int], List[int]]
+PageRangeSpec = Union[str, PageRange, tuple[int, int], tuple[int, int, int], list[int]]

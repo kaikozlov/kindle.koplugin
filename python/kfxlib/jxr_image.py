@@ -6,7 +6,7 @@ from .jxr_misc import (Deserializer, bytes_to_separated_hex)
 from .message_logging import log
 
 
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>, based on pseudo-code in the ITU-T T.832 08/2016 specification with corrections"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>, based on pseudo-code in the ITU-T T.832 08/2016 specification with corrections"
 
 
 DEBUG0 = False

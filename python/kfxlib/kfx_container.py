@@ -13,7 +13,7 @@ from .yj_symbol_catalog import SYSTEM_SYMBOL_TABLE
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 DEBUG = False
@@ -53,7 +53,7 @@ class KfxContainer(YJContainer):
     def __init__(self, symtab, datafile=None, fragments=None):
         YJContainer.__init__(self, symtab, datafile=datafile, fragments=fragments)
 
-    def deserialize(self, ignore_drm=False):
+    def deserialize(self):
         self.doc_symbols = None
         self.format_capabilities = None
         self.container_info = None

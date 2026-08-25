@@ -10,7 +10,7 @@ from .utilities import (root_filename, urlrelpath)
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 USE_HIGHEST_RESOLUTION_IMAGE_VARIANT = True
@@ -61,7 +61,7 @@ class KFX_EPUB_Resources(object):
             tiles_raw_media = []
             for row in yj_tiles:
                 for tile_location in row:
-                    tiles_raw_media.append(self.locate_raw_media(tile_location))
+                    tiles_raw_media.append(self.locate_raw_media(tile_location, resource_format))
 
             raw_media, resource_format = combine_image_tiles(
                 resource_name, resource_height, resource_width, resource_format, tile_height, tile_width, tile_padding,
@@ -72,7 +72,7 @@ class KFX_EPUB_Resources(object):
             if search_path != location:
                 log.error("Image resource %s has location %s != search_path %s" % (resource_name, location, search_path))
 
-            raw_media = self.locate_raw_media(location)
+            raw_media = self.locate_raw_media(location, resource_format)
 
         if ignore_variants and raw_media is None:
             return None
@@ -147,7 +147,7 @@ class KFX_EPUB_Resources(object):
             if FIX_PDF:
                 try:
                     img_data, img_fmt = convert_pdf_page_to_image(
-                        location, raw_media, page_num, reported_errors=self.reported_pdf_errors)
+                        location, raw_media, page_num, reported_errors=self.reported_pdf_errors, pdf_cache=self.book.pdf_cache)
                 except Exception as e:
                     log.error("Exception during conversion of PDF \"%s\" page %d to image: %s" % (location_fn, page_num, repr(e)))
                 else:
@@ -232,13 +232,15 @@ class KFX_EPUB_Resources(object):
 
         return resource_obj
 
-    def locate_raw_media(self, location, report_missing=True):
+    def locate_raw_media(self, location, format):
         try:
             raw_media = self.book_data["$417"][location]
             self.used_raw_media.add(location)
         except Exception:
-            if report_missing:
-                log.error("Missing bcRawMedia %s" % location)
+            if self.book.is_dictionary and format == "$285":
+                log.warning("Missing %s bcRawMedia %s" % (format, location))
+            else:
+                log.error("Missing %s bcRawMedia %s" % (format, location))
 
             raw_media = None
 

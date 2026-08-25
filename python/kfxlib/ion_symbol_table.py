@@ -7,7 +7,7 @@ from .yj_symbol_catalog import (IonSharedSymbolTable, SYSTEM_SYMBOL_TABLE, YJ_SY
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 DEBUG = False
 REPORT_ALL_USED_SYMBOLS = False

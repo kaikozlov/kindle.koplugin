@@ -1,8 +1,9 @@
 """Helpers for working with PDF types."""
 
 from abc import abstractmethod
+from collections.abc import Sequence
 from pathlib import Path
-from typing import IO, Any, Dict, List, Optional, Protocol, Tuple, Union
+from typing import IO, Any, Optional, Protocol, Union
 
 from ._utils import StrByteType, StreamType
 
@@ -14,7 +15,7 @@ class PdfObjectProtocol(Protocol):
         self,
         pdf_dest: Any,
         force_duplicate: bool = False,
-        ignore_fields: Union[Tuple[str, ...], List[str], None] = (),
+        ignore_fields: Union[tuple[str, ...], list[str], None] = (),
     ) -> Any:
         ...  # pragma: no cover
 
@@ -28,7 +29,7 @@ class PdfObjectProtocol(Protocol):
         ...  # pragma: no cover
 
     def write_to_stream(
-        self, stream: StreamType, encryption_key: Union[None, str, bytes] = None
+        self, stream: StreamType, encryption_key: Union[str, bytes, None] = None
     ) -> None:
         ...  # pragma: no cover
 
@@ -43,7 +44,7 @@ class PdfCommonDocProtocol(Protocol):
         ...  # pragma: no cover
 
     @property
-    def pages(self) -> List[Any]:
+    def pages(self) -> Sequence[Any]:
         ...  # pragma: no cover
 
     @property
@@ -61,24 +62,25 @@ class PdfCommonDocProtocol(Protocol):
 class PdfReaderProtocol(PdfCommonDocProtocol, Protocol):
     @property
     @abstractmethod
-    def xref(self) -> Dict[int, Dict[int, Any]]:
+    def xref(self) -> dict[int, dict[int, Any]]:
         ...  # pragma: no cover
 
     @property
     @abstractmethod
-    def trailer(self) -> Dict[str, Any]:
+    def trailer(self) -> dict[str, Any]:
         ...  # pragma: no cover
 
 
 class PdfWriterProtocol(PdfCommonDocProtocol, Protocol):
-    _objects: List[Any]
-    _id_translated: Dict[int, Dict[int, int]]
+    _objects: list[Any]
+    _id_translated: dict[int, dict[int, int]]
 
     incremental: bool
-    _reader: Any  # PdfReader
+    # Only populated in incremental mode, None otherwise.
+    _reader: Optional[Any]  # PdfReader
 
     @abstractmethod
-    def write(self, stream: Union[Path, StrByteType]) -> Tuple[bool, IO[Any]]:
+    def write(self, stream: Union[Path, StrByteType]) -> tuple[bool, IO[Any]]:
         ...  # pragma: no cover
 
     @abstractmethod

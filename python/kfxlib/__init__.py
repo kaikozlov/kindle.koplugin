@@ -5,7 +5,7 @@ from . import yj_metadata
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 set_logger = message_logging.set_logger
@@ -21,6 +21,7 @@ file_write_binary = utilities.file_write_binary
 file_read_utf8 = utilities.file_read_utf8
 file_write_utf8 = utilities.file_write_utf8
 json_deserialize = utilities.json_deserialize
+json_deserialize_file = utilities.json_deserialize_file
 json_serialize = utilities.json_serialize
 unicode_argv = utilities.unicode_argv
 windows_long_path_fix = utilities.windows_long_path_fix

@@ -9,7 +9,7 @@ from .utilities import (sha1, type_name)
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 LARGE_DATA_SIZE = 256

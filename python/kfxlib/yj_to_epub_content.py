@@ -14,7 +14,7 @@ from .yj_to_epub_properties import (REVERSE_HERITABLE_PROPERTIES)
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 FIX_WIDE_UNICODE_OFFSETS = False
 CONSOLIDATE_HTML = True
@@ -101,6 +101,7 @@ class KFX_EPUB_Content(object):
         self.missing_kfx_styles = set()
         self.reported_characters = set()
         self.text_combine_in_use = False
+        self.used_dictionary_rules = set()
 
     def process_reading_order(self):
         used_sections = set()
@@ -537,6 +538,54 @@ class KFX_EPUB_Content(object):
                 final_content = content_list[-1]
                 if "$176" in final_content:
                     final_content.pop("$176")
+
+            if "yj.dictionary.term" in content or "yj.dictionary.unnormalized_term" in content or "yj.dictionary.rules" in content:
+
+                content_elem.tag = IDX_ENTRY
+                content_elem.set("scriptable", "yes")
+
+                dictionary_terms = content.pop("yj.dictionary.term", [])
+                if ion_type(dictionary_terms) is IonString:
+                    dictionary_terms = [dictionary_terms]
+
+                dictionary_unnormalized_terms = content.pop("yj.dictionary.unnormalized_term", [])
+                if ion_type(dictionary_unnormalized_terms) is IonString:
+                    dictionary_unnormalized_terms = [dictionary_unnormalized_terms]
+
+                if dictionary_unnormalized_terms and len(dictionary_unnormalized_terms) != len(dictionary_terms):
+                    log.warning("%d dictionary_terms, %d dictionary_unnormalized_terms" % (
+                                len(dictionary_terms), len(dictionary_unnormalized_terms)))
+
+                dictionary_word_rules = []
+                dictionary_rules = content.pop("yj.dictionary.rules", [])
+                if dictionary_rules and ion_type(dictionary_rules[0]) is IonStruct:
+                    orthography = dictionary_terms[0]
+                    inflections = dictionary_terms[1:]
+                    for dictionary_rule in dictionary_rules:
+                        dictionary_word = dictionary_rule.pop("yj.dictionary.word")
+                        dictionary_word_rules.append((dictionary_word, dictionary_rule.pop("yj.dictionary.rules")))
+                        self.check_empty(dictionary_rule, "yj.dictionary.rules for %s" % dictionary_word)
+                else:
+                    orthography = dictionary_terms[-1]
+                    inflections = dictionary_terms[:-1]
+                    dictionary_word_rules.append((orthography, dictionary_rules))
+
+                for dictionary_word, dictionary_rules in dictionary_word_rules:
+                    for rule_id in dictionary_rules:
+                        self.used_dictionary_rules.add(rule_id)
+                        if rule_id in self.dictionary_rules:
+                            inflection = self.unapply_dictionary_rule(dictionary_word, self.dictionary_rules[rule_id])
+                            inflections.append(inflection)
+
+                idx_orth = etree.SubElement(content_elem, IDX_ORTH)
+                idx_orth.set("value", orthography)
+
+                idx_orth.text = ""
+
+                for inflection in inflections:
+                    idx_infl = etree.SubElement(idx_orth, IDX_INFL)
+                    idx_iform = etree.SubElement(idx_infl, IDX_IFORM)
+                    idx_iform.set("value", inflection)
 
             is_scale_fit_layout = layout == "$326"
 

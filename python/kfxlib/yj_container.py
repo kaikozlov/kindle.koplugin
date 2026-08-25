@@ -6,7 +6,7 @@ from .utilities import (list_symbols, type_name)
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 DRMION_SIGNATURE = b"\xeaDRMION\xee"
@@ -159,6 +159,9 @@ class YJContainer(object):
 
     def get_fragments(self):
         return self.fragments
+
+    def is_drm_free_dictionary(self):
+        return False
 
 
 @functools.total_ordering

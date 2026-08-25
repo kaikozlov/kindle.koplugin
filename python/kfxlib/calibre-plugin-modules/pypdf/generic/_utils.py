@@ -1,5 +1,5 @@
 import codecs
-from typing import Dict, List, Tuple, Union
+from typing import Union
 
 from .._codecs import _pdfdoc_encoding
 from .._utils import StreamType, logger_warning, read_non_whitespace
@@ -7,13 +7,13 @@ from ..errors import STREAM_TRUNCATED_PREMATURELY, PdfStreamError
 from ._base import ByteStringObject, TextStringObject
 
 
-def hex_to_rgb(value: str) -> Tuple[float, float, float]:
-    return tuple(int(value.lstrip("#")[i : i + 2], 16) / 255.0 for i in (0, 2, 4))  # type: ignore
+def hex_to_rgb(value: str) -> tuple[float, float, float]:
+    return tuple(int(value.lstrip("#")[i : i + 2], 16) / 255.0 for i in (0, 2, 4))  # type: ignore[return-value]
 
 
 def read_hex_string_from_stream(
     stream: StreamType,
-    forced_encoding: Union[None, str, List[str], Dict[int, str]] = None,
+    forced_encoding: Union[str, list[str], dict[int, str], None] = None,
 ) -> Union["TextStringObject", "ByteStringObject"]:
     stream.read(1)
     arr = []
@@ -24,6 +24,10 @@ def read_hex_string_from_stream(
             raise PdfStreamError(STREAM_TRUNCATED_PREMATURELY)
         if tok == b">":
             break
+        if tok not in b"0123456789abcdefABCDEF":
+            raise PdfStreamError(
+                f"Invalid hexadecimal character {tok!r} in hex string"
+            )
         x += tok
         if len(x) == 2:
             arr.append(int(x, base=16))
@@ -61,7 +65,7 @@ __BACKSLASH_CODE__ = 92
 
 def read_string_from_stream(
     stream: StreamType,
-    forced_encoding: Union[None, str, List[str], Dict[int, str]] = None,
+    forced_encoding: Union[str, list[str], dict[int, str], None] = None,
 ) -> Union["TextStringObject", "ByteStringObject"]:
     tok = stream.read(1)
     parens = 1
@@ -113,8 +117,11 @@ def read_string_from_stream(
                     # Then don't add anything to the actual string, since this
                     # line break was escaped:
                     continue
-                msg = f"Unexpected escaped string: {tok.decode('utf-8', 'ignore')}"
-                logger_warning(msg, __name__)
+                logger_warning(
+                    "Unexpected escaped string: %(token)s",
+                    source=__name__,
+                    token=tok.decode("utf-8", "ignore"),
+                )
                 txt.append(__BACKSLASH_CODE__)
         txt.append(ord(tok))
     return create_string_object(bytes(txt), forced_encoding)
@@ -122,7 +129,7 @@ def read_string_from_stream(
 
 def create_string_object(
     string: Union[str, bytes],
-    forced_encoding: Union[None, str, List[str], Dict[int, str]] = None,
+    forced_encoding: Union[str, list[str], dict[int, str], None] = None,
 ) -> Union[TextStringObject, ByteStringObject]:
     """
     Create a ByteStringObject or a TextStringObject from a string to represent the string.

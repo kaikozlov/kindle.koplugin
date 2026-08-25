@@ -1,5 +1,5 @@
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 class IonSharedSymbolTable(object):
@@ -873,5 +873,12 @@ YJ_SYMBOLS = IonSharedSymbolTable(
         "$850?",
         "$851",
         "$852?",
+        "$853?",
+        "$854?",
+        "$855?",
+        "$856?",
+        "$857?",
+        "$858?",
+        "$859",
     ],
     )

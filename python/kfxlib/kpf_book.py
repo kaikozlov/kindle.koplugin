@@ -11,10 +11,11 @@ from .resources import (convert_pdf_page_to_image, font_file_ext, FORMAT_SYMBOLS
 from .yj_container import (YJFragment, YJFragmentKey)
 from .yj_structure import (EID_REFERENCES, KFX_COVER_RESOURCE, MAX_CONTENT_FRAGMENT_SIZE)
 from .yj_versions import (GENERIC_CREATOR_VERSIONS, is_known_aux_metadata)
+from .yj_structure import DICTIONARY_RULES_SYMBOL
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 FIX_BOOK = True
@@ -39,6 +40,17 @@ class KpfBook(object):
 
         if self.is_scribe_notebook or not (fix_book and FIX_BOOK):
             return
+
+        if self.is_dictionary and self.fragments.get(ftype="$597", fid=DICTIONARY_RULES_SYMBOL) is not None:
+            document_data = self.fragments.get("$538", default=YJFragment(ftype="$538", value={})).value
+            if "$597" not in document_data:
+                document_data[IS("$597")] = IonStruct()
+            elif ion_type(document_data["$597"]) != IonStruct:
+                conversion_aux_data = document_data["$597"]
+                document_data[IS("$597")] = IonStruct()
+                document_data[IS("$597")][IS("$614")] = conversion_aux_data
+
+            document_data[IS("$597")][IS("$697")] = IS(DICTIONARY_RULES_SYMBOL)
 
         for fragment in self.fragments.get_all("$417"):
             orig_fid = fragment.fid

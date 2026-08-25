@@ -11,7 +11,7 @@ from .utilities import (get_url_filename, list_symbols, natural_sort_key, remove
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 STYLE_TEST = False

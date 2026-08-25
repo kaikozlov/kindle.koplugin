@@ -9,7 +9,7 @@ from .yj_structure import APPROXIMATE_PAGE_LIST
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 KEEP_APPROX_PG_NUMS = False

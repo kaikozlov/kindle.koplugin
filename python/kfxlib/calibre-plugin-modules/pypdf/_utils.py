@@ -38,16 +38,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import DEFAULT_BUFFER_SIZE
 from os import SEEK_CUR
+from re import Pattern
 from typing import (
     IO,
     Any,
-    Dict,
-    List,
+    NoReturn,
     Optional,
-    Pattern,
-    Tuple,
     Union,
-    overload,
 )
 
 if sys.version_info[:2] >= (3, 10):
@@ -64,23 +61,25 @@ else:
 from .errors import (
     STREAM_TRUNCATED_PREMATURELY,
     DeprecationError,
+    LimitReachedError,
     PdfStreamError,
 )
 
-TransformationMatrixType: TypeAlias = Tuple[
-    Tuple[float, float, float], Tuple[float, float, float], Tuple[float, float, float]
+TransformationMatrixType: TypeAlias = tuple[
+    tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]
 ]
-CompressedTransformationMatrix: TypeAlias = Tuple[
+CompressedTransformationMatrix: TypeAlias = tuple[
     float, float, float, float, float, float
 ]
 
 StreamType = IO[Any]
+BinaryStreamType = IO[bytes]
 StrByteType = Union[str, StreamType]
 
 
 def parse_iso8824_date(text: Optional[str]) -> Optional[datetime]:
     orgtext = text
-    if text is None:
+    if not text:
         return None
     if text[0].isdigit():
         text = "D:" + text
@@ -159,32 +158,32 @@ WHITESPACES_AS_BYTES = b"".join(WHITESPACES)
 WHITESPACES_AS_REGEXP = b"[" + WHITESPACES_AS_BYTES + b"]"
 
 
-def read_until_whitespace(stream: StreamType, maxchars: Optional[int] = None) -> bytes:
+def read_until_whitespace(stream: StreamType, max_bytes: Optional[int] = None) -> bytes:
     """
     Read non-whitespace characters and return them.
 
-    Stops upon encountering whitespace or when maxchars is reached.
+    Stops upon encountering whitespace or when max_bytes is reached.
 
     Args:
         stream: The data stream from which was read.
-        maxchars: The maximum number of bytes returned; by default unlimited.
+        max_bytes: The maximum number of bytes returned; by default unlimited.
 
     Returns:
         The data which was read.
 
     """
-    txt = b""
+    txt = bytearray()
     while True:
         tok = stream.read(1)
         if tok.isspace() or not tok:
             break
         txt += tok
-        if len(txt) == maxchars:
+        if len(txt) == max_bytes:
             break
-    return txt
+    return bytes(txt)
 
 
-def read_non_whitespace(stream: StreamType) -> bytes:
+def read_non_whitespace(stream: BinaryStreamType) -> bytes:
     """
     Find and read the next non-whitespace character (ignores whitespace).
 
@@ -235,6 +234,37 @@ def check_if_whitespace_only(value: bytes) -> bool:
     return all(b in WHITESPACES_AS_BYTES for b in value)
 
 
+NEUTRAL_CHARACTER_RANGES = (
+    ("\x00", "\x2F"),      # ASCII control codes, space, and early punctuation (!"#$%)
+    ("\x3A", "\x40"),      # ASCII operators and punctuation between digits & A (:;<=>?@)
+    ("\u2000", "\u206F"),  # General punctuation
+    ("\u20A0", "\u21FF"),  # Currency symbols, diacritical marks, letter-like symbols, number forms, arrows
+)
+
+
+def is_char_neutral(char: str, custom_special_characters: str = "") -> bool:
+    """Check if a character is part of neutral character ranges"""
+    if any(start <= char <= end for start, end in NEUTRAL_CHARACTER_RANGES):
+        return True
+
+    return bool(custom_special_characters and char in custom_special_characters)
+
+
+RTL_CHARACTER_RANGES = (
+    ("\u0590", "\u08FF"),  # Hebrew, Arabic, Syriac, Thaana, N'Ko, etc.
+    ("\uFB1D", "\uFDFF"),  # Hebrew & Arabic Presentation Forms-A
+    ("\uFE70", "\uFEFF"),  # Arabic Presentation Forms-B
+)
+
+
+def is_char_rtl(char: str, custom_rtl_min: str = "", custom_rtl_max: str = "") -> bool:
+    """Check if a character is part of RTL character ranges"""
+    if any(start <= char <= end for start, end in RTL_CHARACTER_RANGES):
+        return True
+
+    return bool(custom_rtl_min and custom_rtl_max and (custom_rtl_min <= char <= custom_rtl_max))
+
+
 def skip_over_comment(stream: StreamType) -> None:
     tok = stream.read(1)
     stream.seek(-1, 1)
@@ -245,33 +275,54 @@ def skip_over_comment(stream: StreamType) -> None:
                 raise PdfStreamError("File ended unexpectedly.")
 
 
-def read_until_regex(stream: StreamType, regex: Pattern[bytes]) -> bytes:
+def read_until_regex(*, stream: StreamType, regex: Pattern[bytes], length: int = sys.maxsize) -> bytes:
     """
     Read until the regular expression pattern matched (ignore the match).
     Treats EOF on the underlying stream as the end of the token to be matched.
 
     Args:
-        regex: re.Pattern
+        stream: The stream to read from.
+        regex: The pattern to search for.
+        length: The (approximated) maximum number of bytes to read before raising an exception.
 
     Returns:
         The read bytes.
 
     """
-    name = b""
+    parts: list[bytes] = []
+    total_length = 0
+    tail = b""
+    chunk_size = 16
     while True:
-        tok = stream.read(16)
-        if not tok:
-            return name
-        m = regex.search(name + tok)
-        if m is not None:
-            stream.seek(m.start() - (len(name) + len(tok)), 1)
-            name = (name + tok)[: m.start()]
-            break
-        name += tok
-    return name
+        token = stream.read(chunk_size)
+        if not token:
+            return b"".join(parts)
+        token_length = len(token)
+        if (current_length := total_length + token_length) >= length:
+            raise LimitReachedError(
+                f"Read stream length of {current_length} exceeds maximum allowed length of {length}."
+            )
+
+        # Search overlap of previous tail + new chunk to catch
+        # multi-byte regex matches spanning chunk boundaries.
+        current_buffer = tail + token
+        search_match = regex.search(current_buffer)
+        parts.append(token)
+        if search_match is not None:
+            overlap = len(tail)
+            actual_start = total_length - overlap + search_match.start()
+            stream.seek(actual_start - total_length - token_length, 1)
+            return b"".join(parts)[:actual_start]
+        total_length += token_length
+
+        # Fixed overlap: 16 bytes is sufficient for the short
+        # delimiter patterns used in PDF parsing.
+        tail = token[-16:]
+        if chunk_size < 8192:
+            chunk_size <<= 1
 
 
-def read_block_backwards(stream: StreamType, to_read: int) -> bytes:
+def read_block_backwards(stream: BinaryStreamType, to_read: int) -> bytes:
     """
     Given a stream at position X, read a block of size to_read ending at position X.
 
@@ -375,32 +426,11 @@ def mark_location(stream: StreamType) -> None:
     stream.seek(-radius, 1)
 
 
-@overload
-def ord_(b: str) -> int:
-    ...
-
-
-@overload
-def ord_(b: bytes) -> bytes:
-    ...
-
-
-@overload
-def ord_(b: int) -> int:
-    ...
-
-
-def ord_(b: Union[int, str, bytes]) -> Union[int, bytes]:
-    if isinstance(b, str):
-        return ord(b)
-    return b
-
-
 def deprecate(msg: str, stacklevel: int = 3) -> None:
     warnings.warn(msg, DeprecationWarning, stacklevel=stacklevel)
 
 
-def deprecation(msg: str) -> None:
+def deprecation(msg: str) -> NoReturn:
     raise DeprecationError(msg)
 
 
@@ -412,7 +442,7 @@ def deprecate_with_replacement(old_name: str, new_name: str, removed_in: str) ->
     )
 
 
-def deprecation_with_replacement(old_name: str, new_name: str, removed_in: str) -> None:
+def deprecation_with_replacement(old_name: str, new_name: str, removed_in: str) -> NoReturn:
     """Raise an exception that a feature was already removed, but has a replacement."""
     deprecation(
         f"{old_name} is deprecated and was removed in pypdf {removed_in}. Use {new_name} instead."
@@ -424,12 +454,12 @@ def deprecate_no_replacement(name: str, removed_in: str) -> None:
     deprecate(f"{name} is deprecated and will be removed in pypdf {removed_in}.", 4)
 
 
-def deprecation_no_replacement(name: str, removed_in: str) -> None:
+def deprecation_no_replacement(name: str, removed_in: str) -> NoReturn:
     """Raise an exception that a feature was already removed without replacement."""
     deprecation(f"{name} is deprecated and was removed in pypdf {removed_in}.")
 
 
-def logger_error(msg: str, src: str) -> None:
+def logger_error(message: str, *, source: str, **values: Any) -> None:
     """
     Use this instead of logger.error directly.
 
@@ -438,10 +468,13 @@ def logger_error(msg: str, src: str) -> None:
     See the docs on when to use which:
     https://pypdf.readthedocs.io/en/latest/user/suppress-warnings.html
     """
-    logging.getLogger(src).error(msg)
+    if values:
+        logging.getLogger(source).error(message, values)
+    else:
+        logging.getLogger(source).error(message)
 
 
-def logger_warning(msg: str, src: str) -> None:
+def logger_warning(message: str, *, source: str, **values: Any) -> None:
     """
     Use this instead of logger.warning directly.
 
@@ -457,11 +490,17 @@ def logger_warning(msg: str, src: str) -> None:
       pypdf could apply a robustness fix to still read it. This applies mainly
       to strict=False mode.
     """
-    logging.getLogger(src).warning(msg)
+    if values:
+        logging.getLogger(source).warning(message, values)
+    else:
+        # Keep parity with logger_error and support plain warning messages.
+        # Passing an empty dict to logging is not equivalent to passing no args:
+        # plain messages would fail while being formatted.
+        logging.getLogger(source).warning(message)
 
 
 def rename_kwargs(
-    func_name: str, kwargs: Dict[str, Any], aliases: Dict[str, str], fail: bool = False
+    func_name: str, kwargs: dict[str, Any], aliases: dict[str, str], fail: bool = False
 ) -> None:
     """
     Helper function to deprecate arguments.
@@ -589,7 +628,7 @@ class Version:
         self.version_str = version_str
         self.components = self._parse_version(version_str)
 
-    def _parse_version(self, version_str: str) -> List[Tuple[int, str]]:
+    def _parse_version(self, version_str: str) -> list[tuple[int, str]]:
         components = version_str.split(".")
         parsed_components = []
         for component in components:
@@ -632,3 +671,10 @@ class Version:
                 return False
 
         return len(self.components) < len(other.components)
+
+
+@dataclass
+class _TraversalState:
+    """Sometimes we need mutable objects which just count something."""
+    entry_count: int = 0
+    has_logged: bool = False

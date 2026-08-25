@@ -32,7 +32,7 @@ except ImportError:
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 MAX_TEMPDIR_REMOVAL_TRIES = 60
@@ -199,6 +199,10 @@ def json_deserialize(data, ordered=True):
         return json.loads(data, object_pairs_hook=collections.OrderedDict)
 
     return json.loads(data)
+
+
+def json_deserialize_file(filename, ordered=True):
+    return json_deserialize(file_read_utf8(filename), ordered)
 
 
 def gzipit(data):

@@ -5,14 +5,18 @@ Some parts are still in _page.py. In doubt, they will stay there.
 """
 
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 
+from .._font import Font
+from .._utils import is_char_neutral, is_char_rtl
 from ..generic import DictionaryObject, TextStringObject, encode_pdfdocencoding
 
-CUSTOM_RTL_MIN: int = -1
-CUSTOM_RTL_MAX: int = -1
-CUSTOM_RTL_SPECIAL_CHARS: List[int] = []
+CUSTOM_RTL_MIN: str = ""
+CUSTOM_RTL_MAX: str = ""
+CUSTOM_RTL_SPECIAL_CHARS: str = ""
 LAYOUT_NEW_BT_GROUP_SPACE_WIDTHS: int = 5
+UNICODE_LOWER_LIMIT = 0
+UNICODE_UPPER_LIMIT = 0x10FFFF
 
 
 class OrientationNotFoundError(Exception):
@@ -20,10 +24,10 @@ class OrientationNotFoundError(Exception):
 
 
 def set_custom_rtl(
-    _min: Union[str, int, None] = None,
-    _max: Union[str, int, None] = None,
-    specials: Union[str, List[int], None] = None,
-) -> Tuple[int, int, List[int]]:
+    _min: Union[str, int, None] = "",
+    _max: Union[str, int, None] = "",
+    specials: Union[str, list[int], None] = None,
+) -> tuple[str, str, str]:
     """
     Change the Right-To-Left and special characters custom parameters.
 
@@ -31,13 +35,13 @@ def set_custom_rtl(
         _min: The new minimum value for the range of custom characters that
             will be written right to left.
             If set to ``None``, the value will not be changed.
-            If set to an integer or string, it will be converted to its ASCII code.
-            The default value is -1, which sets no additional range to be converted.
+            If set to a valid integer, it will be converted to its corresponding character.
+            The default value is "", which sets no additional range to be converted.
         _max: The new maximum value for the range of custom characters that will
             be written right to left.
             If set to ``None``, the value will not be changed.
-            If set to an integer or string, it will be converted to its ASCII code.
-            The default value is -1, which sets no additional range to be converted.
+            If set to a valid integer, it will be converted to its corresponding character.
+            The default value is "", which sets no additional range to be converted.
         specials: The new list of special characters to be inserted in the
             current insertion order.
             If set to ``None``, the current value will not be changed.
@@ -51,21 +55,23 @@ def set_custom_rtl(
     """
     global CUSTOM_RTL_MIN, CUSTOM_RTL_MAX, CUSTOM_RTL_SPECIAL_CHARS
     if isinstance(_min, int):
-        CUSTOM_RTL_MIN = _min
+        CUSTOM_RTL_MIN = chr(_min) if UNICODE_LOWER_LIMIT <= _min <= UNICODE_UPPER_LIMIT else ""
     elif isinstance(_min, str):
-        CUSTOM_RTL_MIN = ord(_min)
+        CUSTOM_RTL_MIN = _min
     if isinstance(_max, int):
-        CUSTOM_RTL_MAX = _max
+        CUSTOM_RTL_MAX = chr(_max) if UNICODE_LOWER_LIMIT <= _max <= UNICODE_UPPER_LIMIT else ""
     elif isinstance(_max, str):
-        CUSTOM_RTL_MAX = ord(_max)
+        CUSTOM_RTL_MAX = _max
     if isinstance(specials, str):
-        CUSTOM_RTL_SPECIAL_CHARS = [ord(x) for x in specials]
-    elif isinstance(specials, list):
         CUSTOM_RTL_SPECIAL_CHARS = specials
+    elif isinstance(specials, list):
+        CUSTOM_RTL_SPECIAL_CHARS = "".join(
+            chr(char) for char in specials if UNICODE_LOWER_LIMIT <= char <= UNICODE_UPPER_LIMIT
+        )
     return CUSTOM_RTL_MIN, CUSTOM_RTL_MAX, CUSTOM_RTL_SPECIAL_CHARS
 
 
-def mult(m: List[float], n: List[float]) -> List[float]:
+def mult(m: list[float], n: list[float]) -> list[float]:
     return [
         m[0] * n[0] + m[1] * n[2],
         m[0] * n[1] + m[1] * n[3],
@@ -76,7 +82,7 @@ def mult(m: List[float], n: List[float]) -> List[float]:
     ]
 
 
-def orient(m: List[float]) -> int:
+def orient(m: list[float]) -> int:
     if m[3] > 1e-6:
         return 0
     if m[3] < -1e-6:
@@ -88,20 +94,18 @@ def orient(m: List[float]) -> int:
 
 def crlf_space_check(
     text: str,
-    cmtm_prev: Tuple[List[float], List[float]],
-    cmtm_matrix: Tuple[List[float], List[float]],
-    memo_cmtm: Tuple[List[float], List[float]],
-    cmap: Tuple[
-        Union[str, Dict[int, str]], Dict[str, str], str, Optional[DictionaryObject]
-    ],
-    orientations: Tuple[int, ...],
+    cmtm_prev: tuple[list[float], list[float]],
+    cmtm_matrix: tuple[list[float], list[float]],
+    memo_cmtm: tuple[list[float], list[float]],
+    font_resource: Optional[DictionaryObject],
+    orientations: tuple[int, ...],
     output: str,
     font_size: float,
     visitor_text: Optional[Callable[[Any, Any, Any, Any, Any], None]],
     str_widths: float,
     spacewidth: float,
     str_height: float,
-) -> Tuple[str, str, List[float], List[float]]:
+) -> tuple[str, str, list[float], list[float]]:
     cm_prev = cmtm_prev[0]
     tm_prev = cmtm_prev[1]
     cm_matrix = cmtm_matrix[0]
@@ -137,7 +141,7 @@ def crlf_space_check(
                         text + "\n",
                         memo_cm,
                         memo_tm,
-                        cmap[3],
+                        font_resource,
                         font_size,
                     )
                 text = ""
@@ -154,14 +158,12 @@ def crlf_space_check(
 
 
 def get_text_operands(
-    operands: List[Union[str, TextStringObject]],
-    cm_matrix: List[float],
-    tm_matrix: List[float],
-    cmap: Tuple[
-        Union[str, Dict[int, str]], Dict[str, str], str, Optional[DictionaryObject]
-    ],
-    orientations: Tuple[int, ...]
-) -> Tuple[str, bool]:
+    operands: list[Union[str, TextStringObject]],
+    cm_matrix: list[float],
+    tm_matrix: list[float],
+    font: Font,
+    orientations: tuple[int, ...]
+) -> tuple[str, bool]:
     t: str = ""
     is_str_operands = False
     m = mult(tm_matrix, cm_matrix)
@@ -177,71 +179,63 @@ def get_text_operands(
                 if isinstance(operands[0], str)
                 else operands[0]
             )
-            if isinstance(cmap[0], str):
+            if isinstance(font.encoding, str):  # Apply named encoding
                 try:
-                    t = tt.decode(cmap[0], "surrogatepass")  # apply str encoding
+                    t = tt.decode(font.encoding, "surrogatepass")
                 except Exception:
-                    # the data does not match the expectation,
-                    # we use the alternative ;
-                    # text extraction may not be good
-                    t = tt.decode(
-                        "utf-16-be" if cmap[0] == "charmap" else "charmap",
-                        "surrogatepass",
-                    )  # apply str encoding
-            else:  # apply dict encoding
+                    # The data does not match the expectation,
+                    # we use "charmap" encoding as an alternative;
+                    # text extraction may not be good.
+                    t = tt.decode("charmap", "surrogatepass")
+            else:  # Apply dict encoding
                 t = "".join(
-                    [cmap[0][x] if x in cmap[0] else bytes((x,)).decode() for x in tt]
+                    [font.encoding[x] if x in font.encoding else bytes((x,)).decode() for x in tt]
                 )
     return (t, is_str_operands)
 
 
 def get_display_str(
     text: str,
-    cm_matrix: List[float],
-    tm_matrix: List[float],
-    cmap: Tuple[
-        Union[str, Dict[int, str]], Dict[str, str], str, Optional[DictionaryObject]
-    ],
+    cm_matrix: list[float],
+    tm_matrix: list[float],
+    font_resource: Optional[DictionaryObject],
+    font: Font,
     text_operands: str,
     font_size: float,
     rtl_dir: bool,
     visitor_text: Optional[Callable[[Any, Any, Any, Any, Any], None]]
-) -> Tuple[str, bool]:
+) -> tuple[str, bool, float]:
     # "\u0590 - \u08FF \uFB50 - \uFDFF"
-    for x in [cmap[1].get(x, x) for x in text_operands]:
-        # x can be a sequence of bytes ; ex: habibi.pdf
+    widths: float = 0.0
+    for raw_character in text_operands:
+        widths += font.space_width if raw_character == font.space_char else font.get_text_width(raw_character)
+        x = font.character_map.get(raw_character, raw_character)
+        # Test whether x is a sequence of bytes; ex: habibi.pdf
         if len(x) == 1:
-            xx = ord(x)
+            if (
+                # Cases where the current inserting order is kept
+                is_char_neutral(x, CUSTOM_RTL_SPECIAL_CHARS)
+            ):
+                text = x + text if rtl_dir else text + x
+            elif (
+                # Right-to-left characters
+                is_char_rtl(x, CUSTOM_RTL_MIN, CUSTOM_RTL_MAX)
+            ):
+                if not rtl_dir:
+                    rtl_dir = True
+                    if visitor_text is not None:
+                        visitor_text(text, cm_matrix, tm_matrix, font_resource, font_size)
+                    text = ""
+                text = x + text
+            else:
+                # Left-to-right characters
+                if rtl_dir:
+                    rtl_dir = False
+                    if visitor_text is not None:
+                        visitor_text(text, cm_matrix, tm_matrix, font_resource, font_size)
+                    text = ""
+                text = text + x
         else:
-            xx = 1
-        # fmt: off
-        if (
-            # cases where the current inserting order is kept
-            (xx <= 0x2F)                        # punctuations but...
-            or 0x3A <= xx <= 0x40               # numbers (x30-39)
-            or 0x2000 <= xx <= 0x206F           # upper punctuations..
-            or 0x20A0 <= xx <= 0x21FF           # but (numbers) indices/exponents
-            or xx in CUSTOM_RTL_SPECIAL_CHARS   # customized....
-        ):
+            # Treat a sequence of bytes as a neutral character.
             text = x + text if rtl_dir else text + x
-        elif (  # right-to-left characters set
-            0x0590 <= xx <= 0x08FF
-            or 0xFB1D <= xx <= 0xFDFF
-            or 0xFE70 <= xx <= 0xFEFF
-            or CUSTOM_RTL_MIN <= xx <= CUSTOM_RTL_MAX
-        ):
-            if not rtl_dir:
-                rtl_dir = True
-                if visitor_text is not None:
-                    visitor_text(text, cm_matrix, tm_matrix, cmap[3], font_size)
-                text = ""
-            text = x + text
-        else:  # left-to-right
-            if rtl_dir:
-                rtl_dir = False
-                if visitor_text is not None:
-                    visitor_text(text, cm_matrix, tm_matrix, cmap[3], font_size)
-                text = ""
-            text = text + x
-        # fmt: on
-    return text, rtl_dir
+    return text, rtl_dir, widths

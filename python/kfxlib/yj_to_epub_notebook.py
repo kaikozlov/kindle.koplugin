@@ -12,7 +12,7 @@ from .utilities import (Deserializer, disable_debug_log, type_name, urlrelpath)
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 CREATE_SVG_FILES_IN_EPUB = True
@@ -88,7 +88,7 @@ class KFX_EPUB_Notebook(object):
                 nmdl_canvas_height > 15000):
             pass
         else:
-            log.warning("Unexpected nmdl.canvas width=%d height=%d" % (nmdl_canvas_width, nmdl_canvas_height))
+            log.info("nmdl.canvas width=%d height=%d" % (nmdl_canvas_width, nmdl_canvas_height))
 
         nmdl_normalized_ppi = section.pop("nmdl.normalized_ppi")
         if nmdl_normalized_ppi != 2520:

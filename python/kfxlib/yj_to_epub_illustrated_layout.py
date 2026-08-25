@@ -7,7 +7,7 @@ from .yj_to_epub_navigation import visible_elements_before
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 ADD_FINAL_CONTENT = True

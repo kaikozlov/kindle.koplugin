@@ -7,12 +7,12 @@ import zipfile
 from .message_logging import log
 from .resources import (
     combine_image_tiles, convert_image_to_pdf, convert_jxr_to_jpeg_or_png, convert_pdf_page_to_image,
-    crop_image, ImageResource, PdfImageResource, pypdf, SYMBOL_FORMATS)
+    crop_image, get_pdf_reader, ImageResource, PdfImageResource, pypdf, SYMBOL_FORMATS)
 from .utilities import (json_serialize_compact, list_counts)
 from .yj_to_epub import KFX_EPUB
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 USE_HIGHEST_RESOLUTION_IMAGE_VARIANT = True
 DEBUG_VARIANTS = False
@@ -52,7 +52,7 @@ class KFX_IMAGE_BOOK(object):
                 comic_book_info["publicationYear"] = pubdate.year
 
         cbz_metadata = {"ComicBookInfo/1.0": comic_book_info} if comic_book_info else None
-        return combine_images_into_cbz(ordered_images, cbz_metadata)
+        return combine_images_into_cbz(ordered_images, cbz_metadata, pdf_cache=self.book.pdf_cache)
 
     def convert_book_to_pdf(self, split_landscape_comic_images, progress):
         kfx_epub = KFX_EPUB(self.book, metadata_only=True)
@@ -96,7 +96,7 @@ class KFX_IMAGE_BOOK(object):
                 add_pages_nums_to_toc(toc_entry.children)
 
         add_pages_nums_to_toc(kfx_epub.ncx_toc)
-        return combine_images_into_pdf(ordered_images, pdf_metadata, is_rtl, kfx_epub.ncx_toc)
+        return combine_images_into_pdf(ordered_images, pdf_metadata, is_rtl, kfx_epub.ncx_toc, pdf_cache=self.book.pdf_cache)
 
     def get_ordered_images(self, split_landscape_comic_images=False, is_comic=False, is_rtl=False, progress=None):
 
@@ -212,7 +212,7 @@ class KFX_IMAGE_BOOK(object):
         return ImageResource(resource_format, location, raw_media, resource_height, resource_width)
 
 
-def combine_images_into_pdf(ordered_images, metadata=None, is_rtl=False, outline=None):
+def combine_images_into_pdf(ordered_images, metadata=None, is_rtl=False, outline=None, pdf_cache=None):
     if len(ordered_images) == 0:
         return None
 
@@ -225,7 +225,7 @@ def combine_images_into_pdf(ordered_images, metadata=None, is_rtl=False, outline
             if combined_pdf_images and combined_pdf_images[-1].format == "$565" and combined_pdf_images[-1].location == image_resource.location:
                 combined_pdf_images[-1].page_nums.extend(image_resource.page_nums)
             else:
-                pdf = pypdf.PdfReader(io.BytesIO(image_resource.raw_media))
+                pdf = get_pdf_reader(image_resource.raw_media, pdf_cache)
                 image_resource.total_pages = len(pdf.pages)
                 combined_pdf_images.append(image_resource)
         else:
@@ -242,7 +242,7 @@ def combine_images_into_pdf(ordered_images, metadata=None, is_rtl=False, outline
             writer = pypdf.PdfWriter(clone_from=io.BytesIO(pdf_data))
         except Exception as e:
             log.error("pypdf PdfWriter error in clone_from %s: %s" % (combined_pdf_images[0].location, repr(e)))
-            return None
+            return pdf_data
     else:
         combined = True
         writer = pypdf.PdfWriter()
@@ -301,7 +301,7 @@ def add_pdf_outline(pdf_writer, outline_entries, parent=None):
             add_pdf_outline(pdf_writer, outline_entry.children, new_entry)
 
 
-def combine_images_into_cbz(ordered_images, metadata=None):
+def combine_images_into_cbz(ordered_images, metadata=None, pdf_cache=None):
     if len(ordered_images) == 0:
         return None
 
@@ -316,7 +316,8 @@ def combine_images_into_cbz(ordered_images, metadata=None):
         elif image_resource.format == "$565":
             for page_num in image_resource.page_nums:
                 image_data, fmt = convert_pdf_page_to_image(
-                    image_resource.location, image_resource.raw_media, page_num, reported_errors=reported_pdf_errors)
+                    image_resource.location, image_resource.raw_media, page_num,
+                    reported_errors=reported_pdf_errors, pdf_cache=pdf_cache)
                 page_images.append(ImageResource(fmt, None, image_data))
         elif image_resource.format == "$548":
             image_data, fmt = convert_jxr_to_jpeg_or_png(image_resource.raw_media, image_resource.location)

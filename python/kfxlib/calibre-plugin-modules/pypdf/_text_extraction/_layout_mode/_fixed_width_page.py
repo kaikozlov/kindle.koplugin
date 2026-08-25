@@ -1,15 +1,19 @@
 """Extract PDF text preserving the layout of the source PDF"""
 
+from collections.abc import Iterator
 from itertools import groupby
 from math import ceil
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, TypedDict
+from typing import Any, Literal, Optional, TypedDict
 
+from ..._font import Font
 from ..._utils import logger_warning
 from .. import LAYOUT_NEW_BT_GROUP_SPACE_WIDTHS
-from ._font import Font
 from ._text_state_manager import TextStateManager
 from ._text_state_params import TextStateParams
+
+WHITESPACE_LIMIT = 10_000
+NEWLINE_LIMIT = 1_000
 
 
 class BTGroup(TypedDict):
@@ -37,7 +41,32 @@ class BTGroup(TypedDict):
     flip_sort: Literal[-1, 1]
 
 
-def bt_group(tj_op: TextStateParams, rendered_text: str, dispaced_tx: float) -> BTGroup:
+def resolve_font(fonts: dict[str, Font], name: str) -> Font:
+    """
+    Resolve a Tf font name to a layout mode Font.
+
+    A content stream may select a font name that is not declared in the page
+    resources. Fall back to an uninterpretable font so extraction degrades to
+    the existing incomplete-output path instead of raising KeyError.
+
+    Args:
+        fonts: font dictionary as returned by PageObject._layout_mode_fonts()
+        name: font name supplied by a Tf operator
+
+    Returns:
+        Font: the matching font, or an uninterpretable placeholder font.
+
+    """
+    if name in fonts:
+        return fonts[name]
+    logger_warning(
+        "Font %(name)s is not in the page resources.",
+        name=name, source=__name__
+    )
+    return Font("Unknown", encoding={}, interpretable=False)
+
+
+def bt_group(tj_op: TextStateParams, rendered_text: str, displaced_tx: float) -> BTGroup:
     """
     BTGroup constructed from a TextStateParams instance, rendered text, and
     displaced tx value.
@@ -45,7 +74,7 @@ def bt_group(tj_op: TextStateParams, rendered_text: str, dispaced_tx: float) -> 
     Args:
         tj_op (TextStateParams): TextStateParams instance
         rendered_text (str): rendered text
-        dispaced_tx (float): x coordinate of last character in BTGroup
+        displaced_tx (float): x coordinate of last character in BTGroup
 
     """
     return BTGroup(
@@ -54,18 +83,18 @@ def bt_group(tj_op: TextStateParams, rendered_text: str, dispaced_tx: float) -> 
         font_size=tj_op.font_size,
         font_height=tj_op.font_height,
         text=rendered_text,
-        displaced_tx=dispaced_tx,
+        displaced_tx=displaced_tx,
         flip_sort=-1 if tj_op.flip_vertical else 1,
     )
 
 
-def recurs_to_target_op(
-    ops: Iterator[Tuple[List[Any], bytes]],
+def recurse_to_target_op(
+    ops: Iterator[tuple[list[Any], bytes]],
     text_state_mgr: TextStateManager,
     end_target: Literal[b"Q", b"ET"],
-    fonts: Dict[str, Font],
+    fonts: dict[str, Font],
     strip_rotated: bool = True,
-) -> Tuple[List[BTGroup], List[TextStateParams]]:
+) -> tuple[list[BTGroup], list[TextStateParams]]:
     """
     Recurse operators between BT/ET and/or q/Q operators managing the transform
     stack and capturing text positioning and rendering data.
@@ -81,10 +110,10 @@ def recurs_to_target_op(
 
     """
     # 1 entry per line of text rendered within each BT/ET operation.
-    bt_groups: List[BTGroup] = []
+    bt_groups: list[BTGroup] = []
 
     # 1 entry per text show operator (Tj/TJ/'/")
-    tj_ops: List[TextStateParams] = []
+    tj_ops: list[TextStateParams] = []
 
     if end_target == b"Q":
         # add new q level. cm's added at this level will be popped at next b'Q'
@@ -140,7 +169,13 @@ def recurs_to_target_op(
                     excess_tx = round(_tj.tx - last_displaced_tx, 3) * (_idx != bt_idx)
                     # space_tx could be 0 if either Tz or font_size was 0 for this _tj.
                     spaces = int(excess_tx // _tj.space_tx) if _tj.space_tx else 0
-                    new_text = f'{" " * spaces}{_tj.txt}'
+                    if spaces > WHITESPACE_LIMIT:
+                        logger_warning(
+                            "Limiting excessive whitespace from %(actual)d to %(limit)d characters.",
+                            actual=spaces, limit=WHITESPACE_LIMIT, source=__name__
+                        )
+                        spaces = WHITESPACE_LIMIT
+                    new_text = f'{" " * spaces}{_tj.text}'
 
                     last_ty = _tj.ty
                     _text = f"{_text}{new_text}"
@@ -150,7 +185,7 @@ def recurs_to_target_op(
                 text_state_mgr.reset_tm()
             break
         if op == b"q":
-            bts, tjs = recurs_to_target_op(
+            bts, tjs = recurse_to_target_op(
                 ops, text_state_mgr, b"Q", fonts, strip_rotated
             )
             bt_groups.extend(bts)
@@ -158,7 +193,7 @@ def recurs_to_target_op(
         elif op == b"cm":
             text_state_mgr.add_cm(*operands)
         elif op == b"BT":
-            bts, tjs = recurs_to_target_op(
+            bts, tjs = recurse_to_target_op(
                 ops, text_state_mgr, b"ET", fonts, strip_rotated
             )
             bt_groups.extend(bts)
@@ -172,7 +207,7 @@ def recurs_to_target_op(
                     _tj = text_state_mgr.text_state_params(tj_op)
                     tj_ops.append(_tj)
                 else:
-                    text_state_mgr.add_trm(_tj.displacement_matrix(TD_offset=tj_op))
+                    text_state_mgr.add_trm(_tj.displacement_matrix(td_offset=tj_op))
         elif op == b"'":
             text_state_mgr.reset_trm()
             text_state_mgr.add_tm([0, -text_state_mgr.TL])
@@ -193,20 +228,21 @@ def recurs_to_target_op(
                 operands = [0, -text_state_mgr.TL]
             text_state_mgr.add_tm(operands)
         elif op == b"Tf":
-            text_state_mgr.set_font(fonts[operands[0]], operands[1])
+            text_state_mgr.set_font(resolve_font(fonts, operands[0]), operands[1])
         else:  # handle Tc, Tw, Tz, TL, and Ts operators
             text_state_mgr.set_state_param(op, operands)
     else:
         logger_warning(
-            f"Unbalanced target operations, expected {end_target!r}.",
-            __name__,
+            "Unbalanced target operations, expected %(end_target)r.",
+            source=__name__,
+            end_target=end_target,
         )
     return bt_groups, tj_ops
 
 
 def y_coordinate_groups(
-    bt_groups: List[BTGroup], debug_path: Optional[Path] = None
-) -> Dict[int, List[BTGroup]]:
+    bt_groups: list[BTGroup], debug_path: Optional[Path] = None
+) -> dict[int, list[BTGroup]]:
     """
     Group text operations by rendered y coordinate, i.e. the line number.
 
@@ -253,11 +289,11 @@ def y_coordinate_groups(
 
 
 def text_show_operations(
-    ops: Iterator[Tuple[List[Any], bytes]],
-    fonts: Dict[str, Font],
+    ops: Iterator[tuple[list[Any], bytes]],
+    fonts: dict[str, Font],
     strip_rotated: bool = True,
     debug_path: Optional[Path] = None,
-) -> List[BTGroup]:
+) -> list[BTGroup]:
     """
     Extract text from BT/ET operator pairs.
 
@@ -272,32 +308,32 @@ def text_show_operations(
 
     """
     state_mgr = TextStateManager()  # transformation stack manager
-    bt_groups: List[BTGroup] = []  # BT operator dict
-    tj_ops: List[TextStateParams] = []  # Tj/TJ operator data
+    bt_groups: list[BTGroup] = []  # BT operator dict
+    tj_ops: list[TextStateParams] = []  # Tj/TJ operator data
     for operands, op in ops:
         if op in (b"BT", b"q"):
-            bts, tjs = recurs_to_target_op(
+            bts, tjs = recurse_to_target_op(
                 ops, state_mgr, b"ET" if op == b"BT" else b"Q", fonts, strip_rotated
             )
             bt_groups.extend(bts)
             tj_ops.extend(tjs)
         elif op == b"Tf":
-            state_mgr.set_font(fonts[operands[0]], operands[1])
+            state_mgr.set_font(resolve_font(fonts, operands[0]), operands[1])
         else:  # set Tc, Tw, Tz, TL, and Ts if required. ignores all other ops
             state_mgr.set_state_param(op, operands)
 
     if any(tj.rotated for tj in tj_ops):
         if strip_rotated:
             logger_warning(
-                "Rotated text discovered. Output will be incomplete.", __name__
+                "Rotated text discovered. Output will be incomplete.", source=__name__
             )
         else:
             logger_warning(
-                "Rotated text discovered. Layout will be degraded.", __name__
+                "Rotated text discovered. Layout will be degraded.", source=__name__
             )
     if not all(tj.font.interpretable for tj in tj_ops):
         logger_warning(
-            "PDF contains an uninterpretable font. Output will be incomplete.", __name__
+            "PDF contains an uninterpretable font. Output will be incomplete.", source=__name__
         )
 
     # left align the data, i.e. decrement all tx values by min(tx)
@@ -324,7 +360,7 @@ def text_show_operations(
     return bt_groups
 
 
-def fixed_char_width(bt_groups: List[BTGroup], scale_weight: float = 1.25) -> float:
+def fixed_char_width(bt_groups: list[BTGroup], scale_weight: float = 1.25) -> float:
     """
     Calculate average character width weighted by the length of the rendered
     text in each sample for conversion to fixed-width layout.
@@ -345,7 +381,7 @@ def fixed_char_width(bt_groups: List[BTGroup], scale_weight: float = 1.25) -> fl
 
 
 def fixed_width_page(
-    ty_groups: Dict[int, List[BTGroup]], char_width: float, space_vertically: bool, font_height_weight: float
+    ty_groups: dict[int, list[BTGroup]], char_width: float, space_vertically: bool, font_height_weight: float
 ) -> str:
     """
     Generate page text from text operations grouped by rendered y coordinate.
@@ -361,25 +397,51 @@ def fixed_width_page(
             layout in the source pdf.
 
     """
-    lines: List[str] = []
+    lines: list[str] = []
     last_y_coord = 0
+    table = str.maketrans(dict.fromkeys(range(14, 32), " "))
     for y_coord, line_data in ty_groups.items():
         if space_vertically and lines:
             fh = line_data[0]["font_height"]
             blank_lines = 0 if fh == 0 else (
                 int(abs(y_coord - last_y_coord) / (fh * font_height_weight)) - 1
             )
+            if blank_lines > NEWLINE_LIMIT:
+                logger_warning(
+                    "Limiting excessive newlines from %(actual)d to %(limit)d.",
+                    actual=blank_lines, limit=NEWLINE_LIMIT, source=__name__
+                )
+                blank_lines = NEWLINE_LIMIT
             lines.extend([""] * blank_lines)
-        line = ""
+
+        line_parts = []  # It uses a list to construct the line, avoiding string concatenation.
+        current_len = 0  # Track the size with int instead of len(str) overhead.
         last_disp = 0.0
         for bt_op in line_data:
-            offset = int(bt_op["tx"] // char_width)
-            spaces = (offset - len(line)) * (ceil(last_disp) < int(bt_op["tx"]))
-            line = f"{line}{' ' * spaces}{bt_op['text']}"
+            tx = bt_op["tx"]
+            offset = int(tx // char_width)
+            needed_spaces = offset - current_len
+            if needed_spaces > 0 and ceil(last_disp) < int(tx):
+                if needed_spaces > WHITESPACE_LIMIT:
+                    logger_warning(
+                        "Limiting excessive whitespace from %(actual)d to %(limit)d characters.",
+                        actual=needed_spaces, limit=WHITESPACE_LIMIT, source=__name__
+                    )
+                    needed_spaces = WHITESPACE_LIMIT
+                padding = " " * needed_spaces
+                line_parts.append(padding)
+                current_len += needed_spaces
+
+            raw_text = bt_op["text"]
+            text = raw_text.translate(table)
+            line_parts.append(text)
+            current_len += len(text)
             last_disp = bt_op["displaced_tx"]
-        if line.strip() or lines:
-            lines.append(
-                "".join(c if ord(c) < 14 or ord(c) > 31 else " " for c in line)
-            )
+
+        full_line = "".join(line_parts).rstrip()
+        if full_line.strip() or (space_vertically and lines):
+            lines.append(full_line)
+
         last_y_coord = y_coord
-    return "\n".join(ln.rstrip() for ln in lines if space_vertically or ln.strip())
+
+    return "\n".join(lines)

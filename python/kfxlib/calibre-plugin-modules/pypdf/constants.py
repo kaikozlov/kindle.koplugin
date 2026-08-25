@@ -1,12 +1,17 @@
 """Various constants, enums, and flags to aid readability."""
 
+import sys
 from enum import Enum, IntFlag, auto, unique
-from typing import Dict, Tuple
+from typing import Any
 
+from ._utils import deprecate_with_replacement
 
-class StrEnum(str, Enum):  # Once we are on Python 3.11+: enum.StrEnum
-    def __str__(self) -> str:
-        return str(self.value)
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    class StrEnum(str, Enum):
+        def __str__(self) -> str:
+            return str(self.value)
 
 
 class Core:
@@ -29,8 +34,39 @@ class TrailerKeys:
 
 
 class CatalogAttributes:
-    NAMES = "/Names"
-    DESTS = "/Dests"
+    """§7.7.2 of the 1.7 and 2.0 references."""
+    TYPE = "/Type"  # name, required; must be /Catalog
+    VERSION = "/Version"  # name
+    EXTENSIONS = "/Extensions"  # dictionary, optional; ISO 32000-1
+    PAGES = "/Pages"  # dictionary, required
+    PAGE_LABELS = "/PageLabels"  # number tree, optional
+    NAMES = "/Names"  # dictionary, optional
+    DESTS = "/Dests"  # dictionary, optional
+    VIEWER_PREFERENCES = "/ViewerPreferences"  # dictionary, optional
+    PAGE_LAYOUT = "/PageLayout"  # name, optional
+    PAGE_MODE = "/PageMode"  # name, optional
+    OUTLINES = "/Outlines"  # dictionary, optional
+    THREADS = "/Threads"  # array, optional
+    OPEN_ACTION = "/OpenAction"  # array or dictionary or name, optional
+    AA = "/AA"  # dictionary, optional
+    URI = "/URI"  # dictionary, optional
+    ACRO_FORM = "/AcroForm"  # dictionary, optional
+    METADATA = "/Metadata"  # stream, optional
+    STRUCT_TREE_ROOT = "/StructTreeRoot"  # dictionary, optional
+    MARK_INFO = "/MarkInfo"  # dictionary, optional
+    LANG = "/Lang"  # text string, optional
+    SPIDER_INFO = "/SpiderInfo"  # dictionary, optional
+    OUTPUT_INTENTS = "/OutputIntents"  # array, optional
+    PIECE_INFO = "/PieceInfo"  # dictionary, optional
+    OC_PROPERTIES = "/OCProperties"  # dictionary, optional
+    PERMS = "/Perms"  # dictionary, optional
+    LEGAL = "/Legal"  # dictionary, optional
+    REQUIREMENTS = "/Requirements"  # array, optional
+    COLLECTION = "/Collection"  # dictionary, optional
+    NEEDS_RENDERING = "/NeedsRendering"  # boolean, optional
+    DSS = "/DSS"  # dictionary, optional
+    AF = "/AF"  # array of dictionaries, optional
+    D_PART_ROOT = "/DPartRoot"  # dictionary, optional
 
 
 class EncryptionDictAttributes:
@@ -97,9 +133,9 @@ class UserAccessPermissions(IntFlag):
         """Check if the given reserved name defaults to 1 = active."""
         return name not in {"R1", "R2"}
 
-    def to_dict(self) -> Dict[str, bool]:
+    def to_dict(self) -> dict[str, bool]:
         """Convert the given flag value to a corresponding verbose name mapping."""
-        result: Dict[str, bool] = {}
+        result: dict[str, bool] = {}
         for name, flag in UserAccessPermissions.__members__.items():
             if UserAccessPermissions._is_reserved(name):
                 continue
@@ -107,7 +143,7 @@ class UserAccessPermissions(IntFlag):
         return result
 
     @classmethod
-    def from_dict(cls, value: Dict[str, bool]) -> "UserAccessPermissions":
+    def from_dict(cls, value: dict[str, bool]) -> "UserAccessPermissions":
         """Convert the verbose name mapping to the corresponding flag value."""
         value_copy = value.copy()
         result = cls(0)
@@ -143,14 +179,6 @@ class Resources:
     FONT = "/Font"  # dictionary, optional
     PROC_SET = "/ProcSet"  # array, optional
     PROPERTIES = "/Properties"  # dictionary, optional
-
-
-class Ressources:  # deprecated
-    """
-    Use :class: `Resources` instead.
-
-    .. deprecated:: 5.0.0
-    """
 
 
 class PagesAttributes:
@@ -230,7 +258,7 @@ class StreamAttributes:
 
     LENGTH = "/Length"  # integer, required
     FILTER = "/Filter"  # name or array of names, optional
-    DECODE_PARMS = "/DecodeParms"  # variable, optional -- 'decodeParams is wrong
+    DECODE_PARMS = "/DecodeParms"  # variable, optional; /DecodeParams is wrong
 
 
 @unique
@@ -451,7 +479,7 @@ class FieldDictionaryAttributes:
         """Ch"""
 
     @classmethod
-    def attributes(cls) -> Tuple[str, ...]:
+    def attributes(cls) -> tuple[str, ...]:
         """
         Get a tuple of all the attributes present in a Field Dictionary.
 
@@ -478,7 +506,7 @@ class FieldDictionaryAttributes:
         )
 
     @classmethod
-    def attributes_dict(cls) -> Dict[str, str]:
+    def attributes_dict(cls) -> dict[str, str]:
         """
         Get a dictionary of attribute keys and their human-readable names.
 
@@ -510,7 +538,7 @@ class CheckboxRadioButtonAttributes:
     Opt = "/Opt"  # Options, Optional
 
     @classmethod
-    def attributes(cls) -> Tuple[str, ...]:
+    def attributes(cls) -> tuple[str, ...]:
         """
         Get a tuple of all the attributes present in a Field Dictionary.
 
@@ -526,7 +554,7 @@ class CheckboxRadioButtonAttributes:
         return (cls.Opt,)
 
     @classmethod
-    def attributes_dict(cls) -> Dict[str, str]:
+    def attributes_dict(cls) -> dict[str, str]:
         """
         Get a dictionary of attribute keys and their human-readable names.
 
@@ -613,41 +641,18 @@ class GraphicsStateParameters:
     TK = "/TK"
 
 
-class CatalogDictionary:
-    """§7.7.2 of the 1.7 and 2.0 references."""
+class _CatalogDictionaryMeta(type):
+    def __getattribute__(cls, name: str) -> Any:
+        value = super().__getattribute__(name)
 
-    TYPE = "/Type"  # name, required; must be /Catalog
-    VERSION = "/Version"  # name
-    EXTENSIONS = "/Extensions"  # dictionary, optional; ISO 32000-1
-    PAGES = "/Pages"  # dictionary, required
-    PAGE_LABELS = "/PageLabels"  # number tree, optional
-    NAMES = "/Names"  # dictionary, optional
-    DESTS = "/Dests"  # dictionary, optional
-    VIEWER_PREFERENCES = "/ViewerPreferences"  # dictionary, optional
-    PAGE_LAYOUT = "/PageLayout"  # name, optional
-    PAGE_MODE = "/PageMode"  # name, optional
-    OUTLINES = "/Outlines"  # dictionary, optional
-    THREADS = "/Threads"  # array, optional
-    OPEN_ACTION = "/OpenAction"  # array or dictionary or name, optional
-    AA = "/AA"  # dictionary, optional
-    URI = "/URI"  # dictionary, optional
-    ACRO_FORM = "/AcroForm"  # dictionary, optional
-    METADATA = "/Metadata"  # stream, optional
-    STRUCT_TREE_ROOT = "/StructTreeRoot"  # dictionary, optional
-    MARK_INFO = "/MarkInfo"  # dictionary, optional
-    LANG = "/Lang"  # text string, optional
-    SPIDER_INFO = "/SpiderInfo"  # dictionary, optional
-    OUTPUT_INTENTS = "/OutputIntents"  # array, optional
-    PIECE_INFO = "/PieceInfo"  # dictionary, optional
-    OC_PROPERTIES = "/OCProperties"  # dictionary, optional
-    PERMS = "/Perms"  # dictionary, optional
-    LEGAL = "/Legal"  # dictionary, optional
-    REQUIREMENTS = "/Requirements"  # array, optional
-    COLLECTION = "/Collection"  # dictionary, optional
-    NEEDS_RENDERING = "/NeedsRendering"  # boolean, optional
-    DSS = "/DSS"  # dictionary, optional
-    AF = "/AF"  # array of dictionaries, optional
-    D_PART_ROOT = "/DPartRoot"  # dictionary, optional
+        if not name.startswith("__"):
+            deprecate_with_replacement("CatalogDictionary", "CatalogAttributes", "7.0.0")
+        return value
+
+
+class CatalogDictionary(CatalogAttributes, metaclass=_CatalogDictionaryMeta):
+    def __init__(self) -> None:
+        deprecate_with_replacement("CatalogDictionary", "CatalogAttributes", "7.0.0")
 
 
 class OutlineFontFlag(IntFlag):
@@ -771,3 +776,53 @@ _INLINE_IMAGE_KEY_MAPPING = {
     "/Interpolate": "/Interpolate",
     "/ImageMask": "/ImageMask",
 }
+
+
+class AFRelationship:
+    """
+    Associated file relationship types, defining the relationship between
+    the PDF component and the associated file.
+
+    Defined in table 43 of the PDF 2.0 reference.
+    """
+
+    SOURCE = "/Source"  # Original content source
+    DATA = "/Data"  # Base data for visual presentation
+    ALTERNATIVE = "/Alternative"  # Alternative content representation
+    SUPPLEMENT = "/Supplement"  # Supplemental representation of original source/data
+    ENCRYPTED_PAYLOAD = "/EncryptedPayload"  # Encrypted payload document
+    FORM_DATA = "/FormData"  # Data associated with AcroForm of this PDF
+    SCHEMA = "/Schema"  # Schema definition for associated object
+    UNSPECIFIED = "/Unspecified"  # Not known or cannot be described with values
+
+
+class BorderStyles:
+    """
+    A class defining border styles used in PDF documents.
+
+    Defined in table 168 of the PDF 2.0 reference.
+    """
+
+    BEVELED = "/B"
+    DASHED = "/D"
+    INSET = "/I"
+    SOLID = "/S"
+    UNDERLINED = "/U"
+
+
+class FontFlags(IntFlag):
+    """
+    A class defining font flags in PDF document font descriptor resources.
+
+    Defined in table 121 of the PDF 2.0 reference.
+    """
+
+    FIXED_PITCH = 1 << 0
+    SERIF = 1 << 1
+    SYMBOLIC = 1 << 2
+    SCRIPT = 1 << 3
+    NONSYMBOLIC = 1 << 5
+    ITALIC = 1 << 6
+    ALL_CAP = 1 << 16
+    SMALL_CAP = 1 << 17
+    FORCE_BOLD = 1 << 18

@@ -28,9 +28,10 @@
 # This module contains code used by _writer.py to track links in pages
 # being added to the writer until the links can be resolved.
 
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, Optional, Union, cast
 
-from . import ArrayObject, DictionaryObject, IndirectObject, PdfObject, TextStringObject
+from .._utils import logger_warning
+from . import ArrayObject, DictionaryObject, IndirectObject, PdfObject, TextStringObject, is_null_or_none
 
 if TYPE_CHECKING:
     from .._page import PageObject
@@ -64,8 +65,10 @@ class DirectReferenceLink:
         """reference: an ArrayObject whose first element is the Page indirect object"""
         self._reference = reference
 
-    def find_referenced_page(self) -> IndirectObject:
-        return self._reference[0]
+    def find_referenced_page(self) -> Union[IndirectObject, None]:
+        if not self._reference:
+            return None
+        return cast(IndirectObject, self._reference[0])
 
     def patch_reference(self, target_pdf: "PdfWriter", new_page: IndirectObject) -> None:
         """target_pdf: PdfWriter which the new link went into"""
@@ -75,18 +78,47 @@ class DirectReferenceLink:
 ReferenceLink = Union[NamedReferenceLink, DirectReferenceLink]
 
 
-def extract_links(new_page: "PageObject", old_page: "PageObject") -> List[Tuple[ReferenceLink, ReferenceLink]]:
+def extract_links(new_page: "PageObject", old_page: "PageObject") -> list[tuple[ReferenceLink, ReferenceLink]]:
     """Extracts links from two pages on the assumption that the two pages are
     the same. Produces one list of (new link, old link) tuples.
-    """
-    new_links = [_build_link(link, new_page) for link in new_page.get("/Annots", [])]
-    old_links = [_build_link(link, old_page) for link in old_page.get("/Annots", [])]
 
-    return [
-        (new_link, old_link) for (new_link, old_link)
-        in zip(new_links, old_links)
-        if new_link and old_link
+    Non-link annotations are ignored before pairing to avoid dropping valid
+    links when one page includes additional non-link annotation entries.
+    """
+    new_annotations = new_page.get("/Annots", ArrayObject()).get_object()
+    old_annotations = old_page.get("/Annots", ArrayObject()).get_object()
+    if is_null_or_none(new_annotations):
+        new_annotations = ArrayObject()
+    if is_null_or_none(old_annotations):
+        old_annotations = ArrayObject()
+    if not isinstance(new_annotations, ArrayObject) or not isinstance(old_annotations, ArrayObject):
+        logger_warning(
+            "Expected annotation arrays: %(old_annotations)s %(new_annotations)s. Ignoring annotations.",
+            source=__name__,
+            old_annotations=old_annotations,
+            new_annotations=new_annotations,
+        )
+        return []
+    new_links = [
+        link
+        for annotation in new_annotations
+        if (link := _build_link(annotation, new_page)) is not None
     ]
+    old_links = [
+        link
+        for annotation in old_annotations
+        if (link := _build_link(annotation, old_page)) is not None
+    ]
+
+    if len(new_links) != len(old_links):
+        logger_warning(
+            "Annotation sizes differ: %(old_count)d vs. %(new_count)d",
+            source=__name__,
+            old_count=len(old_links),
+            new_count=len(new_links),
+        )
+
+    return list(zip(new_links, old_links))
 
 
 def _build_link(indirect_object: IndirectObject, page: "PageObject") -> Optional[ReferenceLink]:
@@ -100,9 +132,9 @@ def _build_link(indirect_object: IndirectObject, page: "PageObject") -> Optional
         if action.get("/S") != "/GoTo":
             return None
 
-        # ---------- modified to prevent failure when destination "/D" is missing
-        return _create_link(action["/D"], src) if "/D" in action else None
-        # ---------- end of modification
+        if "/D" not in action:
+            return None
+        return _create_link(action["/D"], src)
 
     if "/Dest" in link:
         return _create_link(link["/Dest"], src)
@@ -110,7 +142,7 @@ def _build_link(indirect_object: IndirectObject, page: "PageObject") -> Optional
     return None  # Nothing to do here
 
 
-def _create_link(reference: PdfObject, source_pdf: "PdfReader")-> Optional[ReferenceLink]:
+def _create_link(reference: PdfObject, source_pdf: "PdfReader") -> Optional[ReferenceLink]:
     if isinstance(reference, TextStringObject):
         return NamedReferenceLink(reference, source_pdf)
     if isinstance(reference, ArrayObject):

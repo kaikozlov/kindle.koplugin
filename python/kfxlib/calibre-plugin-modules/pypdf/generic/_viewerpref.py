@@ -28,8 +28,8 @@
 
 from typing import (
     Any,
-    List,
     Optional,
+    cast,
 )
 
 from ._base import BooleanObject, NameObject, NumberObject, is_null_or_none
@@ -42,9 +42,9 @@ class ViewerPreferences(DictionaryObject):
     def __init__(self, obj: Optional[DictionaryObject] = None) -> None:
         super().__init__(self)
         if not is_null_or_none(obj):
-            self.update(obj.items())  # type: ignore
+            self.update(obj.items())  # type: ignore[union-attr]
         try:
-            self.indirect_reference = obj.indirect_reference  # type: ignore
+            self.indirect_reference = obj.indirect_reference  # type: ignore[union-attr]
         except AttributeError:
             pass
 
@@ -57,14 +57,14 @@ class ViewerPreferences(DictionaryObject):
     def _get_name(self, key: str, default: Optional[NameObject]) -> Optional[NameObject]:
         return self.get(key, default)
 
-    def _set_name(self, key: str, lst: List[str], v: NameObject) -> None:
+    def _set_name(self, key: str, lst: list[str], v: NameObject) -> None:
         if v[0] != "/":
             raise ValueError(f"{v} does not start with '/'")
         if lst != [] and v not in lst:
             raise ValueError(f"{v} is an unacceptable value")
         self[NameObject(key)] = NameObject(v)
 
-    def _get_arr(self, key: str, default: Optional[List[Any]]) -> Optional[ArrayObject]:
+    def _get_arr(self, key: str, default: Optional[list[Any]]) -> Optional[ArrayObject]:
         return self.get(key, None if default is None else ArrayObject(default))
 
     def _set_arr(self, key: str, v: Optional[ArrayObject]) -> None:
@@ -88,7 +88,7 @@ class ViewerPreferences(DictionaryObject):
     def PRINT_SCALING(self) -> NameObject:
         return NameObject("/PrintScaling")
 
-    def __new__(cls: Any, value: Any = None) -> "ViewerPreferences":
+    def __new__(cls: Any, value: Any = None) -> "ViewerPreferences":  # noqa: PYI034
         def _add_prop_bool(key: str, default: Optional[BooleanObject]) -> property:
             return property(
                 lambda self: self._get_bool(key, default),
@@ -100,7 +100,7 @@ class ViewerPreferences(DictionaryObject):
             )
 
         def _add_prop_name(
-            key: str, lst: List[str], default: Optional[NameObject]
+            key: str, lst: list[str], default: Optional[NameObject]
         ) -> property:
             return property(
                 lambda self: self._get_name(key, default),
@@ -161,4 +161,4 @@ class ViewerPreferences(DictionaryObject):
 
         cls.enforce = _add_prop_arr("/Enforce", ArrayObject())
 
-        return DictionaryObject.__new__(cls)
+        return cast("ViewerPreferences", DictionaryObject.__new__(cls))

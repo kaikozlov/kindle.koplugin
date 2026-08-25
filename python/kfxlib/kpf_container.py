@@ -2,21 +2,22 @@ import io
 import os
 import sqlite3
 
-from .ion import (ion_type, IonAnnotation, IonBLOB, IonInt, IonList, IonSExp, IonString, IonStruct, IS)
+from .ion import (ion_type, IonAnnotation, IonBLOB, IonInt, IonList, IonSExp, IonString, IonStruct, IS, isstring)
 from .ion_binary import (IonBinary)
 from .message_logging import log
 from .original_source_epub import SourceEpub
 from .utilities import (
-        DataFile, bytes_to_separated_hex, json_deserialize, json_serialize, KFXDRMError, temp_filename,
-        Deserializer, ZIP_SIGNATURE)
+        DataFile, bytes_to_separated_hex, json_deserialize, json_serialize, KFXDRMError,
+        temp_filename, truncate_list, Deserializer, ZIP_SIGNATURE)
 from .yj_container import (CONTAINER_FORMAT_KPF, DRMION_SIGNATURE, YJContainer, YJFragment)
 from .yj_symbol_catalog import SYSTEM_SYMBOL_TABLE
+from .yj_structure import DICTIONARY_RULES_SYMBOL
 
 from .yj_container import ROOT_FRAGMENT_TYPES
 
 
 __license__ = "GPL v3"
-__copyright__ = "2016-2025, John Howell <jhowell@acm.org>"
+__copyright__ = "2016-2026, John Howell <jhowell@acm.org>"
 
 
 DEBUG = False
@@ -27,21 +28,236 @@ DICTIONARY_RULES_FILENAME = "DictionaryRules.ion"
 
 SQLITE_SIGNATURE = b"SQLite format 3\0"
 
+ACTION_FRAGMENTS_SCHEMA = ("CREATE TABLE local_action_fragments(action_id char(40), payload_type char(10), payload_value blob, "
+                           "primary key (action_id))")
+CAPABILITIES_SCHEMA = "CREATE TABLE capabilities(key char(20), version smallint, primary key (key, version)) without rowid"
+DELTA_FRAGMENTS_SCHEMA = ("CREATE TABLE local_delta_fragments(id char(40), payload_type char(10), payload_value blob, "
+                          "deleted smallint, primary key (id))")
+FRAGMENT_PROPERTIES_SCHEMA = ("CREATE TABLE fragment_properties(id char(40), key char(40), value char(40), "
+                              "primary key (id, key, value)) without rowid")
+FRAGMENTS_SCHEMA = "CREATE TABLE fragments(id char(40), payload_type char(10), payload_value blob, primary key (id))"
+GC_FRAGMENT_PROPERTIES_SCHEMA = ("CREATE TABLE gc_fragment_properties(id varchar(40), key varchar(40), "
+                                 "value varchar(40), primary key (id, key, value)) without rowid")
+GC_REACHABLE_SCHEMA = ("CREATE TABLE gc_reachable(id varchar(40), primary key (id)) without rowid")
+INDEX_INFO_SCHEMA = ("CREATE TABLE index_info(namespace char(256), index_name char(256), property char(40), "
+                     "primary key (namespace, index_name)) without rowid")
+KFXID_TRANSLATION_SCHEMA = "CREATE TABLE kfxid_translation(eid INTEGER, kfxid char(40), primary key(eid)) without rowid"
+
 
 class KpfContainer(YJContainer):
     KPF_SIGNATURE = ZIP_SIGNATURE
     KDF_SIGNATURE = SQLITE_SIGNATURE
     db_timeout = 30
 
-    def __init__(self, symtab, datafile=None, fragments=None, book=None):
+    def __init__(self, symtab, datafile=None, fragments=None, book=None, ignore_drm=False):
         YJContainer.__init__(self, symtab, datafile=datafile, fragments=fragments)
         self.book = book
-
-    def deserialize(self, ignore_drm=False):
         self.ignore_drm = ignore_drm
-        self.fragments.clear()
-
         self.kpf_datafile = self.kdf_datafile = self.kcb_datafile = self.kcb_data = self.source_epub = None
+        self.has_drm = True
+
+    def is_drm_free_dictionary(self):
+        conn = self.open_kpf_database()
+        cursor = conn.cursor()
+
+        sql_list = cursor.execute("SELECT sql FROM sqlite_master WHERE type='table';").fetchall()
+        schema = set([x[0] for x in sql_list])
+
+        if INDEX_INFO_SCHEMA not in schema:
+            return False
+
+        self.book.is_dictionary = True
+
+        for id, payload_type, payload_value in cursor.execute("SELECT * FROM fragments;"):
+            if payload_type == "blob" and io.BytesIO(payload_value).read().startswith(DRMION_SIGNATURE):
+                self.has_drm = True
+                if self.ignore_drm:
+                    return False
+                raise KFXDRMError("Book container has DRM and cannot be converted")
+
+        self.has_drm = False
+        cursor.close()
+        conn.close()
+        return True
+
+    def deserialize(self):
+        self.fragments.clear()
+        conn = self.open_kpf_database()
+        cursor = conn.cursor()
+
+        sql_list = cursor.execute("SELECT sql FROM sqlite_master WHERE type='table';").fetchall()
+        schema = set([x[0] for x in sql_list])
+
+        dictionary_index_terms = set()
+        first_head_word = ""
+        if INDEX_INFO_SCHEMA in schema:
+            schema.remove(INDEX_INFO_SCHEMA)
+            self.book.is_dictionary = True
+            for namespace, index_name, property in cursor.execute("SELECT * FROM index_info;"):
+                if namespace != "dictionary" or property != "yj.dictionary.term":
+                    log.error("unexpected index_info: namespace=%s, index_name=%s, property=%s" % (namespace, index_name, property))
+
+                table_name = "index_%s_%s" % (namespace, index_name)
+                index_schema = ("CREATE TABLE %s ([%s] char(256),  id char(40), "
+                                "primary key ([%s], id)) without rowid") % (table_name, property, property)
+
+                if index_schema in schema:
+                    schema.remove(index_schema)
+                    num_entries = 0
+                    index_words = set()
+                    index_kfx_ids = set()
+                    if not self.ignore_drm:
+                        for dictionary_term, kfx_id in cursor.execute("SELECT * FROM %s;" % table_name):
+                            num_entries += 1
+                            dictionary_index_terms.add((dictionary_term, IS(kfx_id)))
+                            index_words.add(dictionary_term)
+                            index_kfx_ids.add(kfx_id)
+
+                            if dictionary_term < first_head_word or not first_head_word:
+                                first_head_word = dictionary_term
+
+                        log.info("Dictionary %s table has %d entries with %d terms and %d definitions" % (
+                                table_name, num_entries, len(index_words), len(index_kfx_ids)))
+
+                else:
+                    log.error("KPF database is missing the '%s' table" % table_name)
+
+        self.eid_symbol = {}
+        if KFXID_TRANSLATION_SCHEMA in schema:
+            schema.remove(KFXID_TRANSLATION_SCHEMA)
+            for eid, kfx_id in cursor.execute("SELECT * FROM kfxid_translation;"):
+                self.eid_symbol[eid] = self.create_local_symbol(kfx_id)
+
+        self.element_type = {}
+        if FRAGMENT_PROPERTIES_SCHEMA in schema:
+            schema.remove(FRAGMENT_PROPERTIES_SCHEMA)
+            for id, key, value in cursor.execute("SELECT * FROM fragment_properties;"):
+
+                if key == "child":
+                    pass
+                elif key == "element_type":
+                    self.element_type[id] = value
+                else:
+                    log.error("fragment_property has unknown key: id=%s key=%s value=%s" % (id, key, value))
+
+        self.max_eid_in_sections = None
+        self.have_symbol_table_or_max_id = False
+
+        if ACTION_FRAGMENTS_SCHEMA in schema:
+            schema.remove(ACTION_FRAGMENTS_SCHEMA)
+            self.book.is_scribe_notebook = True
+            action_count = 0
+
+            for action_id, payload_type, payload_value in cursor.execute("SELECT * FROM local_action_fragments;"):
+                action_count += 1
+
+            log.info("Found local_action_fragments table with %d entries" % action_count)
+
+        has_delta_fragments = DELTA_FRAGMENTS_SCHEMA in schema
+        if has_delta_fragments:
+            schema.remove(DELTA_FRAGMENTS_SCHEMA)
+            self.book.is_scribe_notebook = True
+            delta_count = 0
+
+            for delta_id, payload_type, payload_value, deleted in cursor.execute("SELECT * FROM local_delta_fragments;"):
+                delta_count += 1
+
+            log.info("Found local_delta_fragments table with %d entries" % delta_count)
+
+        if FRAGMENTS_SCHEMA in schema:
+            schema.remove(FRAGMENTS_SCHEMA)
+            for condition in [" WHERE id = '$ion_symbol_table'", " WHERE id = 'max_id'", ""]:
+                delta_fragments = {}
+                if has_delta_fragments:
+                    for id, payload_type, payload_value, deleted in cursor.execute("SELECT * FROM local_delta_fragments%s;" % condition):
+                        delta_fragments[id] = (payload_type, payload_value)
+                        if not deleted:
+                            self.process_db_fragment(id, payload_type, payload_value)
+
+                for id, payload_type, payload_value in cursor.execute("SELECT * FROM fragments%s;" % condition):
+                    if id not in delta_fragments:
+                        self.process_db_fragment(id, payload_type, payload_value)
+        else:
+            log.error("KPF database is missing the 'fragments' table")
+
+        if GC_FRAGMENT_PROPERTIES_SCHEMA in schema:
+            schema.remove(GC_FRAGMENT_PROPERTIES_SCHEMA)
+
+        if GC_REACHABLE_SCHEMA in schema:
+            schema.remove(GC_REACHABLE_SCHEMA)
+
+        if CAPABILITIES_SCHEMA in schema:
+            schema.remove(CAPABILITIES_SCHEMA)
+            capabilities = cursor.execute("SELECT * FROM capabilities;").fetchall()
+
+            if capabilities:
+                format_capabilities = [IonStruct(IS("$492"), key, IS("version"), version) for key, version in capabilities]
+                self.fragments.append(YJFragment(ftype="$593", value=format_capabilities))
+        else:
+            log.error("KPF database is missing the 'capabilities' table")
+
+        if len(schema) > 0:
+            for s in list(schema):
+                log.error("Unexpected KDF database schema: %s" % s)
+
+        cursor.close()
+        conn.close()
+
+        self.book.is_kpf_prepub = True
+        book_metadata_fragment = self.fragments.get("$490")
+        if book_metadata_fragment is not None:
+            for cm in book_metadata_fragment.value.get("$491", {}):
+                if cm.get("$495", "") == "kindle_title_metadata":
+                    for kv in cm.get("$258", []):
+                        if kv.get("$492", "") in ["ASIN", "asset_id", "cde_content_type", "content_id"]:
+                            self.book.is_kpf_prepub = False
+                            break
+                    break
+
+        if self.book.is_dictionary and not self.ignore_drm:
+            used_dictionary_terms = self.dictionary_terms_from_content()
+
+            extra_terms = used_dictionary_terms - dictionary_index_terms
+            if extra_terms:
+                log.warning("Dictionary terms not in index: %s" % (
+                        ", ".join(truncate_list(["%s (@%s)" % i for i in sorted(list(extra_terms))]))))
+
+            unused_terms = dictionary_index_terms - used_dictionary_terms
+            if unused_terms:
+                log.warning("Dictionary index has extra words: %s" % (
+                        ", ".join(truncate_list(["%s (@%s)" % i for i in sorted(list(unused_terms))]))))
+
+            if self.book.is_kpf_prepub:
+                resource_data = self.get_resource_data(DICTIONARY_RULES_FILENAME, report_missing=False)
+                if resource_data is not None:
+                    dictionary_aux_id = self.create_local_symbol(DICTIONARY_RULES_SYMBOL)
+
+                    dictionary_aux_data = IonStruct(
+                            IS("$598"), dictionary_aux_id,
+                            IS("$258"), [
+                                IonStruct(IS("$492"), "yj.dictionary.first_head_word", IS("$307"), first_head_word),
+                                IonStruct(IS("$492"), "yj.dictionary.inflection_rules", IS("$307"), IonBLOB(resource_data)),
+                                ])
+
+                    self.fragments.append(YJFragment(ftype="$597", fid=dictionary_aux_id, value=dictionary_aux_data))
+
+        self.fragments.append(YJFragment(ftype="$270", value=IonStruct(
+            IS("$587"), "",
+            IS("$588"), "",
+            IS("$161"), CONTAINER_FORMAT_KPF)))
+
+        if self.kcb_datafile is not None and self.kcb_data is not None:
+            source_path = self.kcb_data.get("metadata", {}).get("source_path")
+            if source_path and os.path.splitext(source_path)[1] in [
+                    ".epub",
+                    ".zip"]:
+                epub_file = self.get_kpf_file(source_path)
+                if epub_file is not None:
+                    zip_file = io.BytesIO(epub_file.get_data())
+                    self.source_epub = SourceEpub(zip_file)
+                    zip_file.close()
+
+    def open_kpf_database(self):
 
         if self.datafile.is_zipfile():
             self.kpf_datafile = self.datafile
@@ -76,169 +292,7 @@ class KpfContainer(YJContainer):
                     "SQLite version 3.8.2 or later is necessary in order to use a WITHOUT ROWID table. Found version %s" %
                     sqlite3.sqlite_version)
 
-        conn = sqlite3.connect(db_filename, KpfContainer.db_timeout)
-        cursor = conn.cursor()
-
-        sql_list = cursor.execute("SELECT sql FROM sqlite_master WHERE type='table';").fetchall()
-        schema = set([x[0] for x in sql_list])
-
-        dictionary_index_terms = set()
-        first_head_word = ""
-        INDEX_INFO_SCHEMA = ("CREATE TABLE index_info(namespace char(256), index_name char(256), property char(40), "
-                             "primary key (namespace, index_name)) without rowid")
-
-        if INDEX_INFO_SCHEMA in schema:
-            schema.remove(INDEX_INFO_SCHEMA)
-            self.book.is_dictionary = True
-            for namespace, index_name, property in cursor.execute("SELECT * FROM index_info;"):
-                if namespace != "dictionary" or property != "yj.dictionary.term":
-                    log.error("unexpected index_info: namespace=%s, index_name=%s, property=%s" % (namespace, index_name, property))
-
-                table_name = "index_%s_%s" % (namespace, index_name)
-                index_schema = ("CREATE TABLE %s ([%s] char(256),  id char(40), "
-                                "primary key ([%s], id)) without rowid") % (table_name, property, property)
-
-                if index_schema in schema:
-                    schema.remove(index_schema)
-                    num_entries = 0
-                    index_words = set()
-                    index_kfx_ids = set()
-
-                    for dictionary_term, kfx_id in cursor.execute("SELECT * FROM %s;" % table_name):
-                        num_entries += 1
-                        dictionary_index_terms.add((dictionary_term, IS(kfx_id)))
-                        index_words.add(dictionary_term)
-                        index_kfx_ids.add(kfx_id)
-
-                        if dictionary_term < first_head_word or not first_head_word:
-                            first_head_word = dictionary_term
-
-                    log.info("Dictionary %s table has %d entries with %d terms and %d definitions" % (
-                            table_name, num_entries, len(index_words), len(index_kfx_ids)))
-
-                else:
-                    log.error("KPF database is missing the '%s' table" % table_name)
-
-        self.eid_symbol = {}
-        KFXID_TRANSLATION_SCHEMA = "CREATE TABLE kfxid_translation(eid INTEGER, kfxid char(40), primary key(eid)) without rowid"
-        if KFXID_TRANSLATION_SCHEMA in schema:
-            schema.remove(KFXID_TRANSLATION_SCHEMA)
-            for eid, kfx_id in cursor.execute("SELECT * FROM kfxid_translation;"):
-                self.eid_symbol[eid] = self.create_local_symbol(kfx_id)
-
-        self.element_type = {}
-        FRAGMENT_PROPERTIES_SCHEMA = ("CREATE TABLE fragment_properties(id char(40), key char(40), value char(40), "
-                                      "primary key (id, key, value)) without rowid")
-        if FRAGMENT_PROPERTIES_SCHEMA in schema:
-            schema.remove(FRAGMENT_PROPERTIES_SCHEMA)
-            for id, key, value in cursor.execute("SELECT * FROM fragment_properties;"):
-
-                if key == "child":
-                    pass
-                elif key == "element_type":
-                    self.element_type[id] = value
-                else:
-                    log.error("fragment_property has unknown key: id=%s key=%s value=%s" % (id, key, value))
-
-        self.max_eid_in_sections = None
-        self.have_symbol_table_or_max_id = False
-
-        ACTION_FRAGMENTS_SCHEMA = ("CREATE TABLE local_action_fragments(action_id char(40), payload_type char(10), payload_value blob, "
-                                   "primary key (action_id))")
-        if ACTION_FRAGMENTS_SCHEMA in schema:
-            schema.remove(ACTION_FRAGMENTS_SCHEMA)
-            self.book.is_scribe_notebook = True
-            action_count = 0
-
-            for action_id, payload_type, payload_value in cursor.execute("SELECT * FROM local_action_fragments;"):
-                action_count += 1
-
-            log.info("Found local_action_fragments table with %d entries" % action_count)
-
-        DELTA_FRAGMENTS_SCHEMA = ("CREATE TABLE local_delta_fragments(id char(40), payload_type char(10), payload_value blob, "
-                                  "deleted smallint, primary key (id))")
-        has_delta_fragments = DELTA_FRAGMENTS_SCHEMA in schema
-        if has_delta_fragments:
-            schema.remove(DELTA_FRAGMENTS_SCHEMA)
-            self.book.is_scribe_notebook = True
-            delta_count = 0
-
-            for delta_id, payload_type, payload_value, deleted in cursor.execute("SELECT * FROM local_delta_fragments;"):
-                delta_count += 1
-
-            log.info("Found local_delta_fragments table with %d entries" % delta_count)
-
-        FRAGMENTS_SCHEMA = "CREATE TABLE fragments(id char(40), payload_type char(10), payload_value blob, primary key (id))"
-        if FRAGMENTS_SCHEMA in schema:
-            schema.remove(FRAGMENTS_SCHEMA)
-
-            for condition in [" WHERE id = '$ion_symbol_table'", " WHERE id = 'max_id'", ""]:
-                delta_fragments = {}
-                if has_delta_fragments:
-                    for id, payload_type, payload_value, deleted in cursor.execute("SELECT * FROM local_delta_fragments%s;" % condition):
-                        delta_fragments[id] = (payload_type, payload_value)
-                        if not deleted:
-                            self.process_db_fragment(id, payload_type, payload_value)
-
-                for id, payload_type, payload_value in cursor.execute("SELECT * FROM fragments%s;" % condition):
-                    if id not in delta_fragments:
-                        self.process_db_fragment(id, payload_type, payload_value)
-        else:
-            log.error("KPF database is missing the 'fragments' table")
-
-        GC_FRAGMENT_PROPERTIES_SCHEMA = ("CREATE TABLE gc_fragment_properties(id varchar(40), key varchar(40), "
-                                         "value varchar(40), primary key (id, key, value)) without rowid")
-        if GC_FRAGMENT_PROPERTIES_SCHEMA in schema:
-            schema.remove(GC_FRAGMENT_PROPERTIES_SCHEMA)
-
-        GC_REACHABLE_SCHEMA = ("CREATE TABLE gc_reachable(id varchar(40), primary key (id)) without rowid")
-        if GC_REACHABLE_SCHEMA in schema:
-            schema.remove(GC_REACHABLE_SCHEMA)
-
-        CAPABILITIES_SCHEMA = "CREATE TABLE capabilities(key char(20), version smallint, primary key (key, version)) without rowid"
-        if CAPABILITIES_SCHEMA in schema:
-            schema.remove(CAPABILITIES_SCHEMA)
-            capabilities = cursor.execute("SELECT * FROM capabilities;").fetchall()
-
-            if capabilities:
-                format_capabilities = [IonStruct(IS("$492"), key, IS("version"), version) for key, version in capabilities]
-                self.fragments.append(YJFragment(ftype="$593", value=format_capabilities))
-        else:
-            log.error("KPF database is missing the 'capabilities' table")
-
-        if len(schema) > 0:
-            for s in list(schema):
-                log.error("Unexpected KDF database schema: %s" % s)
-
-        cursor.close()
-        conn.close()
-
-        self.book.is_kpf_prepub = True
-        book_metadata_fragment = self.fragments.get("$490")
-        if book_metadata_fragment is not None:
-            for cm in book_metadata_fragment.value.get("$491", {}):
-                if cm.get("$495", "") == "kindle_title_metadata":
-                    for kv in cm.get("$258", []):
-                        if kv.get("$492", "") in ["ASIN", "asset_id", "cde_content_type", "content_id"]:
-                            self.book.is_kpf_prepub = False
-                            break
-                    break
-
-        self.fragments.append(YJFragment(ftype="$270", value=IonStruct(
-            IS("$587"), "",
-            IS("$588"), "",
-            IS("$161"), CONTAINER_FORMAT_KPF)))
-
-        if self.kcb_datafile is not None and self.kcb_data is not None:
-            source_path = self.kcb_data.get("metadata", {}).get("source_path")
-            if source_path and os.path.splitext(source_path)[1] in [
-                    ".epub",
-                    ".zip"]:
-                epub_file = self.get_kpf_file(source_path)
-                if epub_file is not None:
-                    zip_file = io.BytesIO(epub_file.get_data())
-                    self.source_epub = SourceEpub(zip_file)
-                    zip_file.close()
+        return sqlite3.connect(db_filename, KpfContainer.db_timeout)
 
     def process_db_fragment(self, id, payload_type, payload_value):
         ftype = id
@@ -404,6 +458,49 @@ class KpfContainer(YJContainer):
             process(data)
 
         return data
+
+    def dictionary_terms_from_content(self):
+        dictionary_terms = set()
+
+        def walk(data):
+            data_type = ion_type(data)
+
+            if data_type is IonAnnotation:
+                walk(data.value)
+
+            elif data_type is IonList or data_type is IonSExp:
+                for val in data:
+                    walk(val)
+
+            elif data_type is IonStruct:
+                for val in data.values():
+                    walk(val)
+
+                terms = data.get("yj.dictionary.term")
+                if terms is not None:
+                    if isstring(terms):
+                        terms = [terms]
+
+                    kfx_id = data.get("$598")
+                    for term in terms:
+                        dictionary_terms.add((term, kfx_id))
+
+        for fragment in self.fragments:
+            if fragment.ftype in ["$259", "$608"]:
+                walk(fragment.value)
+
+        return dictionary_terms
+
+    def serialize(self):
+        if not self.book.is_dictionary:
+            log.error("Cannot serialize a KPF container")
+            return None
+
+        if self.has_drm:
+            log.error("Cannot serialize a dictionary containing DRM")
+            return None
+
+        return self.kdf_datafile.get_data()
 
 
 class SQLiteFingerprintWrapper(object):
