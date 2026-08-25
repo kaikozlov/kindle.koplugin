@@ -319,6 +319,19 @@ describe("native KOReader sync lifecycle", function()
         assert.equals(0, settings._flushes())
     end)
 
+    local function captureDeferredSync()
+        local scheduled
+        local original_schedule = UIManager.scheduleIn
+        UIManager.scheduleIn = function(_, _delay, callback)
+            scheduled = callback
+        end
+        return function()
+            assert.is_function(scheduled, "close sync must be deferred")
+            scheduled()
+            UIManager.scheduleIn = original_schedule
+        end
+    end
+
     it("pushes only after ReaderRolling's final SaveSettings in normal teardown", function()
         local book = {
             id = "book",
@@ -339,6 +352,8 @@ describe("native KOReader sync lifecycle", function()
             return true
         end
 
+        local run_deferred = captureDeferredSync()
+
         buildReaderPlugin(book, "/cache/book.epub", settings)
         instance:onCloseDocument()
         assert.is_nil(seen)
@@ -347,7 +362,7 @@ describe("native KOReader sync lifecycle", function()
         settings:saveSetting("last_xpointer", "final-xpointer")
         settings:saveSetting("percent_finished", 0.73)
         instance:onSaveSettings()
-
+        run_deferred()
         assert.equals("B000000001", seen.cde_key)
         assert.equals("/documents/book.kfx", seen.source_path)
         assert.equals("final-xpointer", seen.xpointer)
@@ -390,7 +405,9 @@ describe("native KOReader sync lifecycle", function()
         instance:onCloseDocument()
         settings:saveSetting("last_xpointer", "final-xpointer")
         settings:saveSetting("percent_finished", 0.73)
+        local run_deferred = captureDeferredSync()
         instance:onSaveSettings()
+        run_deferred()
 
         assert.is_nil(conflict_dialog)
         assert.is_function(next_tick)
@@ -438,7 +455,9 @@ describe("native KOReader sync lifecycle", function()
         })
         instance:onCloseDocument()
         settings:saveSetting("last_xpointer", "final-xpointer")
+        local run_deferred = captureDeferredSync()
         instance:onSaveSettings()
+        run_deferred()
 
         assert.is_nil(confirm)
         assert.is_function(next_tick)

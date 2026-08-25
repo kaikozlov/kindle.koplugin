@@ -280,17 +280,22 @@ function KindlePlugin:onReaderReady()
     end
 end
 
-function KindlePlugin:syncPendingClose()
-    local pending = self._pending_close_sync
-    if not pending then
+local function runPendingCloseSync(pending)
+    -- The same document may have been reopened before the deferred push ran
+    -- (fast back-to-back open). That session owns its position now; its own
+    -- close will push, and receipt reconciliation covers the gap.
+    local ReaderUI = require("apps/reader/readerui")
+    local active = ReaderUI.instance and ReaderUI.instance.document
+    if active and active.file == pending.epub_path then
+        logger.info("KindlePlugin: skipping deferred close sync; document reopened")
         return
     end
-    self._pending_close_sync = nil
+
     local approval_handler = function(
         plugin, sync_direction, is_pull_from_kindle, is_newer, sync_fn, sync_details
     )
         local is_prompt = configuredDirection(
-            self.settings, is_pull_from_kindle, is_newer
+            plugin.settings, is_pull_from_kindle, is_newer
         ) == SYNC_DIRECTION.PROMPT
         if is_prompt then
             UIManager:nextTick(function()
@@ -323,6 +328,7 @@ function KindlePlugin:syncPendingClose()
         end)
         return true
     end
+
     reading_state_sync:syncToKindleAutomatic(
         pending.cde_key,
         pending.source_path,
@@ -331,6 +337,23 @@ function KindlePlugin:syncPendingClose()
         approval_handler,
         conflict_handler
     )
+end
+
+function KindlePlugin:syncPendingClose()
+    local pending = self._pending_close_sync
+    if not pending then
+        return
+    end
+    self._pending_close_sync = nil
+
+    -- Exact close sync spawns the bundled helper twice (batched position read
+    -- plus sidecar write); each cold interpreter start costs seconds on the
+    -- device. Run it after the reader widget has closed so the exit gesture
+    -- returns to the library immediately instead of blocking on the sync.
+    -- An interrupted run is recovered by the receipt system on the next open.
+    UIManager:scheduleIn(0.1, function()
+        runPendingCloseSync(pending)
+    end)
 end
 
 --- CloseDocument happens before the final UIManager-driven SaveSettings in the
