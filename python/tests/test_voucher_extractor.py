@@ -197,5 +197,127 @@ class VoucherExtractorAccountSecretTests(unittest.TestCase):
         self.assertIn("device serial only", result.stderr.lower())
 
 
+@unittest.skipUnless(shutil.which("javac") and shutil.which("java"), "Java toolchain is required")
+class VoucherExtractorMainPathContractTests(unittest.TestCase):
+    """Execute the bundled KFXVoucherExtractor.jar end to end.
+
+    The YJReader SDK entry point is replaced by the recording stub from
+    lib/java-stubs, which enforces the SDK call order in Java and reports the
+    recorded values on stdout. Together with the extractor's own progress
+    lines this pins the exact main path the Python driver depends on.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tempdir = tempfile.mkdtemp(prefix="voucher-extractor-contract-")
+        cls.stubs_classes = os.path.join(cls.tempdir, "stubs-classes")
+        os.makedirs(cls.stubs_classes)
+
+        stub_sources = []
+        for dirpath, _, filenames in os.walk(JAVA_STUBS):
+            for filename in filenames:
+                if filename.endswith(".java"):
+                    stub_sources.append(os.path.join(dirpath, filename))
+
+        subprocess.run(
+            ["javac", "--release", "8", "-d", cls.stubs_classes, *sorted(stub_sources)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tempdir)
+
+    def run_extractor(self, *args):
+        classpath = os.pathsep.join([JAVA_JAR, self.stubs_classes])
+        return subprocess.run(
+            ["java", "-cp", classpath, "KFXVoucherExtractor", *args],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_bundled_jar_drives_the_security_contract_in_order(self):
+        voucher = os.path.join(self.tempdir, "Book_B0TESTCODE0.sdr", "assets", "voucher")
+        os.makedirs(os.path.dirname(voucher))
+        with open(voucher, "wb") as voucher_file:
+            voucher_file.write(b"\xe0\x01\x00\xeaProtectedData")
+
+        result = self.run_extractor("TEST-SERIAL", "--acsr", "test-secret", voucher)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        lines = result.stdout.splitlines()
+
+        for expected in (
+            "Security initialized",
+            "Voucher: " + voucher,
+            "All vouchers attached",
+            "Done",
+        ):
+            self.assertIn(expected, lines)
+
+        def recorded(prefix):
+            return [line[len(prefix):] for line in lines if line.startswith(prefix)]
+
+        self.assertEqual(["test-secret"], recorded("REC:setAccountSecrets:"))
+
+        lock_parameters = recorded("REC:setLockParameters:")
+        self.assertEqual(1, len(lock_parameters))
+        self.assertEqual(
+            {"ACCOUNT_SECRET": "test-secret", "CLIENT_ID": "TEST-SERIAL"},
+            dict(part.split("=", 1) for part in lock_parameters[0].split(";")),
+        )
+
+        self.assertEqual([voucher], recorded("REC:attachVoucher:"))
+        self.assertIn("REC:dispose", lines)
+
+        # The extractor interleaves its own progress lines with the recorded
+        # SDK calls; the documented main path must hold exactly. The lock-map
+        # line is collapsed because HashMap iteration order is unspecified.
+        sequence = []
+        for line in lines:
+            if line.startswith("REC:setAccountSecrets:"):
+                sequence.append("setAccountSecrets")
+            elif line.startswith("REC:setLockParameters:"):
+                sequence.append("setLockParameters")
+            elif line == "Security initialized":
+                sequence.append("initialized")
+            elif line == "Voucher: " + voucher:
+                sequence.append("voucher-listed")
+            elif line.startswith("REC:attachVoucher:"):
+                sequence.append("attachVoucher")
+            elif line == "All vouchers attached":
+                sequence.append("attached")
+            elif line == "REC:dispose":
+                sequence.append("dispose")
+            elif line == "Done":
+                sequence.append("done")
+            else:
+                self.fail("Unexpected extractor output line: " + line)
+        self.assertEqual(
+            [
+                "setAccountSecrets",
+                "setLockParameters",
+                "initialized",
+                "voucher-listed",
+                "attachVoucher",
+                "attached",
+                "dispose",
+                "done",
+            ],
+            sequence,
+        )
+
+    def test_bundled_jar_excludes_sdk_stub_classes(self):
+        with zipfile.ZipFile(JAVA_JAR) as jar_file:
+            names = jar_file.namelist()
+
+        self.assertFalse([name for name in names if name.startswith("com/")])
+        self.assertIn("KFXVoucherExtractor.class", names)
+        self.assertIn("KFXVoucherExtractor$Arguments.class", names)
+        self.assertIn("KFXVoucherExtractor.java", names)
+
+
 if __name__ == "__main__":
     unittest.main()
