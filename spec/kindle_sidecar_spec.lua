@@ -14,6 +14,10 @@ local function utf(text)
     return value(3, utf_body(text))
 end
 
+local function empty_utf()
+    return value(3, "\1")
+end
+
 local function long(number)
     local lo = number % 4294967296
     local hi = (number - lo) / 4294967296
@@ -48,7 +52,9 @@ local function make_store(lpr, fpr)
         object_value("fpr", { utf(fpr), long(900), long(-1), utf(""), utf("") }),
         object_value("sync_lpr", { boolean(false) }),
         object_value("lpr", { byte(2), utf(lpr), long(1100) }),
-        object_value("unknown.future.object", { byte(7), utf("preserve-me") }),
+        object_value("unknown.future.object", {
+            byte(7), utf("preserve-me"), empty_utf(),
+        }),
     }
     return SIGNATURE .. long(1) ..
         value(1, table.concat({

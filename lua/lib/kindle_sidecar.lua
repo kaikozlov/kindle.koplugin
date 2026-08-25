@@ -101,7 +101,8 @@ function Cursor:read_utf_body()
         return nil, empty
     end
     if empty == 1 then
-        return ""
+        -- Preserve KRDS' compact empty-string representation verbatim.
+        return "", true
     end
     if empty ~= 0 then
         return nil, "invalid KRDS UTF empty marker"

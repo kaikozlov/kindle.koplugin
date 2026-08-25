@@ -1,11 +1,22 @@
+local bit = require("bit")
+local DataStorage = require("datastorage")
+local ffi = require("ffi")
+local ffiUtil = require("ffi/util")
 local json = require("json")
 local logger = require("logger")
+local lfs = require("libs/libkoreader-lfs")
 local util = require("util")
+
+require("ffi/posix_h")
 
 local KindleSidecar = require("lua/lib/kindle_sidecar")
 local PositionMap = require("lua/lib/position_map")
 
-local DataStorage = require("datastorage")
+local C = ffi.C
+if not pcall(function() return C.fchmod end) then
+    -- Older KOReader ffi headers did not expose fchmod.
+    ffi.cdef("int fchmod(int fd, unsigned int mode);")
+end
 
 local HelperClient = {}
 HelperClient.__index = HelperClient
@@ -176,7 +187,6 @@ local function positionSidecars(native_path)
     else
         opened:close()
     end
-    local lfs = require("libs/libkoreader-lfs")
     if lfs.attributes(sidecar_dir, "mode") ~= "directory" then
         return candidates
     end
@@ -290,16 +300,45 @@ local function writeSidecarPosition(path, long_position, pid, timestamp_ms)
     if not verified or verified.long ~= long_position or verified.pid ~= pid then
         return nil, "KRDS position readback mismatch"
     end
+    local permissions = lfs.attributes(path, "permissions")
+    if type(permissions) ~= "string" or #permissions < 9 then
+        return nil, "cannot read sidecar permissions"
+    end
+    local mode = 0
+    local mode_bit = 256
+    for i = 1, 9 do
+        if permissions:sub(i, i) ~= "-" then
+            mode = mode + mode_bit
+        end
+        mode_bit = mode_bit / 2
+    end
     local temp_path = path .. ".kindle-tmp." .. tostring(os.time())
     local temp = io.open(temp_path, "wb")
     if not temp then
-        os.remove(temp_path)
         return nil, "cannot create temporary sidecar"
     end
     temp:write(encoded)
-    temp:flush()
+    if C.fchmod(C.fileno(temp), mode) ~= 0 then
+        local mode_error = ffi.errno()
+        temp:close()
+        os.remove(temp_path)
+        return nil, "cannot preserve sidecar permissions: errno " .. mode_error
+    end
+    local synced, sync_error = ffiUtil.fsyncOpenedFile(temp, true)
     temp:close()
-    os.rename(temp_path, path)
+    if not synced then
+        os.remove(temp_path)
+        return nil, "cannot sync temporary sidecar: " .. tostring(sync_error)
+    end
+    local renamed, rename_error = os.rename(temp_path, path)
+    if not renamed then
+        os.remove(temp_path)
+        return nil, "cannot replace sidecar: " .. tostring(rename_error)
+    end
+    local directory_synced, directory_error = ffiUtil.fsyncDirectory(path)
+    if not directory_synced then
+        return nil, "cannot sync sidecar directory: " .. tostring(directory_error)
+    end
     return true
 end
 
@@ -354,29 +393,36 @@ function HelperClient:saveNativeProgress(asin, native_path, position)
         return self.native_progress_runner(asin, native_path, position)
     end
 
-    if type(position.percent) == "number"
-        and position.percent >= 0 and position.percent <= 100
+    if type(position.percent) ~= "number"
+        or position.percent < 0 or position.percent > 100
     then
-        local written_any = false
-        for _, sidecar in ipairs(positionSidecars(native_path)) do
-            local ok = writeSidecarPosition(sidecar, position.long, position.pid)
-            if ok then
-                written_any = true
-            else
-                logger.warn("KindlePlugin: sidecar position write failed:", sidecar)
-            end
-        end
-        if written_any then
-            logger.info("KindlePlugin: exact sidecar position saved:", asin, position.pid)
-            return true, nil, position.percent, {
-                long = position.long,
-                pid = position.pid,
-                percent = position.percent,
-            }
-        end
+        return false, "invalid native percent"
     end
 
-    return false, "no Kindle position sidecar is writable"
+    local written_any = false
+    local last_error
+    for _, sidecar in ipairs(positionSidecars(native_path)) do
+        local ok, write_error =
+            writeSidecarPosition(sidecar, position.long, position.pid)
+        if ok then
+            written_any = true
+        else
+            last_error = write_error
+            logger.warn(
+                "KindlePlugin: sidecar position write failed:",
+                sidecar, write_error
+            )
+        end
+    end
+    if written_any then
+        logger.info("KindlePlugin: exact sidecar position saved:", asin, position.pid)
+        return true, nil, position.percent, {
+            long = position.long,
+            pid = position.pid,
+            percent = position.percent,
+        }
+    end
+    return false, last_error or "no Kindle position sidecar is writable"
 end
 
 --- Read Kindle's authoritative local last-page-read position.
