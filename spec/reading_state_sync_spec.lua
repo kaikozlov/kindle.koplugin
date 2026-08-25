@@ -432,7 +432,7 @@ describe("ReadingStateSync", function()
             restoreReadKindleState(sync, original)
         end)
 
-        it("should fall back to percentage-only pull when ReaderSDK is unavailable", function()
+        it("should fall back to percentage-only pull when KRDS is unavailable", function()
             local sync = ReadingStateSync:new({
                 nativeProgressAvailable = function() return false end,
             })
@@ -462,7 +462,7 @@ describe("ReadingStateSync", function()
             RealDocSettings:_clearSidecars()
         end)
 
-        it("should use percentage-only pull for a direct PDF even when ReaderSDK is available", function()
+        it("should use percentage-only pull for a direct PDF even when KRDS is available", function()
             local sync = ReadingStateSync:new({
                 nativeProgressAvailable = function() return true end,
             })
@@ -494,7 +494,7 @@ describe("ReadingStateSync", function()
             RealDocSettings:_clearSidecars()
         end)
 
-        it("should fall back to percentage push when ReaderSDK is unavailable", function()
+        it("should fall back to percentage push when KRDS is unavailable", function()
             local sync = ReadingStateSync:new({
                 nativeProgressAvailable = function() return false end,
             })
@@ -520,7 +520,7 @@ describe("ReadingStateSync", function()
             restoreWriteKindleState(sync, original_write)
         end)
 
-        it("should use percentage push for a direct PDF even when ReaderSDK is available", function()
+        it("should use percentage push for a direct PDF even when KRDS is available", function()
             local sync = ReadingStateSync:new({
                 nativeProgressAvailable = function() return true end,
             })
@@ -1461,7 +1461,7 @@ describe("ReadingStateSync", function()
     -- syncToKindle (PUSH)
     -- ========================================================================
     describe("syncToKindle", function()
-        it("should translate and save the exact XPointer through ReaderSDK", function()
+        it("should translate and save the exact XPointer through KRDS", function()
             local calls = {}
             local client = {
                 translatePosition = function(_, epub, xpointer)

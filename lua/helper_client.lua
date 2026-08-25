@@ -1,4 +1,3 @@
-local bit = require("bit")
 local DataStorage = require("datastorage")
 local ffi = require("ffi")
 local ffiUtil = require("ffi/util")
@@ -165,14 +164,6 @@ function HelperClient:translateNativePosition(epub_path, long_position)
     return PositionMap.translate_native(map, long_position)
 end
 
-local function readableFile(path)
-    local handle = io.open(path, "rb")
-    if not handle then
-        return false
-    end
-    handle:close()
-    return true
-end
 
 --- Find every KRDS reading-position sidecar next to a Kindle book.
 local function positionSidecars(native_path)
@@ -342,13 +333,13 @@ local function writeSidecarPosition(path, long_position, pid, timestamp_ms)
     return true
 end
 
---- Whether an exact Kindle coordinate backend is usable for this native book.
---- Position translation and Reader Data Store sidecars run in-process; the
---- Java ReaderSDK agent remains a compatibility fallback when available.
+--- Whether a readable Kindle Reader Data Store sidecar exists for this book.
 function HelperClient:nativeProgressAvailable(asin, native_path)
-    if type(asin) ~= "string" or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$")
+    local pattern = self.native_path_pattern or "^/mnt/us/documents/.+%.kfx$"
+    if type(asin) ~= "string"
+        or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$")
         or type(native_path) ~= "string"
-        or not native_path:match("^/mnt/us/documents/.+%.kfx$")
+        or not native_path:match(pattern)
     then
         return false
     end
@@ -359,19 +350,16 @@ function HelperClient:nativeProgressAvailable(asin, native_path)
         end
         return self.native_progress_available == true
     end
-    if self._native_progress_failed then
-        return false
-    end
     if self.native_progress_runner or self.native_progress_reader then
         return true
     end
 
-    local plugin = self:getPluginPath()
-    return readableFile(self:getBinaryPath())
-        or (readableFile("/usr/java/bin/java")
-            and readableFile(plugin .. "/bin/sync-native-progress")
-            and readableFile(plugin .. "/bin/native-reading-progress-agent-v6.jar")
-            and readableFile(plugin .. "/bin/classes/AttachLauncher.class"))
+    for _, sidecar in ipairs(positionSidecars(native_path)) do
+        if readSidecarPosition(sidecar) then
+            return true
+        end
+    end
+    return false
 end
 
 --- Save an exact position through the Kindle Reader Data Store sidecars.

@@ -37,21 +37,23 @@ KOReader only sees **real document paths**. The historical `KINDLE_VIRTUAL://` s
 │                            ▼                         │
 │   ├─ KOReader chooses DocumentRegistry provider      │
 │   ├─ KOReader owns DocSettings/History/Collections   │
+│   ├─ exact sync uses a Lua position map + KRDS codec │
 │   └─ Reader lifecycle events                         │
 │       ├─ DocSettingsLoad → Kindle → KOReader pull    │
 │       └─ CloseDocument captures identity;            │
 │          final SaveSettings → KOReader → Kindle push │
 └──────────────────────┬──────────────────────────────┘
-                       │ JSON CLI
+                       │ conversion / DRM only
 ┌──────────────────────▼──────────────────────────────┐
 │ kindle-helper (C launcher + bundled ARM CPython)     │
 │ python/kindle_helper.py                              │
-│ KFX conversion / DRM / exact position translation    │
+│ KFX conversion / DRM / covers / annotation batches  │
+│ emits EPUB + text-free exact-position map            │
 └──────────────────────┬──────────────────────────────┘
-                       │ DRM init / native progress
+                       │ DRM init only
 ┌──────────────────────▼──────────────────────────────┐
 │ Kindle firmware services                             │
-│ KFXVoucherExtractor + crypto hook / ReaderSDK agent  │
+│ KFXVoucherExtractor + crypto hook                    │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -67,11 +69,11 @@ User selects a book
   → open_file_ext refreshes/prepares only a known stale/missing Kindle-derived EPUB
   → KOReader chooses the native provider (MuPDF/CREngine/etc.)
   → KOReader loads native DocSettings
-  → onDocSettingsLoad may update position before ReadSettings
+  → onDocSettingsLoad reads KRDS + the position map and may stage an exact XPointer
   → ReaderRolling/Paging restores position normally
   → CloseDocument captures the mapped Kindle book/path
   → ReaderRolling writes final position during SaveSettings
-  → plugin onSaveSettings pushes that final state to Kindle
+  → plugin onSaveSettings writes KRDS in-process, then updates the Kindle shelf
 ```
 
 **Do not patch** `lfs.attributes`, `ffiUtil.realpath`, `DocumentRegistry`, `ReaderUI:showReader`, `ReaderUI:onClose`, or `DocSettings` to emulate files. If a feature appears to require that, first re-read current `REFERENCE/koreader/` for a native lifecycle/UI seam.
@@ -87,6 +89,7 @@ User selects a book
 | DRM voucher extraction | Java (tiny) | ~30 lines, runs on device's `cvm` JVM |
 | AES key interception | C (tiny) | ~60 lines, LD_PRELOAD hook, pre-compiled as static asset |
 | KOReader integration | Lua | Native `BookList` + `DocSettingsLoad` + close-capture/final-`SaveSettings`; narrow reversible FileChooser discovery + real-path open resolver hooks |
+| Exact-position sync | Lua | Conversion-time position map + byte-exact KRDS sidecar codec; no subprocess |
 
 ---
 
@@ -112,6 +115,8 @@ User selects a book
 │   ├── helper_client.lua
 │   ├── reading_state_sync.lua
 │   └── lib/
+│       ├── kindle_sidecar.lua       ← byte-exact KRDS codec
+│       ├── position_map.lua         ← in-process XPointer ↔ KFX translation
 │       ├── kindle_state_reader.lua
 │       ├── kindle_state_writer.lua
 │       ├── status_converter.lua
@@ -120,17 +125,16 @@ User selects a book
 ├── python/
 │   ├── kindle_helper.py
 │   ├── kfx_position_adapter.py    ← plugin-owned position instrumentation
-│   ├── epub_position.py
+│   ├── position_map.py            ← conversion-time text-free map emitter
+│   ├── epub_position.py           ← annotation batch tooling
 │   ├── annotation_position.py
 │   ├── kfxlib/                    ← pristine Calibre KFX Input source
 │   └── dedrm/
 │
-├── agent/                         ← reproducible Kindle ReaderSDK progress agent
 ├── lib/                           ← DRM/native helper assets
 ├── scripts/
 │   ├── test                       ← current KOReader-contract Lua tests
-│   ├── koreader-test-container    ← overlays pinned Lua source on native runtime
-│   └── build_progress_agent
+│   └── koreader-test-container    ← overlays pinned Lua source on native runtime
 ├── spec/
 ├── .github/
 └── REFERENCE/                     ← local reference checkouts; not release payload
@@ -211,8 +215,8 @@ KOReader plugins live in a `<name>.koplugin/` directory with `_meta.lua` and a `
 - **Real paths are the document identity.** History, Collections, provider selection, sidecars, BookList caches, and ReaderUI must see the actual source file or cached EPUB path.
 - **Library UI is a `BookList`, not a fake directory.** The FileManager hook may add one synthetic folder entry, but must never assign a URI to `FileChooser.path`.
 - **Pull sync in `onDocSettingsLoad`, acknowledge at live readback.** KOReader emits `DocSettingsLoad` after plugin instantiation and before `ReadSettings`; an exact pull may stage only the translated XPointer there. Do not copy Kindle's percentage into KOReader or advance the reconciliation receipt yet. Confirm the destination from the live renderer at `ReaderReady` (or immediately after an approved live prompt), then persist KOReader's own rendered percentage and advance the receipt.
-- **Push sync after the final `SaveSettings`.** In normal ReaderUI teardown, `CloseDocument` occurs before the UIManager-driven final save. Capture Kindle identity in `onCloseDocument`, then push from plugin `onSaveSettings`, which is registered after ReaderRolling and therefore sees its final XPointer/percent. An exact push advances the receipt only after ReaderSDK confirms the requested native coordinate and the Kindle shelf update succeeds. The uncommon ReaderUI branch that saves before `CloseDocument` may push immediately.
-- **Exact reconciliation has only two authorities and one receipt.** The Kindle ReaderSDK coordinate and KOReader's translated XPointer are authoritative; shelf percentages are display metadata. Compare both current exact coordinates to the single last-agreed receipt: propagate a one-sided change, recover an interrupted one-sided write, and acknowledge matching coordinates after readback. If both sides moved independently and disagree, always prompt with both renderer-specific percentages and explicit **Use Kindle / Use KOReader / Cancel** choices, regardless of ordinary newer/older sync policy. Cancel preserves both sides so the next sync attempt asks again. Do not introduce event journals, session histories, or display-only sources into exact-position authority without a demonstrated requirement.
+- **Push sync after the final `SaveSettings`.** In normal ReaderUI teardown, `CloseDocument` occurs before the UIManager-driven final save. Capture Kindle identity in `onCloseDocument`, then push from plugin `onSaveSettings`, which is registered after ReaderRolling and therefore sees its final XPointer/percent. An exact push advances the receipt only after atomic KRDS readback confirms the requested native coordinate and the Kindle shelf update succeeds. The uncommon ReaderUI branch that saves before `CloseDocument` may push immediately.
+- **Exact reconciliation has only two authorities and one receipt.** The Kindle KRDS coordinate and KOReader's translated XPointer are authoritative; shelf percentages are display metadata. Compare both current exact coordinates to the single last-agreed receipt: propagate a one-sided change, recover an interrupted one-sided write, and acknowledge matching coordinates after readback. If both sides moved independently and disagree, always prompt with both renderer-specific percentages and explicit **Use Kindle / Use KOReader / Cancel** choices, regardless of ordinary newer/older sync policy. Cancel preserves both sides so the next sync attempt asks again. Do not introduce event journals, session histories, or display-only sources into exact-position authority without a demonstrated requirement.
 - **Renderer percentages are local.** A converted EPUB and the Kindle renderer may report different percentages for the same exact KFX coordinate. Never use one renderer's percentage as the other's exact-position state.
 - **DocSettings is KOReader-owned.** Preserve native `doc`/`dir`/`hash` probing and migration. Do not override `getSidecarDir` or `getSidecarFilename`.
 - **Provider selection is KOReader-owned.** The open resolver may substitute a refreshed real cache path, then must delegate to `filemanagerutil.openFile()` without forcing CREngine; direct PDFs must naturally resolve to MuPDF.

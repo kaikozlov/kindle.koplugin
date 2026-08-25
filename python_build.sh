@@ -302,7 +302,6 @@ echo "[5/5] Packaging..."
 cp -r lua/ "$STAGING/lua/"
 cp main.lua "$STAGING/"
 cp _meta.lua "$STAGING/"
-cp -r bin/ "$STAGING/bin/"
 
 # Copy the C wrapper
 cp "$OUTPUT_DIR/kindle-helper" "$STAGING/"
@@ -329,11 +328,10 @@ test -f "$STAGING/dist/position_map.py"
 test -d "$STAGING/dist/lib/python3.11/site-packages/soupsieve"
 test -f "$STAGING/dist/lib/python3.11/site-packages/typing_extensions.py"
 test -f "$STAGING/dist/dedrm/native_extractor.py"
-test -x "$STAGING/bin/sync-native-progress"
-test -f "$STAGING/bin/native-reading-progress-agent-v6.jar"
-test -f "$STAGING/bin/classes/AttachLauncher.class"
 test -x "$STAGING/dist/lib/runtime/ld-linux-armhf.so.3"
 test -f "$STAGING/dist/lib/runtime/libc.so.6"
+test ! -d "$STAGING/bin"
+test ! -f "$STAGING/dist/krds_position.py"
 test ! -d "$STAGING/dist/dist"
 
 # Exercise the final package in a scratch rootfs.  There is deliberately no

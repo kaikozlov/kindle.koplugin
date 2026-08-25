@@ -79,7 +79,7 @@ KOReader**, or **Cancel** choice. Cancel preserves both sides and the conflict i
 asked again on the next sync attempt. This also recovers an interrupted close by
 retrying the one unfinished KOReader-to-Kindle push. Pull receipts advance only
 after KOReader confirms the rendered destination; push receipts advance only
-after ReaderSDK confirms the exact coordinate and the Kindle shelf update
+after KRDS readback confirms the exact coordinate and the Kindle shelf update
 succeeds. Shelf-percentage drift is repaired separately and never selects an
 exact reading position.
 
@@ -110,8 +110,8 @@ MIT License
 ## Building from source
 
 ```sh
-# Rebuild the Kindle ReaderSDK progress agent (JDK 11+)
-./scripts/build_progress_agent
+# Rebuild the DRM voucher extractor (JDK 8+)
+./scripts/build_voucher_extractor
 
 # Build the self-contained ARMv7 package
 ./python_build.sh

@@ -1,6 +1,6 @@
 --- Reading State Synchronization for Kindle virtual library.
---- Syncs reading progress between KOReader and Kindle's authoritative ReaderSDK
---- state, then mirrors the accepted value to cc.db for shelf display.
+--- Syncs reading progress against Kindle's authoritative Reader Data Store
+--- sidecars, then mirrors the accepted value to cc.db for shelf display.
 --- Adapted from kobo.koplugin/src/reading_state_sync.lua.
 ---
 --- Kindle stores progress in /var/local/cc.db, Entries table:
@@ -121,7 +121,7 @@ end
 
 --- Compare the two current exact authorities to their last acknowledged point.
 --- There are intentionally only three coordinates in this model: receipt,
---- Kindle ReaderSDK, and KOReader's persisted XPointer translated back to KFX.
+--- Kindle KRDS, and KOReader's persisted XPointer translated back to KFX.
 local function classifyExactPositions(receipt, native_position, koreader_position)
     if not receipt then
         return "untracked"
@@ -188,7 +188,7 @@ local function sameReceiptPosition(receipt, position)
 end
 
 --- Translate KOReader's persisted exact XPointer back into the same native KFX
---- coordinate space used by ReaderSDK. Percentages are deliberately ignored.
+--- coordinate space stored in Kindle's KRDS sidecars. Percentages are ignored.
 function ReadingStateSync:getKOReaderNativePosition(epub_path, doc_settings)
     if type(epub_path) ~= "string"
         or not epub_path:lower():match("%.epub$")
@@ -377,7 +377,7 @@ function ReadingStateSync:writeApproximateKindleState(
     return self:writeKindleState(cde_key, source_path, percent, timestamp, status)
 end
 
---- Persist the exact KOReader XPointer through Kindle's native ReaderSDK.
+--- Persist the exact KOReader XPointer through Kindle's KRDS sidecars.
 --- The visible catalog must only be advanced after this succeeds; otherwise
 --- the native reader would reopen its older LPR and overwrite the shelf value.
 function ReadingStateSync:saveAuthoritativeNativePosition(cde_key, source_path, epub_path, doc_settings, pretranslated)
@@ -429,7 +429,7 @@ function ReadingStateSync:saveAuthoritativeNativePosition(cde_key, source_path, 
 end
 
 --- Complete one exact KOReader→Kindle transaction. The receipt advances only
---- after ReaderSDK echoes the intended exact coordinate and cc.db accepts the
+--- after KRDS readback confirms the requested coordinate and cc.db accepts the
 --- Kindle-rendered percentage.
 function ReadingStateSync:pushExactKOReaderPosition(
     cde_key, source_path, epub_path, doc_settings, status, timestamp,
@@ -449,7 +449,7 @@ function ReadingStateSync:pushExactKOReaderPosition(
         return false, "native_save_failed"
     end
     if not sameNativePosition(saved_position, intended_position) then
-        logger.warn("KindlePlugin: ReaderSDK saved a different exact position than KOReader requested")
+        logger.warn("KindlePlugin: Kindle sidecar saved a different exact position than KOReader requested")
         return false, "native_readback_mismatch"
     end
     if not self:writeKindleState(
@@ -1090,7 +1090,7 @@ function ReadingStateSync:syncToKindle(cde_key, source_path, doc_settings, epub_
     return false
 end
 
---- Legacy automatic pull used when the exact ReaderSDK bridge is unavailable.
+--- Legacy automatic pull used when the exact KRDS bridge is unavailable.
 function ReadingStateSync:syncFromKindleApproximateAutomatic(
     cde_key, doc_settings, kindle_state, kr_timestamp, kr_percent, kr_status,
     approval_handler
@@ -1277,8 +1277,8 @@ function ReadingStateSync:syncFromKindleAutomatic(
     return sync_completed
 end
 
---- Sync KOReader state into Kindle's authoritative ReaderSDK state during close.
---- This honors automatic-sync and all configured direction choices.
+--- Sync KOReader state into Kindle's authoritative Reader Data Store during
+--- close. This honors automatic-sync and all configured direction choices.
 function ReadingStateSync:syncToKindleAutomatic(
     cde_key, source_path, doc_settings, epub_path, approval_handler, conflict_handler
 )
