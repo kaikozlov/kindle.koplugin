@@ -1197,7 +1197,7 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 
 	// Generate SVG content
 	if variableDensity {
-		generateDensityPNG(groupElem, points, bounds, boundWidth, boundHeight, nmdlRandomSeed, strokeColor)
+		generateDensityPNG(nc, groupElem, points, bounds, boundWidth, boundHeight, nmdlRandomSeed, strokeColor)
 	} else {
 		generateSVGPaths(groupElem, points, nmdlThickness)
 	}
@@ -1322,7 +1322,7 @@ func pythonFloorAverage(a, b float64) float64 {
 // Port of Python's variable_density branch (yj_to_epub_notebook.py:402-480).
 // ---------------------------------------------------------------------------
 
-func generateDensityPNG(groupElem *svgElement, points []strokePoint, bounds [4]int, boundWidth, boundHeight int, nmdlRandomSeed interface{}, strokeColor int) {
+func generateDensityPNG(nc *notebookContext, groupElem *svgElement, points []strokePoint, bounds [4]int, boundWidth, boundHeight int, nmdlRandomSeed interface{}, strokeColor int) {
 	// Build interpolated points with midpoints for gaps
 	type densityPoint struct {
 		X, Y int
@@ -1376,12 +1376,23 @@ func generateDensityPNG(groupElem *svgElement, points []strokePoint, bounds [4]i
 	pngWidth := boundWidth / PNG_SCALE_FACTOR
 	pngHeight := boundHeight / PNG_SCALE_FACTOR
 	if pngWidth <= 0 || pngHeight <= 0 {
+		// Pillow refuses to save a zero-sized density image (ValueError: cannot
+		// write empty image). Treat that as the same conversion-aborting failure
+		// instead of silently omitting the stroke.
+		nc.errorf("%s density stroke has empty PNG dimensions %dx%d", nc.contentContext, pngWidth, pngHeight)
 		return
 	}
 
 	densityMap := make([]float64, pngWidth*pngHeight)
 
 	for _, pt := range pts {
+		if pt.R == 0 {
+			// Python divides by r below and raises ZeroDivisionError for a zero
+			// radius. Go float division would yield NaN/Inf and quietly render an
+			// empty stroke, so make the exception boundary explicit.
+			nc.errorf("%s density stroke has zero radius", nc.contentContext)
+			return
+		}
 		adjustedD := 1.0 - math.Pow(1.0-math.Min(math.Max(pt.D, 0.0), 1.0), PNG_DENSITY_GAMMA)
 
 		intRadius := int(math.Ceil(pt.R * 1.5))

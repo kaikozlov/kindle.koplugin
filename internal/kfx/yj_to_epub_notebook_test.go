@@ -1794,11 +1794,10 @@ func TestScribeNotebookStroke_VariableDensity(t *testing.T) {
 		0x55, // both nibbles = 5 → increment=1
 	}
 
-	tafData := []byte{
-		0x01, 0x01,
-		0x02, 0x00, 0x00, 0x00,
-		0x44, // both nibbles = 4 → increment=0 → values [0, 0]
-	}
+	// Keep thickness non-zero. Python's density renderer raises ZeroDivisionError
+	// when a point radius is zero, so a variable-density fixture must use a
+	// valid non-zero thickness adjustment.
+	tafData := []byte{0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x14, 0x64} // [100, 100]
 
 	content := map[string]interface{}{
 		"nmdl.type":        "nmdl.stroke",
@@ -1865,6 +1864,32 @@ func TestScribeNotebookStroke_VariableDensity(t *testing.T) {
 // VAL-M4-NB-008: adjustColorForDensity edge cases
 // Python: yj_to_epub_notebook.py:615-622
 // ===========================================================================
+
+func TestGenerateDensityPNGMatchesPythonAbortBoundaries(t *testing.T) {
+	t.Run("zero radius", func(t *testing.T) {
+		nc := &notebookContext{contentContext: "test"}
+		parent := &svgElement{Tag: "g"}
+		generateDensityPNG(nc, parent, []strokePoint{{X: 16, Y: 16, T: 0, D: 0.5}}, [4]int{0, 0, 64, 64}, 64, 64, 42, 0)
+		if nc.err == nil {
+			t.Fatal("zero-radius density stroke should abort like Python ZeroDivisionError")
+		}
+		if len(parent.Children) != 0 {
+			t.Fatalf("zero-radius density stroke emitted %d children after failure", len(parent.Children))
+		}
+	})
+
+	t.Run("empty image", func(t *testing.T) {
+		nc := &notebookContext{contentContext: "test"}
+		parent := &svgElement{Tag: "g"}
+		generateDensityPNG(nc, parent, []strokePoint{{X: 0, Y: 0, T: 16, D: 0.5}}, [4]int{0, 0, 0, 64}, 0, 64, 42, 0)
+		if nc.err == nil {
+			t.Fatal("zero-width density image should abort like Pillow ValueError")
+		}
+		if len(parent.Children) != 0 {
+			t.Fatalf("zero-width density image emitted %d children after failure", len(parent.Children))
+		}
+	})
+}
 
 func TestAdjustColorForDensity_AllColors(t *testing.T) {
 	// Test all stroke colors at density 1.0
