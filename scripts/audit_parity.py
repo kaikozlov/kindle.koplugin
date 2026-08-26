@@ -307,11 +307,21 @@ def extract_python_functions(filepath: str) -> list[PyFunc]:
                 nlit=nlit,
                 trivial_shape=py_trivial_shape(node, arg_pos),
             ))
-            for child in node.body:
-                visit(child)
-        elif isinstance(node, ast.ClassDef):
+            # Nested defs may live inside if/for/try/with bodies. The old
+            # visitor only recursed through a function's immediate body and
+            # silently missed those defs — exactly the denominator bug this
+            # audit is intended to prevent. Walk every descendant while
+            # preserving the enclosing Python class identity.
+            for child in ast.iter_child_nodes(node):
+                if child is not node.args:
+                    visit(child, class_name)
+            return
+        if isinstance(node, ast.ClassDef):
             for child in node.body:
                 visit(child, class_name=node.name)
+            return
+        for child in ast.iter_child_nodes(node):
+            visit(child, class_name)
 
     for node in tree.body:
         visit(node)
@@ -426,32 +436,6 @@ def expected_go_names(pf: PyFunc) -> list[str]:
     return list(dict.fromkeys(names))
 
 
-# Which Python files to audit (only kfxlib conversion files, not Calibre plugin infra)
-FILES_TO_AUDIT = [
-    "yj_to_epub_content.py",
-    "yj_to_epub_properties.py",
-    "yj_to_epub_misc.py",
-    "yj_to_epub_navigation.py",
-    "yj_to_epub_resources.py",
-    "yj_to_epub.py",
-    "yj_to_epub_metadata.py",
-    "yj_to_epub_illustrated_layout.py",
-    "yj_to_epub_notebook.py",
-    "yj_to_image_book.py",
-    "yj_book.py",
-    "yj_container.py",
-    "yj_metadata.py",
-    "yj_position_location.py",
-    "yj_structure.py",
-    "yj_symbol_catalog.py",
-    "yj_versions.py",
-    "epub_output.py",
-    "ion.py",
-    "ion_binary.py",
-    "ion_symbol_table.py",
-    "kfx_container.py",
-]
-
 # Go identifier names that are too generic to auto-match by name even when
 # unique in the expected file: a `String`/`Equal`/`Get` that happens to exist
 # proves nothing about a Python __repr__/__eq__/__getitem__. These require an
@@ -463,6 +447,104 @@ GENERIC_GO_NAMES = {
 }
 
 DEFAULT_OVERRIDES = os.path.join(BASE, "scripts/parity_identity_overrides.json")
+
+# Complete enumeration of every core kfxlib .py file, each classified:
+#   "audited"    — in FILES_TO_AUDIT; matched against the same-name Go file
+#   "component"  — in FILES_TO_AUDIT but matched against a CURATED Go file
+#                  set (e.g. jxr_*.py → internal/jxr). Same exact-case /
+#                  uniqueness / generic-name guards apply.
+#   "out-of-scope" — waived at FILE level with a reviewed reason. The
+#                  upstream def count stays in the denominator of the
+#                  upstream report line regardless.
+# A regression test fails when upstream adds a .py file that is missing here.
+SCOPE_MANIFEST = {
+    # conversion core (same-name Go file)
+    "yj_to_epub_content.py": {"scope": "audited"},
+    "yj_to_epub_properties.py": {"scope": "audited"},
+    "yj_to_epub_misc.py": {"scope": "audited"},
+    "yj_to_epub_navigation.py": {"scope": "audited"},
+    "yj_to_epub_resources.py": {"scope": "audited"},
+    "yj_to_epub.py": {"scope": "audited"},
+    "yj_to_epub_metadata.py": {"scope": "audited"},
+    "yj_to_epub_illustrated_layout.py": {"scope": "audited"},
+    "yj_to_epub_notebook.py": {"scope": "audited"},
+    "yj_to_image_book.py": {"scope": "audited"},
+    "yj_book.py": {"scope": "audited"},
+    "yj_container.py": {"scope": "audited"},
+    "yj_metadata.py": {"scope": "audited"},
+    "yj_position_location.py": {"scope": "audited"},
+    "yj_structure.py": {"scope": "audited"},
+    "yj_symbol_catalog.py": {"scope": "audited"},
+    "yj_versions.py": {"scope": "audited"},
+    "epub_output.py": {"scope": "audited"},
+    "ion.py": {"scope": "audited"},
+    "ion_binary.py": {"scope": "audited"},
+    "ion_symbol_table.py": {"scope": "audited"},
+    "kfx_container.py": {"scope": "audited"},
+    # conversion core matched against a curated Go component set
+    "jxr_image.py": {"scope": "component",
+                     "go_files": ["internal/jxr/decode.go", "internal/jxr/jxr.go"]},
+    "jxr_container.py": {"scope": "component",
+                         "go_files": ["internal/jxr/jxr.go"]},
+    "jxr_misc.py": {"scope": "component",
+                    "go_files": ["internal/jxr/decode.go", "internal/jxr/jxr.go"]},
+    "resources.py": {"scope": "component",
+                     "go_files": ["internal/kfx/yj_to_epub_resources.go"]},
+    # mixed file: audited against an explicit curated set; host glue gets
+    # per-def exclusions, output-semantic helpers need evidence or are gaps
+    "utilities.py": {"scope": "component",
+                     "go_files": ["internal/kfx/utilities.go", "internal/epub/epub.go",
+                                  "internal/kfx/yj_to_epub.go", "internal/kfx/yj_to_epub_misc.go"]},
+    # genuinely out of scope for this converter (reviewed reasons below);
+    # upstream def counts STILL appear in the upstream denominator
+    "original_source_epub.py": {
+        "scope": "out-of-scope",
+        "reason": "reconstructs the ORIGINAL pre-KFX epub for Calibre's round-trip diffing UI; the KOReader converter only produces reading EPUBs and never sees original sources"},
+    "kpf_book.py": {
+        "scope": "out-of-scope",
+        "reason": "KPF (Kindle Previewer export) book assembly; Go reads KFX only — IsKpfPrepub is detected (kfx.go) but no KPF pipeline is built"},
+    "kpf_container.py": {
+        "scope": "out-of-scope",
+        "reason": "KPF container unpacking for the KPF pipeline; same rationale as kpf_book.py"},
+    "unpack_container.py": {
+        "scope": "out-of-scope",
+        "reason": "standalone 'unpack' CLI entrypoint (argparse main); the plugin's helper binary has scan/convert only"},
+    "ion_text.py": {
+        "scope": "out-of-scope",
+        "reason": "ION TEXT format reader/writer used by Calibre for symbol-catalog translation and debug dumps; the Go pipeline decodes ION BINARY only via amazon-ion-go (ion_binary in-scope) and embeds the catalog at compile time"},
+    "message_logging.py": {
+        "scope": "out-of-scope",
+        "reason": "Calibre-side log-message progress plumbing; the Go binary logs to stderr and has no progress callbacks"},
+    "version.py": {"scope": "out-of-scope",
+                   "reason": "single version constant consumed by Calibre plugin metadata, not conversion"},
+    "__init__.py": {"scope": "out-of-scope",
+                    "reason": "package marker, no defs"},
+}
+
+
+# Which Python files to audit — generated from SCOPE_MANIFEST (audited +
+# component scopes). Do not hand-edit; a regression test keeps this in sync
+# with every upstream file.
+FILES_TO_AUDIT = [f for f, cfg in SCOPE_MANIFEST.items()
+                  if cfg.get("scope") in ("audited", "component")]
+
+def classify_upstream_files(py_dir: str) -> tuple[list[str], list[str]]:
+    """Return (in_scope_files, problems) per the SCOPE_MANIFEST.
+
+    Any upstream .py file not named in the manifest is a problem — a new
+    upstream file must be deliberately classified, never silently omitted
+    (this is the regression guard for the denominator)."""
+    problems = []
+    if not os.path.isdir(py_dir):
+        return [], [f"reference dir missing: {py_dir}"]
+    upstream = sorted(f for f in os.listdir(py_dir) if f.endswith(".py") and not f.startswith("calibre-plugin"))
+    for f in upstream:
+        if f not in SCOPE_MANIFEST:
+            problems.append(f"upstream file {f!r} is not classified in SCOPE_MANIFEST; "
+                            "classify it as audited/component/out-of-scope deliberately")
+    in_scope = [f for f in upstream
+                if SCOPE_MANIFEST.get(f, {}).get("scope") in ("audited", "component")]
+    return in_scope, problems
 
 
 # ---------------------------------------------------------------------------
@@ -803,7 +885,7 @@ def audit_file(py_name: str, go_funcs: dict = None,
                go_index: Optional[dict] = None,
                exclusions: Optional[list[dict]] = None,
                overrides: Optional[list[dict]] = None) -> dict:
-    """Audit a single Python file against its Go counterpart."""
+    """Audit a single Python file against its Go counterpart(s)."""
     py_path = os.path.join(PY_DIR, py_name)
     go_name = py_name.replace(".py", ".go")
     go_path = os.path.join(GO_DIR, go_name)
@@ -818,11 +900,18 @@ def audit_file(py_name: str, go_funcs: dict = None,
     if overrides is None:
         overrides = []
 
+    # Component scope: candidate Go functions come from a CURATED file set
+    # (e.g. jxr_image.py → internal/jxr). Same conservative guards apply.
+    scope_cfg = SCOPE_MANIFEST.get(py_name, {"scope": "audited"})
+    component_files = []
+    if scope_cfg.get("scope") == "component":
+        component_files = [gf.split("/")[-1] for gf in scope_cfg.get("go_files", [])]
+
     py_funcs = extract_python_functions(py_path)
 
     same_file_by_name = {}
     for fn in go_index["functions"]:
-        if fn["file"] == go_name:
+        if fn["file"] == go_name or fn["file"] in component_files:
             same_file_by_name.setdefault(fn["name"], []).append(fn)
 
     entries = []
@@ -933,6 +1022,8 @@ def audit_all(exclusions_path: str = None, gofuncinfo_path: str = None,
     overrides = load_overrides(overrides_path or DEFAULT_OVERRIDES)
     go_index = gofuncinfo(gofuncinfo_path)
 
+    in_scope, scope_problems = classify_upstream_files(PY_DIR)
+
     pyfuncs_by_file = {}
     for py_name in FILES_TO_AUDIT:
         py_path = os.path.join(PY_DIR, py_name)
@@ -943,7 +1034,7 @@ def audit_all(exclusions_path: str = None, gofuncinfo_path: str = None,
         exclusions, pyfuncs_by_file, go_index)
     o_problems, valid_overrides = validate_overrides(
         overrides, pyfuncs_by_file, go_index)
-    problems = problems + o_problems
+    problems = problems + o_problems + scope_problems
 
     results = []
     for py_name in FILES_TO_AUDIT:
@@ -952,7 +1043,25 @@ def audit_all(exclusions_path: str = None, gofuncinfo_path: str = None,
                             overrides=valid_overrides)
         if result:
             results.append(result)
-    return results, exclusions, problems
+
+    # Upstream totals: EVERY core kfxlib file, regardless of scope. The
+    # upstream denominator can never shrink because of scope decisions.
+    upstream_total = 0
+    upstream_out_of_scope = 0
+    if os.path.isdir(PY_DIR):
+        for fname in sorted(os.listdir(PY_DIR)):
+            if not fname.endswith(".py") or fname.startswith("calibre-plugin"):
+                continue
+            fpath = os.path.join(PY_DIR, fname)
+            funcs = extract_python_functions(fpath)
+            upstream_total += len(funcs)
+            if SCOPE_MANIFEST.get(fname, {}).get("scope") == "out-of-scope":
+                upstream_out_of_scope += len(funcs)
+
+    return results, exclusions, problems, {
+        "upstream_total": upstream_total,
+        "upstream_out_of_scope": upstream_out_of_scope,
+    }
 
 
 STATUS_ORDER = ["stub_silent", "stub_admitted", "thin", "missing", "unresolved_match",
@@ -1011,18 +1120,18 @@ def print_report(result, verbose=False):
                 print(f"      ⊘ excluded [{ee.get('category')}]: {ee.get('reason')}")
 
 
-def print_metric(results, exclusions):
+def print_metric(results, exclusions, upstream=None):
     counts = {}
     for r in results:
         for k, v in r["counts"].items():
             counts[k] = counts.get(k, 0) + v
     total = sum(r["python_function_count"] for r in results)
     implemented = (counts.get("implemented", 0) + counts.get("implemented_trivial", 0)
-                   + counts.get("implemented_delegation", 0))
+                   + counts.get("implemented_delegation", 0) + counts.get("mapped", 0))
     gaps = sum(counts.get(s, 0) for s in GAP_STATUSES)
     excluded = counts.get("excluded", 0)
     mapped = counts.get("mapped", 0)
-    audited = total - excluded - mapped
+    audited = total - excluded
     pct = (implemented / audited * 100) if audited > 0 else 100.0
     strict = (implemented / total * 100) if total > 0 else 100.0
 
@@ -1040,10 +1149,21 @@ def print_metric(results, exclusions):
     # differential tests.
     print(f"METRIC parity_pct={pct:.1f}")
     print(f"METRIC gap_functions={gaps}")
+    if upstream:
+        ut = upstream.get("upstream_total", 0)
+        uo = upstream.get("upstream_out_of_scope", 0)
+        # Results contain audited/component files only; file-scope waivers
+        # are intentionally absent from this denominator.
+        in_scope_defs = total
+        u_pct = (implemented / ut * 100) if ut > 0 else 100.0
+        print(f"METRIC upstream_total_defs={ut}")
+        print(f"METRIC upstream_out_of_scope_defs={uo}")
+        print(f"METRIC in_scope_defs={in_scope_defs}")
+        print(f"METRIC upstream_structural_coverage_pct={u_pct:.1f}")
     return counts
 
 
-def write_report_file(results, exclusions, problems, path):
+def write_report_file(results, exclusions, problems, path, upstream=None):
     lines = []
     lines.append("# Honest Parity Report — Python→Go function audit")
     lines.append("")
@@ -1057,24 +1177,50 @@ def write_report_file(results, exclusions, problems, path):
             counts[k] = counts.get(k, 0) + v
     total = sum(r["python_function_count"] for r in results)
     implemented = (counts.get("implemented", 0) + counts.get("implemented_trivial", 0)
-                   + counts.get("implemented_delegation", 0))
+                   + counts.get("implemented_delegation", 0) + counts.get("mapped", 0))
     excluded = counts.get("excluded", 0)
+    mapped = counts.get("mapped", 0)
+    ut = (upstream or {}).get("upstream_total", total)
+    uo = (upstream or {}).get("upstream_out_of_scope", 0)
     audited = total - excluded
 
     lines.append("## Summary")
     lines.append("")
-    lines.append(f"- Python functions audited: **{total}**")
+    lines.append(f"- **Upstream core kfxlib defs: {ut}** "
+                 f"({uo} waived at file scope with reviewed reasons — "
+                 f"**they remain in the upstream denominator above and below, "
+                 f"always visible**)" if ut else "")
+    lines.append(f"- In-scope defs audited: **{total}** "
+                 f"(structural coverage only — name + body substance; NOT "
+                 f"behavioral parity, see §Method limits)")
     lines.append(f"- Implemented (substantive): **{counts.get('implemented', 0)}**")
     lines.append(f"- Implemented (delegation wrappers): **{counts.get('implemented_delegation', 0)}**")
-    lines.append(f"- Implemented (trivial↔trivial): **{counts.get('implemented_trivial', 0)}**")
+    lines.append(f"- Mapped via reviewed identity overrides: **{counts.get('mapped', 0)}**")
+    lines.append(f"- Implemented (trivial↔trivial, value-equal): **{counts.get('implemented_trivial', 0)}**")
     lines.append(f"- Stubs (silent name-only shims): **{counts.get('stub_silent', 0)}**")
     lines.append(f"- Stubs (admitted not-implemented): **{counts.get('stub_admitted', 0)}**")
     lines.append(f"- Thin (suspiciously small): **{counts.get('thin', 0)}**")
     lines.append(f"- Missing (no name match): **{counts.get('missing', 0)}**")
-    lines.append(f"- Excluded (explicit, see below): **{excluded}**")
-    lines.append(f"- **Parity: {implemented}/{audited} = {(implemented / audited * 100) if audited else 100:.1f}%** "
-                 f"(strict, counting exclusions against parity: "
+    lines.append(f"- Excluded (explicit, per-def, validated): **{excluded}**")
+    lines.append(f"- **In-scope structural coverage: {implemented}/{audited} = {(implemented / audited * 100) if audited else 100:.1f}%** "
+                 f"(strict, counting explicit exclusions against coverage: "
                  f"{(implemented / total * 100) if total else 100:.1f}%)")
+    lines.append(f"- **Upstream structural coverage: {implemented}/{ut} = {(implemented / ut * 100) if ut else 100:.1f}%** "
+                 f"— the denominator is EVERY upstream core def")
+    lines.append("")
+
+    lines.append("## Method limits — what this number is NOT")
+    lines.append("")
+    lines.append("This is **structural coverage** (name + body substance), not behavioral")
+    lines.append("parity. It cannot establish semantic equivalence:")
+    lines.append("")
+    lines.append("- a large-but-wrong Go body still counts as implemented —")
+    lines.append("  size similarity is not correctness")
+    lines.append("- delegation credit only proves a call chain exists, not that it")
+    lines.append("  computes the same thing")
+    lines.append("- behavioral evidence lives in the branch audit, the golden-EPUB")
+    lines.append("  parity suite (`scripts/parity_diff.py`), and the Go/Lua test")
+    lines.append("  suites — reported separately, never proven by this metric")
     lines.append("")
 
     lines.append("## Real implementation gaps")
@@ -1213,8 +1359,8 @@ def main():
             sys.exit(1)
         return
 
-    results, exclusions, problems = audit_all(args.exclusions, args.gofuncinfo,
-                                              args.overrides)
+    results, exclusions, problems, upstream = audit_all(args.exclusions, args.gofuncinfo,
+                                                        args.overrides)
 
     if args.init_exclusions:
         if args.exclusions == DEFAULT_EXCLUSIONS:
@@ -1224,7 +1370,7 @@ def main():
         return
 
     if args.metric:
-        print_metric(results, exclusions)
+        print_metric(results, exclusions, upstream)
         if problems:
             print("⚠ VALIDATION PROBLEMS:")
             for p in problems:
@@ -1245,14 +1391,14 @@ def main():
         print_report(r, verbose=args.verbose)
         print()
 
-    print_metric(results, exclusions)
+    print_metric(results, exclusions, upstream)
     if problems:
         print("\n⚠ EXCLUSION VALIDATION PROBLEMS:")
         for p in problems:
             print(f"  - {p}")
 
     if args.report:
-        write_report_file(results, exclusions, problems, args.report)
+        write_report_file(results, exclusions, problems, args.report, upstream)
         print(f"\nreport written to {args.report}")
 
     counts = {}

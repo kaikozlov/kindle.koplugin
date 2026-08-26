@@ -1,148 +1,133 @@
 # Parity Auditor Honesty Audit
 
-**Date:** 2026-05 (this audit) · **Scope:** `scripts/audit_parity.py`,
-`scripts/audit_branches.py`, `scripts/audit_missing_branches.py`, and the Go
-conversion tree they measure.
+**Updated:** 2026-08-25 · **Reference:** KFX Input 2.34.0 / `20260822`
 
-## Why this document exists
+## Purpose
 
-Git history records that the parity metrics were once gamed and then honestly
-reset (`1d9acf3` "Honest baseline: 26 uncertain branches... Previous 0 was from
-cheating", `6e4525f` "Revert cheating"). By 2026-05 the metrics had drifted
-back to perfect scores — `audit_parity.py --metric` reported **534/534
-functions**, `audit_missing_branches.py` reported **4525/4525 branches** —
-while the tree contained obvious one-line stubs (e.g. ~50 no-ops at the bottom
-of `internal/kfx/epub_output.go`, ~120 in `internal/kfx/ion_binary.go`, and
-`return fmt.Errorf("not implemented")` wrappers in `internal/kfx/yj_book.go`).
+This repository has previously produced apparently excellent Python→Go parity numbers while still containing obvious missing behavior and dead one-line functions created solely to satisfy name-based audits. The audit tooling is therefore a tripwire, not a proof system. Its job is to make unsupported claims visible and difficult to hide.
 
-This document records how the inflation worked, what was done about it, and
-what the honest numbers are.
+The semantic source of truth remains the current vendored KFX Input Python implementation. Behavioral equivalence requires differential/golden output evidence in addition to static review.
 
-## How the old auditors could be gamed
+## What was wrong with the old function metric
 
-### Function audit (`audit_parity.py`)
+The historical function auditor matched names case-insensitively across the whole Go tree. Any same-named Go declaration could satisfy a Python function, even when the Go body was `return nil`, `return false`, or otherwise unrelated. Dunder aliases such as `__repr__ -> String` and broad cross-file matches created further false positives. Large groups of Go functions were explicitly labeled as Python-named stubs “for parity audit purposes.”
 
-The old audit matched **names only**, case-insensitively, across **all** Go
-files. Any `func` declaration counted as an implementation of a same-named
-Python function, regardless of its body. Consequences:
+The denominator was also incomplete. The old report audited 537 Python definitions. Current upstream contains **961** function/method definitions across the 35 core `kfxlib/*.py` files. The missing denominator included important conversion code such as `resources.py`, the JXR implementation, and `utilities.py`.
 
-- `func generateEpub(outputPath string) error { return nil }` counted as a
-  port of Python's 51-statement `EPUB_Output.generate_epub`.
-- Stubs could live anywhere (global name index), so a name collision in an
-  unrelated file satisfied parity.
-- `snake_to_camel("__init__") == "Init"`, so every Python `__init__` matched
-  whichever Go file had an `init()` function.
-- Several sections of Go code carry the banner comment
-  *"Missing Python functions — Ports from X. These stubs provide the
-  Python-named API"* — they were written for the auditor, not for the program.
-  **160 of 1327 Go functions are trivial AND have zero production call
-  sites.**
+A second denominator bug existed in the Python extractor itself: nested functions underneath `if`, `for`, `try`, and similar control-flow nodes were skipped. The extractor now recursively visits all descendants and a regression test pins the current upstream total at 961.
 
-### Branch audit (`audit_branches.py`)
+## Current function-audit rules
 
-- Branches were matched against the **whole Go file**, then against **all Go
-  sources concatenated**, so evidence never had to be near the counterpart.
-- Several strategies auto-returned "found" for shape-of-code heuristics:
-  `if i == 0` → found; any variable-to-variable comparison → found; any
-  `for` branch → found if the string `range ` appeared anywhere in the file;
-  any `try/except` → found if `err` appeared anywhere in the file.
-  `audit_missing_branches.py` summed these to a structurally-guaranteed 100%.
+`audit_parity.py` now uses the Go AST scanner in `scripts/gofuncinfo` and applies conservative identity/substance rules:
 
-## What changed
+- Go identifiers are exact-case. `decodeKFX` and `DecodeKFX` are different functions.
+- Automatic matching is unique + exact-case + same-file only. Cross-file matches require an explicit reviewed identity override.
+- Generic aliases (`String`, `Equal`, `Get`, `Len`, etc.) never auto-match Python dunders.
+- A Go declaration must contain substance. Empty, constant-only, error-only, and admitted-not-implemented bodies do not count as substantive ports.
+- One-line delegation only receives credit when an unqualified identifier call resolves unambiguously to substantive code. Selector calls such as `strings.TrimSpace` cannot accidentally resolve to a same-named corpus function.
+- Python trivial functions are compared semantically: literal values and identity-argument positions must agree (`True != false`, `0 != 1`, `return arg0 != return arg1`).
+- Reviewed exclusions are validated. Architecture/library-replacement exclusions require concrete substantive Go evidence; stale or ambiguous exclusions are rejected rather than applied.
+- Reviewed identity mappings must point exact-case to substantive Go functions.
 
-| Tool | Change |
-|---|---|
-| `scripts/gofuncinfo` (new) | AST-based Go function scanner: statement count, composite-literal element count, trivial-body flags (empty / constant-or-identity returns / error-only returns / not-implemented admissions), call-graph counts. Tested in Go. |
-| `scripts/audit_parity.py` | A match now requires name **and substance**. Trivial Go bodies against substantive Python functions are `stub_silent`/`stub_admitted`. One-line delegation wrappers count only if the transitive call closure carries real substance. Dunder false-matches fixed. Composite literals counted on both sides. Explicit, validated exclusions (below). |
-| `scripts/parity_exclusions.json` (new) | Reviewable waiver manifest: fixed category enum, ≥10-char reason, and for architecture claims **evidence that must resolve to a named, verified-substantive Go function**. Invalid entries are rejected *and* ignored — a junk manifest cannot green the metric. |
-| `scripts/audit_branches.py` | Branch matching is scoped to the resolved Go counterpart's **body**. Whole-file and all-sources search removed. Universal-pattern auto-founds reclassified as `weak` and excluded from coverage. |
-| `scripts/audit_missing_branches.py` | In-process (60× faster); reports found/weak/missing/uncertain honestly. |
-| `scripts/tests/` (new) | 48 unittest cases pinning all of the above, including "a same-named stub must not move the parity needle" and "a hollow counterpart must not produce branch coverage". |
+The metric is deliberately named **structural coverage**. A large but wrong Go function still counts structurally, so the number cannot establish semantic parity.
 
-## Classification: adapters vs shims
+## Complete upstream scope
 
-The audit distinguished two kinds of "same-named Go function that is not a
-1:1 port":
+Every current upstream core Python file is classified in `SCOPE_MANIFEST`. A new upstream `.py` file that is not deliberately classified is a hard audit problem.
 
-1. **Genuine alternate-architecture adapters** — the behavior exists under a
-   different shape, e.g. ION handling via `amazon-ion-go`
-   (`decodeIonValue`/`decodeIonMap` with the embedded YJ catalog), EPUB
-   packaging in `internal/epub` (`Write`, `contentOPF`, `tocNCX`,
-   `navXHTML`), book decoding in `decodeKFX`, position/location logic under
-   `BookPosLoc` methods, PDF outlines in `buildOutlineObjects`. These are
-   **excluded with evidence** in `scripts/parity_exclusions.json`; the
-   evidence functions are verified substantive by the auditor.
-2. **Hollow name-only shims** — dead one-liners whose only consumer was the
-   parity audit (e.g. `serializeValue → return nil`,
-   `generateEpub → return nil`, `checkFragmentUsage`'s empty twin,
-   `addPdfOutline → return nil` with a stale "not yet implemented" comment
-   despite real outline support existing elsewhere). The honest auditor
-   counts these as gaps unless a justified exclusion exists, and flags them
-   `[dead: no call sites]` for deletion.
+Current definition accounting is:
 
-Out-of-scope-by-design items (Calibre output modes: single-KFX, CBZ, PDF
-book conversion from YJ, KPF, zip-unpack, json-content; Calibre input
-directory scanning; encode/serialize directions) are excluded under
-`output-mode-out-of-scope` / `input-mode-out-of-scope` / `unused-direction`
-with reasons — never counted as ports.
+- **961 upstream core definitions total**
+- **807 in-scope definitions audited structurally**
+- **154 definitions in explicitly reviewed file-scope waivers**
 
-## Honest numbers (this audit)
+The 154 waived definitions remain visible in the upstream denominator. File-scope waivers currently cover KPF/original-source/standalone-unpack/Calibre logging/ION-text directions that are outside the on-device KFX→EPUB converter contract. They are not claimed as implemented.
 
-Function audit (`python3 scripts/audit_parity.py --metric`):
+Important previously omitted files are no longer blanket-hidden:
 
-```
-537 Python functions audited
-277 implemented + 40 delegation + 40 trivial↔trivial  = 357 present
-167 excluded (explicit, validated, listed in PARITY_REPORT.md)
-13 real gaps (6 silent stubs, 4 thin, 3 missing)
-parity 96.5%   (strict — counting exclusions against parity: 66.5%)
+- `resources.py` is audited against `internal/kfx/yj_to_epub_resources.go`.
+- `jxr_image.py`, `jxr_container.py`, and `jxr_misc.py` are audited against the curated `internal/jxr` implementation rather than waived merely because the architecture differs.
+- `utilities.py` remains in scope against a curated component set. Host glue may receive individual reviewed exclusions, but output-affecting path/sort/serialization behavior cannot disappear behind a file-level waiver.
+
+## Current structural numbers
+
+From `python3 scripts/audit_parity.py --metric`:
+
+```text
+upstream_total_defs=961
+in_scope_defs=807
+upstream_out_of_scope_defs=154
+
+implemented=211
+implemented_delegation=30
+implemented_trivial=0
+mapped=0
+excluded=167
+
+stub_silent=32
+thin=8
+missing=256
+unresolved_match=103
+gap_functions=399
+
+in-scope structural coverage = 241 / 640 = 37.7%
+strict in-scope coverage      = 241 / 807 = 29.9%
+upstream structural coverage = 241 / 961 = 25.1%
 ```
 
-Branch audit (`python3 scripts/audit_missing_branches.py --metric`):
+The `640` denominator removes only validated per-definition exclusions from the 807 in-scope definitions. Reviewed identity mappings, when present, count as substantive structural mappings rather than disappearing from the denominator.
 
+These numbers are much lower than the historical 96.5% because the current audit refuses to infer equivalence merely from a name and now includes the previously omitted upstream files.
+
+## Branch audit
+
+The branch auditor is also deliberately conservative:
+
+- it searches only the uniquely resolved exact-case same-file Go counterpart body;
+- cross-file name collisions are not branch evidence;
+- generic identifier/shape heuristics are `weak`, never strong coverage;
+- missing/hollow counterparts contribute uncertainty rather than borrowing evidence from another Go function or file.
+
+Current core-conversion branch metric (`audit_missing_branches.py --metric`):
+
+```text
+found_branches=661
+weak_branches=2186
+missing_branches=0
+uncertain_branches=1759
+total_branches=4606
+branch_coverage_pct=14.4
 ```
-4378 branches: 2341 strong-found, 0 weak, 0 missing, 2037 uncertain
-53.5% strong coverage (uncertain = no verifiable counterpart body)
-```
 
-Both numbers are reproducible from the tree; `PARITY_REPORT.md` is the
-generated detail view.
+This branch metric intentionally covers the ten central conversion files listed by `audit_missing_branches.py`; it is not a full-961-definition behavioral measure.
 
-## Remaining real gaps (see PARITY_REPORT.md for locations)
+## Dead audit-only shims
 
-1. **Dictionary books** — `process_dictionary_rules`,
-   `unapply_dictionary_rule`, `is_drm_free_dictionary` are unported.
-2. **`adjust_pixel_value`** — Go stub is an identity function; the Python
-   `/100` scaling for PDF-backed books is absent.
-3. **`fix_language`** — Python's language-suffix casing rules are not
-   applied; Go's lowercase normalize can emit wrong EPUB language metadata.
-4. **`have_content`** — 7-statement port of a 139-statement predicate.
-5. **EPUB packaging behaviors with unproven coverage** —
-   `do_remove_html_cover`, `add_generic_cover_page`, `save_book_parts`,
-   `hide_element`: left as gaps pending investigation rather than
-   silently excluded.
-6. **Small hollow helpers** — `root_element`, `get_anchor_uri`,
-   `replace_ion_data` (dead or 1–2 statements).
+The source still contains dead Python-name-only Go functions, including explicit blocks whose comments say they exist “for parity audit purposes.” The hardened auditor classifies these as stubs/dead rather than implementations. They should be removed when confirmed to have no production/test/interface role; they are no longer necessary to keep the audit green.
 
-## Residual gaming vectors (documented, not eliminated)
+`PARITY_REPORT.md` marks matched dead functions and lists the real gaps instead of allowing those names to satisfy the metric.
 
-- **Statement padding**: nstmt can be inflated with junk statements. The
-  transitive-substance check makes this harder (padding must be reachable),
-  but static metrics are ultimately gameable. The semantic arbiter is the
-  golden-EPUB parity suite (`scripts/parity_diff.py`) plus the Go/Lua test
-  suites — the auditors are tripwires, not proof.
-- **Exclusion abuse**: bounded by the category enum, reason-length floor,
-  evidence verification, staleness rejection, and the `strict_parity_pct`
-  line which counts exclusions against parity.
-- **Name-collision matching** across files remains name-based; substance
-  checks make false positives loud (thin/stub) instead of silent.
+## Behavioral evidence is separate
+
+No static percentage proves converter equivalence. The required hierarchy is:
+
+1. exact current Python source as semantic reference;
+2. focused tests for known behavior and edge cases;
+3. branch/static audits as coverage tripwires;
+4. differential/golden EPUB comparison on a representative corpus.
+
+At present `scripts/parity_diff.py --metric` may report every historical book as `SKIP` when the private corpus is absent. A zero-difference result with `books_total=0` is **no behavioral evidence** and must never be presented as parity.
 
 ## Maintenance
 
-- Regenerate after Go/reference changes:
-  `python3 scripts/audit_parity.py --report PARITY_REPORT.md`
-- Auditor tests: `python3 -m unittest discover -s scripts/tests`
-- Dumper tests: `go test ./scripts/gofuncinfo`
-- When implementing a real gap, delete the corresponding exclusion entry (if
-  any) — the auditor will re-classify automatically. When adding a new
-  exclusion, expect review of its reason and evidence.
+After any Python reference or Go conversion change:
+
+```sh
+python3 -m unittest discover -s scripts/tests
+python3 scripts/audit_parity.py --metric
+python3 scripts/audit_parity.py --report PARITY_REPORT.md
+python3 scripts/audit_missing_branches.py --metric
+go test ./scripts/gofuncinfo
+```
+
+Then run the normal Go/Lua/build verification and, when a real corpus is available, the differential EPUB suite. Any new exclusion or identity mapping should be reviewed as evidence, not treated as a way to improve the percentage.

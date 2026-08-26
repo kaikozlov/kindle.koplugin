@@ -5,69 +5,551 @@ Regenerate after any Go or Python reference change.
 
 ## Summary
 
-- Python functions audited: **537**
-- Implemented (substantive): **277**
-- Implemented (delegation wrappers): **40**
-- Implemented (trivial↔trivial): **40**
-- Stubs (silent name-only shims): **6**
+- **Upstream core kfxlib defs: 961** (154 waived at file scope with reviewed reasons — **they remain in the upstream denominator above and below, always visible**)
+- In-scope defs audited: **807** (structural coverage only — name + body substance; NOT behavioral parity, see §Method limits)
+- Implemented (substantive): **211**
+- Implemented (delegation wrappers): **30**
+- Mapped via reviewed identity overrides: **0**
+- Implemented (trivial↔trivial, value-equal): **0**
+- Stubs (silent name-only shims): **32**
 - Stubs (admitted not-implemented): **0**
-- Thin (suspiciously small): **4**
-- Missing (no name match): **3**
-- Excluded (explicit, see below): **167**
-- **Parity: 357/370 = 96.5%** (strict, counting exclusions against parity: 66.5%)
+- Thin (suspiciously small): **8**
+- Missing (no name match): **256**
+- Excluded (explicit, per-def, validated): **167**
+- **In-scope structural coverage: 241/640 = 37.7%** (strict, counting explicit exclusions against coverage: 29.9%)
+- **Upstream structural coverage: 241/961 = 25.1%** — the denominator is EVERY upstream core def
+
+## Method limits — what this number is NOT
+
+This is **structural coverage** (name + body substance), not behavioral
+parity. It cannot establish semantic equivalence:
+
+- a large-but-wrong Go body still counts as implemented —
+  size similarity is not correctness
+- delegation credit only proves a call chain exists, not that it
+  computes the same thing
+- behavioral evidence lives in the branch audit, the golden-EPUB
+  parity suite (`scripts/parity_diff.py`), and the Go/Lua test
+  suites — reported separately, never proven by this metric
 
 ## Real implementation gaps
 
 Functions counted as gaps (stub/thin/missing). These have no
 substantive Go implementation and no approved exclusion.
 
+### yj_to_epub_content.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `KFX_EPUB_Content.get_px_value` (L701) | 10 | — | 0 | missing |
+| `KFX_EPUB_Content.check_crop_bleed_condition` (L1077) | 5 | — | 0 | missing |
+| `KFX_EPUB_Content.clean_text_for_lxml` (L1876) | 6 | — | 0 | missing |
+| `KFX_EPUB_Content.add_content` (L383) | 13 | `addContent` (yj_to_epub_content.go:L3877) | 1 | thin |
+| `KFX_EPUB_Content.process_content` (L411) | 753 | `processContent` (yj_to_epub_content.go:L3888) | 1 | thin [dead] |
+
 ### yj_to_epub_properties.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
-| `KFX_EPUB_Properties.adjust_pixel_value` (L2204) | 4 | `adjustPixelValue` (yj_to_epub_misc.go:L1254) | 1 | stub_silent [cross-file] |
+| `KFX_EPUB_Properties.convert_yj_properties` (L1090) | 54 | — | 0 | missing |
+| `KFX_EPUB_Properties.set_html_defaults` (L1656) | 15 | — | 0 | missing |
+| `KFX_EPUB_Properties.create_css_files` (L2249) | 14 | — | 0 | missing |
+| `KFX_EPUB_Properties.css_url` (L2284) | 1 | — | 0 | missing |
 | `KFX_EPUB_Properties.fix_language` (L2093) | 7 | `fixLanguage` (yj_to_epub_properties.go:L4962) | 3 | thin |
+| `KFX_EPUB_Properties.fix_and_quote_font_family_list` (L2027) | 2 | — | 0 | unresolved_match |
+| `KFX_EPUB_Properties.split_and_fix_font_family_list` (L2032) | 1 | — | 0 | unresolved_match |
+| `KFX_EPUB_Properties.strip_font_name` (L2035) | 6 | — | 0 | unresolved_match |
+| `KFX_EPUB_Properties.fix_font_name` (L2046) | 30 | — | 0 | unresolved_match |
+| `KFX_EPUB_Properties.adjust_pixel_value` (L2204) | 4 | — | 0 | unresolved_match |
+| `KFX_EPUB_Properties.quote_font_name` (L2272) | 7 | — | 0 | unresolved_match |
+| `Style.__len__` (L2354) | 1 | — | 0 | unresolved_match |
+| `Style.__repr__` (L2357) | 1 | — | 0 | unresolved_match |
+| `Style.__str__` (L2360) | 1 | — | 0 | unresolved_match |
+| `Style.__eq__` (L2363) | 5 | — | 0 | unresolved_match |
+| `Style.__lt__` (L2372) | 3 | — | 0 | unresolved_match |
+| `Style.__hash__` (L2378) | 1 | — | 0 | unresolved_match |
+| `Style.__getitem__` (L2381) | 1 | — | 0 | unresolved_match |
+| `capitalize_font_name` (L2485) | 1 | — | 0 | unresolved_match |
 
 ### yj_to_epub_misc.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `KFX_EPUB_Misc.add_svg_wrapper_to_block_image` (L166) | 42 | — | 0 | missing |
+| `KFX_EPUB_Misc.horizontal_fxl_block_images` (L240) | 23 | — | 0 | missing |
+| `KFX_EPUB_Misc.process_kvg_shape` (L278) | 42 | — | 0 | missing |
 | `KFX_EPUB_Misc.process_dictionary_rules` (L492) | 10 | — | 0 | missing |
 | `KFX_EPUB_Misc.unapply_dictionary_rule` (L509) | 30 | — | 0 | missing |
+| `KFX_EPUB_Misc.process_plugin_uri` (L719) | 6 | — | 0 | missing |
+| `KFX_EPUB_Misc.evaluate_condition` (L119) | 32 | `evaluateCondition` (yj_to_epub_misc.go:L1739) | 1 | thin [dead] |
 
 ### yj_to_epub_navigation.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `KFX_EPUB_Navigation.register_link_id` (L362) | 1 | — | 0 | missing |
+| `KFX_EPUB_Navigation.get_anchor_id` (L365) | 4 | — | 0 | missing |
+| `KFX_EPUB_Navigation.get_location_id` (L372) | 1 | — | 0 | missing |
+| `KFX_EPUB_Navigation.get_anchor_uri` (L420) | 6 | — | 0 | missing |
+| `KFX_EPUB_Navigation.anchor_as_uri` (L437) | 1 | — | 0 | missing |
+| `KFX_EPUB_Navigation.anchor_from_uri` (L440) | 1 | — | 0 | missing |
 | `root_element` (L518) | 3 | `rootElement` (yj_to_epub_navigation.go:L1178) | 1 | stub_silent [dead] |
-| `KFX_EPUB_Navigation.get_anchor_uri` (L420) | 6 | `getAnchorURI` (yj_to_epub_navigation.go:L1132) | 1 | thin |
+| `KFX_EPUB_Navigation.process_nav_container` (L118) | 58 | `processNavContainer` (yj_to_epub_navigation.go:L1018) | 1 | thin [dead] |
+
+### yj_to_epub_resources.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `KFX_EPUB_Resources.unique_file_id` (L359) | 13 | — | 0 | missing |
 
 ### yj_to_epub.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `KFX_EPUB.get_named_fragment` (L345) | 1 | `getNamedFragment` (yj_to_epub.go:L877) | 1 | stub_silent |
+| `KFX_EPUB.check_empty` (L359) | 1 | `checkEmpty` (yj_to_epub.go:L936) | 0 | stub_silent [dead] |
+| `KFX_EPUB.update_progress` (L368) | 2 | `updateProgress` (yj_to_epub.go:L950) | 0 | stub_silent [dead] |
 | `KFX_EPUB.replace_ion_data` (L285) | 15 | `replaceIonData` (yj_to_epub.go:L832) | 2 | thin [dead] |
+
+### yj_to_epub_notebook.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `KFX_EPUB_Notebook.add_points_if_needed` (L460) | 9 | — | 0 | missing |
+
+### yj_to_image_book.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `KFX_IMAGE_BOOK.__init__` (L22) | 1 | — | 0 | missing |
+| `combine_images_into_pdf` (L215) | 54 | — | 0 | missing |
+| `combine_images_into_cbz` (L304) | 30 | — | 0 | missing |
 
 ### yj_container.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
 | `YJContainer.is_drm_free_dictionary` (L163) | 1 | — | 0 | missing |
+| `YJContainer.get_fragments` (L160) | 1 | `getFragments` (yj_container.go:L153) | 1 | stub_silent [dead] |
+| `YJFragmentList.discard` (L352) | 8 | `discard` (yj_container.go:L217) | 1 | thin [dead] |
+| `YJFragmentKey.sort_key` (L185) | 1 | — | 0 | unresolved_match |
+| `YJFragmentKey.__eq__` (L189) | 5 | — | 0 | unresolved_match |
+| `YJFragmentKey.__lt__` (L198) | 5 | — | 0 | unresolved_match |
+| `YJFragmentKey.__hash__` (L207) | 1 | — | 0 | unresolved_match |
+| `YJFragmentKey.fid` (L211) | 1 | — | 0 | unresolved_match |
+| `YJFragmentKey.fid` (L215) | 1 | — | 0 | unresolved_match |
+| `YJFragmentKey.ftype` (L219) | 1 | — | 0 | unresolved_match |
+| `YJFragmentKey.ftype` (L223) | 1 | — | 0 | unresolved_match |
+| `YJFragment.__hash__` (L238) | 1 | — | 0 | unresolved_match |
+| `YJFragment.__eq__` (L241) | 5 | — | 0 | unresolved_match |
+| `YJFragment.__lt__` (L250) | 5 | — | 0 | unresolved_match |
+| `YJFragment.fid` (L260) | 1 | — | 0 | unresolved_match |
+| `YJFragment.fid` (L264) | 1 | — | 0 | unresolved_match |
+| `YJFragment.ftype` (L268) | 1 | — | 0 | unresolved_match |
+| `YJFragment.ftype` (L272) | 1 | — | 0 | unresolved_match |
+| `YJFragmentList.get` (L299) | 18 | — | 0 | unresolved_match |
+| `YJFragmentList.__getitem__` (L327) | 4 | — | 0 | unresolved_match |
+| `YJFragmentList.append` (L334) | 4 | — | 0 | unresolved_match |
+
+### yj_metadata.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `BookMetadata.get_asset_id` (L258) | 1 | — | 0 | missing |
+| `BookMetadata.is_pdf_backed_fixed_layout` (L307) | 3 | — | 0 | missing |
+| `BookMetadata.has_pdf_resource` (L339) | 7 | — | 0 | missing |
+| `BookMetadata.process_content` (L799) | 11 | — | 0 | unresolved_match |
 
 ### yj_position_location.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
-| `have_content` (L149) | 139 | `haveContent` (yj_position_location.go:L2087) | 7 | thin |
+| `PosData.chunk` (L859) | 1 | `chunk` (yj_position_location.go:L2128) | 1 | stub_silent [dead] |
+| `BookPosLoc.end_add_loc` (L1018) | 2 | `endAddLoc` (yj_position_location.go:L2114) | 0 | stub_silent |
+| `BookPosLoc.have_content` (L149) | 139 | `haveContent` (yj_position_location.go:L2087) | 7 | thin |
+| `ContentChunk.__eq__` (L45) | 7 | — | 0 | unresolved_match |
+| `ContentChunk.__repr__` (L57) | 1 | — | 0 | unresolved_match |
+| `ConditionalTemplate.__repr__` (L79) | 3 | — | 0 | unresolved_match |
+| `BookPosLoc.walk` (L590) | 15 | — | 0 | unresolved_match |
+
+### yj_structure.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `BookStructure.extract_fragment_id_from_value` (L703) | 10 | — | 0 | missing |
+| `BookStructure.create_container_id` (L854) | 1 | — | 0 | missing |
+| `BookStructure._extract_story_names` (L1210) | 12 | — | 0 | missing |
+| `BookStructure._scan_section` (L1232) | 14 | — | 0 | missing |
+| `BookStructure.reading_order_names` (L1194) | 1 | — | 0 | unresolved_match |
+
+### yj_versions.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `is_known_kcb_data` (L1134) | 2 | — | 0 | missing |
 
 ### epub_output.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `EPUB_Output.fix_html_id` (L489) | 7 | — | 0 | missing |
+| `EPUB_Output.consolidate_html` (L744) | 50 | — | 0 | missing |
+| `EPUB_Output.beautify_html` (L818) | 12 | — | 0 | missing |
+| `EPUB_Output.reference_resource` (L376) | 2 | `referenceResource` (epub_output.go:L1104) | 0 | stub_silent [dead] |
+| `EPUB_Output.add_guide_entry` (L397) | 2 | `addGuideEntry` (epub_output.go:L1105) | 0 | stub_silent [dead] |
+| `EPUB_Output.add_pagemap_entry` (L405) | 1 | `addPagemapEntry` (epub_output.go:L1106) | 0 | stub_silent [dead] |
+| `EPUB_Output.add_oebps_file` (L408) | 1 | `addOebpsFile` (epub_output.go:L1107) | 0 | stub_silent [dead] |
+| `EPUB_Output.remove_oebps_file` (L411) | 1 | `removeOebpsFile` (epub_output.go:L1108) | 0 | stub_silent [dead] |
 | `EPUB_Output.do_remove_html_cover` (L560) | 8 | `doRemoveHtmlCover` (epub_output.go:L1112) | 0 | stub_silent [dead] |
 | `EPUB_Output.add_generic_cover_page` (L571) | 23 | `addGenericCoverPage` (epub_output.go:L1113) | 0 | stub_silent [dead] |
 | `EPUB_Output.save_book_parts` (L686) | 36 | `saveBookParts` (epub_output.go:L1115) | 0 | stub_silent [dead] |
 | `EPUB_Output.hide_element` (L1267) | 3 | `hideElement` (epub_output.go:L1122) | 0 | stub_silent [dead] |
+| `EPUB_Output.mimetype_of_filename` (L1305) | 2 | `mimetypeOfFilename` (epub_output.go:L1126) | 1 | stub_silent [dead] |
+| `add_meta_name_content` (L1354) | 1 | `addMetaNameContent` (epub_output.go:L1150) | 1 | stub_silent [dead] |
+| `xhtmlns` (L1469) | 1 | `xhtmlns` (epub_output.go:L1177) | 1 | stub_silent [dead] |
+| `new_xhtml` (L1473) | 1 | `newXhtml` (epub_output.go:L1178) | 1 | stub_silent [dead] |
+| `PageMapEntry.__repr__` (L222) | 1 | — | 0 | unresolved_match |
+| `EPUB_Output.unreference_resource` (L380) | 12 | — | 0 | unresolved_match |
+| `EPUB_Output.add_style_` (L1302) | 1 | — | 0 | unresolved_match |
+
+### ion.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `ion_type` (L28) | 8 | — | 0 | unresolved_match |
+| `isstring` (L42) | 1 | — | 0 | unresolved_match |
+| `IonAnnotation.__repr__` (L55) | 1 | — | 0 | unresolved_match |
+| `IonAnnotation.__str__` (L58) | 1 | — | 0 | unresolved_match |
+| `IonAnnotation.is_single` (L61) | 1 | — | 0 | unresolved_match |
+| `IonAnnotation.has_annotation` (L64) | 1 | — | 0 | unresolved_match |
+| `IonAnnotation.is_annotation` (L67) | 1 | — | 0 | unresolved_match |
+| `IonAnnotation.get_annotation` (L70) | 3 | — | 0 | unresolved_match |
+| `IonAnnotation.verify_annotation` (L76) | 3 | — | 0 | unresolved_match |
+| `IonAnnots.__new__` (L85) | 7 | — | 0 | unresolved_match |
+| `IonAnnots.__repr__` (L97) | 1 | — | 0 | unresolved_match |
+| `IonBLOB.__eq__` (L103) | 5 | — | 0 | unresolved_match |
+| `IonBLOB.__ne__` (L112) | 1 | — | 0 | unresolved_match |
+| `IonBLOB.__lt__` (L115) | 1 | — | 0 | unresolved_match |
+| `IonBLOB.__le__` (L118) | 1 | — | 0 | unresolved_match |
+| `IonBLOB.__gt__` (L121) | 1 | — | 0 | unresolved_match |
+| `IonBLOB.__ge__` (L124) | 1 | — | 0 | unresolved_match |
+| `IonBLOB.__repr__` (L127) | 1 | — | 0 | unresolved_match |
+| `IonBLOB.is_large` (L146) | 1 | — | 0 | unresolved_match |
+| `IonBLOB.tobytes` (L149) | 1 | — | 0 | unresolved_match |
+| `IonCLOB.tobytes` (L155) | 1 | — | 0 | unresolved_match |
+| `IonSExp.__repr__` (L164) | 1 | — | 0 | unresolved_match |
+| `IonSExp.tolist` (L167) | 1 | — | 0 | unresolved_match |
+| `IonStruct.__repr__` (L184) | 1 | — | 0 | unresolved_match |
+| `IonStruct.todict` (L187) | 1 | — | 0 | unresolved_match |
+| `IonSymbol.__repr__` (L193) | 3 | — | 0 | unresolved_match |
+| `IonSymbol.tostring` (L199) | 1 | — | 0 | unresolved_match |
+| `IonTimestampTZ.utcoffset` (L252) | 1 | — | 0 | unresolved_match |
+| `IonTimestampTZ.dst` (L265) | 1 | — | 0 | unresolved_match |
+| `IonTimestampTZ.offset_minutes` (L268) | 1 | — | 0 | unresolved_match |
+| `IonTimestampTZ.format` (L271) | 1 | — | 0 | unresolved_match |
+| `IonTimestampTZ.present` (L274) | 1 | — | 0 | unresolved_match |
+| `IonTimestampTZ.fraction_len` (L277) | 1 | — | 0 | unresolved_match |
+| `IonTimestampTZ.__eq__` (L280) | 3 | — | 0 | unresolved_match |
+| `IonTimestampTZ.__ne__` (L286) | 1 | — | 0 | unresolved_match |
+| `IonTimestampTZ.__copy__` (L289) | 1 | — | 0 | unresolved_match |
+| `IonTimestampTZ.__deepcopy__` (L292) | 1 | — | 0 | unresolved_match |
+| `unannotated` (L300) | 1 | — | 0 | unresolved_match |
+| `ion_data_eq` (L304) | 5 | — | 0 | unresolved_match |
+| `filtered_IonList` (L369) | 8 | — | 0 | unresolved_match |
+
+### ion_binary.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `IonBinary.deserialize_multiple_values` (L29) | 2 | `deserializeMultipleValues` (ion_binary.go:L136) | 1 | stub_silent [dead] |
+| `IonBinary.deserialize_posint_value` (L147) | 1 | `deserializePosintValue` (ion_binary.go:L145) | 1 | stub_silent [dead] |
+| `IonBinary.deserialize_symbol_value` (L301) | 1 | `deserializeSymbolValue` (ion_binary.go:L154) | 1 | stub_silent [dead] |
+| `IonBinary.deserialize_string_value` (L309) | 1 | `deserializeStringValue` (ion_binary.go:L156) | 1 | stub_silent [dead] |
+| `IonBinary.deserialize_clob_value` (L318) | 2 | `deserializeClobValue` (ion_binary.go:L158) | 1 | stub_silent [dead] |
+| `IonBinary.deserialize_blob_value` (L327) | 1 | `deserializeBlobValue` (ion_binary.go:L160) | 1 | stub_silent [dead] |
+| `IonBinary.deserialize_sexp_value` (L355) | 1 | `deserializeSexpValue` (ion_binary.go:L164) | 1 | stub_silent [dead] |
+| `IonBinary.deserialize_reserved_value` (L432) | 1 | `deserializeReservedValue` (ion_binary.go:L169) | 1 | stub_silent [dead] |
+| `serialize_unsignedint` (L479) | 1 | `serializeUnsignedint` (ion_binary.go:L171) | 1 | stub_silent [dead] |
+
+### ion_symbol_table.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `SymbolTableCatalog.add_global_shared_symbol_tables` (L28) | 1 | `addGlobalSharedSymbolTables` (ion_symbol_table.go:L192) | 0 | stub_silent [dead] |
+| `SymbolTableCatalog.create_shared_symbol_table` (L38) | 1 | `createSharedSymbolTable` (ion_symbol_table.go:L204) | 0 | stub_silent [dead] |
+| `SymbolTableCatalog.clear` (L24) | 2 | — | 0 | unresolved_match |
+| `LocalSymbolTable.__repr__` (L340) | 1 | — | 0 | unresolved_match |
+
+### kfx_container.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `KfxContainerEntity.__repr__` (L448) | 1 | — | 0 | unresolved_match |
+
+### jxr_image.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `HBIN` (L127) | 4 | — | 0 | missing |
+| `JXRImage.__init__` (L207) | 2 | — | 0 | missing |
+| `JXRImage.coded_image` (L234) | 26 | — | 0 | missing |
+| `JXRImage.image_header` (L271) | 57 | — | 0 | missing |
+| `JXRImage.report_image_info` (L350) | 5 | — | 0 | missing |
+| `JXRImage.index_table_tiles` (L365) | 6 | — | 0 | missing |
+| `JXRImage.coded_tiles` (L396) | 35 | — | 0 | missing |
+| `JXRImage.construct_image` (L449) | 42 | — | 0 | missing |
+| `ImgPlane.__init__` (L518) | 3 | — | 0 | missing |
+| `ImgPlane.image_plane_header` (L523) | 76 | — | 0 | missing |
+| `ImgPlane.report_plane_info` (L624) | 1 | — | 0 | missing |
+| `ImgPlane.decode_qp_index` (L629) | 2 | — | 0 | missing |
+| `ImgPlane.Decode_cleanup` (L633) | 3 | — | 0 | missing |
+| `ImgPlane.SampleReconstruction` (L638) | 7 | — | 0 | missing |
+| `ImgPlane.FirstLevelInverseTransform` (L650) | 18 | — | 0 | missing |
+| `ImgPlane.FirstLevelOverlapFiltering` (L675) | 72 | — | 0 | missing |
+| `ImgPlane.zzz` (L702) | 1 | — | 0 | missing |
+| `ImgPlane.FirstLevelCallOverlapPostFilter4x4` (L705) | 5 | — | 0 | missing |
+| `ImgPlane.OverlapPostFilter4_` (L712) | 5 | — | 0 | missing |
+| `ImgPlane.SecondLevelInverseTransform` (L793) | 13 | — | 0 | missing |
+| `ImgPlane.SecondLevelCoefficientCombination` (L811) | 19 | — | 0 | missing |
+| `ImgPlane.second_level_overlap_filtering` (L836) | 57 | — | 0 | missing |
+| `ImgPlane.OverlapPostFilter4x4_` (L837) | 3 | — | 0 | missing |
+| `ImgPlane.OverlapPostFilter4_` (L842) | 3 | — | 0 | missing |
+| `ImgPlane.OutputFormatting` (L922) | 5 | — | 0 | missing |
+| `ImgPlane.ConvertInternalToOutputClrFmt` (L929) | 25 | — | 0 | missing |
+| `ImgPlane.AddBias` (L966) | 11 | — | 0 | missing |
+| `ImgPlane.ComputeScaling` (L981) | 18 | — | 0 | missing |
+| `ImgPlane.PostscalingProcess` (L1004) | 10 | — | 0 | missing |
+| `ImgPlane.ClippingAndPackingStage` (L1019) | 21 | — | 0 | missing |
+| `Tile.__init__` (L1051) | 1 | — | 0 | missing |
+| `Tile.common_tile_header` (L1054) | 2 | — | 0 | missing |
+| `Tile.common_tile_finish` (L1059) | 1 | — | 0 | missing |
+| `DCTile.tile_plane_header` (L1066) | 2 | — | 0 | missing |
+| `DCTile.tile_MB` (L1070) | 1 | — | 0 | missing |
+| `LowpassTile.tile_plane_header` (L1077) | 4 | — | 0 | missing |
+| `LowpassTile.tile_MB` (L1086) | 2 | — | 0 | missing |
+| `LowpassTile.tile_MB_QP` (L1090) | 3 | — | 0 | missing |
+| `LowpassTile.tile_MB_2` (L1095) | 2 | — | 0 | missing |
+| `HighpassTile.tile_plane_header` (L1103) | 4 | — | 0 | missing |
+| `HighpassTile.tile_MB` (L1112) | 2 | — | 0 | missing |
+| `HighpassTile.tile_MB_QP` (L1116) | 3 | — | 0 | missing |
+| `HighpassTile.tile_MB_2` (L1121) | 3 | — | 0 | missing |
+| `FlexTile.tile_plane_header` (L1130) | 2 | — | 0 | missing |
+| `FlexTile.tile_MB` (L1134) | 2 | — | 0 | missing |
+| `SpatialTile.tile_plane_header` (L1142) | 4 | — | 0 | missing |
+| `SpatialTile.tile_MB` (L1148) | 8 | — | 0 | missing |
+| `MB.__init__` (L1164) | 19 | — | 0 | missing |
+| `MB.cleanup` (L1194) | 6 | — | 0 | missing |
+| `FreqBand.__init__` (L1205) | 5 | — | 0 | missing |
+| `FreqBand.UpdateModelMB` (L1351) | 33 | — | 0 | missing |
+| `DCBand.__init__` (L1403) | 4 | — | 0 | missing |
+| `DCBand.MB_DC` (L1410) | 67 | — | 0 | missing |
+| `DCBand.decode_DC` (L1501) | 5 | — | 0 | missing |
+| `DCBand.InitializeDCVLC` (L1511) | 2 | — | 0 | missing |
+| `DCBand.AdaptDC` (L1515) | 2 | — | 0 | missing |
+| `LPBand.__init__` (L1523) | 10 | — | 0 | missing |
+| `LPBand.MB_LP` (L1537) | 69 | — | 0 | missing |
+| `LPBand.AdaptiveLPScan` (L1633) | 2 | — | 0 | missing |
+| `LPBand.refine_LP` (L1637) | 7 | — | 0 | missing |
+| `LPBand.UpdateCountCBPLP` (L1649) | 4 | — | 0 | missing |
+| `LPBand.InitializeCountCBPLP` (L1655) | 1 | — | 0 | missing |
+| `LPBand.InitializeLPVLC` (L1658) | 8 | — | 0 | missing |
+| `LPBand.AdaptLP` (L1668) | 8 | — | 0 | missing |
+| `HPBand.__init__` (L1682) | 13 | — | 0 | missing |
+| `HPBand.MB_CBPHP` (L1700) | 44 | — | 0 | missing |
+| `HPBand.refine_CBPHP` (L1760) | 10 | — | 0 | missing |
+| `HPBand.InitializeCBPHPVLC` (L1774) | 2 | — | 0 | missing |
+| `HPBand.PredCBPHP444` (L1778) | 21 | — | 0 | missing |
+| `HPBand.InitializeCBPHPModel` (L1810) | 3 | — | 0 | missing |
+| `HPBand.UpdateCBPHPModel` (L1815) | 12 | — | 0 | missing |
+| `HPBand.MB_HP_FLEX` (L1833) | 40 | — | 0 | missing |
+| `HPBand.HPTransformCoefficientDecoding` (L1891) | 25 | — | 0 | missing |
+| `HPBand.CalcHPPredMode` (L1928) | 15 | — | 0 | missing |
+| `HPBand.AdaptHP` (L2015) | 10 | — | 0 | missing |
+| `HPBand.InitializeHPVLC` (L2027) | 8 | — | 0 | missing |
+| `HPBand.InitializeAdaptiveScanHP` (L2037) | 2 | — | 0 | missing |
+| `HPBand.ResetTotalsAdaptiveScanHP` (L2041) | 2 | — | 0 | missing |
+| `AdaptiveScan.ResetTotals` (L2053) | 1 | — | 0 | missing |
+| `AdaptiveScan.Translate` (L2056) | 1 | — | 0 | missing |
+| `AdaptiveScan.Adapt` (L2059) | 4 | — | 0 | missing |
+| `AdaptiveVLC.__init__` (L2069) | 1 | — | 0 | missing |
+| `AdaptiveVLC.InitializeVLCTable1` (L2072) | 1 | — | 0 | missing |
+| `AdaptiveVLC.AdaptVLCTable1` (L2075) | 10 | — | 0 | missing |
+| `AdaptiveVLC.InitializeVLCTable2` (L2088) | 2 | — | 0 | missing |
+| `AdaptiveVLC.AdaptVLCTable2` (L2092) | 21 | — | 0 | missing |
+| `CBPHPModel.__init__` (L2121) | 3 | — | 0 | missing |
+| `Model.__init__` (L2129) | 1 | — | 0 | missing |
+| `Model.InitializeModelMB` (L2132) | 3 | — | 0 | missing |
+| `QP.__init__` (L2140) | 19 | — | 0 | missing |
+| `QP.QuantMap` (L2142) | 25 | — | 0 | missing |
+| `QP.ScalingFactor` (L2207) | 1 | — | 0 | missing |
+| `chroma_component` (L2211) | 1 | — | 0 | missing |
+| `value_name` (L2215) | 1 | — | 0 | missing |
+| `twos_complement_byte` (L2223) | 1 | — | 0 | missing |
+| `Numones` (L2227) | 5 | — | 0 | missing |
+| `Clip` (L2237) | 5 | — | 0 | missing |
+| `Array` (L2247) | 4 | — | 0 | missing |
+| `strPost4x4Stage2Split_alternate` (L2279) | 19 | — | 0 | missing |
+| `irotate1` (L2350) | 3 | — | 0 | missing |
+| `fourbutterfly` (L2362) | 3 | — | 0 | missing |
+| `invOddOddPost` (L2397) | 15 | — | 0 | missing |
+| `strHSTdec1_alternate` (L2419) | 7 | — | 0 | missing |
+| `strHSTdec` (L2432) | 5 | — | 0 | missing |
+| `OverlapPostFilter4x4` (L2443) | 18 | — | 0 | missing |
+| `T2x2h` (L2468) | 9 | — | 0 | missing |
+| `T2x2hPOST` (L2480) | 8 | — | 0 | missing |
+| `OverlapPostFilter4` (L2491) | 20 | — | 0 | missing |
+| `InvScale` (L2514) | 7 | — | 0 | missing |
+| `InvRotate` (L2524) | 3 | — | 0 | missing |
+| `InvToddoddPOST` (L2530) | 14 | — | 0 | missing |
+
+### jxr_container.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `JXRContainer.__init__` (L53) | 41 | — | 0 | missing |
+| `JXRContainer.unpack_image` (L114) | 5 | — | 0 | missing |
+
+### jxr_misc.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `Deserializer.__init__` (L14) | 3 | — | 0 | missing |
+| `Deserializer.extract` (L19) | 10 | — | 0 | missing |
+| `Deserializer.unpack` (L36) | 8 | — | 0 | missing |
+| `Deserializer.unpack_bits` (L50) | 11 | — | 0 | missing |
+| `Deserializer.unpack_flag` (L69) | 1 | — | 0 | missing |
+| `Deserializer.push_bit` (L72) | 2 | — | 0 | missing |
+| `Deserializer.check_bit_field` (L76) | 5 | — | 0 | missing |
+| `Deserializer.value_name` (L77) | 1 | — | 0 | missing |
+| `bytes_to_separated_hex` (L106) | 1 | — | 0 | missing |
+| `Deserializer.__len__` (L102) | 1 | — | 0 | unresolved_match |
+
+### resources.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `ImageResource.__init__` (L233) | 5 | — | 0 | missing |
+| `PdfImageResource.__init__` (L242) | 3 | — | 0 | missing |
+| `convert_jxr_to_jpeg_or_png` (L269) | 14 | — | 0 | missing |
+| `convert_jxr_to_tiff` (L290) | 20 | — | 0 | missing |
+| `convert_pdf_page_to_image` (L323) | 2 | — | 0 | missing |
+| `convert_pdf_page_to_jpeg` (L328) | 21 | — | 0 | missing |
+| `get_pdf_reader` (L366) | 10 | — | 0 | missing |
+| `get_pdf_page_image` (L382) | 61 | — | 0 | missing |
+| `image_match` (L471) | 28 | — | 0 | missing |
+| `convert_image_to_pdf` (L513) | 21 | — | 0 | missing |
+| `optimize_jpeg_image_quality` (L646) | 18 | — | 0 | missing |
+| `get_pdf_page_size` (L673) | 7 | — | 0 | missing |
+| `show_pdf_page_boxes` (L687) | 8 | — | 0 | missing |
+| `box_repr` (L691) | 1 | — | 0 | missing |
+| `box_tuple` (L702) | 1 | — | 0 | missing |
+| `box_size` (L706) | 1 | — | 0 | missing |
+| `font_file_ext` (L765) | 15 | — | 0 | missing |
+| `image_file_ext` (L790) | 13 | — | 0 | missing |
+| `image_size` (L812) | 5 | — | 0 | missing |
+| `PdfImageResource.entire_resource_used` (L247) | 1 | — | 0 | unresolved_match |
+| `PdfImageResource.page_number_ranges` (L250) | 12 | — | 0 | unresolved_match |
+| `crop_image` (L710) | 19 | — | 0 | unresolved_match |
+| `jpeg_type` (L739) | 15 | — | 0 | unresolved_match |
+
+### utilities.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `tempdir` (L67) | 12 | — | 0 | missing |
+| `temp_file_cleanup` (L87) | 13 | — | 0 | missing |
+| `temp_filename` (L108) | 7 | — | 0 | missing |
+| `create_temp_dir` (L121) | 3 | — | 0 | missing |
+| `type_name` (L127) | 1 | — | 0 | missing |
+| `list_counts` (L135) | 1 | — | 0 | missing |
+| `list_keys` (L139) | 1 | — | 0 | missing |
+| `list_symbols` (L143) | 1 | — | 0 | missing |
+| `list_symbols_unsorted` (L147) | 1 | — | 0 | missing |
+| `unicode_list` (L155) | 1 | — | 0 | missing |
+| `truncate_list` (L159) | 1 | — | 0 | missing |
+| `remove_duplicates` (L163) | 1 | — | 0 | missing |
+| `bytes_to_separated_hex` (L167) | 1 | — | 0 | missing |
+| `quote_name` (L171) | 1 | — | 0 | missing |
+| `json_serialize` (L189) | 1 | — | 0 | missing |
+| `json_serialize_compact` (L193) | 1 | — | 0 | missing |
+| `json_deserialize` (L197) | 3 | — | 0 | missing |
+| `json_deserialize_file` (L204) | 1 | — | 0 | missing |
+| `gzipit` (L208) | 4 | — | 0 | missing |
+| `gunzip` (L216) | 2 | — | 0 | missing |
+| `file_read_utf8` (L221) | 1 | — | 0 | missing |
+| `file_write_utf8` (L225) | 4 | — | 0 | missing |
+| `file_read_binary` (L233) | 5 | — | 0 | missing |
+| `file_write_binary` (L243) | 4 | — | 0 | missing |
+| `windows_long_path_fix` (L251) | 5 | — | 0 | missing |
+| `disable_debug_log.__enter__` (L263) | 1 | — | 0 | missing |
+| `disable_debug_log.__exit__` (L266) | 1 | — | 0 | missing |
+| `check_abs_path` (L270) | 3 | — | 0 | missing |
+| `check_rel_path` (L277) | 3 | — | 0 | missing |
+| `unroot_path` (L284) | 1 | — | 0 | missing |
+| `root_path` (L288) | 1 | — | 0 | missing |
+| `dirname` (L292) | 1 | — | 0 | missing |
+| `urlabspath` (L296) | 6 | — | 0 | missing |
+| `abspath` (L307) | 1 | — | 0 | missing |
+| `urlrelpath` (L311) | 9 | — | 0 | missing |
+| `relpath` (L328) | 1 | — | 0 | missing |
+| `get_url_filename` (L332) | 7 | — | 0 | missing |
+| `windows_user_dir` (L349) | 16 | — | 0 | missing |
+| `GUID.__init__` (L363) | 4 | — | 0 | missing |
+| `windows_error` (L397) | 6 | — | 0 | missing |
+| `wine_user_dir` (L409) | 1 | — | 0 | missing |
+| `wineprefix` (L413) | 4 | — | 0 | missing |
+| `winepath` (L420) | 1 | — | 0 | missing |
+| `wine_userreg` (L427) | 4 | — | 0 | missing |
+| `unicode_argv` (L436) | 11 | — | 0 | missing |
+| `locale_encode` (L460) | 7 | — | 0 | missing |
+| `locale_decode` (L473) | 13 | — | 0 | missing |
+| `is_printable_ascii` (L495) | 4 | — | 0 | missing |
+| `b64` (L503) | 1 | — | 0 | missing |
+| `user_home_dir` (L507) | 3 | — | 0 | missing |
+| `clean_message` (L514) | 1 | — | 0 | missing |
+| `join_search_path` (L518) | 9 | — | 0 | missing |
+| `DataFile.__init__` (L551) | 17 | — | 0 | missing |
+| `DataFile.get_data` (L574) | 7 | — | 0 | missing |
+| `DataFile.is_zipfile` (L585) | 1 | — | 0 | missing |
+| `DataFile.as_ZipFile` (L588) | 3 | — | 0 | missing |
+| `DataFile.relative_datafile` (L594) | 15 | — | 0 | missing |
+| `OD` (L631) | 4 | — | 0 | missing |
+| `md5` (L639) | 1 | — | 0 | missing |
+| `sha1` (L643) | 1 | — | 0 | missing |
+| `sha256` (L647) | 1 | — | 0 | missing |
+| `plugin_modules_path` (L651) | 3 | — | 0 | missing |
+| `add_plugin_path` (L658) | 1 | — | 0 | missing |
+| `remove_plugin_path` (L662) | 3 | — | 0 | missing |
+| `flush_unicode_cache` (L676) | 1 | — | 0 | missing |
+| `cache_unicode` (L679) | 16 | — | 0 | missing |
+| `flush_unicode_cache` (L723) | 1 | — | 0 | missing |
+| `Serializer.__init__` (L733) | 2 | — | 0 | missing |
+| `Serializer.pack` (L737) | 3 | — | 0 | missing |
+| `Serializer.repack` (L742) | 2 | — | 0 | missing |
+| `Serializer.sha1` (L761) | 4 | — | 0 | missing |
+| `Deserializer.__init__` (L771) | 2 | — | 0 | missing |
+| `Deserializer.unpack` (L775) | 4 | — | 0 | missing |
+| `Deserializer.extract` (L783) | 8 | — | 0 | missing |
+| `CONVERSION_PROGRESS.__init__` (L802) | 4 | — | 0 | missing |
+| `CONVERSION_PROGRESS.set_limit` (L808) | 1 | — | 0 | missing |
+| `CONVERSION_PROGRESS.increment_count` (L811) | 1 | — | 0 | missing |
+| `CONVERSION_PROGRESS.update_count` (L814) | 4 | — | 0 | missing |
+| `make_progress` (L825) | 1 | — | 0 | missing |
+| `check_empty` (L175) | 8 | `checkEmpty` (yj_to_epub.go:L936) | 0 | stub_silent [dead,cross-file] |
+| `natural_sort_key` (L131) | 1 | — | 0 | unresolved_match |
+| `list_truncated` (L151) | 1 | — | 0 | unresolved_match |
+| `root_filename` (L345) | 1 | — | 0 | unresolved_match |
+| `DataFile.__eq__` (L618) | 3 | — | 0 | unresolved_match |
+| `DataFile.__lt__` (L624) | 3 | — | 0 | unresolved_match |
+| `unicode_len` (L702) | 6 | — | 0 | unresolved_match |
+| `unicode_slice` (L712) | 6 | — | 0 | unresolved_match |
+| `unicode_slice` (L728) | 1 | — | 0 | unresolved_match |
+| `Serializer.append` (L746) | 3 | — | 0 | unresolved_match |
+| `Serializer.extend` (L751) | 2 | — | 0 | unresolved_match |
+| `Serializer.__len__` (L755) | 1 | — | 0 | unresolved_match |
+| `Serializer.serialize` (L758) | 1 | — | 0 | unresolved_match |
+| `Deserializer.__len__` (L797) | 1 | — | 0 | unresolved_match |
+| `CONVERSION_PROGRESS.report` (L820) | 2 | — | 0 | unresolved_match |
 
 ## Exclusions (explicit, reviewable)
 
@@ -418,15 +900,6 @@ Waived functions with reasons. Never counted as implemented.
 - **epub_output.py :: OPFProperties.__init__** — `alternate-architecture`
   - reason: OPF properties are fields on epub.Book consumed by contentOPF
   - evidence: `contentOPF` in `internal/epub/epub.go`
-- **epub_output.py :: OPFProperties.is_fxl** — `alternate-architecture`
-  - reason: fixed-layout flag is Book.FixedLayout consumed by contentOPF
-  - evidence: `contentOPF` in `internal/epub/epub.go`
-- **epub_output.py :: OPFProperties.is_nav** — `alternate-architecture`
-  - reason: nav property assignment happens in contentOPF manifest generation
-  - evidence: `contentOPF` in `internal/epub/epub.go`
-- **epub_output.py :: OPFProperties.is_cover_image** — `alternate-architecture`
-  - reason: cover-image property assignment happens in contentOPF manifest generation
-  - evidence: `contentOPF` in `internal/epub/epub.go`
 - **epub_output.py :: ManifestEntry.__init__** — `alternate-architecture`
   - reason: manifest entries are generated inline by contentOPF/makeManifestID
   - evidence: `contentOPF` in `internal/epub/epub.go`
@@ -599,4 +1072,22 @@ Waived functions with reasons. Never counted as implemented.
   - reason: local symbol creation is handled by amazon-ion-go symbol handling in newSymbolResolver
   - evidence: `newSymbolResolver` in `internal/kfx/ion_symbol_table.go`
   - evidence: `parseYJSymbols` in `internal/kfx/yj_symbol_catalog.go`
+- **epub_output.py :: OPFProperties.is_fxl@L126** — `alternate-architecture`
+  - reason: getter (def at L126); reads the rendition:layout-pre-paginated property; fixed-layout state is Book.FixedLayout consumed by contentOPF when it emits rendition:layout metadata
+  - evidence: `contentOPF` in `internal/epub/epub.go`
+- **epub_output.py :: OPFProperties.is_fxl@L130** — `alternate-architecture`
+  - reason: setter (def at L130); adds/discards rendition:layout-pre-paginated from the property set; Go sets Book.FixedLayout once when ConvertFile assembles the book — there is no runtime property-set mutation to port
+  - evidence: `contentOPF` in `internal/epub/epub.go`
+- **epub_output.py :: OPFProperties.is_nav@L137** — `alternate-architecture`
+  - reason: getter (def at L137); reads the nav property; the nav manifest property is assigned directly by contentOPF during manifest generation
+  - evidence: `contentOPF` in `internal/epub/epub.go`
+- **epub_output.py :: OPFProperties.is_nav@L141** — `alternate-architecture`
+  - reason: setter (def at L141); adds/discards the nav property; the nav manifest property is assigned directly by contentOPF during manifest generation — no runtime property-set mutation to port
+  - evidence: `contentOPF` in `internal/epub/epub.go`
+- **epub_output.py :: OPFProperties.is_cover_image@L148** — `alternate-architecture`
+  - reason: getter (def at L148); reads the cover-image property; the cover-image manifest property is assigned directly by contentOPF during manifest generation
+  - evidence: `contentOPF` in `internal/epub/epub.go`
+- **epub_output.py :: OPFProperties.is_cover_image@L152** — `alternate-architecture`
+  - reason: setter (def at L152); adds/discards the cover-image property; the cover-image manifest property is assigned directly by contentOPF — no runtime property-set mutation to port
+  - evidence: `contentOPF` in `internal/epub/epub.go`
 

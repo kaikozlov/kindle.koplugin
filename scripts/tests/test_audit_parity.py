@@ -213,6 +213,24 @@ def parent():
         f = [x for x in funcs if x.name == "parent"][0]
         self.assertEqual(f.nstmt, 1)  # only `return child()`
 
+    def test_nested_defs_inside_control_flow_are_in_denominator(self):
+        funcs = mkpy("""
+def outer(flag):
+    if flag:
+        def inside_if():
+            return 1
+    for _ in range(1):
+        def inside_for():
+            return 2
+    try:
+        def inside_try():
+            return 3
+    except Exception:
+        pass
+""")
+        names = {f.name for f in funcs}
+        self.assertEqual(names, {"outer", "inside_if", "inside_for", "inside_try"})
+
 
 class TestDelegation(unittest.TestCase):
     def test_wrapper_delegating_to_substance_is_implemented(self):
@@ -565,14 +583,14 @@ class TestRealRepoSmoke(unittest.TestCase):
                 raise unittest.SkipTest(f"gofuncinfo unavailable: {e}")
 
     def test_status_counts_add_up(self):
-        results, exclusions, problems = ap.audit_all(ap.DEFAULT_EXCLUSIONS, None)
+        results, exclusions, problems, _up = ap.audit_all(ap.DEFAULT_EXCLUSIONS, None)
         # gofuncinfo() cached result already has by_lower; audit_all reuses it
         for r in results:
             self.assertEqual(sum(r["counts"].values()),
                              r["python_function_count"], r["python_file"])
 
     def test_known_stubs_are_not_implemented(self):
-        results, exclusions, problems = ap.audit_all(ap.DEFAULT_EXCLUSIONS, None)
+        results, exclusions, problems, _up = ap.audit_all(ap.DEFAULT_EXCLUSIONS, None)
         by_key = {}
         for r in results:
             for e in r["entries"]:
@@ -585,9 +603,24 @@ class TestRealRepoSmoke(unittest.TestCase):
                       ("stub_admitted", "excluded"))
 
     def test_exclusions_validate(self):
-        results, exclusions, problems = ap.audit_all(ap.DEFAULT_EXCLUSIONS, None)
+        results, exclusions, problems, _up = ap.audit_all(ap.DEFAULT_EXCLUSIONS, None)
         for p in problems:
             self.fail(f"exclusion validation problem: {p}")
+
+    def test_scope_manifest_covers_every_current_upstream_file(self):
+        in_scope, problems = ap.classify_upstream_files(self.py_dir)
+        self.assertEqual(problems, [])
+        actual = {f for f in os.listdir(self.py_dir) if f.endswith(".py")}
+        self.assertEqual(actual, set(ap.SCOPE_MANIFEST))
+        self.assertEqual(set(in_scope), set(ap.FILES_TO_AUDIT))
+
+    def test_current_upstream_denominator_is_961_defs(self):
+        results, exclusions, problems, upstream = ap.audit_all(ap.DEFAULT_EXCLUSIONS, None)
+        self.assertEqual(problems, [])
+        self.assertEqual(upstream["upstream_total"], 961)
+        self.assertEqual(sum(r["python_function_count"] for r in results), 807)
+        self.assertEqual(upstream["upstream_out_of_scope"], 154)
+        self.assertEqual(807 + 154, 961)
 
 
 if __name__ == "__main__":

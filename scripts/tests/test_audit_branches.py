@@ -170,12 +170,15 @@ class TestResolveGoBody(unittest.TestCase):
         self.assertIsNone(fn)
         self.assertIsNone(body)
 
-    def test_other_file_match_uses_its_own_file(self):
+    def test_other_file_name_match_is_not_branch_evidence(self):
         idx = fake_index(mkgo("doWork", "other.go", 1, 1))
-        # no other.go exists on disk -> body unresolvable but func found
+        # A cross-file name collision is not enough to identify the semantic
+        # counterpart. The function audit requires an explicit reviewed
+        # mapping; the branch auditor must not silently infer one.
         with self.patch_index(idx):
             fn, body = ab.resolve_go_body("do_work", os.path.join(self.kfx_dir, "fake.go"))
-        self.assertIsNotNone(fn)
+        self.assertIsNone(fn)
+        self.assertIsNone(body)
 
 
 class TestStubCannotClaimBranchCoverage(unittest.TestCase):

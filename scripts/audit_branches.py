@@ -97,7 +97,7 @@ def resolve_go_body(function_name, go_path):
         base = os.path.basename(go_path)
         for fn in idx["functions"]:
             if fn["file"] == base:
-                same_file.setdefault(fn["name"].lower(), []).append(fn)
+                same_file.setdefault(fn["name"], []).append(fn)
 
     def body_for(fn):
         path = go_path if go_path and os.path.basename(go_path) == fn["file"] \
@@ -109,14 +109,14 @@ def resolve_go_body(function_name, go_path):
             lines = f.readlines()
         return fn, "".join(lines[fn["line"] - 1:fn["end_line"]])
 
+    # Keep the branch auditor at least as conservative as audit_parity:
+    # exact-case, unique, same-file matches only. A cross-file or ambiguous
+    # name is not evidence for a Python function's branches; it needs an
+    # explicit reviewed identity mapping in the function audit first.
     for cand in candidates:
-        key = cand.lower()
-        if key in same_file:
-            return body_for(same_file[key][0])
-    for cand in candidates:
-        key = cand.lower()
-        if key in idx["by_lower"]:
-            return body_for(idx["by_lower"][key][0])
+        matches = same_file.get(cand, [])
+        if len(matches) == 1:
+            return body_for(matches[0])
     return None, None
 
 
