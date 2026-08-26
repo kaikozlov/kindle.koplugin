@@ -165,6 +165,10 @@ def main() -> None:
         "--symbol-range", metavar="START:END",
         help="also dump DigitalBook native symbol names for an inclusive ID range",
     )
+    parser.add_argument(
+        "--positions", action="store_true",
+        help="also dump the native BookPositionInfo view (pid/location/eid/kfxid/sections)",
+    )
     parser.add_argument("--no-sqlite", action="store_true", help="skip raw SQLite summary")
     args = parser.parse_args()
 
@@ -210,6 +214,10 @@ def main() -> None:
                 raise SystemExit("--symbol-range END must be >= START")
             print(f"\n-- native DigitalBook symbols {start}..{end} --")
             run(kaf_command(fc, jar, classes, "KafSymbolCatalog", str(kdf), str(start), str(end)))
+
+        if args.positions:
+            print("\n-- native BookPositionInfo --")
+            run(kaf_command(fc, jar, classes, "KafPositionProbe", str(kdf)))
 
         if args.workdir:
             print(f"\nworkdir={workdir}")
