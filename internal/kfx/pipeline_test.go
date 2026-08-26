@@ -308,8 +308,9 @@ func TestAppendPageSpreadRenderedSectionsMaterializesLeaf(t *testing.T) {
 	if len(book.RenderedSections) != 1 {
 		t.Fatalf("materialized section count = %d, want 1", len(book.RenderedSections))
 	}
-	if book.RenderedSections[0].Filename != "c0.xhtml" || !strings.Contains(book.RenderedSections[0].BodyHTML, "Page text") {
-		t.Fatalf("materialized page-spread leaf = %#v", book.RenderedSections[0])
+	bodyHTML := renderedSectionBodyHTML(book.RenderedSections[0])
+	if book.RenderedSections[0].Filename != "c0.xhtml" || !strings.Contains(bodyHTML, "Page text") {
+		t.Fatalf("materialized page-spread leaf = %#v body=%q", book.RenderedSections[0], bodyHTML)
 	}
 }
 
