@@ -822,6 +822,9 @@ def main():
     results, exclusions, problems = audit_all(args.exclusions, args.gofuncinfo)
 
     if args.init_exclusions:
+        if args.exclusions == DEFAULT_EXCLUSIONS:
+            parser.error("--init-exclusions writes TODO skeletons; pass an explicit "
+                         "--exclusions PATH (not the real manifest)")
         init_exclusions(results, args.exclusions)
         return
 
