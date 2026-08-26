@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -278,8 +279,9 @@ func TestCropImage_ResourceScaling(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCBZ_ConvertPDFPages(t *testing.T) {
-	// Create a minimal PDF
-	pdfData := []byte("%PDF-1.4\n%test\n1 0 obj\n<< /Type /Catalog >>\nendobj\nxref\n0 1\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Size 1 >>\nstartxref\n0\n%%EOF")
+	// A single-image PDF page converts to a real page image; a second direct
+	// image resource passes through unchanged.
+	pdfData := createPDFWithJPEG(100, 200)
 
 	imgData := createTestJPEG(t, 100, 200)
 
@@ -301,6 +303,40 @@ func TestCBZ_ConvertPDFPages(t *testing.T) {
 	// Should have 2 entries: 1 from PDF conversion + 1 direct image
 	if len(r.File) != 2 {
 		t.Fatalf("expected 2 files in CBZ (PDF converted + direct), got %d", len(r.File))
+	}
+
+	// The converted page must be a real JPEG with the embedded image's dimensions,
+	// not a blank placeholder.
+	rf, err := r.File[0].Open()
+	if err != nil {
+		t.Fatalf("failed to open first CBZ entry: %v", err)
+	}
+	firstPage, err := io.ReadAll(rf)
+	rf.Close()
+	if err != nil {
+		t.Fatalf("failed to read first CBZ entry: %v", err)
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(firstPage))
+	if err != nil {
+		t.Fatalf("converted PDF page should be a valid JPEG, got: %v", err)
+	}
+	if cfg.Width != 100 || cfg.Height != 200 {
+		t.Fatalf("expected converted page to be 100x200, got %dx%d", cfg.Width, cfg.Height)
+	}
+}
+
+func TestCBZ_UnconvertiblePDFPage_FailsHonestly(t *testing.T) {
+	// A PDF that cannot yield a page image (here: a catalog-only PDF without a
+	// page tree) must fail the CBZ build instead of emitting a blank page.
+	// Python: convert_pdf_page_to_image raises → combine_images_into_cbz propagates.
+	pdfData := []byte("%PDF-1.4\n%test\n1 0 obj\n<< /Type /Catalog >>\nendobj\nxref\n0 1\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Size 1 >>\nstartxref\n0\n%%EOF")
+
+	images := []ImageResource{
+		{Format: "pdf", Location: "page.pdf", RawMedia: pdfData, PageNums: []int{1}},
+	}
+
+	if cbzData := combineImagesIntoCBZ(images, nil); cbzData != nil {
+		t.Fatal("expected nil CBZ when PDF page conversion is impossible")
 	}
 }
 
@@ -1090,12 +1126,14 @@ func TestConvertImageToPDF_JXR(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCombineImagesIntoPDF_MergesConsecutivePDFs(t *testing.T) {
-	// Create a minimal valid PDF to embed
-	pdfData := createSinglePagePDF(t)
+	// Two consecutive PDF resources with the same location merge into one entry
+	// whose page_nums [1, 2] cover the entire 2-page PDF
+	// (Python: yj_to_image_book.py:225-230, entire_resource_used fast path).
+	pdfData := createTwoPageImagePDF(t)
 
 	images := []ImageResource{
-		{Format: "pdf", Location: "doc.pdf", RawMedia: pdfData, PageNums: []int{1}, TotalPages: 3},
-		{Format: "pdf", Location: "doc.pdf", RawMedia: pdfData, PageNums: []int{2}, TotalPages: 3},
+		{Format: "pdf", Location: "doc.pdf", RawMedia: pdfData, PageNums: []int{1}, TotalPages: 2},
+		{Format: "pdf", Location: "doc.pdf", RawMedia: pdfData, PageNums: []int{2}, TotalPages: 2},
 	}
 
 	pdfResult := combineImagesIntoPDF(images, nil, false, nil)
@@ -1104,6 +1142,23 @@ func TestCombineImagesIntoPDF_MergesConsecutivePDFs(t *testing.T) {
 	}
 	if !isValidPDF(pdfResult) {
 		t.Error("expected valid PDF output")
+	}
+}
+
+func TestCombineImagesIntoPDF_MissingPage_FailsHonestly(t *testing.T) {
+	// A resource claiming a page that does not exist in the PDF must fail the
+	// build instead of silently emitting a blank page. Python: pypdf append of a
+	// missing page range raises → log.error → return None (yj_to_image_book.py:260-263).
+	pdfData := createSinglePagePDF(t)
+
+	images := []ImageResource{
+		{Format: "pdf", Location: "doc.pdf", RawMedia: pdfData, PageNums: []int{1}, TotalPages: 3},
+		{Format: "pdf", Location: "doc.pdf", RawMedia: pdfData, PageNums: []int{2}, TotalPages: 3},
+	}
+
+	pdfResult := combineImagesIntoPDF(images, nil, false, nil)
+	if pdfResult != nil {
+		t.Fatal("expected nil result when a claimed PDF page cannot be converted")
 	}
 }
 
@@ -1244,6 +1299,74 @@ func createSinglePagePDF(t *testing.T) []byte {
 		t.Fatal("failed to create test PDF")
 	}
 	return pdfRes.RawMedia
+}
+
+// createTwoPageImagePDF builds a raw 2-page PDF where each page is a single
+// full-page JPEG (DCTDecode) with a MediaBox giving >= 75 DPI (image 200x400,
+// page 144x288pt → 100 DPI, matching aspect). This is the shape of page the
+// extractor is allowed to handle (Python resources.py get_pdf_page_image).
+func createTwoPageImagePDF(t *testing.T) []byte {
+	t.Helper()
+
+	makeJPEG := func(r, g, b uint8) []byte {
+		img := image.NewRGBA(image.Rect(0, 0, 200, 400))
+		for y := 0; y < 400; y++ {
+			for x := 0; x < 200; x++ {
+				img.SetRGBA(x, y, color.RGBA{R: r, G: g, B: b, A: 255})
+			}
+		}
+		var jb bytes.Buffer
+		jpeg.Encode(&jb, img, &jpeg.Options{Quality: 95})
+		return jb.Bytes()
+	}
+
+	jpeg1 := makeJPEG(255, 0, 0)
+	jpeg2 := makeJPEG(0, 0, 255)
+
+	var buf bytes.Buffer
+	buf.WriteString("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+
+	objOffsets := map[int]int{}
+
+	writeObj := func(num int, body string) {
+		objOffsets[num] = buf.Len()
+		fmt.Fprintf(&buf, "%d 0 obj\n%s\nendobj\n", num, body)
+	}
+
+	writeObj(1, "<< /Type /Catalog /Pages 2 0 R >>")
+	writeObj(2, "<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>")
+	writeObj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 144 288] /Contents 5 0 R /Resources << /XObject << /Im0 4 0 R >> >> >>")
+
+	// Object 4: first page image XObject (DCTDecode = JPEG)
+	objOffsets[4] = buf.Len()
+	fmt.Fprintf(&buf, "4 0 obj\n<< /Type /XObject /Subtype /Image /Width 200 /Height 400 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n", len(jpeg1))
+	buf.Write(jpeg1)
+	buf.WriteString("\nendstream\nendobj\n")
+
+	content1 := "q 144 0 0 288 0 0 cm /Im0 Do Q"
+	writeObj(5, fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content1), content1))
+
+	writeObj(6, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 144 288] /Contents 8 0 R /Resources << /XObject << /Im0 7 0 R >> >> >>")
+
+	// Object 7: second page image XObject
+	objOffsets[7] = buf.Len()
+	fmt.Fprintf(&buf, "7 0 obj\n<< /Type /XObject /Subtype /Image /Width 200 /Height 400 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n", len(jpeg2))
+	buf.Write(jpeg2)
+	buf.WriteString("\nendstream\nendobj\n")
+
+	content2 := "q 144 0 0 288 0 0 cm /Im0 Do Q"
+	writeObj(8, fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content2), content2))
+
+	xrefOff := buf.Len()
+	buf.WriteString("xref\n0 9\n")
+	buf.WriteString("0000000000 65535 f \n")
+	for i := 1; i <= 8; i++ {
+		fmt.Fprintf(&buf, "%010d 00000 n \n", objOffsets[i])
+	}
+	buf.WriteString("trailer\n<< /Size 9 /Root 1 0 R >>\nstartxref\n")
+	fmt.Fprintf(&buf, "%d\n%%%%EOF\n", xrefOff)
+
+	return buf.Bytes()
 }
 
 // Suppress unused import warning

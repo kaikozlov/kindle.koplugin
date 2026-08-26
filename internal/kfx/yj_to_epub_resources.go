@@ -267,15 +267,19 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 			if pn, ok := asInt(resource["page_index"]); ok {
 				pageNum = pn + 1
 			}
-			// Python L112-115: try/except with convert_pdf_page_to_image
-			imgData, imgFmt := convertPDFPageToImage(location, rawMedia, pageNum, nil, false)
-			// Python: on exception → log.error and keep old raw_media.
-			// Go: convertPDFPageToImage returns placeholder on failure, so we always update.
-			rawMedia = imgData
-			resourceFormat = imgFmt
-			mime = ""
-			extension = extensionForFormatSymbol(resourceFormat)
-			locationFn = replaceExtension(locationFn, extension)
+			// Python L112-115: try/except around convert_pdf_page_to_image. On exception
+			// Python logs an error and keeps the original PDF raw_media, format, mime and
+			// location_fn — the resource is saved as-is (honest failure, no fabricated image).
+			imgData, imgFmt, convErr := convertPDFPageToImage(location, rawMedia, pageNum, nil, false)
+			if convErr != nil {
+				log.Printf("kfx: error: Exception during conversion of PDF \"%s\" page %d to JPEG: %v", locationFn, pageNum, convErr)
+			} else {
+				rawMedia = imgData
+				resourceFormat = imgFmt
+				mime = ""
+				extension = extensionForFormatSymbol(resourceFormat)
+				locationFn = replaceExtension(locationFn, extension)
+			}
 		}
 	}
 
@@ -1682,58 +1686,45 @@ func hasAlpha(img image.Image) bool {
 	return false
 }
 
-// convertPDFPageToImage implements Python convert_pdf_page_to_image (resources.py:323-400).
+// convertPDFPageToImage implements Python convert_pdf_page_to_image (resources.py:323-326).
 //
-// Uses pdfcpu (pure Go PDF library) to extract embedded images from PDF pages, mirroring
-// Python's pypdf-based extraction in get_pdf_page_image (resources.py:366-425).
+// Python:
 //
-// Python reference path:
-//   1. resources.py:323 — convert_pdf_page_to_image calls get_pdf_page_image
-//   2. resources.py:366 — get_pdf_page_image uses pypdf.PdfReader to extract the single
-//      embedded image directly (if the page is a single-image PDF page)
-//   3. resources.py:338 — convert_pdf_page_to_jpeg uses pdftoppm subprocess as fallback
+//	def convert_pdf_page_to_image(location, pdf_data, page_num, reported_errors=None, force_jpeg=False, pdf_cache=None):
+//	    default_image = (convert_pdf_page_to_jpeg(location, pdf_data, page_num, reported_errors), "$285")
+//	    return get_pdf_page_image(location, pdf_data, page_num, force_jpeg, default_image, pdf_cache)
 //
-// The Python's get_pdf_page_image performs extensive validation: checks cropbox == mediabox,
-// verifies exactly 1 image, no text, no annotations, correct aspect ratio, sufficient DPI,
-// and that the extracted image matches the rendered version. Go uses pdfcpu's ExtractImagesRaw
-// to extract images and performs equivalent validation where practical.
+// Python's default_image is a real pdftoppm page rendering (convert_pdf_page_to_jpeg,
+// resources.py:328-364) and is returned whenever embedded-image extraction fails, so a
+// Python conversion never fabricates image content. If rendering itself fails, the
+// exception propagates to yj_to_epub_resources.py L112-115, which logs an error and keeps
+// the original PDF raw_media in the EPUB.
 //
-// Fallback: if extraction fails or the page doesn't meet validation criteria, a placeholder
-// JPEG is returned.
-func convertPDFPageToImage(location string, pdfData []byte, pageNum int, reportedErrors map[string]bool, forceJPEG bool) ([]byte, string) {
-	// Default image: placeholder JPEG
-	defaultImage, defaultFormat := makePlaceholderJPEG(location, pageNum)
-	return getPDFPageImage(location, pdfData, pageNum, forceJPEG, defaultImage, defaultFormat)
+// Go has no pure-Go PDF rasterizer available as a dependency (pdfcpu does not render;
+// the CGO-based alternatives violate the CGO_ENABLED=0 static ARM build), so the honest
+// equivalent of the Python failure path is used: extraction failure is reported as an
+// error and the caller retains the original PDF resource instead of silently emitting a
+// blank page.
+func convertPDFPageToImage(location string, pdfData []byte, pageNum int, reportedErrors map[string]bool, forceJPEG bool) ([]byte, string, error) {
+	_ = reportedErrors // Python passes reported_errors through to the renderer; unused here.
+	return getPDFPageImage(location, pdfData, pageNum, forceJPEG)
 }
 
-// makePlaceholderJPEG creates a placeholder JPEG for a PDF page.
-// Used as the fallback when real image extraction fails.
-func makePlaceholderJPEG(location string, pageNum int) ([]byte, string) {
-	if pageNum <= 0 {
-		pageNum = 1
-	}
-	img := image.NewGray(image.Rect(0, 0, 612, 792))
-	encoded, err := encodeJPEGWithJFIF(img, 95)
-	if err != nil {
-		return nil, "jpg"
-	}
-	return encoded, "jpg"
-}
-
-// getPDFPageImage implements Python get_pdf_page_image (resources.py:373-425).
+// getPDFPageImage implements Python get_pdf_page_image (resources.py:382-460).
 //
 // Uses pdfcpu to extract embedded images from a specific PDF page. Mirrors Python's
 // validation logic:
-//   - Extract images from the specified page using pdfcpu's ExtractImagesRaw
+//   - Extract images from the specified page using pdfcpu (Python: pypdf page.images)
 //   - Validate single image on page (matching Python's len(page.images.keys()) == 1)
 //   - For DCTDecode (JPEG) images: return raw JPEG data if valid
 //   - For other image types: decode and re-encode as JPEG or PNG
-//   - Fall back to default placeholder on any validation failure
+//   - Any validation failure is reported as an error so the caller keeps the
+//     original PDF data instead of fabricating image content.
 //
-// Python reference: resources.py:373-425
-func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG bool, defaultImage []byte, defaultFormat string) ([]byte, string) {
+// Python reference: resources.py:382-460
+func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG bool) ([]byte, string, error) {
 	if len(pdfData) == 0 || !bytes.HasPrefix(pdfData, []byte("%PDF")) {
-		return defaultImage, defaultFormat
+		return nil, "", fmt.Errorf("no PDF data")
 	}
 
 	// Use pdfcpu to extract images from the specified page.
@@ -1745,20 +1736,20 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 	pageImages, err := api.ExtractImagesRaw(rs, []string{pageStr}, conf)
 	if err != nil {
 		log.Printf("kfx: warning: PDF image extraction failed for %s page %d: %v", location, pageNum, err)
-		return defaultImage, defaultFormat
+		return nil, "", err
 	}
 
 	// Python L384: if len(page.images.keys()) != 1: return default_image
 	// pageImages is []map[int]model.Image, one map per page
 	if len(pageImages) == 0 {
-		return defaultImage, defaultFormat
+		return nil, "", fmt.Errorf("PDF %s page %d has no extractable image", location, pageNum)
 	}
 
 	// Get the first page's images
 	imgMap := pageImages[0]
 	if len(imgMap) != 1 {
 		// Python validates exactly 1 image on the page
-		return defaultImage, defaultFormat
+		return nil, "", fmt.Errorf("PDF %s page %d has %d images, expected exactly 1", location, pageNum, len(imgMap))
 	}
 
 	// Get the single image from the map
@@ -1772,11 +1763,11 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 	imgData, err := io.ReadAll(pdfImg.Reader)
 	if err != nil {
 		log.Printf("kfx: warning: failed to read extracted PDF image from %s page %d: %v", location, pageNum, err)
-		return defaultImage, defaultFormat
+		return nil, "", err
 	}
 
 	if len(imgData) == 0 {
-		return defaultImage, defaultFormat
+		return nil, "", fmt.Errorf("PDF %s page %d image stream is empty", location, pageNum)
 	}
 
 	// Determine format based on the file type
@@ -1786,7 +1777,7 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 		// "if image_object.get('/Filter') == '/DCTDecode' and image_file_ext(image_data) == '.jpg'"
 		log.Printf("kfx: info: Extracting JPEG image (%dx%d) from PDF %s page %d",
 			pdfImg.Width, pdfImg.Height, location, pageNum)
-		return imgData, "jpg"
+		return imgData, "jpg", nil
 
 	case "png":
 		// FlateDecode — PNG image
@@ -1795,55 +1786,55 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 			pdfImg.Width, pdfImg.Height, location, pageNum)
 		if forceJPEG {
 			// Python L419-424: force_jpeg conversion
-			return convertImageToJPEG(imgData, location, pageNum, defaultImage, defaultFormat)
+			return convertImageToJPEG(imgData, location, pageNum)
 		}
-		return imgData, "png"
+		return imgData, "png", nil
 
 	case "tif", "tiff":
 		// CCITTFaxDecode — TIFF image
 		// Python L409-413: converts TIFF to PNG
 		log.Printf("kfx: info: Extracting TIFF image (%dx%d) from PDF %s page %d, converting to PNG",
 			pdfImg.Width, pdfImg.Height, location, pageNum)
-		return convertTIFFToPNG(imgData, location, pageNum, defaultImage, defaultFormat)
+		return convertTIFFToPNG(imgData, location, pageNum)
 
 	default:
-		// Try to decode and convert
-		log.Printf("kfx: info: Extracting %s image (%dx%d) from PDF %s page %d",
-			pdfImg.FileType, pdfImg.Width, pdfImg.Height, location, pageNum)
-		return convertImageToJPEG(imgData, location, pageNum, defaultImage, defaultFormat)
+		// Python L415-416: any other filter (e.g. JPXDecode) is not extractable
+		// losslessly — Python falls back to the rendered default image.
+		return nil, "", fmt.Errorf("PDF %s page %d image has unsupported filter/file type %q",
+			location, pageNum, pdfImg.FileType)
 	}
 }
 
 // convertImageToJPEG decodes image data and re-encodes as JPEG.
 // Python: resources.py:419-424 — force_jpeg conversion path.
-func convertImageToJPEG(imgData []byte, location string, pageNum int, defaultImage []byte, defaultFormat string) ([]byte, string) {
+func convertImageToJPEG(imgData []byte, location string, pageNum int) ([]byte, string, error) {
 	img, err := decodeImageBytes(imgData)
 	if err != nil {
 		log.Printf("kfx: warning: failed to decode extracted image from PDF %s page %d: %v", location, pageNum, err)
-		return defaultImage, defaultFormat
+		return nil, "", err
 	}
 
 	encoded, err := encodeJPEGWithJFIF(img, 95)
 	if err != nil {
-		return defaultImage, defaultFormat
+		return nil, "", err
 	}
-	return encoded, "jpg"
+	return encoded, "jpg", nil
 }
 
 // convertTIFFToPNG converts TIFF image data to PNG format.
 // Python: resources.py:411-413 — pil_img.save(outfile, "PNG", optimize=True)
-func convertTIFFToPNG(imgData []byte, location string, pageNum int, defaultImage []byte, defaultFormat string) ([]byte, string) {
+func convertTIFFToPNG(imgData []byte, location string, pageNum int) ([]byte, string, error) {
 	img, err := decodeImageBytes(imgData)
 	if err != nil {
 		log.Printf("kfx: warning: failed to decode TIFF from PDF %s page %d: %v", location, pageNum, err)
-		return defaultImage, defaultFormat
+		return nil, "", err
 	}
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
-		return defaultImage, defaultFormat
+		return nil, "", err
 	}
-	return buf.Bytes(), "png"
+	return buf.Bytes(), "png", nil
 }
 
 // decodeImageBytes decodes image data using Go's standard image decoders.

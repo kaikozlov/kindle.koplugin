@@ -410,62 +410,56 @@ func TestProcessExternalResourceManifestMimetypeOnlyForReferred(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // VAL-M6-001: PDF page extraction (GAP 12)
-// Python: yj_to_epub_resources.py L116-143, resources.py L323-400
+// Python: yj_to_epub_resources.py L112-115, resources.py L323-460
 //
-// The Go implementation uses a placeholder approach for PDF page extraction
-// because pypdf/Pillow/pdftoppm are not available in Go. None of the 6 test
-// books contain PDF-format resources, so the placeholder produces correct output
-// for all current conversion scenarios.
-//
-// This test verifies the documented limitation: convertPDFPageToImage returns
-// a placeholder JPEG image rather than the actual PDF page content.
+// Python's fallback for a non-extractable PDF page is a real pdftoppm rendering;
+// if that fails, the exception path keeps the original PDF data in the resource.
+// Go has no pure-Go PDF rasterizer (see convertPDFPageToImage doc comment), so
+// the equivalent behavior is to report failure as an error — never a fabricated
+// blank JPEG.
 // ---------------------------------------------------------------------------
 
-func TestConvertPDFPageToImage_ValidPDF_ReturnsPlaceholder(t *testing.T) {
-	// GAP 12: Python uses pypdf to extract the actual image from the PDF page,
-	// or falls back to pdftoppm rendering. Go returns a placeholder JPEG.
-	// The placeholder must be valid JPEG data for a valid PDF input.
+func TestConvertPDFPageToImage_ValidPDF_NoImage_ReturnsError(t *testing.T) {
+	// A valid PDF whose page contains no extractable image must fail honestly
+	// (Python: len(page.images) != 1 → rendered default; without a renderer Go
+	// propagates the failure to the caller).
 	pdfData := createMinimalPDF(1)
 
-	result, format := convertPDFPageToImage("test.pdf", pdfData, 1, nil, false)
-	if result == nil {
-		t.Fatal("expected non-nil placeholder JPEG for valid PDF")
+	result, format, err := convertPDFPageToImage("test.pdf", pdfData, 1, nil, false)
+	if err == nil {
+		t.Fatal("expected error for valid PDF with no embedded image")
 	}
-	if format != "jpg" {
-		t.Fatalf("expected format 'jpg' (placeholder), got %q", format)
-	}
-
-	// Verify the result is valid JPEG data
-	_, err := jpeg.Decode(bytes.NewReader(result))
-	if err != nil {
-		t.Fatalf("placeholder should be valid JPEG, got decode error: %v", err)
+	if result != nil || format != "" {
+		t.Fatalf("expected nil data/format on failure, got (%d bytes, %q)", len(result), format)
 	}
 }
 
-func TestConvertPDFPageToImage_InvalidPDF_ReturnsPlaceholder(t *testing.T) {
-	// Invalid/non-PDF data should still produce a fallback placeholder
-	result, format := convertPDFPageToImage("bad.pdf", []byte("not-pdf"), 1, nil, false)
-	if result == nil {
-		t.Fatal("expected non-nil placeholder even for invalid PDF data")
+func TestConvertPDFPageToImage_InvalidPDF_ReturnsError(t *testing.T) {
+	// Invalid/non-PDF data must produce an error, not a fabricated image
+	result, format, err := convertPDFPageToImage("bad.pdf", []byte("not-pdf"), 1, nil, false)
+	if err == nil {
+		t.Fatal("expected error for invalid PDF data")
 	}
-	if format != "jpg" {
-		t.Fatalf("expected format 'jpg' (fallback), got %q", format)
+	if result != nil || format != "" {
+		t.Fatalf("expected nil data/format on failure, got (%d bytes, %q)", len(result), format)
 	}
 }
 
-func TestConvertPDFPageToImage_EmptyPDF_ReturnsPlaceholder(t *testing.T) {
-	result, format := convertPDFPageToImage("empty.pdf", nil, 1, nil, false)
-	if result == nil {
-		t.Fatal("expected non-nil placeholder for empty PDF data")
+func TestConvertPDFPageToImage_EmptyPDF_ReturnsError(t *testing.T) {
+	result, format, err := convertPDFPageToImage("empty.pdf", nil, 1, nil, false)
+	if err == nil {
+		t.Fatal("expected error for empty PDF data")
 	}
-	if format != "jpg" {
-		t.Fatalf("expected format 'jpg' (fallback), got %q", format)
+	if result != nil || format != "" {
+		t.Fatalf("expected nil data/format on failure, got (%d bytes, %q)", len(result), format)
 	}
 }
 
 func TestGetExternalResource_PDFResource_ExtractsAndConverts(t *testing.T) {
-	// Verify the full pipeline: resource with format "pdf" triggers FIX_PDF path
-	// which converts to JPEG (placeholder) and updates extension/filename.
+	// Verify the full pipeline: resource with format "pdf" triggers FIX_PDF path.
+	// This PDF has no extractable page image, so conversion fails honestly and the
+	// original PDF data, format and extension are retained
+	// (Python: yj_to_epub_resources.py L112-115 exception path).
 	rp := newTestResourceProcessor()
 
 	pdfData := createMinimalPDF(1)
@@ -491,14 +485,17 @@ func TestGetExternalResource_PDFResource_ExtractsAndConverts(t *testing.T) {
 		t.Fatal("expected non-nil result for PDF resource")
 	}
 	if result.rawMedia == nil {
-		t.Fatal("expected non-nil raw media (converted from PDF)")
+		t.Fatal("expected non-nil raw media")
 	}
-	// After conversion, format should be jpg (placeholder), extension should be .jpg
-	if result.format != "jpg" {
-		t.Fatalf("expected format 'jpg' after PDF conversion, got %q", result.format)
+	// Honest failure keeps the original PDF bytes — no blank JPEG substitution.
+	if !bytes.Equal(result.rawMedia, pdfData) {
+		t.Fatal("expected raw media to keep the original PDF data on conversion failure")
 	}
-	if result.extension != ".jpg" {
-		t.Fatalf("expected extension '.jpg' after PDF conversion, got %q", result.extension)
+	if result.format != "pdf" {
+		t.Fatalf("expected format to stay 'pdf' after failed conversion, got %q", result.format)
+	}
+	if result.extension != ".pdf" {
+		t.Fatalf("expected extension to stay '.pdf' after failed conversion, got %q", result.extension)
 	}
 	// Filename should contain the page suffix
 	if !strings.Contains(result.filename, "-page") {
@@ -947,7 +944,10 @@ func TestConvertPDFPageToImage_PDFWithEmbeddedJPEG_ExtractsImage(t *testing.T) {
 	// a single-page PDF with one embedded JPEG image.
 	pdfData := createPDFWithJPEG(100, 150)
 
-	result, format := convertPDFPageToImage("test_embedded.pdf", pdfData, 1, nil, false)
+	result, format, err := convertPDFPageToImage("test_embedded.pdf", pdfData, 1, nil, false)
+	if err != nil {
+		t.Fatalf("expected successful extraction for PDF with embedded JPEG, got: %v", err)
+	}
 	if result == nil {
 		t.Fatal("expected non-nil result for PDF with embedded JPEG")
 	}
@@ -971,7 +971,10 @@ func TestConvertPDFPageToImage_PDFWithEmbeddedJPEG_ForceJPEG(t *testing.T) {
 	// Python resources.py:419-424 — when force_jpeg=True, convert to JPEG
 	pdfData := createPDFWithJPEG(50, 50)
 
-	result, format := convertPDFPageToImage("force.jpg", pdfData, 1, nil, true)
+	result, format, err := convertPDFPageToImage("force.jpg", pdfData, 1, nil, true)
+	if err != nil {
+		t.Fatalf("expected successful forceJPEG conversion, got: %v", err)
+	}
 	if result == nil {
 		t.Fatal("expected non-nil result for forceJPEG")
 	}
@@ -980,41 +983,35 @@ func TestConvertPDFPageToImage_PDFWithEmbeddedJPEG_ForceJPEG(t *testing.T) {
 	}
 
 	// Verify valid JPEG
-	_, err := jpeg.Decode(bytes.NewReader(result))
-	if err != nil {
+	if _, err := jpeg.Decode(bytes.NewReader(result)); err != nil {
 		t.Fatalf("forceJPEG result should be valid JPEG, got error: %v", err)
 	}
 }
 
-func TestConvertPDFPageToImage_EmptyPDFPages_NoImages_ReturnsPlaceholder(t *testing.T) {
+func TestConvertPDFPageToImage_EmptyPDFPages_NoImages_ReturnsError(t *testing.T) {
 	// Python resources.py:384 — if len(page.images.keys()) != 1: return default_image
-	// A PDF page with no embedded images should fall back to the placeholder.
+	// A PDF page with no embedded images cannot be extracted and there is no
+	// renderer available — failure must be reported honestly.
 	pdfData := createMinimalPDF(1) // no embedded images
 
-	result, format := convertPDFPageToImage("empty_pages.pdf", pdfData, 1, nil, false)
-	if result == nil {
-		t.Fatal("expected non-nil fallback for PDF with no images")
+	result, format, err := convertPDFPageToImage("empty_pages.pdf", pdfData, 1, nil, false)
+	if err == nil {
+		t.Fatal("expected error for PDF with no images")
 	}
-	if format != "jpg" {
-		t.Fatalf("expected format 'jpg' (fallback), got %q", format)
-	}
-
-	// The placeholder should still be valid JPEG
-	_, err := jpeg.Decode(bytes.NewReader(result))
-	if err != nil {
-		t.Fatalf("fallback should be valid JPEG, got error: %v", err)
+	if result != nil || format != "" {
+		t.Fatalf("expected nil data/format on failure, got (%d bytes, %q)", len(result), format)
 	}
 }
 
-func TestConvertPDFPageToImage_InvalidPDFData_ReturnsPlaceholder(t *testing.T) {
+func TestConvertPDFPageToImage_InvalidPDFData_ReturnsError(t *testing.T) {
 	// Python resources.py:423 — except Exception: return default_image
-	// Invalid data should gracefully fall back to placeholder.
-	result, format := convertPDFPageToImage("bad.pdf", []byte("not-a-pdf"), 1, nil, false)
-	if result == nil {
-		t.Fatal("expected non-nil fallback for invalid data")
+	// Invalid data fails the %PDF header check and must be reported as an error.
+	result, format, err := convertPDFPageToImage("bad.pdf", []byte("not-a-pdf"), 1, nil, false)
+	if err == nil {
+		t.Fatal("expected error for invalid data")
 	}
-	if format != "jpg" {
-		t.Fatalf("expected format 'jpg' (fallback), got %q", format)
+	if result != nil || format != "" {
+		t.Fatalf("expected nil data/format on failure, got (%d bytes, %q)", len(result), format)
 	}
 }
 
@@ -1189,7 +1186,10 @@ func TestGetPDFPageImage_MultiPagePDF_ExtractsCorrectPage(t *testing.T) {
 	// We use a single-page PDF and request page 1.
 	pdfData := createPDFWithJPEG(80, 60)
 
-	result, format := getPDFPageImage("multipage.pdf", pdfData, 1, false, nil, "jpg")
+	result, format, err := getPDFPageImage("multipage.pdf", pdfData, 1, false)
+	if err != nil {
+		t.Fatalf("expected successful extraction, got: %v", err)
+	}
 	if result == nil {
 		t.Fatal("expected non-nil result for page 1 extraction")
 	}

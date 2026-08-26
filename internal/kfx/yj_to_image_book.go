@@ -714,10 +714,16 @@ func combineImagesIntoCBZ(orderedImages []ImageResource, metadata interface{}) [
 			pageImages = append(pageImages, imgRes)
 
 		case "pdf": // PDF — convert pages to images
-			// Python: yj_to_image_book.py:326-330
+			// Python: yj_to_image_book.py:316-321 — convert_pdf_page_to_image is not
+			// wrapped in try/except here; a conversion failure fails the whole CBZ build.
 			for _, pageNum := range imgRes.PageNums {
-				imageData, fmt := convertPDFPageToImage(
+				imageData, fmt, convErr := convertPDFPageToImage(
 					imgRes.Location, imgRes.RawMedia, pageNum, reportedPdfErrors, false)
+				if convErr != nil {
+					log.Printf("kfx: error: Exception during conversion of PDF \"%s\" page %d to JPEG: %v",
+						imgRes.Location, pageNum, convErr)
+					return nil
+				}
 				pageImages = append(pageImages, ImageResource{
 					Format:   fmt,
 					Location: "",
@@ -900,10 +906,18 @@ func combineImagesIntoPDF(orderedImages []ImageResource, metadata map[string]str
 				})
 			} else {
 				// Multi-page PDF — extract individual pages
-				// Python: yj_to_image_book.py:252-259 uses writer.append(pages=page_range).
+				// Python: yj_to_image_book.py:252-259 uses writer.append(pages=page_range)
+				// to embed the original PDF pages. Go extracts page images via pdfcpu;
+				// a failed extraction is a lost page, so it must fail the build honestly
+				// instead of silently skipping (Python error path L260-263: log.error, return None).
 				for _, pageNum := range pdfImg.PageNums {
-					imageData, imgFmt := convertPDFPageToImage(
+					imageData, imgFmt, convErr := convertPDFPageToImage(
 						pdfImg.Location, pdfImg.RawMedia, pageNum, nil, true)
+					if convErr != nil {
+						log.Printf("kfx: error: Exception during conversion of PDF \"%s\" page %d to JPEG: %v",
+							pdfImg.Location, pageNum, convErr)
+						return nil
+					}
 					if len(imageData) == 0 {
 						continue
 					}
@@ -1437,10 +1451,13 @@ func countPDFPagesByCount(pdfData []byte) int {
 }
 
 // renderPDFPageToJPEG converts a single-page PDF to a JPEG image.
-// Uses convertPDFPageToImage which extracts embedded images via pdfcpu,
-// falling back to a placeholder when extraction is not possible.
+// Uses convertPDFPageToImage which extracts embedded images via pdfcpu.
+// Returns an error when no image could be extracted honestly.
 func renderPDFPageToJPEG(pdfData []byte) ([]byte, error) {
-	imageData, _ := convertPDFPageToImage("embedded-pdf", pdfData, 1, nil, true)
+	imageData, _, err := convertPDFPageToImage("embedded-pdf", pdfData, 1, nil, true)
+	if err != nil {
+		return nil, err
+	}
 	if len(imageData) == 0 {
 		return nil, fmt.Errorf("failed to render PDF page")
 	}

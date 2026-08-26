@@ -286,22 +286,27 @@ func TestConvertPDFPageToImage_NoPanic(t *testing.T) {
 	// For synthetic testing, verify it doesn't panic and handles invalid data.
 	pdfData := createMinimalPDF(1)
 
-	// Should not panic even if rendering tools are unavailable
-	result, format := convertPDFPageToImage("test.pdf", pdfData, 1, nil, false)
-	// result may be nil if no PDF renderer is available — that's OK for now
-	_ = result
-	_ = format
+	// Should not panic even when rendering tools are unavailable
+	result, format, err := convertPDFPageToImage("test.pdf", pdfData, 1, nil, false)
+	// A page with no extractable single image must be reported as an error
+	// (honest failure) rather than silently returning a blank placeholder JPEG.
+	if err == nil {
+		t.Fatal("expected error for PDF page with no images")
+	}
+	if result != nil || format != "" {
+		t.Fatalf("expected nil data/format on failure, got (%d bytes, %q)", len(result), format)
+	}
 }
 
 func TestConvertPDFPageToImage_InvalidData(t *testing.T) {
-	// Should handle corrupt PDF data gracefully
-	result, format := convertPDFPageToImage("bad.pdf", []byte("not-a-pdf"), 1, nil, false)
-	// Should fall back to default JPEG
-	if result == nil {
-		t.Fatal("expected non-nil result (fallback) for invalid PDF data")
+	// Should handle corrupt PDF data gracefully: an error must be returned so the
+	// caller keeps the original resource (Python: yj_to_epub_resources.py L112-115).
+	result, format, err := convertPDFPageToImage("bad.pdf", []byte("not-a-pdf"), 1, nil, false)
+	if err == nil {
+		t.Fatal("expected error for invalid PDF data")
 	}
-	if format != "jpg" {
-		t.Fatalf("expected fallback format $285 (JPEG), got %s", format)
+	if result != nil || format != "" {
+		t.Fatalf("expected nil data/format on failure, got (%d bytes, %q)", len(result), format)
 	}
 }
 
