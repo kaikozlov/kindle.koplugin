@@ -1969,3 +1969,29 @@ func TestQuantizeThickness(t *testing.T) {
 		}
 	}
 }
+
+func TestGetLocationIDStringUsesEntityIDsNotPosition(t *testing.T) {
+	content := map[string]interface{}{"id": 42, "position": "fixed"}
+	if got := getLocationIDString(content); got != "42" {
+		t.Fatalf("location id = %q, want 42", got)
+	}
+	if _, ok := content["id"]; ok {
+		t.Fatal("id was not consumed")
+	}
+	if got := content["position"]; got != "fixed" {
+		t.Fatalf("position was consumed or changed: %#v", got)
+	}
+}
+
+func TestGetLocationIDStringFallsBackToKfxID(t *testing.T) {
+	content := map[string]interface{}{"id": 0, "kfx_id": "entity-A", "position": "fixed"}
+	if got := getLocationIDString(content); got != "entity-A" {
+		t.Fatalf("location id = %q, want entity-A", got)
+	}
+	if _, ok := content["id"]; ok {
+		t.Fatal("falsey id was not consumed")
+	}
+	if _, ok := content["kfx_id"]; ok {
+		t.Fatal("kfx_id was not consumed")
+	}
+}

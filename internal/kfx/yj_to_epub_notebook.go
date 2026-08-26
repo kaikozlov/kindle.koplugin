@@ -559,21 +559,25 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 // ---------------------------------------------------------------------------
 
 func getLocationIDString(content map[string]interface{}) string {
-	// In Python, get_location_id reads $183 and resolves the location.
-	// For notebook processing, it's used primarily as an SVG element id attribute.
-	if loc, ok := content["position"]; ok {
-		switch v := loc.(type) {
+	// Python get_location_id pops $155/id first, then $598/kfx_id if the first
+	// value is falsey. The $183/position field is unrelated and must remain for
+	// content-specific layout handling (notably notebook KVG fixed positioning).
+	for _, key := range []string{"id", "kfx_id"} {
+		value, ok := content[key]
+		if !ok {
+			continue
+		}
+		delete(content, key)
+		switch v := value.(type) {
 		case string:
-			return v
-		case map[string]interface{}:
-			if id, ok := v["id"]; ok {
-				return fmt.Sprintf("%v", id)
+			if v != "" {
+				return v
+			}
+		default:
+			if n, ok := asInt(value); ok && n != 0 {
+				return fmt.Sprintf("%d", n)
 			}
 		}
-	}
-	// Fall back to int-based location ID
-	if id := getLocationID(content); id != 0 {
-		return fmt.Sprintf("%d", id)
 	}
 	return ""
 }
