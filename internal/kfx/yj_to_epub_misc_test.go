@@ -600,9 +600,9 @@ func TestProcessKVGShapeScalesPDFBackedCoordinates(t *testing.T) {
 	r := storylineRenderer{isPDFBacked: true}
 	parent := &htmlElement{Tag: "svg", Attrs: map[string]string{}}
 	shape := map[string]interface{}{
-		"type": "shape",
-		"path": []interface{}{0, 122.5, 250.5, 4},
-		"transform": []interface{}{1, 0, 0, 1, 122.5, 250.5},
+		"type":         "shape",
+		"path":         []interface{}{0, 122.5, 250.5, 4},
+		"transform":    []interface{}{1, 0, 0, 1, 122.5, 250.5},
 		"stroke_width": map[string]interface{}{"value": 250.0, "unit": "px"},
 	}
 	r.processKVGShape(parent, shape, nil, "")
@@ -615,5 +615,29 @@ func TestProcessKVGShapeScalesPDFBackedCoordinates(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("PDF-backed KVG output missing %q: %s", want, got)
 		}
+	}
+}
+
+func TestURLRelPathMatchesPythonInternalPaths(t *testing.T) {
+	tests := []struct {
+		target  string
+		refFrom string
+		want    string
+	}{
+		{"images/pic.png", "chapter.xhtml", "images/pic.png"},
+		{"images/pic.png", "xhtml/chapter.xhtml", "../images/pic.png"},
+		{"images/a b.svg", "xhtml/chapter.xhtml", "../images/a%20b.svg"},
+		{"images/é.svg#frag ment", "xhtml/chapter.xhtml", "../images/%C3%A9.svg#frag%20ment"},
+		{"images/a+b:c@d=e&f.svg", "xhtml/chapter.xhtml", "../images/a%2Bb%3Ac%40d%3De%26f.svg"},
+		{"/images/pic.png", "/xhtml/chapter.xhtml", "../images/pic.png"},
+		{"internal-file:/images/pic.png#p 1", "/xhtml/chapter.xhtml", "../images/pic.png#p%201"},
+	}
+	for _, tc := range tests {
+		if got := urlRelPath(tc.target, tc.refFrom); got != tc.want {
+			t.Fatalf("urlRelPath(%q, %q) = %q, want %q", tc.target, tc.refFrom, got, tc.want)
+		}
+	}
+	if got := urlRelPath("https://example.com/a b", "xhtml/chapter.xhtml"); got != "https://example.com/a b" {
+		t.Fatalf("external URL changed: %q", got)
 	}
 }

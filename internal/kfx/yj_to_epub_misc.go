@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1232,19 +1233,77 @@ func urlRelPath(target, refFrom string) string {
 	if target == "" {
 		return ""
 	}
-	// Simple relative path: if target is already relative, return as-is
-	if !strings.HasPrefix(target, "/") {
+
+	// Python utilities.urlrelpath leaves non-internal schemes untouched.
+	parsed, parseErr := url.Parse(target)
+	if parseErr == nil && parsed.Host != "" {
 		return target
 	}
-	// If refFrom has a directory component, compute relative path
-	dir := ""
-	if idx := strings.LastIndex(refFrom, "/"); idx >= 0 {
-		dir = refFrom[:idx+1]
+	if parseErr == nil && parsed.Scheme != "" && parsed.Scheme != "internal-file" {
+		return target
 	}
-	if strings.HasPrefix(target, dir) && dir != "" {
-		return target[len(dir):]
+
+	// Go stores OEBPS-internal filenames without Python's leading slash. Treat
+	// both forms as rooted internal paths, compute the POSIX relative path from
+	// the referring file's directory, then quote it with Python's safe="/#".
+	targetPath, fragment, _ := strings.Cut(target, "#")
+	if parseErr == nil && parsed.Scheme == "internal-file" {
+		targetPath = parsed.Path
+		fragment = parsed.Fragment
 	}
-	return target
+	targetPath = "/" + strings.TrimPrefix(path.Clean("/"+strings.TrimPrefix(targetPath, "/")), "/")
+	refPath := "/" + strings.TrimPrefix(path.Clean("/"+strings.TrimPrefix(refFrom, "/")), "/")
+	baseDir := path.Dir(refPath)
+	rel := posixRelPath(targetPath, baseDir)
+	if fragment != "" {
+		rel += "#" + fragment
+	}
+	return quoteInternalRelPath(rel)
+}
+
+func posixRelPath(target, baseDir string) string {
+	targetParts := strings.Split(strings.Trim(path.Clean(target), "/"), "/")
+	baseParts := strings.Split(strings.Trim(path.Clean(baseDir), "/"), "/")
+	if len(targetParts) == 1 && targetParts[0] == "" {
+		targetParts = nil
+	}
+	if len(baseParts) == 1 && baseParts[0] == "" {
+		baseParts = nil
+	}
+	common := 0
+	for common < len(targetParts) && common < len(baseParts) && targetParts[common] == baseParts[common] {
+		common++
+	}
+	parts := make([]string, 0, len(baseParts)-common+len(targetParts)-common)
+	for i := common; i < len(baseParts); i++ {
+		parts = append(parts, "..")
+	}
+	parts = append(parts, targetParts[common:]...)
+	if len(parts) == 0 {
+		return "."
+	}
+	return strings.Join(parts, "/")
+}
+
+func quoteInternalRelPath(value string) string {
+	// urllib.parse.quote(..., safe="/#") leaves only RFC 3986 unreserved bytes
+	// plus slash/hash unchanged. Encode UTF-8 bytes directly so characters such
+	// as '+', ':', '@', '=', and '&' match Python rather than net/url.PathEscape.
+	const hex = "0123456789ABCDEF"
+	var out strings.Builder
+	for i := 0; i < len(value); i++ {
+		b := value[i]
+		safe := (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
+			(b >= '0' && b <= '9') || b == '-' || b == '_' || b == '.' || b == '~' || b == '/' || b == '#'
+		if safe {
+			out.WriteByte(b)
+			continue
+		}
+		out.WriteByte('%')
+		out.WriteByte(hex[b>>4])
+		out.WriteByte(hex[b&0x0f])
+	}
+	return out.String()
 }
 
 // ---------------------------------------------------------------------------
