@@ -61,6 +61,7 @@ EXCLUSION_CATEGORIES = {
     "library-replacement",      # behavior provided by a Go library instead
     "alternate-architecture",   # behavior lives in differently-named Go code
     "output-mode-out-of-scope", # Calibre output mode this plugin never uses
+    "input-mode-out-of-scope",  # Calibre input location/scan mode not ported
     "calibre-plugin-infra",     # Calibre plugin/GUI infrastructure
     "unused-direction",         # encode/serialize path never needed (decode-only)
     "debug-only",               # logging/reporting/bookkeeping only
