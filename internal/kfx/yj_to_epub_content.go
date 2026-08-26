@@ -6224,16 +6224,24 @@ func (r *storylineRenderer) applyFirstLineStyle(element *htmlElement, node map[s
 	}
 	delete(style, "style_name")
 	delete(style, "yj.first_line_style_type")
-	declarations := cssDeclarationsFromMap(r.processContentProps(style, r.resolveResource))
-	if len(declarations) == 0 {
+
+	// Python prefixes the processed first-line declarations onto the element's
+	// own style as -kfx-firstline-* properties. fixupStylesAndClasses later
+	// extracts those properties into a ::first-line rule for the element's
+	// normal class; it does not add a separate marker class.
+	firstLine := map[string]string{}
+	for name, value := range r.processContentProps(style, r.resolveResource) {
+		if value != "" {
+			firstLine["-kfx-firstline-"+name] = value
+		}
+	}
+	if len(firstLine) == 0 {
 		return
 	}
-	className := r.styles.reserveClass("kfx-firstline")
-	if className == "" {
-		return
+	if element.Attrs == nil {
+		element.Attrs = map[string]string{}
 	}
-	element.Attrs["class"] = appendClassNames(element.Attrs["class"], className)
-	r.styles.addStatic("."+className+"::first-line", declarations)
+	element.Attrs["style"] = mergeStyleStrings(element.Attrs["style"], styleStringFromMap(firstLine))
 }
 
 func (r *storylineRenderer) wrapNodeLink(node map[string]interface{}, part htmlPart) htmlPart {
@@ -7382,6 +7390,7 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 	if len(style) == 0 {
 		return ""
 	}
+	layoutHints := extractLayoutHintsFromStyle(style)
 	// Merge link style inheritance: when paragraph doesn't have certain properties,
 	// inherit them from the link (annotation) style. This preserves the behavior of
 	// the old paragraphStyleDeclarations link inheritance block (kfx.go:1164-1201).
@@ -7429,7 +7438,7 @@ func (r *storylineRenderer) paragraphClass(styleID string, annotationStyleID str
 		if styleID != "" {
 			baseName = r.styleBaseName(styleID)
 		}
-		className = styleStringFromDeclarations(baseName, nil, declarations)
+		className = styleStringFromDeclarations(baseName, layoutHints, declarations)
 	}
 	if annotationStyleID != "" {
 		_ = r.linkClass(annotationStyleID, true)

@@ -1087,15 +1087,40 @@ func TestRenderTextNodeSupportsFirstLineStyles(t *testing.T) {
 			"yj.first_line_style_type": map[string]interface{}{"yj.number_of_lines": 1},
 		},
 	}, 0)
-	got := renderHTMLPart(node)
-	renderer.styles.markReferenced(got)
+	book := &decodedBook{RenderedSections: []renderedSection{{Root: &htmlElement{Children: []htmlPart{node}}}}}
+	fixupStylesAndClasses(book, renderer.styles, nil, "serif")
+	got := renderHTMLPart(book.RenderedSections[0].Root.Children[0])
 	stylesheet := renderer.styles.String()
 
 	if !strings.Contains(got, "class=") || !strings.Contains(got, "<p") {
 		t.Fatalf("first-line html = %q", got)
 	}
+	if strings.Contains(got, "kfx-firstline") {
+		t.Fatalf("first-line style must use the element's own class: %q", got)
+	}
 	if !strings.Contains(stylesheet, "::first-line") || !strings.Contains(stylesheet, "font-size: 2") {
 		t.Fatalf("first-line stylesheet = %q", stylesheet)
+	}
+}
+
+func TestParagraphLayoutHintControlsFinalClassPrefix(t *testing.T) {
+	renderer := storylineRenderer{
+		styleFragments: map[string]map[string]interface{}{
+			"sC": {
+				"margin_top":   0,
+				"layout_hints": []interface{}{"figure"},
+			},
+		},
+		styles: newStyleCatalog(),
+		symFmt: symOriginal,
+	}
+	element := &htmlElement{Tag: "p", Attrs: map[string]string{
+		"style": renderer.paragraphClass("sC", ""),
+	}}
+	book := &decodedBook{RenderedSections: []renderedSection{{Root: &htmlElement{Children: []htmlPart{element}}}}}
+	fixupStylesAndClasses(book, renderer.styles, nil, "serif")
+	if got := element.Attrs["class"]; got != "figure_sC" {
+		t.Fatalf("paragraph layout-hint class = %q, want figure_sC", got)
 	}
 }
 

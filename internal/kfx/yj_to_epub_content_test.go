@@ -2653,9 +2653,11 @@ func TestFirstLineStyleAppliedToElement(t *testing.T) {
 	}
 	element := &htmlElement{Tag: "span", Attrs: map[string]string{}}
 	r.applyFirstLineStyle(element, node)
-	// First-line style should add a class with ::first-line CSS
-	if element.Attrs["class"] == "" {
-		t.Error("expected first-line class to be added to element")
+	if element.Attrs["class"] != "" {
+		t.Fatalf("first-line style added a marker class: %#v", element.Attrs)
+	}
+	if !strings.Contains(element.Attrs["style"], "-kfx-firstline-font-size: 1.5em") {
+		t.Fatalf("first-line declarations were not attached to the element style: %#v", element.Attrs)
 	}
 }
 
