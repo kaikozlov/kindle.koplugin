@@ -81,6 +81,22 @@ func parseDictionaryRuleSet(data []byte) (map[int]string, error) {
 	return rules, nil
 }
 
+// pythonDictionarySliceIndex normalizes one Python string-slice bound for a
+// rune slice: negative bounds count from the end and every bound is clamped to
+// [0, len]. Python KFX Input relies on this behavior in unapply_dictionary_rule.
+func pythonDictionarySliceIndex(index, length int) int {
+	if index < 0 {
+		index += length
+		if index < 0 {
+			return 0
+		}
+	}
+	if index > length {
+		return length
+	}
+	return index
+}
+
 // unapplyDictionaryRule reverses an Amazon dictionary inflection rule. Slicing
 // is rune-based to preserve Python's Unicode string indexing semantics.
 func unapplyDictionaryRule(word, rule string) string {
@@ -101,33 +117,32 @@ func unapplyDictionaryRule(word, rule string) string {
 		text := []rune(match[3])
 		endOffsetPos := len(runes) - offset
 
+		// Python yj_to_epub_misc.py:524-541 uses ordinary string slices.
+		// Preserve their clamping/negative-index behavior rather than rejecting
+		// offsets that Go cannot use directly as slice indices.
 		switch cmd {
 		case "-":
-			if endOffsetPos < 0 || endOffsetPos > len(runes) {
-				log.Printf("kfx: error: Dictionary instruction %q has invalid offset for word %q in %q", instr, string(runes), rule)
-				return string(runes)
-			}
-			runes = append(append(append([]rune{}, runes[:endOffsetPos]...), text...), runes[endOffsetPos:]...)
+			end := pythonDictionarySliceIndex(endOffsetPos, len(runes))
+			runes = append(append(append([]rune{}, runes[:end]...), text...), runes[end:]...)
 		case "+":
-			start := endOffsetPos - len(text)
-			if start < 0 || endOffsetPos < 0 || endOffsetPos > len(runes) || string(runes[start:endOffsetPos]) != string(text) {
+			start := pythonDictionarySliceIndex(endOffsetPos-len(text), len(runes))
+			end := pythonDictionarySliceIndex(endOffsetPos, len(runes))
+			if start > end || string(runes[start:end]) != string(text) {
 				log.Printf("kfx: error: Dictionary instruction %q did not match word %q in %q", instr, string(runes), rule)
 				return string(runes)
 			}
-			runes = append(append([]rune{}, runes[:start]...), runes[endOffsetPos:]...)
+			runes = append(append([]rune{}, runes[:start]...), runes[end:]...)
 		case "/":
-			if offset < 0 || offset > len(runes) {
-				log.Printf("kfx: error: Dictionary instruction %q has invalid offset for word %q in %q", instr, string(runes), rule)
-				return string(runes)
-			}
-			runes = append(append(append([]rune{}, runes[:offset]...), text...), runes[offset:]...)
+			pos := pythonDictionarySliceIndex(offset, len(runes))
+			runes = append(append(append([]rune{}, runes[:pos]...), text...), runes[pos:]...)
 		case "*":
-			end := offset + len(text)
-			if offset < 0 || end > len(runes) || string(runes[offset:end]) != string(text) {
+			start := pythonDictionarySliceIndex(offset, len(runes))
+			end := pythonDictionarySliceIndex(offset+len(text), len(runes))
+			if start > end || string(runes[start:end]) != string(text) {
 				log.Printf("kfx: error: Dictionary instruction %q did not match word %q in %q", instr, string(runes), rule)
 				return string(runes)
 			}
-			runes = append(append([]rune{}, runes[:offset]...), runes[end:]...)
+			runes = append(append([]rune{}, runes[:start]...), runes[end:]...)
 		default:
 			log.Printf("kfx: error: Unexpected dictionary rule command %q in %q", cmd, rule)
 			return string(runes)

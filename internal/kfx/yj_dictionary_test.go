@@ -51,6 +51,10 @@ func TestUnapplyDictionaryRuleCommands(t *testing.T) {
 		{"redo", "0/re", "reredo"},
 		{"reredo", "0*re", "redo"},
 		{"cafés", "0+s", "café"},
+		// Python slices clamp an absolute insertion beyond the end.
+		{"cat", "99/s", "cats"},
+		// Negative end_offset_pos counts from the end for the '-' command.
+		{"cat", "4-s", "cast"},
 	}
 	for _, tc := range tests {
 		if got := unapplyDictionaryRule(tc.word, tc.rule); got != tc.want {
