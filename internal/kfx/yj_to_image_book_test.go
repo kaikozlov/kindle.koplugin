@@ -1490,7 +1490,7 @@ func TestCombineImagesIntoPDF_SetsTotalPagesForPDFResources(t *testing.T) {
 // ---------------------------------------------------------------------------
 // M10 scrutiny fix 3: Image data preserved through convertImageToPDF pipeline
 // Python: yj_to_image_book.py:232-236 — image-derived PDFs use raw data directly,
-// not round-tripped through a placeholder renderer.
+// not round-tripped through page conversion.
 // Go: OriginalJPEG field preserves the JPEG data for direct embedding.
 // ---------------------------------------------------------------------------
 
@@ -1524,7 +1524,7 @@ func TestConvertImageToPDF_PreservesOriginalJPEG(t *testing.T) {
 func TestCombineImagesIntoPDF_UsesOriginalJPEGNotRoundTrip(t *testing.T) {
 	// Create two image resources and combine them into a PDF.
 	// The original JPEG data should be used directly, not round-tripped through
-	// convertPDFPageToImage (which is a placeholder for real PDFs).
+	// convertPDFPageToImage (which may re-encode or, without pdftoppm, fail).
 	img1 := createTestJPEG(t, 100, 200)
 	img2 := createTestJPEG(t, 200, 300)
 
