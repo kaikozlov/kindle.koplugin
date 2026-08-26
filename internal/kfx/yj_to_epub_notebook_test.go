@@ -1519,7 +1519,9 @@ func TestScribeNotebookAnnotation_HWR(t *testing.T) {
 			return nil
 		},
 		getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
-			// Return the story fragment for any $259 lookup
+			// Return the story fragment for any $259 lookup, consuming the
+			// required $749/alt_content name like get_named_fragment does.
+			delete(content, nameSymbol)
 			if ftype == "storyline" {
 				return storyFragment
 			}
@@ -1532,7 +1534,7 @@ func TestScribeNotebookAnnotation_HWR(t *testing.T) {
 
 	annotation := map[string]interface{}{
 		"annotation_type": "nmdl.hwr",
-		"storyline": "story_ref",
+		"alt_content":     "story_ref",
 	}
 
 	scribeNotebookAnnotation(nc, annotation, parent)
@@ -1667,6 +1669,73 @@ func TestPythonStringSliceMatchesNegativeAndClampedBounds(t *testing.T) {
 		if got := pythonStringSlice(text, tc.start, tc.end); got != tc.want {
 			t.Errorf("pythonStringSlice(%q,%d,%d) = %q, want %q", text, tc.start, tc.end, got, tc.want)
 		}
+	}
+}
+
+func TestScribeNotebookAnnotationMandatoryFieldsFail(t *testing.T) {
+	t.Run("missing annotation type", func(t *testing.T) {
+		nc := &notebookContext{contentContext: "test"}
+		scribeNotebookAnnotation(nc, map[string]interface{}{}, &svgElement{Tag: "g"})
+		if nc.err == nil || !strings.Contains(nc.err.Error(), "annotation_type") {
+			t.Fatalf("missing annotation_type error = %v", nc.err)
+		}
+	})
+
+	t.Run("HWR missing alt content", func(t *testing.T) {
+		nc := &notebookContext{contentContext: "test"}
+		scribeNotebookAnnotation(nc, map[string]interface{}{"annotation_type": "nmdl.hwr"}, &svgElement{Tag: "g"})
+		if nc.err == nil || !strings.Contains(nc.err.Error(), "alt_content") {
+			t.Fatalf("missing alt_content error = %v", nc.err)
+		}
+	})
+}
+
+func TestScribeAnnotationContentMandatoryFieldsFail(t *testing.T) {
+	t.Run("missing text width", func(t *testing.T) {
+		nc := &notebookContext{contentContext: "test"}
+		scribeAnnotationContent(nc, map[string]interface{}{
+			"type": "text", "height": float64(20), "content": "word",
+		}, &svgElement{Tag: "g"})
+		if nc.err == nil || !strings.Contains(nc.err.Error(), "width") {
+			t.Fatalf("missing annotation width error = %v", nc.err)
+		}
+	})
+
+	t.Run("style event missing offset", func(t *testing.T) {
+		nc := &notebookContext{contentContext: "test"}
+		scribeAnnotationContent(nc, map[string]interface{}{
+			"type": "text", "height": float64(20), "width": float64(40), "content": "word",
+			"style_events": []interface{}{map[string]interface{}{
+				"length": 4, "height": float64(20), "width": float64(40),
+			}},
+		}, &svgElement{Tag: "g"})
+		if nc.err == nil || !strings.Contains(nc.err.Error(), "offset") {
+			t.Fatalf("missing style-event offset error = %v", nc.err)
+		}
+	})
+}
+
+func TestProcessNotebookContentFixedKVGMalformedPixelStructFails(t *testing.T) {
+	nc := &notebookContext{contentContext: "test"}
+	processNotebookContent(nc, map[string]interface{}{
+		"type": "kvg", "position": "fixed",
+		"top": map[string]interface{}{"value": 0}, // missing mandatory unit
+		"left": 0, "fixed_height": 100, "fixed_width": 100, "height": 100, "width": 100,
+	}, &svgElement{Tag: "svg"})
+	if nc.err == nil || !strings.Contains(nc.err.Error(), "unit") {
+		t.Fatalf("malformed fixed KVG pixel struct error = %v", nc.err)
+	}
+}
+
+func TestProcessNotebookContentFixedKVGMissingGeometryFails(t *testing.T) {
+	nc := &notebookContext{contentContext: "test"}
+	processNotebookContent(nc, map[string]interface{}{
+		"type": "kvg", "position": "fixed",
+		"top": 0, "left": 0, "fixed_height": 100, "fixed_width": 100, "height": 100,
+		// width intentionally missing; Python content.pop("$56") raises.
+	}, &svgElement{Tag: "svg"})
+	if nc.err == nil || !strings.Contains(nc.err.Error(), "width") {
+		t.Fatalf("missing fixed KVG width error = %v", nc.err)
 	}
 }
 

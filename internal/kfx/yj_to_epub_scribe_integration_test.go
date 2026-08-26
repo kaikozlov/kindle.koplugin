@@ -277,13 +277,22 @@ func resourceNames(resources []epub.Resource) []string {
 func TestScribeNotebookPipelineMultiplePages(t *testing.T) {
 	state := newScribeNotebookState(t)
 
-	// A second page with no resolvable template reference.
+	// A second page must use its own $608 page-template and $259 storyline.
+	// Upstream get_fragment consumes fragments on first use; reusing pt-page or
+	// page-story would yield an empty struct on the second use and the mandatory
+	// story_name pop would abort (yj_to_epub.py:309-334; notebook.py:230-239).
+	state.Fragments.RubyContents["pt-page-2"] = map[string]interface{}{
+		"type": "container", "story_name": "page-story-2",
+	}
+	state.Fragments.Storylines["page-story-2"] = map[string]interface{}{
+		"story_name": "page-story-2", "content_list": []interface{}{},
+	}
 	state.Fragments.SectionFragments["page-2"] = parseSectionFragment("page-2", map[string]interface{}{
 		"section_name":        "page-2",
 		"nmdl.canvas_width":   3906,
 		"nmdl.canvas_height":  5208,
 		"nmdl.normalized_ppi": 2520,
-		"page_templates":      []interface{}{"pt-page"},
+		"page_templates":      []interface{}{"pt-page-2"},
 	})
 	state.Fragments.SectionOrder = []string{"page-2", "page-1", "tpl-lined"}
 
@@ -698,6 +707,47 @@ func TestScribeNotebookPipelineMalformedPageSection(t *testing.T) {
 			_, err := renderBookState(state, nil)
 			if err == nil {
 				t.Fatalf("renderBookState must fail when the page section is %s", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Errorf("error %q does not mention %q", err.Error(), tc.wantMsg)
+			}
+		})
+	}
+}
+
+// TestScribeNotebookPipelineMalformedStrokeAborts proves exception-equivalent
+// failures inside process_notebook_content propagate through the page-section
+// handler and abort renderBookState. Upstream nominally uses None defaults for
+// these stroke fields, but float(None), bounds indexing, and %d formatting make
+// them fatal before rendering (yj_to_epub_notebook.py:310-340).
+func TestScribeNotebookPipelineMalformedStrokeAborts(t *testing.T) {
+	cases := []struct {
+		name      string
+		removeKey string
+		wantMsg   string
+	}{
+		{"missing brush type", "nmdl.brush_type", "nmdl.brush_type"},
+		{"missing color", "nmdl.color", "nmdl.color"},
+		{"missing thickness", "nmdl.thickness", "nmdl.thickness"},
+		{"missing bounds", "nmdl.stroke_bounds", "nmdl.stroke_bounds"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			state := newScribeNotebookState(t)
+			story := state.Fragments.Storylines["page-story"]
+			items, ok := story["content_list"].([]interface{})
+			if !ok || len(items) != 1 {
+				t.Fatalf("unexpected page-story fixture: %#v", story)
+			}
+			stroke, ok := items[0].(map[string]interface{})
+			if !ok {
+				t.Fatalf("unexpected stroke fixture: %T", items[0])
+			}
+			delete(stroke, tc.removeKey)
+
+			_, err := renderBookState(state, nil)
+			if err == nil {
+				t.Fatalf("renderBookState must fail for %s", tc.name)
 			}
 			if !strings.Contains(err.Error(), tc.wantMsg) {
 				t.Errorf("error %q does not mention %q", err.Error(), tc.wantMsg)

@@ -391,6 +391,20 @@ type notebookContext struct {
 
 	// debug enables debug logging.
 	debug bool
+
+	// err records the first exception-equivalent failure while walking notebook
+	// content. The page-section wrapper propagates it to the conversion caller.
+	err error
+}
+
+func (nc *notebookContext) setError(err error) {
+	if nc != nil && err != nil && nc.err == nil {
+		nc.err = err
+	}
+}
+
+func (nc *notebookContext) errorf(format string, args ...interface{}) {
+	nc.setError(&UnsupportedError{Message: fmt.Sprintf(format, args...)})
 }
 
 // pushContext appends context info.
@@ -447,6 +461,9 @@ func (cs *contextStack) pop() {
 //   - content: the content to process (IonStruct, IonSymbol, etc.)
 //   - parent: SVG parent element to append results to
 func processNotebookContent(nc *notebookContext, content interface{}, parent *svgElement) {
+	if nc == nil || nc.err != nil {
+		return
+	}
 	if nc.debug {
 		log.Printf("kfx: debug: process notebook content: %v", content)
 	}
@@ -468,7 +485,7 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 
 	if dataType != ionTypeStruct {
 		log.Printf("kfx: info: content: %v", content)
-		log.Printf("kfx: error: %s has unknown content data type", nc.contentContext)
+		nc.errorf("%s has unknown notebook content data type %T", nc.contentContext, content)
 		return
 	}
 
@@ -500,45 +517,59 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 			if ok {
 				for _, child := range list {
 					processNotebookContent(nc, child, parent)
+					if nc.err != nil {
+						return
+					}
 				}
 			}
 		} else if _, ok := contentMap["story_name"]; ok {
-			// $176 story: look up named fragment via $259
+			// Python get_named_fragment pops the name and returns an empty struct
+			// when the fragment is absent; the immediately following mandatory
+			// story.pop("$176") then raises. Preserve that fatal boundary.
 			var story map[string]interface{}
 			if nc.getNamedFragment != nil {
 				story = nc.getNamedFragment(contentMap, "storyline", "story_name")
 			}
-			if story != nil {
-				storyName := story["story_name"]
-				delete(story, "story_name")
-				if nc.debug {
-					log.Printf("kfx: debug: Processing story %v", storyName)
-				}
+			if story == nil {
+				nc.errorf("%s is missing referenced notebook storyline", nc.contentContext)
+				return
+			}
+			storyName, hasStoryName := story["story_name"]
+			if !hasStoryName {
+				nc.errorf("%s referenced notebook storyline is missing story_name", nc.contentContext)
+				return
+			}
+			delete(story, "story_name")
+			if nc.debug {
+				log.Printf("kfx: debug: Processing story %v", storyName)
+			}
 
-				ctx.push(fmt.Sprintf("story %v", storyName))
-				nc.contentContext = ctx.current()
+			ctx.push(fmt.Sprintf("story %v", storyName))
+			nc.contentContext = ctx.current()
 
-				if storyContent, ok := story["content_list"]; ok {
-					delete(story, "content_list")
-					list, ok := storyContent.([]interface{})
-					if ok {
-						for _, child := range list {
-							processNotebookContent(nc, child, parent)
-						}
+			if storyContent, ok := story["content_list"]; ok {
+				delete(story, "content_list")
+				list, ok := storyContent.([]interface{})
+				if ok {
+					for _, child := range list {
+						processNotebookContent(nc, child, parent)
 					}
 				}
-
-				ctx.pop()
-				nc.contentContext = ctx.current()
-
-				// Python: self.check_empty(story, self.content_context)
-				checkEmptyNotebook(story, nc.contentContext)
 			}
+
+			ctx.pop()
+			nc.contentContext = ctx.current()
+
+			// Python: self.check_empty(story, self.content_context)
+			checkEmptyNotebook(story, nc.contentContext)
 		}
 
 		if layout == nil {
 			if _, hasNmdlType := contentMap["nmdl.type"]; hasNmdlType {
 				scribeNotebookStroke(nc, contentMap, parent, locationID)
+				if nc.err != nil {
+					return
+				}
 			}
 		} else if layout != "vertical" {
 			log.Printf("kfx: error: %s has unknown $270 layout: %v", nc.contentContext, layout)
@@ -549,21 +580,45 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 		position := contentMap["position"]
 		delete(contentMap, "position")
 		if position == "fixed" {
-			top := notebookPixelValue(contentMap["top"])
+			for _, key := range []string{"top", "left", "fixed_height", "fixed_width", "height", "width"} {
+				if _, ok := contentMap[key]; !ok {
+					nc.errorf("%s fixed KVG content is missing %s", nc.contentContext, key)
+					return
+				}
+			}
+			top := notebookPixelValueChecked(nc, contentMap["top"], "top")
+			if nc.err != nil {
+				return
+			}
 			delete(contentMap, "top")
-			left := notebookPixelValue(contentMap["left"])
+			left := notebookPixelValueChecked(nc, contentMap["left"], "left")
+			if nc.err != nil {
+				return
+			}
 			delete(contentMap, "left")
 			if top != 0 || left != 0 {
 				shapeElem.setAttrib("transform", fmt.Sprintf("translate(%d %d)", left, top))
 			}
 
-			fixedHeight := notebookPixelValue(contentMap["fixed_height"])
+			fixedHeight := notebookPixelValueChecked(nc, contentMap["fixed_height"], "fixed_height")
+			if nc.err != nil {
+				return
+			}
 			delete(contentMap, "fixed_height")
-			fixedWidth := notebookPixelValue(contentMap["fixed_width"])
+			fixedWidth := notebookPixelValueChecked(nc, contentMap["fixed_width"], "fixed_width")
+			if nc.err != nil {
+				return
+			}
 			delete(contentMap, "fixed_width")
-			height := notebookPixelValue(contentMap["height"])
+			height := notebookPixelValueChecked(nc, contentMap["height"], "height")
+			if nc.err != nil {
+				return
+			}
 			delete(contentMap, "height")
-			width := notebookPixelValue(contentMap["width"])
+			width := notebookPixelValueChecked(nc, contentMap["width"], "width")
+			if nc.err != nil {
+				return
+			}
 			delete(contentMap, "width")
 			if fixedHeight != height || fixedWidth != width {
 				log.Printf("kfx: error: fixed position: height %d != %d or width %d != %d", fixedHeight, height, fixedWidth, width)
@@ -612,6 +667,41 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 
 	ctx.pop()
 	nc.contentContext = ctx.base
+}
+
+func notebookPixelValueChecked(nc *notebookContext, value interface{}, field string) int {
+	if structured, ok := asMap(value); ok {
+		rawUnit, hasUnit := structured["unit"]
+		if !hasUnit {
+			nc.errorf("%s %s pixel value is missing unit", nc.contentContext, field)
+			return 0
+		}
+		unit, unitOK := asString(rawUnit)
+		if !unitOK {
+			nc.errorf("%s %s pixel unit is %T, want symbol", nc.contentContext, field, rawUnit)
+			return 0
+		}
+		if unit != "px" {
+			log.Printf("kfx: error: %s Expected px value, found %s", nc.contentContext, unit)
+		}
+		rawValue, hasValue := structured["value"]
+		if !hasValue {
+			nc.errorf("%s %s pixel value is missing value", nc.contentContext, field)
+			return 0
+		}
+		value = rawValue
+	}
+	if number, ok := asFloat64(value); ok {
+		return int(number)
+	}
+	if value != nil {
+		nc.errorf("%s %s expected numeric pixel value, found %T", nc.contentContext, field, value)
+		return 0
+	}
+	// The fixed-KVG caller checks key presence, so a nil value corresponds to
+	// Python pixel_value(None) -> None followed by arithmetic/%%d use, which is fatal.
+	nc.errorf("%s %s pixel value is nil", nc.contentContext, field)
+	return 0
 }
 
 func notebookPixelValue(value interface{}) int {
@@ -734,7 +824,11 @@ func getLocationIDString(content map[string]interface{}) string {
 // scribeNotebookStroke processes stroke content, generating SVG elements.
 // Port of Python KFX_EPUB_Notebook.scribe_notebook_stroke (yj_to_epub_notebook.py:270-515).
 func scribeNotebookStroke(nc *notebookContext, content map[string]interface{}, parent *svgElement, locationID string) {
-	nmdlType := content["nmdl.type"]
+	nmdlType, hasType := content["nmdl.type"]
+	if !hasType {
+		nc.errorf("%s stroke is missing nmdl.type", nc.contentContext)
+		return
+	}
 	delete(content, "nmdl.type")
 
 	if nmdlType == "nmdl.stroke_group" {
@@ -784,13 +878,22 @@ func scribeNotebookStrokeGroup(nc *notebookContext, content map[string]interface
 		groupElem.setAttrib("id", locationID)
 	}
 
-	annotations, ok := content["annotations"].([]interface{})
-	if ok {
+	if rawAnnotations, exists := content["annotations"]; exists {
 		delete(content, "annotations")
+		annotations, ok := rawAnnotations.([]interface{})
+		if !ok {
+			nc.errorf("%s stroke_group annotations is %T, want list", nc.contentContext, rawAnnotations)
+			return
+		}
 		for _, annotation := range annotations {
 			annotationMap, ok := annotation.(map[string]interface{})
-			if ok {
-				scribeNotebookAnnotation(nc, annotationMap, groupElem)
+			if !ok {
+				nc.errorf("%s stroke_group annotation is %T, want struct", nc.contentContext, annotation)
+				return
+			}
+			scribeNotebookAnnotation(nc, annotationMap, groupElem)
+			if nc.err != nil {
+				return
 			}
 		}
 	}
@@ -810,34 +913,50 @@ type strokePoint struct {
 }
 
 func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]interface{}, parent *svgElement, locationID string) {
-	// Extract stroke properties
+	// Python's nominal None defaults for these fields still become fatal before
+	// rendering: brush/color are formatted with %d, bounds are indexed, and
+	// thickness is passed to float(). Preserve that exception boundary.
 	nmdlBrushType := content["nmdl.brush_type"]
 	delete(content, "nmdl.brush_type")
+	brushTypeInt, brushOK := asInt(nmdlBrushType)
+	if !brushOK {
+		nc.errorf("%s stroke has missing or invalid nmdl.brush_type", nc.contentContext)
+		return
+	}
 	nmdlColor := content["nmdl.color"]
 	delete(content, "nmdl.color")
+	colorIdx, colorOK := asInt(nmdlColor)
+	if !colorOK {
+		nc.errorf("%s stroke has missing or invalid nmdl.color", nc.contentContext)
+		return
+	}
 	nmdlRandomSeed := content["nmdl.random_seed"]
 	delete(content, "nmdl.random_seed")
 	nmdlStrokeBounds := content["nmdl.stroke_bounds"]
 	delete(content, "nmdl.stroke_bounds")
 
-	var nmdlThickness float64
-	if v, ok := content["nmdl.thickness"]; ok {
-		delete(content, "nmdl.thickness")
-		switch val := v.(type) {
-		case float64:
-			nmdlThickness = val
-		case int:
-			nmdlThickness = float64(val)
-		case int64:
-			nmdlThickness = float64(val)
-		}
+	rawThickness, hasThickness := content["nmdl.thickness"]
+	if !hasThickness {
+		nc.errorf("%s stroke is missing nmdl.thickness", nc.contentContext)
+		return
+	}
+	delete(content, "nmdl.thickness")
+	nmdlThickness, thicknessOK := asFloat64(rawThickness)
+	if !thicknessOK {
+		nc.errorf("%s stroke has invalid nmdl.thickness %T", nc.contentContext, rawThickness)
+		return
 	}
 
 	// Extract stroke points data
 	var nmdlStrokePoints map[string]interface{}
 	if v, ok := content["nmdl.stroke_points"]; ok {
 		delete(content, "nmdl.stroke_points")
-		nmdlStrokePoints, _ = v.(map[string]interface{})
+		var pointsOK bool
+		nmdlStrokePoints, pointsOK = v.(map[string]interface{})
+		if !pointsOK {
+			nc.errorf("%s stroke nmdl.stroke_points is %T, want struct", nc.contentContext, v)
+			return
+		}
 	}
 	if nmdlStrokePoints == nil {
 		nmdlStrokePoints = make(map[string]interface{})
@@ -846,13 +965,11 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 	var nmdlNumPoints int
 	if v, ok := nmdlStrokePoints["nmdl.num_points"]; ok {
 		delete(nmdlStrokePoints, "nmdl.num_points")
-		switch val := v.(type) {
-		case int:
-			nmdlNumPoints = val
-		case int64:
-			nmdlNumPoints = int(val)
-		case float64:
-			nmdlNumPoints = int(val)
+		var numOK bool
+		nmdlNumPoints, numOK = asInt(v)
+		if !numOK {
+			nc.errorf("%s stroke has invalid nmdl.num_points %T", nc.contentContext, v)
+			return
 		}
 	}
 
@@ -868,33 +985,37 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 	for _, name := range strokeNames {
 		if v, ok := nmdlStrokePoints[name]; ok {
 			delete(nmdlStrokePoints, name)
-			data, ok := v.([]byte)
-			if ok {
-				vals, _ := decodeStrokeValues(data, nmdlNumPoints, name)
-				nmdlStrokeValues[name] = vals
+			data, bytesOK := v.([]byte)
+			if !bytesOK {
+				nc.errorf("%s stroke %s is %T, want blob", nc.contentContext, name, v)
+				return
 			}
+			vals, _ := decodeStrokeValues(data, nmdlNumPoints, name)
+			if nmdlNumPoints > 0 && vals == nil {
+				nc.errorf("%s stroke %s could not be decoded", nc.contentContext, name)
+				return
+			}
+			nmdlStrokeValues[name] = vals
 		}
 	}
 
 	// Python: self.check_empty(nmdl_stroke_points, "%s nmdl_stroke_points" % self.content_context)
 	checkEmptyNotebook(nmdlStrokePoints, nc.contentContext+" nmdl_stroke_points")
 
-	// Parse stroke bounds
+	// Python indexes all four bounds unconditionally.
 	var bounds [4]int
-	if nmdlStrokeBounds != nil {
-		switch v := nmdlStrokeBounds.(type) {
-		case []interface{}:
-			for i := 0; i < 4 && i < len(v); i++ {
-				switch val := v[i].(type) {
-				case int:
-					bounds[i] = val
-				case int64:
-					bounds[i] = int(val)
-				case float64:
-					bounds[i] = int(val)
-				}
-			}
+	boundValues, boundsOK := asSlice(nmdlStrokeBounds)
+	if !boundsOK || len(boundValues) < 4 {
+		nc.errorf("%s stroke has invalid nmdl.stroke_bounds", nc.contentContext)
+		return
+	}
+	for i := 0; i < 4; i++ {
+		value, ok := asInt(boundValues[i])
+		if !ok {
+			nc.errorf("%s stroke nmdl.stroke_bounds[%d] is %T, want number", nc.contentContext, i, boundValues[i])
+			return
 		}
+		bounds[i] = value
 	}
 
 	boundWidth := bounds[2] - bounds[0]
@@ -903,16 +1024,13 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 	// Determine stroke color
 	var strokeColorName string
 	var strokeColor int
-	if nmdlColor != nil {
-		colorIdx, _ := nmdlColor.(int)
-		if entry, ok := STROKE_COLORS[colorIdx]; ok {
-			strokeColorName = entry.Name
-			strokeColor = entry.Hex
-		} else {
-			log.Printf("kfx: error: Unexpected color %d", colorIdx)
-			strokeColorName = "unknown"
-			strokeColor = 0
-		}
+	if entry, ok := STROKE_COLORS[colorIdx]; ok {
+		strokeColorName = entry.Name
+		strokeColor = entry.Hex
+	} else {
+		log.Printf("kfx: error: Unexpected color %d", colorIdx)
+		strokeColorName = "unknown"
+		strokeColor = 0
 	}
 
 	// Check for variable density and thickness
@@ -946,19 +1064,16 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 	darken := false
 	var brushName string
 
-	if nmdlBrushType != nil {
-		brushTypeInt, _ := nmdlBrushType.(int)
-		brushName = classifyBrushTypeWithThickness(brushTypeInt, variableThickness)
-		switch brushTypeInt {
-		case 1: // HIGHLIGHTER
-			darken = true
-			if strokeColor == 0 {
-				strokeColor = 0xbcbcbc
-			}
-		case 9: // SHADER
-			darken = true
-			opacity = 0.375
+	brushName = classifyBrushTypeWithThickness(brushTypeInt, variableThickness)
+	switch brushTypeInt {
+	case 1: // HIGHLIGHTER
+		darken = true
+		if strokeColor == 0 {
+			strokeColor = 0xbcbcbc
 		}
+	case 9: // SHADER
+		darken = true
+		opacity = 0.375
 	}
 
 	// Determine thickness name
@@ -981,6 +1096,10 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 	// Build points list
 	posXVals := nmdlStrokeValues["nmdl.position_x"]
 	posYVals := nmdlStrokeValues["nmdl.position_y"]
+	if nmdlNumPoints > 0 && (len(posXVals) < nmdlNumPoints || len(posYVals) < nmdlNumPoints) {
+		nc.errorf("%s stroke is missing position data for %d points", nc.contentContext, nmdlNumPoints)
+		return
+	}
 	tafVals := nmdlStrokeValues["nmdl.thickness_adjust_factor"]
 	dafVals := nmdlStrokeValues["nmdl.density_adjust_factor"]
 
@@ -1358,46 +1477,66 @@ func writePNGImage(groupElem *svgElement, img image.Image, bounds [4]int, boundW
 // scribeNotebookAnnotation processes annotation content within stroke groups.
 // Port of Python KFX_EPUB_Notebook.scribe_notebook_annotation (yj_to_epub_notebook.py:517-555).
 func scribeNotebookAnnotation(nc *notebookContext, annotation map[string]interface{}, elem *svgElement) {
-	annotationType := annotation["annotation_type"]
+	if nc == nil || nc.err != nil {
+		return
+	}
+	annotationType, hasAnnotationType := annotation["annotation_type"]
+	if !hasAnnotationType {
+		nc.errorf("%s annotation is missing annotation_type", nc.contentContext)
+		return
+	}
 	delete(annotation, "annotation_type")
 
-	if annotationType == "nmdl.hwr" {
-		var story map[string]interface{}
-		if nc.getNamedFragment != nil {
-			story = nc.getNamedFragment(annotation, "storyline", "alt_content")
-		}
-
-		if story != nil {
-			storyName := story["story_name"]
-			delete(story, "story_name")
-			nc.pushContext(fmt.Sprintf("story %v", storyName))
-
-			_ = getLocationIDString(story)
-
-			if content, ok := story["content_list"]; ok {
-				delete(story, "content_list")
-				list, ok := content.([]interface{})
-				if ok {
-					for _, child := range list {
-						// Python passes every story item through scribe_annotation_content,
-						// including IonSymbol references (yj_to_epub_notebook.py:576-589).
-						// Do not pre-filter to structs here.
-						scribeAnnotationContent(nc, child, elem)
-					}
-				}
-			}
-
-			// Python: self.check_empty(story, self.content_context)
-			checkEmptyNotebook(story, nc.contentContext)
-
-			nc.popContext()
-		}
-
-		// Python: self.check_empty(annotation, "%s annotation" % self.content_context)
-		checkEmptyNotebook(annotation, nc.contentContext+" annotation")
-	} else {
+	if annotationType != "nmdl.hwr" {
 		log.Printf("kfx: error: %s has unexpected annotation_type: %v", nc.contentContext, annotationType)
+		return
 	}
+
+	// Python get_named_fragment pops alt_content without a default, so absence
+	// raises before fragment lookup (yj_to_epub.py:345-346).
+	if _, ok := annotation["alt_content"]; !ok {
+		nc.errorf("%s HWR annotation is missing alt_content", nc.contentContext)
+		return
+	}
+	var story map[string]interface{}
+	if nc.getNamedFragment != nil {
+		story = nc.getNamedFragment(annotation, "storyline", "alt_content")
+	}
+	if story == nil {
+		nc.errorf("%s HWR annotation is missing referenced storyline", nc.contentContext)
+		return
+	}
+	storyName, hasStoryName := story["story_name"]
+	if !hasStoryName {
+		// Upstream get_fragment returns an empty struct for a missing fragment;
+		// story.pop("$176") immediately raises (yj_to_epub_notebook.py:570-572).
+		nc.errorf("%s HWR storyline is missing story_name", nc.contentContext)
+		return
+	}
+	delete(story, "story_name")
+	nc.pushContext(fmt.Sprintf("story %v", storyName))
+	_ = getLocationIDString(story)
+
+	if rawContent, ok := story["content_list"]; ok {
+		delete(story, "content_list")
+		list, listOK := rawContent.([]interface{})
+		if !listOK {
+			nc.errorf("%s HWR storyline content_list is %T, want list", nc.contentContext, rawContent)
+			return
+		}
+		for _, child := range list {
+			// Python passes every story item through scribe_annotation_content,
+			// including IonSymbol references (yj_to_epub_notebook.py:576-589).
+			scribeAnnotationContent(nc, child, elem)
+			if nc.err != nil {
+				return
+			}
+		}
+	}
+
+	nc.popContext()
+	checkEmptyNotebook(story, nc.contentContext)
+	checkEmptyNotebook(annotation, nc.contentContext+" annotation")
 }
 
 // ---------------------------------------------------------------------------
@@ -1407,11 +1546,14 @@ func scribeNotebookAnnotation(nc *notebookContext, annotation map[string]interfa
 // scribeAnnotationContent processes handwriting recognition content.
 // Port of Python KFX_EPUB_Notebook.scribe_annotation_content (yj_to_epub_notebook.py:557-614).
 func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svgElement) {
+	if nc == nil || nc.err != nil {
+		return
+	}
 	dataType := detectIonType(content)
 
 	if dataType == ionTypeSymbol {
-		// IonSymbol: resolve to fragment via $608 lookup. Current upstream
-		// 20260822 calls self.process_content(self.get_fragment(...)) here
+		// Current upstream 20260822 calls
+		// self.process_content(self.get_fragment(...)) here
 		// (yj_to_epub_notebook.py:588-590), but process_content requires parent,
 		// book_part, and writing_mode (yj_to_epub_content.py:411-412), so that
 		// exact branch raises TypeError if reached. The explicit IonSymbol branch
@@ -1430,18 +1572,16 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 	}
 
 	if dataType != ionTypeStruct {
-		log.Printf("kfx: error: %s has unknown content data type in annotation", nc.contentContext)
+		nc.errorf("%s has unknown annotation content data type %T", nc.contentContext, content)
 		return
 	}
 
 	contentMap, _ := content.(map[string]interface{})
-
 	locationID := getLocationIDString(contentMap)
 	nc.pushContext(locationID)
 
 	contentType := contentMap["type"]
 	delete(contentMap, "type")
-
 	if contentType == "text" {
 		wordIterType := contentMap["word_iteration_type"]
 		delete(contentMap, "word_iteration_type")
@@ -1458,7 +1598,15 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 			delete(contentMap, "left")
 			left = toFloat64(v)
 		}
+		if _, ok := contentMap["height"]; !ok {
+			nc.errorf("%s annotation text is missing height", nc.contentContext)
+			return
+		}
 		delete(contentMap, "height")
+		if _, ok := contentMap["width"]; !ok {
+			nc.errorf("%s annotation text is missing width", nc.contentContext)
+			return
+		}
 		delete(contentMap, "width")
 
 		text := ""
@@ -1467,11 +1615,8 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 			text, _ = v.(string)
 		}
 
-		// Add desc element
 		descElem := newSVGElement(elem, "desc", nil)
 		descElem.Text = text
-
-		// Add text element
 		textElem := newSVGElement(elem, "text", map[string]string{
 			"x":       fmt.Sprintf("%d", int(left)),
 			"y":       fmt.Sprintf("%d", int(top)),
@@ -1480,84 +1625,104 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 			"opacity": fmt.Sprintf("%0.2f", ANNOTATION_TEXT_OPACITY),
 		})
 
-		// Process style events ($142)
 		if styleEvents, ok := contentMap["style_events"]; ok {
 			delete(contentMap, "style_events")
-			events, ok := styleEvents.([]interface{})
-			if ok {
-				for _, event := range events {
-					eventMap, ok := event.(map[string]interface{})
-					if !ok {
-						continue
-					}
-
-					model := eventMap["model"]
-					delete(eventMap, "model")
-					if model != nil && model != "word" {
-						log.Printf("kfx: warning: %s has text model=%v", nc.contentContext, model)
-					}
-
-					var offset, length int
-					var wordTop, wordLeft, wordHeight, wordWidth float64
-
-					if v, ok := eventMap["offset"]; ok {
-						delete(eventMap, "offset")
-						offset = toInt(v)
-					}
-					if v, ok := eventMap["length"]; ok {
-						delete(eventMap, "length")
-						length = toInt(v)
-					}
-					if v, ok := eventMap["top"]; ok {
-						delete(eventMap, "top")
-						wordTop = toFloat64(v)
-					}
-					if v, ok := eventMap["left"]; ok {
-						delete(eventMap, "left")
-						wordLeft = toFloat64(v)
-					}
-					if v, ok := eventMap["height"]; ok {
-						delete(eventMap, "height")
-						wordHeight = toFloat64(v)
-					}
-					if v, ok := eventMap["width"]; ok {
-						delete(eventMap, "width")
-						wordWidth = toFloat64(v)
-					}
-					delete(eventMap, "alt_content")
-
-					// Python: self.check_empty(style_event, "%s style_event" % self.content_context)
-					checkEmptyNotebook(eventMap, nc.contentContext+" style_event")
-
-					word := pythonStringSlice(text, offset, offset+length)
-
-					if word != "" {
-						wordLen := len([]rune(word))
-						tspanElem := newSVGElement(textElem, "tspan", map[string]string{
-							"x":                 fmt.Sprintf("%d", int(wordLeft)),
-							"y":                 fmt.Sprintf("%d", int(wordTop+(wordHeight/2))),
-							"textLength":        fmt.Sprintf("%d", int(wordWidth)),
-							"font-size":         fmt.Sprintf("%d", int((wordWidth*2)/float64(wordLen))),
-							"dominant-baseline": "middle",
-						})
-						tspanElem.Text = word
-					}
+			events, eventsOK := styleEvents.([]interface{})
+			if !eventsOK {
+				nc.errorf("%s annotation style_events is %T, want list", nc.contentContext, styleEvents)
+				return
+			}
+			for _, event := range events {
+				eventMap, eventOK := event.(map[string]interface{})
+				if !eventOK {
+					nc.errorf("%s annotation style_event is %T, want struct", nc.contentContext, event)
+					return
 				}
+				model := eventMap["model"]
+				delete(eventMap, "model")
+				if model != nil && model != "word" {
+					log.Printf("kfx: warning: %s has text model=%v", nc.contentContext, model)
+				}
+
+				rawOffset, hasOffset := eventMap["offset"]
+				rawLength, hasLength := eventMap["length"]
+				if !hasOffset || !hasLength {
+					nc.errorf("%s annotation style_event is missing offset or length", nc.contentContext)
+					return
+				}
+				delete(eventMap, "offset")
+				delete(eventMap, "length")
+				offset, offsetOK := notebookPythonIndex(rawOffset)
+				length, lengthOK := notebookPythonIndex(rawLength)
+				if !offsetOK || !lengthOK {
+					nc.errorf("%s annotation style_event has non-integer offset/length", nc.contentContext)
+					return
+				}
+
+				var wordTop, wordLeft float64
+				if v, ok := eventMap["top"]; ok {
+					delete(eventMap, "top")
+					wordTop = toFloat64(v)
+				}
+				if v, ok := eventMap["left"]; ok {
+					delete(eventMap, "left")
+					wordLeft = toFloat64(v)
+				}
+				rawHeight, hasHeight := eventMap["height"]
+				rawWidth, hasWidth := eventMap["width"]
+				if !hasHeight || !hasWidth {
+					nc.errorf("%s annotation style_event is missing height or width", nc.contentContext)
+					return
+				}
+				delete(eventMap, "height")
+				delete(eventMap, "width")
+				wordHeight := toFloat64(rawHeight)
+				wordWidth := toFloat64(rawWidth)
+				delete(eventMap, "alt_content")
+
+				word := pythonStringSlice(text, offset, offset+length)
+				if word != "" {
+					wordLen := len([]rune(word))
+					tspanElem := newSVGElement(textElem, "tspan", map[string]string{
+						"x":                 fmt.Sprintf("%d", int(wordLeft)),
+						"y":                 fmt.Sprintf("%d", int(wordTop+(wordHeight/2))),
+						"textLength":        fmt.Sprintf("%d", int(wordWidth)),
+						"font-size":         fmt.Sprintf("%d", int((wordWidth*2)/float64(wordLen))),
+						"dominant-baseline": "middle",
+					})
+					tspanElem.Text = word
+				}
+				checkEmptyNotebook(eventMap, nc.contentContext+" style_event")
 			}
 		}
 	} else {
 		log.Printf("kfx: error: %s unknown annotation content type: %v", nc.contentContext, contentType)
 	}
 
-	// Python: self.check_empty(content, "%s content" % self.content_context)
-	checkEmptyNotebook(contentMap, nc.contentContext+" content")
-
 	nc.popContext()
+	checkEmptyNotebook(contentMap, nc.contentContext+" content")
 }
 
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
+
+func notebookPythonIndex(value interface{}) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case int32:
+		return int(v), true
+	case int64:
+		return int(v), true
+	case uint32:
+		return int(v), true
+	case uint64:
+		return int(v), true
+	default:
+		return 0, false
+	}
+}
 
 // pythonStringSlice reproduces Python str[start:end] on Unicode code points,
 // including negative-index normalization and clamping. Scribe HWR offsets in
@@ -1895,6 +2060,9 @@ func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[st
 	// Python L126: self.process_notebook_content(page_template, notebook_content_parent)
 	if ctx.notebookContext != nil {
 		processNotebookContent(ctx.notebookContext, pageTemplate, notebookContentParent)
+		if ctx.notebookContext.err != nil {
+			return ctx.notebookContext.err
+		}
 	}
 	checkEmptyNotebookSafe(pageTemplate, fmt.Sprintf("Section %s page_template", sectionName))
 
