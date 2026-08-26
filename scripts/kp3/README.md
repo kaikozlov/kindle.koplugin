@@ -35,6 +35,12 @@ This is intended for controlled, one-feature-at-a-time experiments. It complemen
 # Vertical Japanese + ruby + emphasis
 ./scripts/kp3/run_probe.py --fixture vertical-ruby --workdir /tmp/kp3-ruby
 
+# Canonical drop-cap detection (float-left initial)
+./scripts/kp3/run_probe.py --fixture dropcap --workdir /tmp/kp3-dropcap
+
+# Reflowable figure with a PNG resource
+./scripts/kp3/run_probe.py --fixture image-figure --workdir /tmp/kp3-figure
+
 # Also dump Amazon's live property ID/name catalog
 ./scripts/kp3/run_probe.py --fixture minimal --catalog --workdir /tmp/kp3-catalog
 
@@ -95,7 +101,15 @@ Built-in fixtures currently cover:
 - `link`: ordinary internal anchor link;
 - `bidi`: RTL paragraph with an isolated LTR range;
 - `list`: ordered-list start offset plus nested unordered list;
-- `svg`: simple inline SVG normalization/rasterization.
+- `svg`: simple inline SVG normalization/rasterization;
+- `dropcap`: canonical float-left initial (producer measures cap height vs paragraph
+  line height in the PhantomJS pass and rewrites the source to
+  `dropcap_lines`/`dropcap_chars` attributes; reverses through `$125`/`$126`);
+- `image-figure`: reflowable `figure`/`img`/`figcaption` with a deterministic PNG
+  resource (the only non-JPEG raster fixture; exercises PNG resource handling and
+  figure layout-hint class naming);
+- `first-line`: `::first-line`/`::first-letter` pseudo-elements (materialized as
+  `data-first-line-style` -> `$622` `yj.first_line_style`, plus a `$142` style event).
 
 Prefer a matrix of small semantic specimens over a few large synthetic books. A useful fixture should make one question easy to answer, for example:
 

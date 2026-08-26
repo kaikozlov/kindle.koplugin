@@ -1539,7 +1539,7 @@ scripts/kp3/
     └── KafSemanticProbe.java
 ```
 
-`make_fixture.py` currently provides nine deliberately small source fixtures:
+`make_fixture.py` currently provides twelve deliberately small source fixtures:
 
 - `minimal`: one H1 and one paragraph;
 - `footnote`: EPUB 3 `noteref` + `footnote` semantics and generated anchor targeting;
@@ -1549,7 +1549,10 @@ scripts/kp3/
 - `link`: a same-document anchor link and target heading;
 - `bidi`: RTL paragraph direction plus an isolated LTR range;
 - `list`: ordered-list start offset plus a nested unordered list;
-- `svg`: simple inline SVG used to observe current producer normalization.
+- `svg`: simple inline SVG used to observe current producer normalization;
+- `dropcap`: canonical float-left initial detected by the PhantomJS preprocessing pass (`dropcap_lines`/`dropcap_chars` attributes, `$125`/`$126` reversal);
+- `image-figure`: reflowable `figure`/`img`/`figcaption` with a deterministic PNG resource;
+- `first-line`: `::first-line` (`$622` `yj.first_line_style`) and `::first-letter` (`$142` style event) pseudo-elements.
 
 `run_probe.py` performs the entire experiment:
 
@@ -1806,6 +1809,88 @@ The fixes required to reach that state are instructive because they were not all
 This is stronger evidence than the old ten-book result because each fixture has a known source feature and a current Amazon-produced intermediate representation. It is still **not a completeness proof**. The fixture matrix covers canonical producer behavior for nine deliberately small semantic families; it says nothing by itself about historical generator variants, malformed-but-tolerated books, DRM packaging, dictionaries not expressible by the current fixture generator, Scribe KPF/KDF ingestion, or other features not represented in the matrix.
 
 The static parity auditor has consequently been reframed as a conservative structural-coverage tool rather than a parity score. Against all 961 current upstream core definitions it deliberately reports many gaps, including alternate-architecture functions that have not yet received reviewed identity mappings. A clean semantic fixture result is behavioral evidence for the exercised path; a static name/body match is not.
+
+## Controlled drop-cap, raster-figure, and first-line fixtures
+
+Three further fixtures were added on 2026-08-26 (`dropcap`, `image-figure`, `first-line`) to probe producer semantics the first nine did not cover. Each was designed against the reverse-engineered producer behavior first and only then frozen into `scripts/kp3/make_fixture.py`; the preprocessed intermediate was inspected in every case to prove the intended semantic path actually fired before the reverse comparison was run.
+
+### Drop-cap producer semantics (coreprocessor.js)
+
+Kindle Previewer detects EPUB drop caps in the PhantomJS preprocessing pass, not in the Java adapter:
+
+- the trigger is an element with computed `float: left` and non-empty text content that is not an image (search `coreprocessor.js` for `DropCap::Floating Style is Used here`);
+- vertical writing modes are excluded (`webkitWritingMode` must not be `vertical-lr`/`vertical-rl`);
+- the measured line span is computed from layout: `ceil((dropCapGlyphHeight - paragraphCapHeight) / paragraphLineHeight + 1)` and must be at least 2 (`DropCap::DropCapLines should be minimum of 2`);
+- on success the floated source spans are removed and replaced by a synthetic inline `<span dropcap="true">` inside the paragraph, and the paragraph receives `dropcap_lines`/`dropcap_chars` attributes;
+- the Java paragraph adapter reads those attributes (`com/amazon/adapter/common/l/a/C3940e.java`, `o()`, attributes defined as `P = "dropcap_lines"`, `Q = "dropcap_chars"` in `com/amazon/p019h/a/a.java`) and emits the `DROPCAP_LINES`/`DROPCAP_CHARS` style properties, which serialize as YJ `$125`/`$126` in the content's style event.
+
+The verified `dropcap` fixture (12pt/14pt paragraph, 42pt floated initial) yields `dropcap_lines="4" dropcap_chars="1"` in the preprocessed XHTML. The reverse result is exact parity: both implementations reconstruct `<span class="...s8-1">T</span>` with `{float: left; font-size: 4em; line-height: 100%; margin-right: 0.1em}` (Python `yj_to_epub_content.py` L1186-1211), and the Go CSS is byte-identical.
+
+### Ordinary raster figure findings
+
+`image-figure` carries a reflowable `<figure><img/><figcaption/></figure>` with a deterministic 60x40 PNG. Two observations:
+
+1. **Producer keeps PNG resources untouched.** The KDF stores the source PNG verbatim (`res/rsrc9`), so the serialized KFX handed to both reversers contains a PNG resource — a case the ten real-book corpus (all JPEG) never exercises. Both implementations emit byte-identical `image_rsrc9.png` (same sha256). Python logs `Resource e8 is unexpected PNG` (`yj_structure.py` L573: a PNG outside illustrated/print-replica/magazine/prepublication contexts is flagged); the Go `internal/kfx/yj_structure.go` port has no equivalent `unexpected PNG/WEBP/GIF` diagnostics — a diagnostics-parity gap, not an output gap.
+2. **Class-name gap on the caption.** The YJ stylesheet names the caption style `sC` with `$761: [$282]` (figure layout hint). Python prefixes the class with the sorted layout-hint list (`yj_to_epub_properties.py` L77-81 `LAYOUT_HINT_ELEMENT_NAMES`, L1522-1531), producing `figure_sC`; Go emits `class_sC`, i.e. the figure hint is not applied to the caption's class base name (Go `styleMetadataForBaseName`/`styleInfoFromClasses`, `internal/kfx/yj_to_epub_properties.go` L469-500 and L1969-1990). The styles themselves are identical; only the class name differs. Unified diff (`--diff`):
+
+```diff
+ <figure class="figure_sA"><img src="image_rsrc9.png" alt="Probe gradient" class="class_sA"/></figure>
+-<p class="figure_sC">Probe figure caption.</p>
++<p class="class_sC">Probe figure caption.</p>
+```
+
+```diff
+ .class_sA {width: 50%}
++.class_sC {margin-bottom: 0; margin-left: 4.688%; margin-right: 4.688%; margin-top: 0}
+ .figure_sA {margin-bottom: 0; margin-left: 4.688%; margin-right: 4.688%; margin-top: 1.34em}
+-.figure_sC {margin-bottom: 0; margin-left: 4.688%; margin-right: 4.688%; margin-top: 0}
+```
+
+### First-line pseudo-element findings
+
+`first-line` exercises `::first-line` and `::first-letter`. The preprocessor materializes `::first-line` as a `data-first-line-style` attribute on the paragraph (`coreprocessor.js` `FIRST_LINE_STYLE`), which the adapter turns into YJ `$622` `yj.first_line_style`; `::first-letter` becomes an ordinary inline span with relativized styles and lands as a `$142` style event. The drop cap and `::first-letter` paths both reverse exactly; the `$622` path diverges:
+
+- Python (`yj_to_epub_content.py` L1123-1133) writes the first-line properties onto the element's own style as `-kfx-firstline-*` properties, and the class pass (`yj_to_epub_properties.py` L1548-1560) extracts them into a `.{same-class}::first-line` CSS rule attached to the class the element already uses.
+- Go (`internal/kfx/yj_to_epub_content.go` L6215-6237) instead reserves a separate `kfx-firstline` marker class, appends it to the element, and emits `.kfx-firstline::first-line` as a late static rule.
+
+Observable diff:
+
+```diff
+-<p class="class_s6">The first line of this paragraph ...</p>
++<p class="class_s6 kfx-firstline">The first line of this paragraph ...</p>
+```
+
+```diff
+ .class_s6 {margin-bottom: 0; margin-top: 0}
+-.class_s6::first-line {font-variant: small-caps; letter-spacing: 1pt}
+ .class_sA {font-size: 2em; font-weight: bold}
++.kfx-firstline::first-line {font-variant: small-caps; letter-spacing: 1pt}
+```
+
+Three user-visible consequences: an extra class token in the XHTML, a differently named (and, for multiple distinct first-line styles, potentially colliding) selector, and different CSS rule ordering.
+
+### Why not CSS transforms for the third slot
+
+CSS `transform`/`rotate` was evaluated first for the third fixture family and rejected on evidence: `stylemap.ion` contains zero `rotate` mappings and no `transform:` CSS-property mapping (its 198 "transform" hits are all `com.amazon.yjhtmlmapper.transformers.*` Java class names). YJ does have a `$98` transform property (`process_transform`, `yj_to_epub_properties.py` L1346-1348), but it is only produced through layout/SVG paths, not from reflowable CSS. Absolute positioning in reflowable content is likewise not in the stylemap; `position: absolute` is only consumed by the fixed-layout path already covered by `fixed-layout`. The pseudo-element family was chosen instead because it is a strong, style-event-producing producer semantic not covered by any existing fixture.
+
+### Updated matrix
+
+| Fixture | Structural diffs | Image diffs | Other diffs | Notes |
+| --- | ---: | ---: | ---: | --- |
+| `minimal` | 0 | 0 | 0 | |
+| `footnote` | 0 | 0 | 0 | |
+| `table` | 0 | 0 | 0 | |
+| `fixed-layout` | 0 | 0 | 0 | |
+| `vertical-ruby` | 0 | 0 | 0 | |
+| `link` | 0 | 0 | 0 | |
+| `bidi` | 0 | 0 | 0 | |
+| `list` | 0 | 0 | 0 | timestamp-only OPF varies by run |
+| `svg` | 0 | 0 | 0 | |
+| `dropcap` | 0 | 0 | 0 | `$125`/`$126` reversal byte-identical |
+| `image-figure` | 2 | 0 | 0 | `figure_sC` vs `class_sC` class naming |
+| `first-line` | 2 | 0 | 0 | `kfx-firstline` marker class vs same-class `::first-line` |
+
+The two divergences above are recorded as discovery outcomes for the converter work; no production converter code was changed in the branch that added these fixtures.
 
 ## Generated KDF storage format: SQLite plus Amazon fingerprint records
 
@@ -2108,10 +2193,16 @@ This would not remove the need for historical compatibility handling, but it wou
 
 ## Recommended next investigation order
 
-1. Expand the controlled semantic matrix beyond the nine now-green baseline fixtures:
-   - drop caps and first-line styles;
-   - ordinary raster-image/figure behavior distinct from fixed layout;
-   - CSS transforms/absolute positioning outside the PDF-backed case;
+1. Expand the controlled semantic matrix beyond the twelve current fixtures:
+   - ~~drop caps and first-line styles~~ (covered by `dropcap` and `first-line`, 2026-08-26;
+     `first-line` exposed the `kfx-firstline` marker-class divergence recorded above);
+   - ~~ordinary raster-image/figure behavior distinct from fixed layout~~ (covered by
+     `image-figure`, 2026-08-26; exposed the `figure_sC` class-naming divergence and
+     confirmed PNG resources reverse byte-identically);
+   - ~~CSS transforms/absolute positioning outside the PDF-backed case~~ (evaluated and
+     dropped: `stylemap.ion` has no CSS `transform`/`rotate`/absolute-position mappings
+     for reflowable content, so no fixture can exercise them through this producer;
+     pseudo-elements were probed instead);
    - conditional/crop-bleed/hero-image properties;
    - page spreads, guided-view/document regions, and the producer trigger for `page_regions`;
    - additional language/layout combinations only when each fixture answers a specific semantic question.
