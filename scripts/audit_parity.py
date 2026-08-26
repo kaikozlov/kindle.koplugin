@@ -660,26 +660,31 @@ def classify(py: PyFunc, go_fn: Optional[dict], excluded_entry: Optional[dict],
              tsub: Optional[int] = None) -> str:
     """Classify one Python function against its matched Go function.
 
+    Identity and implementation evidence are deliberately separate. An
+    explicit override may tell us WHICH Go function corresponds to Python, but
+    it cannot waive dead-code, stub, or thin-body checks. Likewise a same-file
+    name match with no production call sites is not implementation credit just
+    because a substantive-looking body exists.
+
     trivial↔trivial credit requires SEMANTIC compatibility (shape + literal
     value equality + argument position), never mere size or kind.
     """
     if excluded_entry is not None:
         return "excluded"
-    if override_entry is not None:
-        # An explicit identity mapping proves WHICH Go function corresponds to
-        # the Python function; it does not prove that the Go function is wired
-        # into production. A zero-call target is therefore still a structural
-        # gap, not implementation credit. (Tests are excluded from called_by.)
-        if go_fn is None or go_fn.get("called_by", 0) == 0:
-            return "mapped_dead"
-        return "mapped"
     if go_fn is None:
         return "missing"
+
+    # gofuncinfo excludes *_test.go. A target with no production call
+    # expressions is high-confidence unreachable-by-name evidence. Function
+    # values/reflection can be reviewed explicitly later, but automatic audit
+    # credit must not assume such hidden reachability.
+    if go_fn.get("called_by", 0) == 0:
+        return "mapped_dead" if override_entry is not None else "dead"
     if go_fn.get("notimpl"):
         return "stub_admitted"
     if go_trivial(go_fn):
         if py.py_trivial and trivial_shapes_compatible(py.trivial_shape, go_fn.get("trivial_shape")):
-            return "implemented_trivial"
+            return "mapped" if override_entry is not None else "implemented_trivial"
         return "stub_silent"
     if py.substance >= PY_BIG:
         need = py.substance * THIN_RATIO
@@ -687,7 +692,7 @@ def classify(py: PyFunc, go_fn: Optional[dict], excluded_entry: Optional[dict],
             if tsub is not None and tsub >= need:
                 return "implemented_delegation"
             return "thin"
-    return "implemented"
+    return "mapped" if override_entry is not None else "implemented"
 
 
 def load_overrides(path: str) -> list[dict]:
@@ -1070,16 +1075,16 @@ def audit_all(exclusions_path: str = None, gofuncinfo_path: str = None,
     }
 
 
-STATUS_ORDER = ["stub_silent", "stub_admitted", "thin", "missing", "unresolved_match",
-                "mapped_dead", "excluded", "mapped", "implemented_trivial",
-                "implemented_delegation", "implemented"]
+STATUS_ORDER = ["stub_silent", "stub_admitted", "thin", "dead", "missing",
+                "unresolved_match", "mapped_dead", "excluded", "mapped",
+                "implemented_trivial", "implemented_delegation", "implemented"]
 STATUS_ICONS = {
     "implemented": "✓", "implemented_trivial": "○", "implemented_delegation": "→",
-    "mapped": "⇢", "mapped_dead": "†", "stub_silent": "✗",
+    "mapped": "⇢", "mapped_dead": "†", "dead": "†", "stub_silent": "✗",
     "stub_admitted": "✗", "thin": "≈", "missing": "∅",
     "unresolved_match": "?", "excluded": "⊘",
 }
-GAP_STATUSES = {"stub_silent", "stub_admitted", "thin", "missing",
+GAP_STATUSES = {"stub_silent", "stub_admitted", "thin", "dead", "missing",
                 "unresolved_match", "mapped_dead"}
 
 
@@ -1100,8 +1105,9 @@ def print_report(result, verbose=False):
     for e in result["entries"]:
         by_status.setdefault(e["status"], []).append(e)
 
-    for status in ["stub_silent", "stub_admitted", "thin", "missing", "unresolved_match",
-                   "mapped_dead", "excluded", "mapped", "implemented_trivial"]:
+    for status in ["stub_silent", "stub_admitted", "thin", "dead", "missing",
+                   "unresolved_match", "mapped_dead", "excluded", "mapped",
+                   "implemented_trivial"]:
         for e in by_status.get(status, []):
             if status in ("implemented_trivial",) and not verbose:
                 continue

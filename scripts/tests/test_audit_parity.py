@@ -69,6 +69,11 @@ class TestClassify(unittest.TestCase):
         go = mkgo("doWork", nstmt=1, const_only=True, trivial_shape="const:nil")
         self.assertEqual(ap.classify(self.pf(shape=""), go, None), "stub_silent")
 
+    def test_identity_override_does_not_waive_thin_body_check(self):
+        go = mkgo("doWork", nstmt=2, called_by=1)
+        override = {"reason": "reviewed identity only"}
+        self.assertEqual(ap.classify(self.pf(nstmt=50), go, None, override), "thin")
+
     def test_empty_stub_is_silent_stub(self):
         go = mkgo("doWork", empty=True, nstmt=0, trivial_shape="void")
         self.assertEqual(ap.classify(self.pf(shape=""), go, None), "stub_silent")
@@ -744,6 +749,14 @@ def elsewhere_helper(x):
         self.assertEqual(e["status"], "mapped_dead")
         self.assertTrue(e["go_dead"])
         self.assertIn("mapped_dead", ap.GAP_STATUSES)
+
+    def test_automatic_dead_match_is_gap_not_credit(self):
+        idx = self.idx_with(mkgo("elsewhereHelper", file="match.go", nstmt=20, called_by=0))
+        result = self.audit(idx)
+        e = next(e for e in result["entries"] if e["py_name"] == "elsewhere_helper")
+        self.assertEqual(e["status"], "dead")
+        self.assertTrue(e["go_dead"])
+        self.assertIn("dead", ap.GAP_STATUSES)
 
     def test_override_with_trivial_target_rejected(self):
         idx = self.idx_with(mkgo("processWidget", file="stub.go", nstmt=1,
