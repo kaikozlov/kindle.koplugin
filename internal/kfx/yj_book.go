@@ -5,8 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
-	"sort"
 	"os"
+	"sort"
 )
 
 // ---------------------------------------------------------------------------
@@ -49,7 +49,6 @@ import (
 //     determine_book_symbol_format → determineBookSymbolFormat (yj_to_epub.go)
 //     unique_part_of_local_symbol → uniquePartOfLocalSymbol (yj_to_epub.go)
 // ---------------------------------------------------------------------------
-
 
 type fragmentCatalog struct {
 	TitleMetadata         map[string]interface{} // $490; applied in applyKFXEPUBInitMetadataAfterOrganize (yj_to_epub.py L77–80 order).
@@ -99,10 +98,6 @@ type fragmentSnapshot struct {
 	Title string                          `json:"title"`
 	Types map[string]fragmentTypeSnapshot `json:"types"`
 }
-
-
-
-
 
 // mergeContentFragmentStringSymbols records string IDs from $145 content bundles into bookSymbols
 // (Calibre replace_ion_data walks Ion; Go content fragments are already resolved strings).
@@ -199,8 +194,6 @@ func (s *sharedDocSymbols) get() []byte {
 	return s.current
 }
 
-
-
 func (s *bookState) fragmentSnapshot() fragmentSnapshot {
 	snapshot := fragmentSnapshot{
 		Title: s.Book.Title,
@@ -246,28 +239,28 @@ func buildBookStateFromData(contData []byte) (*bookState, error) {
 // replace_ion_data symbol collection is approximated by recording resolved fragment IDs during the index walk.
 func organizeFragments(bookPath string, sources []*containerSource) (*bookState, error) {
 	fragments := fragmentCatalog{
-		TitleMetadata:     nil,
-		ContentFeatures:   map[string]interface{}{},
-		DocumentData:      map[string]interface{}{},
-		ContentFragments:  map[string][]string{},
-		Storylines:        map[string]map[string]interface{}{},
-		StyleFragments:    map[string]map[string]interface{}{},
-		RubyGroups:        map[string]map[string]interface{}{},
-		RubyContents:      map[string]map[string]interface{}{},
-		SectionFragments:  map[string]sectionFragment{},
-		AnchorFragments:   map[string]anchorFragment{},
-		NavContainers:     map[string]map[string]interface{}{},
-		ResourceFragments: map[string]resourceFragment{},
-		ResourceRawData:   map[string]map[string]interface{}{},
+		TitleMetadata:      nil,
+		ContentFeatures:    map[string]interface{}{},
+		DocumentData:       map[string]interface{}{},
+		ContentFragments:   map[string][]string{},
+		Storylines:         map[string]map[string]interface{}{},
+		StyleFragments:     map[string]map[string]interface{}{},
+		RubyGroups:         map[string]map[string]interface{}{},
+		RubyContents:       map[string]map[string]interface{}{},
+		SectionFragments:   map[string]sectionFragment{},
+		AnchorFragments:    map[string]anchorFragment{},
+		NavContainers:      map[string]map[string]interface{}{},
+		ResourceFragments:  map[string]resourceFragment{},
+		ResourceRawData:    map[string]map[string]interface{}{},
 		FormatCapabilities: map[string]map[string]interface{}{},
-		Generators:        map[string]map[string]interface{}{},
-		PathBundles:       map[string]map[string]interface{}{},
-		AuxiliaryData:     map[string]map[string]interface{}{},
+		Generators:         map[string]map[string]interface{}{},
+		PathBundles:        map[string]map[string]interface{}{},
+		AuxiliaryData:      map[string]map[string]interface{}{},
 		AuxiliaryDataOrder: []string{},
-		FontFragments:     map[string]fontFragment{},
-		RawFragments:      map[string][]byte{},
-		PositionAliases:   map[int]string{},
-		FragmentIDsByType: map[string][]string{},
+		FontFragments:      map[string]fontFragment{},
+		RawFragments:       map[string][]byte{},
+		PositionAliases:    map[int]string{},
+		FragmentIDsByType:  map[string][]string{},
 	}
 	book := &decodedBook{
 		Identifier: bookPath,
@@ -409,7 +402,14 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 					}
 				case "section":
 					section := parseSectionFragment(fragmentID, value)
-					if section.ID != "" && section.Storyline != "" {
+					// Python organize_fragments_by_type (yj_to_epub.py:196-228) retains
+					// every $260 fragment keyed by id, including Scribe notebook sections
+					// whose $141 page_templates are IonSymbol $608 references — those parse
+					// to no templates (empty Storyline) but carry the raw dict in RawValue,
+					// which the scribe dispatch consumes. Keep those; still drop fragments
+					// with no identity at all (Python would raise on the None id collision
+					// check, and downstream lookups key on the section name).
+					if section.ID != "" && (section.Storyline != "" || sectionHasScribeRawValue(section.RawValue)) {
 						fragments.SectionFragments[section.ID] = section
 					}
 				case "font":

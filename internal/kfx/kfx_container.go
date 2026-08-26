@@ -258,6 +258,22 @@ func validateEntityOffsets(src *containerSource) bool {
 	return true
 }
 
+// sectionHasScribeRawValue reports whether a raw $260 section dict carries a
+// Scribe notebook marker key (nmdl.canvas_width / nmdl.template_type),
+// matching the keys Python's process_section dispatches on
+// (yj_to_epub_content.py:145-149). Used by organizeFragments to retain Scribe
+// sections that parse to no page templates (symbol $141 references).
+func sectionHasScribeRawValue(rawValue map[string]interface{}) bool {
+	if rawValue == nil {
+		return false
+	}
+	if _, ok := rawValue["nmdl.canvas_width"]; ok {
+		return true
+	}
+	_, ok := rawValue["nmdl.template_type"]
+	return ok
+}
+
 func entityPayload(data []byte) ([]byte, error) {
 	if len(data) < 10 || string(data[:4]) != "ENTY" {
 		return nil, &UnsupportedError{Message: "entity wrapper is invalid"}
@@ -302,5 +318,4 @@ func serializeEntity() []byte {
 }
 
 func deserialize(data []byte) error { return nil }
-func serialize() []byte { return nil }
-
+func serialize() []byte             { return nil }

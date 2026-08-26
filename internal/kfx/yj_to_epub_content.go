@@ -16,7 +16,6 @@ import (
 	"github.com/kaikozlov/kindle-koplugin/internal/epub"
 )
 
-
 const kfxResetCSS = "html {color: #000; background: #FFF;}\n" +
 	"body,div,dl,dt,dd,ul,ol,li,h1,h2,h3,h4,h5,h6,th,td {margin: 0; padding: 0;}\n" +
 	"table {border-collapse: collapse; border-spacing: 0;}\n" +
@@ -37,44 +36,44 @@ var pxValueRegex = regexp.MustCompile(`^([0-9]+)(px)?$`)
 var listTagByMarker = map[string]string{
 	"alpha_lower": "ol",
 	"alpha_upper": "ol",
-	"circle": "ul",
-	"disc": "ul",
-	"image": "ul",
-	"none": "ul",
-	"numeric": "ol",
+	"circle":      "ul",
+	"disc":        "ul",
+	"image":       "ul",
+	"none":        "ul",
+	"numeric":     "ol",
 	"roman_lower": "ol",
 	"roman_upper": "ol",
-	"square": "ul",
+	"square":      "ul",
 }
 
 // Port of CLASSIFICATION_EPUB_TYPE (yj_to_epub_content.py) — semantic EPUB type for aside/div from YJ classification.
 var classificationEPUBType = map[string]string{
 	"yj.chapternote": "footnote",
-	"yj.endnote": "endnote",
-	"footnote": "footnote",
+	"yj.endnote":     "endnote",
+	"footnote":       "footnote",
 }
 
 // Port of layout-hint / element name hints from yj_to_epub_content.py (subset used by emit path).
 var layoutHintElementNames = map[string]string{
-	"caption": "caption",
-	"figure": "figure",
+	"caption":        "caption",
+	"figure":         "figure",
 	"treat_as_title": "heading",
 }
 
 // unusedSectionKeys lists keys that process_section pops from section data before processing
 // (yj_to_epub_content.py L124-136).
 var unusedSectionKeys = map[string]bool{
-	"reading_order_switch_map": true,
-	"yj.conversion.html_name": true,
-	"yj.semantics.book_anatomy_type": true,
-	"yj.semantics.page_type": true,
+	"reading_order_switch_map":                              true,
+	"yj.conversion.html_name":                               true,
+	"yj.semantics.book_anatomy_type":                        true,
+	"yj.semantics.page_type":                                true,
 	"yj.authoring.auto_panel_settings_auto_mask_color_flag": true,
-	"yj.authoring.auto_panel_settings_mask_color": true,
-	"yj.authoring.auto_panel_settings_opacity": true,
-	"yj.authoring.auto_panel_settings_padding_bottom": true,
-	"yj.authoring.auto_panel_settings_padding_left": true,
-	"yj.authoring.auto_panel_settings_padding_right": true,
-	"yj.authoring.auto_panel_settings_padding_top": true,
+	"yj.authoring.auto_panel_settings_mask_color":           true,
+	"yj.authoring.auto_panel_settings_opacity":              true,
+	"yj.authoring.auto_panel_settings_padding_bottom":       true,
+	"yj.authoring.auto_panel_settings_padding_left":         true,
+	"yj.authoring.auto_panel_settings_padding_right":        true,
+	"yj.authoring.auto_panel_settings_padding_top":          true,
 }
 
 // isUnusedSectionKey returns true if the given key should be stripped from section data.
@@ -102,17 +101,23 @@ const (
 	bookTypeChildren     bookType = "children"
 	bookTypeMagazine     bookType = "magazine"
 	bookTypePrintReplica bookType = "print_replica"
+	// bookTypeNotebook is Python's set_book_type("notebook") at the end of
+	// process_metadata (yj_to_epub_metadata.py:180). It is a terminal label —
+	// NOT a section-dispatch branch: scribe sections are dispatched by their
+	// nmdl.* keys (yj_to_epub_content.py:145-149) before any book-type branch,
+	// so determineSectionBranch must not treat it as comic.
+	bookTypeNotebook bookType = "notebook"
 )
 
 // sectionBranch represents which processing path a section takes.
 type sectionBranch int
 
 const (
-	branchReflowable    sectionBranch = iota // default reflowable/standard processing
-	branchScribePage                         // nmdl.canvas_width → process_scribe_notebook_page_section
-	branchScribeTemplate                     // nmdl.template_type → process_scribe_notebook_template_section
-	branchComic                              // comic/children → process_page_spread_page_template
-	branchMagazine                           // magazine/print-replica with conditional templates
+	branchReflowable     sectionBranch = iota // default reflowable/standard processing
+	branchScribePage                          // nmdl.canvas_width → process_scribe_notebook_page_section
+	branchScribeTemplate                      // nmdl.template_type → process_scribe_notebook_template_section
+	branchComic                               // comic/children → process_page_spread_page_template
+	branchMagazine                            // magazine/print-replica with conditional templates
 )
 
 func sectionBranchString(b sectionBranch) string {
@@ -174,12 +179,12 @@ func detectBookType(metadata map[string]interface{}, features map[string]interfa
 // Go stores the individual flags (IsPDFBacked, RegionMagnification, etc.) and derives the
 // final book type here, matching the priority order in Python:
 //
-//   1. RegionMagnification (yj_has_text_popups) → children (Python L265)
-//   2. CDEContentType MAGZ → magazine (Python L203-204)
-//   3. FixedLayout + VirtualPanelsAllowed + !IsPrintReplica → comic (Python L171-173)
-//   4. IsPrintReplica → print_replica (Python L255, L279)
-//   5. IsPDFBacked (without PrintReplica) → none (book type not set in Python for this case)
-//   6. default → none
+//  1. RegionMagnification (yj_has_text_popups) → children (Python L265)
+//  2. CDEContentType MAGZ → magazine (Python L203-204)
+//  3. FixedLayout + VirtualPanelsAllowed + !IsPrintReplica → comic (Python L171-173)
+//  4. IsPrintReplica → print_replica (Python L255, L279)
+//  5. IsPDFBacked (without PrintReplica) → none (book type not set in Python for this case)
+//  6. default → none
 //
 // Note: Python also has comic detection from yj_facing_page, yj_double_page_spread,
 // yj_publisher_panels, continuous_popup_progression (value 0), and comic_panel_view_mode ($665).
@@ -188,6 +193,14 @@ func detectBookType(metadata map[string]interface{}, features map[string]interfa
 func detectBookTypeFromBook(book *decodedBook) bookType {
 	if book == nil {
 		return bookTypeNone
+	}
+
+	// Priority 0: Scribe notebook (Python set_book_type("notebook") at the end
+	// of process_metadata, yj_to_epub_metadata.py:178-180 — set_book_type always
+	// assigns, so notebook wins over the comic fallback by running last).
+	// IsScribeNotebook is the single source flag; no duplicate stored type.
+	if book.IsScribeNotebook {
+		return bookTypeNotebook
 	}
 
 	// Priority 1: RegionMagnification → children (Python L265: yj_has_text_popups → set_book_type("children"))
@@ -780,8 +793,8 @@ func processSectionComic(section sectionFragment, cfg pageSpreadConfig, storylin
 	return processPageSpreadPageTemplate(
 		templateData,
 		section.ID,
-		"",  // page_spread (empty for top-level)
-		nil, // parent_template_id
+		"",   // page_spread (empty for top-level)
+		nil,  // parent_template_id
 		true, // is_section
 		cfg,
 		storylines,
@@ -1025,10 +1038,10 @@ type pageSpreadBranch int
 
 const (
 	pageSpreadBranchSpread    pageSpreadBranch = iota // $437 page-spread / $438 facing-page
-	pageSpreadBranchFacing                             // $438 facing-page (grouped with spread for alternation)
-	pageSpreadBranchScaleFit                           // $326 PDF-backed scale_fit
-	pageSpreadBranchConnected                          // $323/$656 connected pagination
-	pageSpreadBranchLeaf                               // default leaf content page
+	pageSpreadBranchFacing                            // $438 facing-page (grouped with spread for alternation)
+	pageSpreadBranchScaleFit                          // $326 PDF-backed scale_fit
+	pageSpreadBranchConnected                         // $323/$656 connected pagination
+	pageSpreadBranchLeaf                              // default leaf content page
 )
 
 // pageSpreadConfig holds book-level configuration needed for page spread processing.
@@ -1040,7 +1053,7 @@ type pageSpreadConfig struct {
 	IsPDFBackedFixedLayout   bool
 	RegionMagnification      bool
 	VirtualPanelsAllowed     bool
-	VirtualPanels            bool // set to true when $434==$441 and VirtualPanelsAllowed
+	VirtualPanels            bool   // set to true when $434==$441 and VirtualPanelsAllowed
 	PageProgressionDirection string // "ltr" or "rtl"
 }
 
@@ -1052,18 +1065,18 @@ type pageSpreadChild struct {
 
 // pageSpreadSection represents a leaf content section produced by the leaf branch.
 type pageSpreadSection struct {
-	PageTitle         string // unique section name (with spread suffix if applicable)
-	Properties        string // OPF properties (page spread direction)
-	ParentPositionID  int    // set when parent_template_id is provided
-	PositionOffset    int    // offset for position processing (always 0 per Python)
+	PageTitle         string                 // unique section name (with spread suffix if applicable)
+	Properties        string                 // OPF properties (page spread direction)
+	ParentPositionID  int                    // set when parent_template_id is provided
+	PositionOffset    int                    // offset for position processing (always 0 per Python)
 	TemplateData      map[string]interface{} // remaining template data
 	IsFixedLayout     bool
 	ViewportWidth     int
 	ViewportHeight    int
 	UseResetCSS       bool
-	HasCSSLink        bool   // true when CSS file should be linked (STYLES_CSS_FILEPATH)
-	ContentProcessed  bool   // true when process_content was called (leaf XHTML content generated)
-	HasPositionMarker bool   // true when parent_template_id was non-nil (inserts position marker)
+	HasCSSLink        bool // true when CSS file should be linked (STYLES_CSS_FILEPATH)
+	ContentProcessed  bool // true when process_content was called (leaf XHTML content generated)
+	HasPositionMarker bool // true when parent_template_id was non-nil (inserts position marker)
 }
 
 // pageSpreadResult holds the output of processPageSpreadPageTemplate.
@@ -1660,10 +1673,10 @@ type linkRegistration struct {
 
 // regionMagnificationResult holds the output of processRegionMagnification.
 type regionMagnificationResult struct {
-	ActivateElements      []htmlElement       // <a class="app-amzn-magnify"> elements
-	LinkRegistrations     []linkRegistration  // magnify_target/magnify_source registrations
-	AutoEnabled           bool                // set when $426 found without prior region_magnification
-	HasUnknownActionError bool                // set when $428 action is not "zoom_in"
+	ActivateElements      []htmlElement      // <a class="app-amzn-magnify"> elements
+	LinkRegistrations     []linkRegistration // magnify_target/magnify_source registrations
+	AutoEnabled           bool               // set when $426 found without prior region_magnification
+	HasUnknownActionError bool               // set when $428 action is not "zoom_in"
 }
 
 // processRegionMagnification handles $426 (activate) entries within container content.
@@ -1777,8 +1790,8 @@ func processRegionMagnification(content map[string]interface{}, cfg *regionMagni
 			elem := htmlElement{
 				Tag: "a",
 				Attrs: map[string]string{
-					"class":                   "app-amzn-magnify",
-					"data-app-amzn-magnify":   jsonStr,
+					"class":                 "app-amzn-magnify",
+					"data-app-amzn-magnify": jsonStr,
 				},
 			}
 
@@ -1880,7 +1893,6 @@ func fixVerticalAlignProperties(contentElem *htmlElement, contentStyle map[strin
 // ---------------------------------------------------------------------------
 // Merged from fragments.go (origin: yj_to_epub_content.py)
 // ---------------------------------------------------------------------------
-
 
 // Port of Python process_reading_order reading order iteration (yj_to_epub_content.py L105+).
 // Python iterates all reading orders; Go merges all section lists.
@@ -2071,7 +2083,6 @@ func isPlaceholderSymbol(value string) bool {
 // ---------------------------------------------------------------------------
 // Merged from html.go (origin: yj_to_epub_content.py)
 // ---------------------------------------------------------------------------
-
 
 type htmlPart interface{}
 
@@ -2640,13 +2651,14 @@ func escapeHTML(text string) string {
 // Port of Python KFX_EPUB_Content.replace_element_with_container (yj_to_epub_content.py L1821-1829).
 //
 // Python:
-//   parent = elem.getparent()
-//   elem_index = parent.index(elem)
-//   parent.remove(elem)
-//   new_elem = etree.Element(tag)
-//   new_elem.append(elem)
-//   parent.insert(elem_index, new_elem)
-//   return new_elem
+//
+//	parent = elem.getparent()
+//	elem_index = parent.index(elem)
+//	parent.remove(elem)
+//	new_elem = etree.Element(tag)
+//	new_elem.append(elem)
+//	parent.insert(elem_index, new_elem)
+//	return new_elem
 func replaceElementWithContainer(parent *htmlElement, elem *htmlElement, tag string) *htmlElement {
 	// Find elem's index in parent's children
 	idx := -1
@@ -2674,15 +2686,16 @@ func replaceElementWithContainer(parent *htmlElement, elem *htmlElement, tag str
 // Port of Python KFX_EPUB_Content.create_element_content_container (yj_to_epub_content.py L1831-1842).
 //
 // Python:
-//   new_elem = etree.Element(tag)
-//   new_elem.text = elem.text
-//   elem.text = ""
-//   while len(elem):
-//       e = elem[0]
-//       elem.remove(e)
-//       new_elem.append(e)
-//   elem.append(new_elem)
-//   return new_elem
+//
+//	new_elem = etree.Element(tag)
+//	new_elem.text = elem.text
+//	elem.text = ""
+//	while len(elem):
+//	    e = elem[0]
+//	    elem.remove(e)
+//	    new_elem.append(e)
+//	elem.append(new_elem)
+//	return new_elem
 func createElementContentContainer(elem *htmlElement, tag string) *htmlElement {
 	newElem := &htmlElement{Tag: tag, Attrs: map[string]string{}}
 
@@ -2709,7 +2722,6 @@ func createElementContentContainer(elem *htmlElement, tag string) *htmlElement {
 // ---------------------------------------------------------------------------
 // Merged from style_events.go (origin: yj_to_epub_content.py)
 // ---------------------------------------------------------------------------
-
 
 // hasTextCombineUprightAll checks whether elem or any of its ancestors up to root
 // has a CSS "text-combine-upright: all" style declaration. This is the Go equivalent
@@ -3056,7 +3068,6 @@ func findOrCreateStyleEventElement(contentElem *htmlElement, eventOffset int, ev
 // Merged from content_helpers.go (origin: yj_to_epub_content.py)
 // ---------------------------------------------------------------------------
 
-
 var (
 	cssIdentPattern = regexp.MustCompile(`^[-_a-zA-Z0-9]*$`)
 )
@@ -3118,19 +3129,19 @@ func filterBodyStyleValues(values map[string]interface{}) map[string]interface{}
 		return nil
 	}
 	allowed := map[string]bool{
-		"font_family":  true,
-		"font_style":  true,
-		"font_size":  true,
-		"text_indent":  true,
+		"font_family":     true,
+		"font_style":      true,
+		"font_size":       true,
+		"text_indent":     true,
 		"text_transform":  true,
-		"line_height":  true,
-		"margin_top":  true,
-		"margin_left":  true,
-		"margin_bottom":  true,
-		"margin_right":  true,
-		"fill_color":  true,
-		"fill_opacity":  true,
-		"box_align": true,
+		"line_height":     true,
+		"margin_top":      true,
+		"margin_left":     true,
+		"margin_bottom":   true,
+		"margin_right":    true,
+		"fill_color":      true,
+		"fill_opacity":    true,
+		"box_align":       true,
 		"glyph_transform": true,
 		"writing_mode":    true,
 	}
@@ -3645,10 +3656,12 @@ func newFontNameFixer() *fontNameFixer {
 
 // setDefaultFontFamily sets up the default font name replacement map, matching Python's
 // process_document_data (yj_to_epub_metadata.py L100-116):
-//   self.font_name_replacements["default"] = DEFAULT_DOCUMENT_FONT_FAMILY  # "serif"
-//   for default_name in DEFAULT_FONT_NAMES:
-//       for font_family in self.default_font_family.split(","):
-//           self.font_name_replacements[default_name] = self.strip_font_name(font_family)
+//
+//	self.font_name_replacements["default"] = DEFAULT_DOCUMENT_FONT_FAMILY  # "serif"
+//	for default_name in DEFAULT_FONT_NAMES:
+//	    for font_family in self.default_font_family.split(","):
+//	        self.font_name_replacements[default_name] = self.strip_font_name(font_family)
+//
 // This ensures that "default" and "$amzn_fixup_default_font$" in KFX font-family lists
 // resolve to the book's actual default font (e.g., "serif") instead of being kept as "default".
 // registerFontFamilies should be called first so that @font-face names are available
@@ -3912,11 +3925,12 @@ func (r *storylineRenderer) popContext() {
 // Port of Python KFX_EPUB_Content.add_kfx_style (yj_to_epub_content.py L1796-1808).
 //
 // Python:
-//   kfx_styles = self.book_data.get("$157", {})
-//   if kfx_style_name in kfx_styles:
-//       for k, v in kfx_styles[kfx_style_name].items():
-//           if k not in content: content[k] = copy.deepcopy(v) ...
-//   else: log.error(...)
+//
+//	kfx_styles = self.book_data.get("$157", {})
+//	if kfx_style_name in kfx_styles:
+//	    for k, v in kfx_styles[kfx_style_name].items():
+//	        if k not in content: content[k] = copy.deepcopy(v) ...
+//	else: log.error(...)
 func (r *storylineRenderer) addKfxStyle(content map[string]interface{}, kfxStyleName string) {
 	if kfxStyleName == "" {
 		return
@@ -3938,8 +3952,9 @@ func (r *storylineRenderer) addKfxStyle(content map[string]interface{}, kfxStyle
 // Port of Python KFX_EPUB_Content.process_content_list (yj_to_epub_content.py L382-388).
 //
 // Python:
-//   for content in content_list:
-//       self.process_content(content, parent, book_part, writing_mode, ...)
+//
+//	for content in content_list:
+//	    self.process_content(content, parent, book_part, writing_mode, ...)
 func (r *storylineRenderer) processContentList(contentList []interface{}, parent *htmlElement, depth int) {
 	for _, child := range contentList {
 		part := r.addContent(child, parent, depth)
@@ -3953,9 +3968,10 @@ func (r *storylineRenderer) processContentList(contentList []interface{}, parent
 // Port of Python KFX_EPUB_Content.add_content (yj_to_epub_content.py L362-380).
 //
 // Python dispatches:
-//   if "$145" in content: → text element (span with content_text)
-//   elif "$146" in content: → process_content_list
-//   elif "$176" in content: → process_story (named fragment lookup)
+//
+//	if "$145" in content: → text element (span with content_text)
+//	elif "$146" in content: → process_content_list
+//	elif "$176" in content: → process_story (named fragment lookup)
 //
 // Go delegates to renderContentChild which handles the same dispatch.
 func (r *storylineRenderer) addContent(child interface{}, parent *htmlElement, depth int) htmlPart {
@@ -3997,7 +4013,7 @@ func adjustPDFBackedPixelProperties(content map[string]interface{}) map[string]i
 		"column_count": true, "font_weight": true,
 		"table_column_span": true, "table_row_span": true,
 		"yj.max_crop": true, "yj.min_aspect_ratio": true, "yj.max_aspect_ratio": true,
-		"yj.semantics.heading_level": true,
+		"yj.semantics.heading_level":       true,
 		"yj.user_margin_bottom_percentage": true, "yj.user_margin_left_percentage": true,
 		"yj.user_margin_right_percentage": true, "yj.user_margin_top_percentage": true,
 		"fill_opacity": true, "dropcap_chars": true, "dropcap_lines": true, "line_height": true,
@@ -4033,7 +4049,6 @@ func adjustPDFBackedPixelProperties(content map[string]interface{}) map[string]i
 // ---------------------------------------------------------------------------
 // Merged from storyline.go (origin: yj_to_epub_content.py)
 // ---------------------------------------------------------------------------
-
 
 type storylineRenderer struct {
 	contentFragments    map[string][]string
@@ -4131,7 +4146,7 @@ func (r *storylineRenderer) renderStoryline(sectionPositionID int, bodyStyleID s
 			if inline && ok {
 				for _, rawNode := range promotedNodes {
 					if node, nodeOK := asMap(rawNode); nodeOK {
-									// Figure image: skip promotion if container has font-size
+						// Figure image: skip promotion if container has font-size
 						// (Python's COMBINE_NESTED_DIVS won't merge when styles overlap).
 						if _, hasResource := asString(node["resource_name"]); hasResource {
 							if layoutHintsInclude(r.nodeLayoutHints(node), "figure") {
@@ -4826,7 +4841,7 @@ func (r *storylineRenderer) processMathMLAnnotation(node map[string]interface{},
 		cleanText := reAmznSrcID.ReplaceAllString(annotationText, "")
 
 		desc := &htmlElement{
-			Tag:  "desc",
+			Tag:   "desc",
 			Attrs: map[string]string{"xmlns": "http://www.w3.org/2000/svg"},
 		}
 		// desc is an SVG element with text content
@@ -5450,7 +5465,7 @@ func (r *storylineRenderer) renderTableCell(node map[string]interface{}, depth i
 					if n, err := strconv.Atoi(v); err == nil && n > 1 {
 						cell.Attrs["rowspan"] = v
 					}
-			}
+				}
 			}
 		}
 	}
@@ -7228,13 +7243,13 @@ var blockAlignedContainerProperties = map[string]bool{
 	"-kfx-attrib-colspan": true, "-kfx-attrib-rowspan": true,
 	"-kfx-box-align": true, "-kfx-heading-level": true, "-kfx-layout-hints": true,
 	"-kfx-table-vertical-align": true,
-	"box-sizing": true,
-	"float": true,
-	"margin-left": true, "margin-right": true, "margin-top": true, "margin-bottom": true,
-	"overflow": true,
+	"box-sizing":                true,
+	"float":                     true,
+	"margin-left":               true, "margin-right": true, "margin-top": true, "margin-bottom": true,
+	"overflow":         true,
 	"page-break-after": true, "page-break-before": true, "page-break-inside": true,
 	"text-indent": true,
-	"transform": true, "transform-origin": true,
+	"transform":   true, "transform-origin": true,
 }
 
 var reverseHeritablePropertiesExcludes = map[string]bool{
@@ -7243,8 +7258,8 @@ var reverseHeritablePropertiesExcludes = map[string]bool{
 	"-kfx-user-margin-left-percentage":   true,
 	"-kfx-user-margin-right-percentage":  true,
 	"-kfx-user-margin-top-percentage":    true,
-	"font-size":  true,
-	"line-height": true,
+	"font-size":                          true,
+	"line-height":                        true,
 }
 
 func isBlockContainerProperty(prop string) bool {
@@ -7462,8 +7477,10 @@ func (r *storylineRenderer) spanClass(styleID string) string {
 
 // annotationSpanClass generates the CSS class for an annotation's styled span.
 // Port of Python yj_to_epub_content.py:1142 + 1307:
-//   self.add_kfx_style(style_event, style_event.pop("style", None))  → merges style fragment into event
-//   self.add_style(event_elem, self.process_content_properties(style_event), replace=True)
+//
+//	self.add_kfx_style(style_event, style_event.pop("style", None))  → merges style fragment into event
+//	self.add_style(event_elem, self.process_content_properties(style_event), replace=True)
+//
 // Python merges the style fragment properties INTO the annotation map, then processes all properties.
 // Go must do the same: merge the style fragment with the annotation's own properties.
 func (r *storylineRenderer) annotationSpanClass(styleID string, annotationMap map[string]interface{}) string {
@@ -7606,10 +7623,10 @@ func defaultInheritedBodyStyle() map[string]interface{} {
 	zero := 0.0
 	return map[string]interface{}{
 		"font_family": "default,serif",
-		"font_style": "normal",
+		"font_style":  "normal",
 		"font_weight": "normal",
 		"text_indent": map[string]interface{}{
-			"unit": "em",
+			"unit":  "em",
 			"value": &zero,
 		},
 	}
@@ -7856,8 +7873,8 @@ func (r *storylineRenderer) applyAnnotations(text string, node map[string]interf
 	if hasDropcapLines && dropcapLinesVal > 0 {
 		if hasDropcapChars && dropcapCharsVal > 0 {
 			dropcap := map[string]interface{}{
-				"offset": 0,
-				"length": dropcapCharsVal,
+				"offset":        0,
+				"length":        dropcapCharsVal,
 				"dropcap_lines": dropcapLinesVal,
 			}
 			// Port of Python yj_to_epub_content.py:1129:
@@ -8450,7 +8467,6 @@ func (r *storylineRenderer) consumeVisibleElement() bool {
 	return isFirst
 }
 
-
 // ---------------------------------------------------------------------------
 // Merged from render.go (origin: yj_to_epub_content.py / epub_output.py)
 // ---------------------------------------------------------------------------
@@ -8491,20 +8507,23 @@ func materializeRenderedSections(rendered []renderedSection) []epub.Section {
 		bodyHTML := renderedSectionBodyHTML(section)
 		// For promoted body inline text from nodes with content_list, prepend \n.
 		sections = append(sections, epub.Section{
-			Filename:    section.Filename,
-			Title:       section.Title,
-			PageTitle:   section.PageTitle,
-			Language:    section.Language,
-			BodyLanguage:  section.BodyLanguage,
-			BodyDirection: section.BodyDirection,
-			BodyClass:     section.BodyClass,
+			Filename:        section.Filename,
+			Title:           section.Title,
+			PageTitle:       section.PageTitle,
+			Language:        section.Language,
+			BodyLanguage:    section.BodyLanguage,
+			BodyDirection:   section.BodyDirection,
+			BodyClass:       section.BodyClass,
 			BodyStyle:       section.BodyStyle,
 			ViewportWidth:   section.ViewportWidth,
 			ViewportHeight:  section.ViewportHeight,
 			ResetStylesheet: section.ResetStylesheet,
 			Paragraphs:      append([]string(nil), section.Paragraphs...),
-			BodyHTML:    bodyHTML,
-			Properties:  section.Properties,
+			BodyHTML:        bodyHTML,
+			Properties:      section.Properties,
+			// Python book_part.is_fxl → <itemref> layout rewrite when the book
+			// itself is fixed-layout (epub_output.py:1031-1037).
+			IsFixedLayout:   section.IsFixedLayout,
 		})
 	}
 	return sections

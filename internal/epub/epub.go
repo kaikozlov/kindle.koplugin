@@ -70,6 +70,11 @@ type Section struct {
 	Paragraphs      []string
 	BodyHTML        string
 	Properties      string
+	// IsFixedLayout marks the section as an FXL book part (Python
+	// book_part.is_fxl). When the BOOK is fixed-layout, the writer strips
+	// rendition:layout-pre-paginated from FXL entries and adds
+	// rendition:layout-reflowable to non-FXL ones (epub_output.py:1031-1037).
+	IsFixedLayout bool
 }
 
 type Resource struct {
@@ -566,6 +571,27 @@ func contentOPF(book Book) string {
 		out.WriteString(` page-progression-direction="` + xmlEscape(book.PageProgressionDirection) + `"`)
 	}
 	out.WriteString(">\n")
+	// Python epub_output.py:1009/1031-1038: has_page_spread is computed over
+	// the ENTIRE manifest loop (before any spine itemref exists) — inside the
+	// `if self.fixed_layout:` scope, after the per-entry FXL rewrite. It is
+	// precomputed here across all sections (in spine order, which is the
+	// book-parts creation order the Python manifest preserves) so an early
+	// comic item sees spreads declared later. Comics use it to default
+	// otherwise-property-less itemrefs to rendition:page-spread-center (L1063).
+	hasPageSpread := false
+	if book.FixedLayout {
+		for _, section := range book.Sections {
+			entry := section.Properties
+			if section.IsFixedLayout {
+				entry = removeProperty(entry, "rendition:layout-pre-paginated")
+			} else {
+				entry = joinProperties(entry, "rendition:layout-reflowable")
+			}
+			if hasPageSpreadProperty(entry) {
+				hasPageSpread = true
+			}
+		}
+	}
 	// B1-8: Spine order follows the original book.Sections order (not sorted manifest).
 	// Python's manifest is sorted by filename for the <manifest> section, but
 	// the <spine> iterates the original unsorted self.manifest list (epub_output.py:1056).
@@ -578,9 +604,26 @@ func contentOPF(book Book) string {
 		if id == "" {
 			id = section.Filename
 		}
-		// Python epub_output.py:1061-1065: itemref properties are the spine-only
-		// subset of the entry's OPF properties, sorted; suppressed for EPUB2.
-		itemrefProps := itemrefProperties(section.Properties)
+		// Python epub_output.py:1031-1037: when the BOOK is fixed-layout, the
+		// per-entry layout property is rewritten — FXL entries DROP their
+		// rendition:layout-pre-paginated (redundant with the book-level
+		// rendition:layout metadata) and non-FXL entries GAIN
+		// rendition:layout-reflowable. Then L1061-1065: itemref properties are
+		// the spine-only subset, sorted, suppressed for EPUB2. L1063-1064: a
+		// comic book where any entry has a page spread defaults entries with
+		// no itemref properties to rendition:page-spread-center.
+		entryProperties := section.Properties
+		if book.FixedLayout {
+			if section.IsFixedLayout {
+				entryProperties = removeProperty(entryProperties, "rendition:layout-pre-paginated")
+			} else {
+				entryProperties = joinProperties(entryProperties, "rendition:layout-reflowable")
+			}
+		}
+		itemrefProps := itemrefProperties(entryProperties)
+		if isComicBook(book) && hasPageSpread && itemrefProps == "" && !generateEpub2 {
+			itemrefProps = "rendition:page-spread-center"
+		}
 		if itemrefProps != "" && !generateEpub2 {
 			out.WriteString(`    <itemref idref="` + xmlEscape(id) + `" properties="` + xmlEscape(itemrefProps) + `"/>` + "\n")
 		} else {
@@ -869,6 +912,44 @@ func manifestItemProperties(properties string) string {
 // itemrefProperties filters Section.Properties to spine itemref properties.
 func itemrefProperties(properties string) string {
 	return splitProperties(properties, spineItemrefPropertySet)
+}
+
+// hasPageSpreadProperty reports whether a properties string includes
+// page-spread-left or page-spread-right (epub_output.py:1037-1038).
+func hasPageSpreadProperty(properties string) bool {
+	for _, token := range strings.Fields(properties) {
+		if token == "page-spread-left" || token == "page-spread-right" {
+			return true
+		}
+	}
+	return false
+}
+
+// removeProperty removes one token from a space-separated properties string,
+// preserving the order of the remaining tokens (Python mutates a set; token
+// order only affects intermediate state, and output is sorted per subset).
+func removeProperty(properties, token string) string {
+	kept := make([]string, 0, 4)
+	for _, existing := range strings.Fields(properties) {
+		if existing != token {
+			kept = append(kept, existing)
+		}
+	}
+	return strings.Join(kept, " ")
+}
+
+// joinProperties appends a token to a space-separated properties string.
+func joinProperties(properties, token string) string {
+	if properties == "" {
+		return token
+	}
+	return properties + " " + token
+}
+
+// isComicBook reports whether the book type is comic (Python self.is_comic;
+// the Go BookType string is set from detectBookTypeFromBook).
+func isComicBook(book Book) bool {
+	return book.BookType == "comic"
 }
 
 func makeManifestID(filename string, used map[string]bool) string {

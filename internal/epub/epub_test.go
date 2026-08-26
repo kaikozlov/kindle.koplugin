@@ -2023,3 +2023,60 @@ func TestItemrefPropertiesSuppressedForEPUB2(t *testing.T) {
 		t.Errorf("itemref properties must be suppressed for EPUB2:\n%s", opfData)
 	}
 }
+
+// TestComicPageSpreadCenterOrdering pins Python's two-phase behavior
+// (epub_output.py:1009-1049): has_page_spread is computed over the ENTIRE
+// manifest loop before any spine itemref is emitted, so a comic section that
+// appears BEFORE the section carrying page-spread-left/right still receives
+// the rendition:page-spread-center default. An incremental per-itemref
+// computation would miss it.
+func TestComicPageSpreadCenterOrdering(t *testing.T) {
+	book := sampleBook()
+	book.FixedLayout = true
+	book.BookType = "comic"
+	// charlie (first, no properties) must still get page-spread-center because
+	// alpha — LATER in the spine — declares page-spread-left.
+	book.Sections[0].IsFixedLayout = true
+	book.Sections[0].Properties = "" // no properties at all
+	book.Sections[1].IsFixedLayout = true
+	book.Sections[1].Properties = "page-spread-left svg"
+
+	path := writeBookToTemp(t, book)
+	opfData := string(readZIP(t, path)["OEBPS/content.opf"])
+
+	charlie := extractFirstMatch(opfData, `<itemref[^>]*idref="charlie.xhtml"[^>]*properties="([^"]*)"`)
+	if charlie != "rendition:page-spread-center" {
+		t.Errorf("charlie itemref properties = %q, want rendition:page-spread-center (spread declared later in spine)", charlie)
+	}
+	alpha := extractFirstMatch(opfData, `<itemref[^>]*idref="alpha.xhtml"[^>]*properties="([^"]*)"`)
+	if alpha != "page-spread-left" {
+		t.Errorf("alpha itemref properties = %q, want page-spread-left", alpha)
+	}
+}
+
+// TestFixedLayoutBookRewritesEntryLayout pins epub_output.py:1031-1037:
+// in a globally fixed-layout book, FXL sections DROP their per-entry
+// rendition:layout-pre-paginated (redundant with book-level metadata) while
+// non-FXL sections GAIN rendition:layout-reflowable.
+func TestFixedLayoutBookRewritesEntryLayout(t *testing.T) {
+	book := sampleBook()
+	book.FixedLayout = true
+	book.Sections[0].IsFixedLayout = true
+	book.Sections[0].Properties = "svg rendition:layout-pre-paginated"
+	book.Sections[1].Properties = "svg" // non-FXL section
+
+	path := writeBookToTemp(t, book)
+	opfData := string(readZIP(t, path)["OEBPS/content.opf"])
+
+	// FXL: per-entry pre-paginated stripped → bare itemref, svg stays on item.
+	if !strings.Contains(opfData, `<itemref idref="charlie.xhtml"/>`) {
+		t.Errorf("FXL section itemref must be bare under book fixed-layout:\n%s", opfData)
+	}
+	// Non-FXL: gains rendition:layout-reflowable on the itemref.
+	if !strings.Contains(opfData, `<itemref idref="alpha.xhtml" properties="rendition:layout-reflowable"/>`) {
+		t.Errorf("non-FXL section must gain rendition:layout-reflowable:\n%s", opfData)
+	}
+	if !strings.Contains(opfData, `<meta property="rendition:layout">pre-paginated</meta>`) {
+		t.Errorf("book-level rendition:layout metadata missing:\n%s", opfData)
+	}
+}

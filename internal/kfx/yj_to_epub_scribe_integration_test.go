@@ -537,11 +537,18 @@ func TestScribeNotebookEPUBWriterSmoke(t *testing.T) {
 	}
 }
 
-// TestScribeNotebookEPUBItemrefFXL asserts the per-section FXL spine property:
-// book_part.is_fxl = True (yj_to_epub_notebook.py:98) adds
-// rendition:layout-pre-paginated to the part's opf_properties, which Python
-// emits on the spine <itemref> (epub_output.py:1061-1065) while "svg" stays
-// on the manifest <item>.
+// TestScribeNotebookEPUBItemrefFXL asserts the production OPF semantics for a
+// Scribe notebook end to end through decodedBookToEPUB + epub.Write:
+//
+//   - book.is_scribe_notebook forces fixed_layout = True
+//     (yj_to_epub_metadata.py:171-182), so the OPF carries the book-level
+//     rendition:layout pre-paginated metadata.
+//   - Because the BOOK is fixed-layout, epub_output.py:1031-1037 strips the
+//     per-entry rendition:layout-pre-paginated from FXL sections (redundant
+//     with the book-level metadata) — the page itemref is therefore BARE.
+//   - "svg" remains a manifest item property (epub_output.py:1040-1042).
+//   - The fallback notebook title "Notebook <book_id> <date>" is applied since
+//     no metadata title exists.
 func TestScribeNotebookEPUBItemrefFXL(t *testing.T) {
 	state := newScribeNotebookState(t)
 	book, err := renderBookState(state, nil)
@@ -549,14 +556,21 @@ func TestScribeNotebookEPUBItemrefFXL(t *testing.T) {
 		t.Fatalf("renderBookState failed: %v", err)
 	}
 
+	if !book.FixedLayout {
+		t.Fatal("Scribe notebook must force FixedLayout (yj_to_epub_metadata.py:179)")
+	}
+	if !strings.HasPrefix(book.Title, "Notebook ") {
+		t.Errorf("fallback notebook title missing, got %q", book.Title)
+	}
+
+	// Production mapping (same helper ConvertFile uses).
+	epubBook := decodedBookToEPUB(book)
+	if !epubBook.FixedLayout || epubBook.BookType != "notebook" {
+		t.Fatalf("mapping lost scribe semantics: FixedLayout=%v BookType=%q", epubBook.FixedLayout, epubBook.BookType)
+	}
+
 	outputPath := filepath.Join(t.TempDir(), "notebook.epub")
-	if err := epub.Write(outputPath, epub.Book{
-		Identifier: book.Identifier,
-		Title:      book.Title,
-		Language:   book.Language,
-		Sections:   book.Sections,
-		Resources:  book.Resources,
-	}); err != nil {
+	if err := epub.Write(outputPath, epubBook); err != nil {
 		t.Fatalf("epub write failed: %v", err)
 	}
 
@@ -582,18 +596,50 @@ func TestScribeNotebookEPUBItemrefFXL(t *testing.T) {
 		t.Fatal("OEBPS/content.opf missing from EPUB")
 	}
 
-	if !strings.Contains(opfData, `<itemref idref="page-1.xhtml" properties="rendition:layout-pre-paginated"/>`) {
-		t.Errorf("OPF missing FXL itemref properties for page-1.xhtml:\n%s", opfData)
+	// Book-level FXL metadata is present...
+	if !strings.Contains(opfData, `<meta property="rendition:layout">pre-paginated</meta>`) {
+		t.Errorf("OPF missing book-level rendition:layout metadata:\n%s", opfData)
+	}
+	// ...so the FXL page entry's per-entry pre-paginated is stripped
+	// (epub_output.py:1031-1033) and its itemref is bare.
+	if !strings.Contains(opfData, `<itemref idref="page-1.xhtml"/>`) {
+		t.Errorf("FXL page itemref must be bare under book fixed-layout:\n%s", opfData)
+	}
+	if strings.Contains(opfData, `properties="rendition:layout-pre-paginated"`) {
+		t.Errorf("per-entry pre-paginated must be stripped for FXL sections:\n%s", opfData)
 	}
 	// "svg" stays a MANIFEST property; it must not leak onto the itemref, and
 	// rendition:* must not leak onto the manifest item.
 	if strings.Contains(opfData, `<itemref idref="page-1.xhtml" properties="svg`) {
 		t.Errorf("itemref carries manifest-only svg property:\n%s", opfData)
 	}
-	manifestProps := extractOPFAttribute(opfData, `charlie|page-1`, "")
-	if strings.Contains(manifestProps, "rendition:") {
-		t.Errorf("manifest item carries rendition property:\n%s", opfData)
+	manifestProps := extractItemProperties(opfData, "page-1.xhtml")
+	if manifestProps != "svg" {
+		t.Errorf("manifest item properties = %q, want svg", manifestProps)
 	}
+}
+
+// extractItemProperties returns the properties attribute of a manifest <item>
+// with the given href ("" when absent).
+func extractItemProperties(opfData, href string) string {
+	start := strings.Index(opfData, `<item href="`+href+`"`)
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(opfData[start:], `/>`)
+	if end < 0 {
+		return ""
+	}
+	item := opfData[start : start+end]
+	idx := strings.Index(item, `properties="`)
+	if idx < 0 {
+		return ""
+	}
+	rest := item[idx+len(`properties="`):]
+	if quote := strings.Index(rest, `"`); quote >= 0 {
+		return rest[:quote]
+	}
+	return ""
 }
 
 func extractOPFAttribute(opfData, _, _ string) string {

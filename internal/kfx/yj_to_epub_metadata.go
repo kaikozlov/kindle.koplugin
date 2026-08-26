@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // applyMetadata processes $490 (book_metadata) categorised_metadata entries.
@@ -410,11 +411,11 @@ func hasNamedFeature(value interface{}, name string) bool {
 }
 
 var knownSupportedFeatures = map[string]bool{
-	"audio":              true,
-	"video":              true,
-	"yj.illustrated_layout":              true,
-	"yj.large_tables":              true,
-	"$664|crop_bleed|1": true,
+	"audio":                 true,
+	"video":                 true,
+	"yj.illustrated_layout": true,
+	"yj.large_tables":       true,
+	"$664|crop_bleed|1":     true,
 }
 
 // applyKFXEPUBInitMetadataAfterOrganize runs the KFX_EPUB.__init__ steps that follow
@@ -434,6 +435,44 @@ func applyKFXEPUBInitMetadataAfterOrganize(book *decodedBook, f *fragmentCatalog
 	}
 	// Port of Python process_metadata L103: self.book_data.pop("metadata", {}).
 	applyReadingOrderMetadata(book, f.ReadingOrderMetadata)
+	// Port of Python process_metadata L171-182: notebook finalization runs at
+	// the END of process_metadata, after every real title source (categorised
+	// metadata, $258 items) has been processed — so a real title always wins
+	// over the fallback "Notebook <book_id> <date>".
+	finalizeScribeNotebookMetadata(book)
+}
+
+// finalizeScribeNotebookMetadata ports the notebook finalization block at the
+// end of Python process_metadata (yj_to_epub_metadata.py:171-182):
+//
+//	if self.book.is_scribe_notebook:
+//	    self.fixed_layout = True
+//	    self.set_book_type("notebook")
+//	    if not self.title:
+//	        self.title = "Notebook %s %s" % (self.book_id, datetime.date.today().isoformat())
+//
+// It must run after all other metadata so the fallback title cannot shadow a
+// real one. Python's set_book_type logs a change but always assigns, so the
+// notebook type wins over the comic fallback purely by running last; in Go
+// the equivalent is detectBookTypeFromBook checking IsScribeNotebook first,
+// so no separate stored book-type field is introduced.
+func finalizeScribeNotebookMetadata(book *decodedBook) {
+	if book == nil || !book.IsScribeNotebook {
+		return
+	}
+	book.FixedLayout = true
+	// Python: if not self.title: self.title = "Notebook %s %s" % (self.book_id, ...)
+	// — falsy-title check (Go: empty string) with book_id interpolated
+	// verbatim; no whitespace normalization beyond what upstream does.
+	if book.Title == "" {
+		book.Title = fmt.Sprintf("Notebook %s %s", book.BookID, todayISODate())
+	}
+}
+
+// todayISODate returns the current date in ISO format, matching Python
+// datetime.date.today().isoformat() used for the notebook fallback title.
+func todayISODate() string {
+	return time.Now().Format("2006-01-02")
 }
 
 func featureKey(args []interface{}) string {
@@ -459,19 +498,19 @@ func featureKey(args []interface{}) string {
 // Used by applyReadingOrderMetadata to process top-level $258 entries.
 // Python METADATA_SYMBOLS (yj_structure.py L41-55) maps name→$N; METADATA_NAMES inverts it.
 var metadataSymbolNames = map[string]string{
-	"ASIN":             "ASIN",
-	"asset_id":         "asset_id",
-	"author":           "author",
-	"cde_content_type": "cde_content_type",
-	"cover_image":      "cover_image",
-	"description":      "description",
-	"language":         "language",
-	"orientation":      "orientation",
-	"publisher":        "publisher",
-	"reading_orders":   "reading_orders",
+	"ASIN":              "ASIN",
+	"asset_id":          "asset_id",
+	"author":            "author",
+	"cde_content_type":  "cde_content_type",
+	"cover_image":       "cover_image",
+	"description":       "description",
+	"language":          "language",
+	"orientation":       "orientation",
+	"publisher":         "publisher",
+	"reading_orders":    "reading_orders",
 	"support_landscape": "support_landscape",
 	"support_portrait":  "support_portrait",
-	"title":            "title",
+	"title":             "title",
 }
 
 // applyReadingOrderMetadata processes top-level $258 entries as metadata items,
@@ -564,7 +603,6 @@ func applyMetadataItem(book *decodedBook, key string, value interface{}) {
 		}
 	}
 }
-
 
 // =============================================================================
 // Missing Python functions — Ports from yj_to_epub_metadata.py
