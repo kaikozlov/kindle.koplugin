@@ -50,8 +50,12 @@ public final class KafPositionProbe {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("usage: KafPositionProbe <book.kdf> [location-map-out]");
+            System.err.println("usage: KafPositionProbe <book.kdf> [--unsafe-anchors] [location-map-out]");
             System.exit(2);
+        }
+        boolean unsafeAnchors = false;
+        for (String arg : args) {
+            if ("--unsafe-anchors".equals(arg)) unsafeAnchors = true;
         }
 
         c.a();
@@ -180,18 +184,21 @@ public final class KafPositionProbe {
             }
         }
 
-        // -- Stage 7: anchor lookup by eid (existence only) ---------------------
-        // NOTE: Anchor.a()/Anchor.g() (id / get-position) segfault the bundled
-        // native runtime on these fixtures, so this stage only reports whether
-        // an anchor object exists for each eid. Anchor->position mapping must
-        // come from fragment-level data (anchors carry $511/$143) instead.
-        stage("anchors");
-        for (long eid : eids) {
-            try {
-                h anchor = bpi.c(eid);
-                OUT.println("eid=" + eid + " anchor=" + (anchor == null ? "null" : anchor.getClass().getSimpleName()));
-            } catch (Throwable t) {
-                OUT.println("eid=" + eid + " anchor ERR " + t.getClass().getSimpleName());
+        // -- Stage 7: anchor lookup by eid --------------------------------------
+        // UNSAFE: even an existence-only BookPositionInfo.getNativeAnchor call
+        // (bpi.c(eid)) aborts the JVM after the preceding stages on these
+        // fixtures. Gated behind an explicit --unsafe-anchors flag and executed
+        // LAST; anchor->position evidence must come from fragment data
+        // (anchors carry $511 target / $143 offset), not this call.
+        if (unsafeAnchors) {
+            stage("anchors");
+            for (long eid : eids) {
+                try {
+                    h anchor = bpi.c(eid);
+                    OUT.println("eid=" + eid + " anchor=" + (anchor == null ? "null" : anchor.getClass().getSimpleName()));
+                } catch (Throwable t) {
+                    OUT.println("eid=" + eid + " anchor ERR " + t.getClass().getSimpleName());
+                }
             }
         }
 
@@ -206,7 +213,7 @@ public final class KafPositionProbe {
             }
         }
 
-        System.out.flush();
+        OUT.flush();
         System.exit(0);
     }
 
