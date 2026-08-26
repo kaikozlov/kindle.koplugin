@@ -56,30 +56,30 @@ type decodedBook struct {
 	// fragmentMaps is a generic fragment-type → id → fragment view retained for parity
 	// helpers like getFragment/organizeFragmentsByType. Go's main pipeline uses typed
 	// maps, but keeping this view enables Python-equivalent validation flows.
-	fragmentMaps            map[string]map[string]map[string]interface{}
-	usedFragmentAccess     map[string]bool
+	fragmentMaps       map[string]map[string]map[string]interface{}
+	usedFragmentAccess map[string]bool
 
 	// OriginalWidth and OriginalHeight are the most common viewport dimensions across
 	// all fixed-layout book parts. Set by compareFixedLayoutViewports when the book is
 	// fixed-layout and dimensions haven't been determined yet.
 	// Port of Python self.original_width / self.original_height (epub_output.py L303, L636).
-	OriginalWidth  int
-	OriginalHeight int
-	OverrideKindleFonts      bool
-	CoverImageID             string
-	CoverImageHref           string
-	Stylesheet               string
-	ResourceHrefByID         map[string]string
+	OriginalWidth       int
+	OriginalHeight      int
+	OverrideKindleFonts bool
+	CoverImageID        string
+	CoverImageHref      string
+	Stylesheet          string
+	ResourceHrefByID    map[string]string
 	// ResourceDimensions maps EPUB resource filenames to their pixel dimensions [width, height].
 	// Populated during buildResources from resource_fragment metadata ($422/$66 width, $423/$67 height).
 	// Used by simplify_styles for vh/vw cross-conversion (Python yj_to_epub_properties.py L1753-1785).
-	ResourceDimensions       map[string][2]int
-	RenderedSections         []renderedSection
-	Sections                 []epub.Section
-	Resources                []epub.Resource
-	Navigation               []epub.NavPoint
-	Guide                    []epub.GuideEntry
-	PageList                 []epub.PageTarget
+	ResourceDimensions map[string][2]int
+	RenderedSections   []renderedSection
+	Sections           []epub.Section
+	Resources          []epub.Resource
+	Navigation         []epub.NavPoint
+	Guide              []epub.GuideEntry
+	PageList           []epub.PageTarget
 	// DefaultFontFamily is the resolved font-family from document metadata ($538),
 	// used to resolve "default" font names in KFX data. Port of Python
 	// KFX_EPUB_Properties.default_font_family (yj_to_epub_metadata.py L110).
@@ -166,7 +166,6 @@ type renderedStoryline struct {
 	BodyStyle         string
 	BodyStyleInferred bool
 	Properties        string
-
 }
 
 type renderedSection struct {
@@ -178,7 +177,7 @@ type renderedSection struct {
 	BodyDirection     string // dir for <body> after direction/unicode-bidi markup fixup
 	BodyClass         string
 	BodyStyle         string
-	BodyStyleInferred bool   // true if body style was inferred from children (not from content rendering)
+	BodyStyleInferred bool // true if body style was inferred from children (not from content rendering)
 	IsFixedLayout     bool
 	ViewportWidth     int
 	ViewportHeight    int
@@ -186,7 +185,6 @@ type renderedSection struct {
 	Paragraphs        []string
 	Properties        string
 	Root              *htmlElement
-
 }
 
 type resourceFragment struct {
@@ -197,6 +195,7 @@ type resourceFragment struct {
 	Width     int      // $422 (or $66)
 	Height    int      // $423 (or $67)
 	Variants  []string // $635 — list of variant resource IDs
+	PageIndex int      // $564 — 0-based page index for PDF resources; -1 = not present
 }
 
 type fontFragment struct {
@@ -290,7 +289,3 @@ func Classify(path string) (openMode string, blockReason string, err error) {
 
 	return "convert", "", nil
 }
-
-
-
-

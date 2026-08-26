@@ -1327,13 +1327,36 @@ func TestGetPDFPageImage_TextInFormXObject_Rejected(t *testing.T) {
 	// recurse into form streams (Python: page.extract_text() covers forms).
 	pageBody := "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 108] /Contents 5 0 R /Resources << /XObject << /Im0 4 0 R /Fm0 6 0 R >> >> >>"
 	formContent := "BT (form text) Tj ET"
-	form := []byte(fmt.Sprintf("<< /Type /XObject /Subtype /Form /BBox [0 0 72 108] /Resources << >> /Length %d >>\nstream\n%s\nendstream", len(formContent), formContent))
+	// The form must carry a non-empty /Resources with a font: pypdf returns
+	// "" for forms without resources (_page.py:1836-1839), so a text-bearing
+	// form needs one for its text to extract.
+	form := []byte(fmt.Sprintf("<< /Type /XObject /Subtype /Form /BBox [0 0 72 108] /Resources << /Font << /F1 7 0 R >> >> /Length %d >>\nstream\n%s\nendstream", len(formContent), formContent))
 	pdfData := buildSinglePageTestPDF(
 		pageBody,
 		testJPEGImageObject(t, 100, 150, ""),
 		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q q 1 0 0 1 0 0 cm /Fm0 Do Q"),
-		form)
+		form,
+		[]byte("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"))
 	expectPDFConversionError(t, "formtext.pdf", pdfData, "contains text")
+}
+
+func TestGetPDFPageImage_NoResources_RawTj_NotText(t *testing.T) {
+	// Bundled pypdf _page.py:1836-1839: with no /Resources there is no font,
+	// so extract_text returns "" without scanning content — a page whose raw
+	// stream contains Tj operators but has no resource dict is NOT a text
+	// page, and extraction may proceed (Python extracts; Go verifies via
+	// image_match when a renderer is available).
+	// A page whose raw content contains Tj operators but whose page dict has
+	// no /Resources: pdfPageHasText must report NO text (the resource gate),
+	// so conversion proceeds past the text check. pdfcpu then rejects the
+	// page during validation (the Do references an unresolvable XObject) —
+	// proving the text gate did not fire first.
+	pageNoRes := "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 108] /Contents 5 0 R >>"
+	pdfData := buildSinglePageTestPDF(
+		pageNoRes,
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q BT 12 12 Td (x) Tj ET"))
+	expectPDFConversionError(t, "nores.pdf", pdfData, "pdf parse failed")
 }
 
 func TestGetPDFPageImage_AnnotationWithContents_Rejected(t *testing.T) {

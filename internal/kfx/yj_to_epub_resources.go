@@ -602,11 +602,11 @@ func parseResourceFragment(fragmentID string, value map[string]interface{}) reso
 	mediaType, _ := asString(value["mime"])
 	format, _ := asString(value["format"])
 
-	// If mime type is not present but format indicates an image,
-	// set mediaType to the correct image MIME type. Known image format symbols:
-	// "jxr" = JPEG XR, "jpg" = JPEG, "png" = PNG.
-	// JXR resources must get "image/jxr" (not "image/jpeg") so the JXR→JPEG
-	// conversion in buildResources detects and converts them correctly.
+	// If mime type is not present but format indicates an image or document,
+	// set mediaType from the format. This mirrors Python's SYMBOL_FORMATS/
+	// MIMETYPE_OF_EXT tables: without it a PDF resource lacking an explicit
+	// $162 mime would carry an empty MediaType and be omitted from the EPUB
+	// manifest.
 	if mediaType == "" {
 		switch format {
 		case "jxr":
@@ -615,6 +615,14 @@ func parseResourceFragment(fragmentID string, value map[string]interface{}) reso
 			mediaType = "image/jpeg"
 		case "png":
 			mediaType = "image/png"
+		case "pdf":
+			mediaType = "application/pdf"
+		case "gif":
+			mediaType = "image/gif"
+		case "bmp":
+			mediaType = "image/bmp"
+		case "tif", "tiff":
+			mediaType = "image/tiff"
 		}
 	}
 
@@ -640,6 +648,14 @@ func parseResourceFragment(fragmentID string, value map[string]interface{}) reso
 		}
 	}
 
+	// $564 page index for PDF resources (0-based; absent = -1)
+	pageIndex := -1
+	if pi, ok := asInt(value["page_index"]); ok {
+		pageIndex = pi
+	} else if pi, ok := asInt(value["$564"]); ok {
+		pageIndex = pi
+	}
+
 	return resourceFragment{
 		ID:        resourceID,
 		Location:  location,
@@ -648,6 +664,7 @@ func parseResourceFragment(fragmentID string, value map[string]interface{}) reso
 		Width:     width,
 		Height:    height,
 		Variants:  variants,
+		PageIndex: pageIndex,
 	}
 }
 
@@ -2193,8 +2210,16 @@ func pdfPageResourcesDict(ctx *model.Context, pageDict types.Dict, pAttrs *model
 //     set that is discarded after each recursion (siblings may reuse a form)
 //     and a global invocation budget of 5000.
 func pdfPageHasText(ctx *model.Context, pageDict types.Dict, pAttrs *model.InheritedPageAttrs) bool {
-	s := &pdfTextScanner{ctx: ctx, knownObjs: map[int]bool{}}
 	res := pdfPageResourcesDict(ctx, pageDict, pAttrs)
+
+	// Bundled pypdf _page.py:1836-1839: with no (inherited) /Resources there
+	// is no font, so no text is possible and extract_text returns "" before
+	// scanning content — even if raw operators like Tj are present.
+	if len(res) == 0 {
+		return false
+	}
+
+	s := &pdfTextScanner{ctx: ctx, knownObjs: map[int]bool{}}
 	if o, found := pageDict.Find("Contents"); found {
 		if s.scanContentObject(o, res) {
 			return true
@@ -2309,15 +2334,23 @@ func (s *pdfTextScanner) formHasText(res types.Dict, name string) bool {
 		}
 	}()
 
-	if err := sd.Decode(); err != nil || sd.Content == nil {
-		return false
-	}
-
 	var formRes types.Dict
 	if o, found := sd.Find("Resources"); found {
 		if d, err := s.ctx.DereferenceDict(o); err == nil {
 			formRes = d
 		}
+	}
+
+	// Same pypdf gate as the page level (_page.py:1836-1839 via
+	// get_inherited(/Resources)): an empty/missing resource dict means no
+	// font and therefore no extractable text. Form XObjects carry no /Parent
+	// per the PDF spec, so form-local Resources is the effective set.
+	if len(formRes) == 0 {
+		return false
+	}
+
+	if err := sd.Decode(); err != nil || sd.Content == nil {
+		return false
 	}
 	hasText, _ := pdfScanContent(sd.Content, func(n string) bool {
 		return s.formHasText(formRes, n)

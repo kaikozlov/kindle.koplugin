@@ -24,18 +24,26 @@ package kfx
 // pdfcpu v0.12.0 has no text extraction API, so this scanner approximates
 // extract_text() truthiness with a small operand-stack interpreter: it
 // tracks string/array/name operands and reports text only for non-empty
-// text operands, recursing exactly into the forms a ``Do`` invokes.
+// text operands, recursing into the forms a ``Do`` invokes.
 //
-// Remaining conservative deviations from pypdf (documented, deliberately
-// under-claiming parity):
-//   - Glyph decodability is not modeled: a Tj with a non-empty string whose
-//     glyphs are all whitespace/zero-width still counts as text for pypdf's
-//     truthiness only if it produces characters; whitespace-only strings do
-//     extract as spaces in pypdf and would count as text there, and they do
-//     here too — this matches. Strings referencing entirely missing glyph
-//     data can differ in principle.
-//   - Type 3 font glyph procedures embedded in font charprocs are not
-//     scanned; pypdf's default extraction does not descend into them either.
+// Known conservative deviations from pypdf (kept deliberately: each one can
+// only over-report text, which forces the safe rendered-page fallback, never
+// silently drops text):
+//   - Orientation: pypdf extracts glyphs only when the CTM/TM orientation is
+//     in (0, 90, 180, 270); this scanner counts Tj/TJ/'/" regardless of the
+//     text matrix.
+//   - Decoding: pypdf decodes byte-string operands through the font encoding
+//     (with a charmap fallback that always succeeds) and may produce
+//     whitespace-only or surrogate-heavy output whose truthiness can differ
+//     from the raw-operand check used here; undecodable strings are counted
+//     as text.
+//   - Glyph metrics: whitespace/zero-width-only text still extracts in pypdf
+//     and counts here too, but exotic font encodings could make pypdf's
+//     decoded string empty where the raw operand is not.
+//
+// The pypdf resource gate is reproduced exactly (see pdfPageHasText): with no
+// effective /Resources there is no font, and extract_text returns "" without
+// scanning the content stream.
 //
 // The scanner also reports inline images (BI ... ID ... EI): pypdf's
 // PageObject.images includes inline images from executed content
