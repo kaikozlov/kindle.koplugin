@@ -420,6 +420,11 @@ func TestKnownMetadataCreatorVersion(t *testing.T) {
 	if !cv.Strings["3.103.0"] {
 		t.Error("creator_version missing 3.103.0")
 	}
+	for _, version := range []string{"1.111.0.0", "1.112.0.0", "1.113.0.0", "3.104.0", "3.105.0", "3.106.0"} {
+		if !cv.Strings[version] {
+			t.Errorf("creator_version missing current KFX Input value %s", version)
+		}
+	}
 }
 
 func TestKnownMetadataSymbols(t *testing.T) {
@@ -433,6 +438,11 @@ func TestKnownMetadataSymbols(t *testing.T) {
 	}
 	if !mi.Ints[851] {
 		t.Error("symbols/max_id missing 851")
+	}
+	for _, maxID := range []int{852, 853, 859} {
+		if !mi.Ints[maxID] {
+			t.Errorf("symbols/max_id missing current KFX Input value %d", maxID)
+		}
 	}
 }
 
