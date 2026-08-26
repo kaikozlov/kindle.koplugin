@@ -271,6 +271,14 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	createConditionalPageTemplates(book, book.RenderedSections)
 	createCSSFiles(book, renderer.styles)
 	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
+	if book.Stylesheet == "" {
+		for _, section := range book.RenderedSections {
+			if section.ResetStylesheet != "" {
+				book.Stylesheet = `@charset "UTF-8";`
+				break
+			}
+		}
+	}
 
 	// Stage: stylesheet (capture CSS after createCSSFiles)
 	if trace != nil {

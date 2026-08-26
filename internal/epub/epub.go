@@ -58,9 +58,12 @@ type Section struct {
 	Language    string
 	BodyLanguage  string // xml:lang for <body> element
 	BodyDirection string // dir for <body> element
-	BodyClass    string
-	BodyStyle    string // inline body style retained by fixed-layout book parts
-	Paragraphs  []string
+	BodyClass       string
+	BodyStyle       string // inline body style retained by fixed-layout book parts
+	ViewportWidth   int
+	ViewportHeight  int
+	ResetStylesheet string
+	Paragraphs      []string
 	BodyHTML    string
 	Properties  string
 }
@@ -119,6 +122,12 @@ func Write(path string, book Book) error {
 	}
 	if book.Stylesheet != "" {
 		files["OEBPS/stylesheet.css"] = []byte(book.Stylesheet)
+	}
+	for _, section := range book.Sections {
+		if section.ResetStylesheet != "" {
+			files["OEBPS/reset.css"] = []byte(section.ResetStylesheet)
+			break
+		}
 	}
 	for _, resource := range book.Resources {
 		if resource.Filename == "" {
@@ -454,8 +463,14 @@ func contentOPF(book Book) string {
 			properties: resource.Properties,
 		})
 	}
-	// nav, stylesheet, toc.ncx added at the end
+	// nav, reset stylesheet, main stylesheet, toc.ncx added at the end
 	items = append(items, manifestItem{href: "nav.xhtml", id: "nav.xhtml", mediaType: "application/xhtml+xml", properties: "nav"})
+	for _, section := range book.Sections {
+		if section.ResetStylesheet != "" {
+			items = append(items, manifestItem{href: "reset.css", id: "reset.css", mediaType: "text/css"})
+			break
+		}
+	}
 	if book.Stylesheet != "" {
 		items = append(items, manifestItem{href: "stylesheet.css", id: "stylesheet.css", mediaType: "text/css"})
 	}
@@ -581,6 +596,12 @@ func sectionXHTML(book Book, section Section) string {
 	}
 	out.WriteString(`>` + "\n")
 	out.WriteString(`<head>` + "\n")
+	if section.ViewportWidth > 0 && section.ViewportHeight > 0 {
+		out.WriteString(fmt.Sprintf(`<meta name="viewport" content="width=%d, height=%d"/>`+"\n", section.ViewportWidth, section.ViewportHeight))
+	}
+	if section.ResetStylesheet != "" {
+		out.WriteString(`<link rel="stylesheet" type="text/css" href="reset.css"/>` + "\n")
+	}
 	if book.Stylesheet != "" {
 		out.WriteString(`<link rel="stylesheet" type="text/css" href="stylesheet.css"/>` + "\n")
 	}

@@ -17,6 +17,18 @@ import (
 )
 
 
+const kfxResetCSS = "html {color: #000; background: #FFF;}\n" +
+	"body,div,dl,dt,dd,ul,ol,li,h1,h2,h3,h4,h5,h6,th,td {margin: 0; padding: 0;}\n" +
+	"table {border-collapse: collapse; border-spacing: 0;}\n" +
+	"fieldset,img {border: 0;}\n" +
+	"caption,th,var {font-style: normal; font-weight: normal;}\n" +
+	"li {list-style: none;}\n" +
+	"caption,th {text-align: left;}\n" +
+	"h1,h2,h3,h4,h5,h6 {font-size: 100%; font-weight: normal;}\n" +
+	"sup {vertical-align: text-top;}\n" +
+	"sub {vertical-align: text-bottom;}\n" +
+	"a.app-amzn-magnify {display: block; width: 100%; height: 100%;}\n"
+
 // pxValueRegex matches pixel value strings like "123" or "123px".
 // Port of Python: re.match("^([0-9]+)(px)?$", val)
 var pxValueRegex = regexp.MustCompile(`^([0-9]+)(px)?$`)
@@ -413,6 +425,9 @@ func processReadingOrder(
 			BodyClass:         rendered.BodyClass,
 			BodyStyle:         rendered.BodyStyle,
 			BodyStyleInferred: rendered.BodyStyleInferred,
+			ViewportWidth:     leaf.ViewportWidth,
+			ViewportHeight:    leaf.ViewportHeight,
+			ResetStylesheet:   func() string { if leaf.UseResetCSS { return kfxResetCSS }; return "" }(),
 			Paragraphs:        paragraphs,
 			Properties:        rendered.Properties,
 			Root:              rendered.Root,
@@ -953,6 +968,9 @@ type pageSpreadSection struct {
 	ParentPositionID  int    // set when parent_template_id is provided
 	PositionOffset    int    // offset for position processing (always 0 per Python)
 	TemplateData      map[string]interface{} // remaining template data
+	ViewportWidth     int
+	ViewportHeight    int
+	UseResetCSS       bool
 	HasCSSLink        bool   // true when CSS file should be linked (STYLES_CSS_FILEPATH)
 	ContentProcessed  bool   // true when process_content was called (leaf XHTML content generated)
 	HasPositionMarker bool   // true when parent_template_id was non-nil (inserts position marker)
@@ -1470,14 +1488,23 @@ func processPageSpreadLeaf(
 	//       filename=self.SECTION_TEXT_FILEPATH % unique_section_name if RETAIN_SECTION_FILENAMES else None,
 	//       opf_properties=set(page_spread.split()))
 	properties := pageSpread
-	if isSection && cfg.FixedLayout && asStringDefault(pageTemplate["layout"]) == "scale_fit" {
+	viewportWidth, viewportHeight := 0, 0
+	useResetCSS := false
+	isFixedScaleFit := isSection && cfg.FixedLayout && asStringDefault(pageTemplate["layout"]) == "scale_fit"
+	if isFixedScaleFit {
 		properties = mergeSectionProperties(properties, "rendition:layout-pre-paginated")
+		viewportWidth = pageSpreadPixelDimension(pageTemplate["fixed_width"], cfg, isSection)
+		viewportHeight = pageSpreadPixelDimension(pageTemplate["fixed_height"], cfg, isSection)
+		useResetCSS = viewportWidth > 0 && viewportHeight > 0
 	}
 	section := pageSpreadSection{
 		PageTitle:        uniqueName,
 		Properties:       properties,
 		PositionOffset:   0,
 		TemplateData:     pageTemplate,
+		ViewportWidth:    viewportWidth,
+		ViewportHeight:   viewportHeight,
+		UseResetCSS:      useResetCSS,
 		HasCSSLink:       true, // self.link_css_file(book_part, self.STYLES_CSS_FILEPATH)
 		ContentProcessed: true, // self.process_content(page_template, book_part.html, ...)
 	}
@@ -1497,6 +1524,17 @@ func processPageSpreadLeaf(
 
 	result.Sections = append(result.Sections, section)
 	return result
+}
+
+func pageSpreadPixelDimension(value interface{}, cfg pageSpreadConfig, isSection bool) int {
+	numeric, ok := asFloat64(value)
+	if !ok || numeric <= 0 {
+		return 0
+	}
+	if cfg.IsPdfBacked && !(cfg.IsPDFBackedFixedLayout && isSection) {
+		numeric = math.RoundToEven(numeric) / 100
+	}
+	return int(math.Ceil(numeric))
 }
 
 func mergeSectionProperties(left string, right string) string {
@@ -8302,8 +8340,11 @@ func materializeRenderedSections(rendered []renderedSection) []epub.Section {
 			BodyLanguage:  section.BodyLanguage,
 			BodyDirection: section.BodyDirection,
 			BodyClass:     section.BodyClass,
-			BodyStyle:     section.BodyStyle,
-			Paragraphs:  append([]string(nil), section.Paragraphs...),
+			BodyStyle:       section.BodyStyle,
+			ViewportWidth:   section.ViewportWidth,
+			ViewportHeight:  section.ViewportHeight,
+			ResetStylesheet: section.ResetStylesheet,
+			Paragraphs:      append([]string(nil), section.Paragraphs...),
 			BodyHTML:    bodyHTML,
 			Properties:  section.Properties,
 		})

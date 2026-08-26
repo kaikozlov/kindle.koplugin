@@ -179,6 +179,9 @@ type renderedSection struct {
 	BodyClass         string
 	BodyStyle         string
 	BodyStyleInferred bool   // true if body style was inferred from children (not from content rendering)
+	ViewportWidth     int
+	ViewportHeight    int
+	ResetStylesheet   string
 	Paragraphs        []string
 	Properties        string
 	Root              *htmlElement
