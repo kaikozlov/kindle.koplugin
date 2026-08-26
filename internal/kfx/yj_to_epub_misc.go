@@ -1576,13 +1576,19 @@ func processTransformOrigin(vals map[string]interface{}) string {
 }
 
 func processTransform(vals []interface{}, svg bool) string {
-	var px, sep string
+	return processTransformWithSwap(vals, svg, false)
+}
+
+func processTransformWithSwap(vals []interface{}, svg bool, transformMatrixSwap bool) string {
+	var px, sep, deg string
 	if svg {
 		px = ""
 		sep = " "
+		deg = ""
 	} else {
 		px = "px"
 		sep = ","
+		deg = "deg"
 	}
 
 	if len(vals) != 6 {
@@ -1598,6 +1604,9 @@ func processTransform(vals []interface{}, svg bool) string {
 			return "?"
 		}
 		v[i] = f
+	}
+	if transformMatrixSwap {
+		v[1], v[2] = v[2], v[1]
 	}
 
 	v[4] = adjustPixelValue(v[4])
@@ -1621,16 +1630,24 @@ func processTransform(vals []interface{}, svg bool) string {
 		return translate + fmt.Sprintf("scale(%s%s%s)", valueStr(v[0]), sep, valueStr(v[3]))
 	}
 
-	if v[0] == 0 && v[1] == 1 && v[2] == -1 && v[3] == 0 {
-		return translate + "rotate(-90deg)"
-	}
+	if v[0] == v[3] && v[1] == -v[2] && v[0] >= -1 && v[0] <= 1 && v[1] >= -1 && v[1] <= 1 {
+		if v[0] == 0 && v[1] == 1 && v[2] == -1 && v[3] == 0 {
+			return translate + "rotate(-90" + deg + ")"
+		}
+		if v[0] == 0 && v[1] == -1 && v[2] == 1 && v[3] == 0 {
+			return translate + "rotate(90" + deg + ")"
+		}
+		if v[0] == -1 && v[1] == 0 && v[2] == 0 && v[3] == -1 {
+			return translate + "rotate(180" + deg + ")"
+		}
 
-	if v[0] == 0 && v[1] == -1 && v[2] == 1 && v[3] == 0 {
-		return translate + "rotate(90deg)"
-	}
-
-	if v[0] == -1 && v[1] == 0 && v[2] == 0 && v[3] == -1 {
-		return translate + "rotate(180deg)"
+		angle := math.Acos(v[0])
+		for _, candidate := range []float64{angle, -angle} {
+			if math.Round(math.Sin(candidate)*1000)/1000 == math.Round(v[1]*1000)/1000 {
+				degrees := math.Round(candidate*180/math.Pi*100) / 100
+				return translate + fmt.Sprintf("rotate(%s%s)", valueStr(degrees), deg)
+			}
+		}
 	}
 
 	fmt.Fprintf(os.Stderr, "kfx: warning: unexpected transform matrix: %v\n", vals)

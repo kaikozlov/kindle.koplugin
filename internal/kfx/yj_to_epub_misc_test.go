@@ -1,6 +1,7 @@
 package kfx
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -265,16 +266,16 @@ func TestProcessTransform_NonUniformScale(t *testing.T) {
 func TestProcessTransform_RotateNeg90(t *testing.T) {
 	vals := []interface{}{float64(0), float64(1), float64(-1), float64(0), float64(0), float64(0)}
 	result := processTransform(vals, true)
-	if result != "rotate(-90deg)" {
-		t.Errorf("rotate -90 = %q, want 'rotate(-90deg)'", result)
+	if result != "rotate(-90)" {
+		t.Errorf("rotate -90 = %q, want 'rotate(-90)'", result)
 	}
 }
 
 func TestProcessTransform_Rotate90(t *testing.T) {
 	vals := []interface{}{float64(0), float64(-1), float64(1), float64(0), float64(0), float64(0)}
 	result := processTransform(vals, true)
-	if result != "rotate(90deg)" {
-		t.Errorf("rotate 90 = %q, want 'rotate(90deg)'", result)
+	if result != "rotate(90)" {
+		t.Errorf("rotate 90 = %q, want 'rotate(90)'", result)
 	}
 }
 
@@ -465,5 +466,27 @@ func TestProcessTransformOrigin(t *testing.T) {
 	}
 	if len(vals) != 0 {
 		t.Fatalf("processTransformOrigin did not consume input: %#v", vals)
+	}
+}
+
+func TestProcessTransform_CSSRotationUsesDegrees(t *testing.T) {
+	vals := []interface{}{float64(0), float64(1), float64(-1), float64(0), float64(0), float64(0)}
+	if got := processTransform(vals, false); got != "rotate(-90deg)" {
+		t.Fatalf("CSS rotation = %q", got)
+	}
+}
+
+func TestProcessTransform_ArbitraryRotation(t *testing.T) {
+	angle := 30.0 * math.Pi / 180.0
+	vals := []interface{}{math.Cos(angle), math.Sin(angle), -math.Sin(angle), math.Cos(angle), float64(0), float64(0)}
+	if got := processTransform(vals, true); got != "rotate(30)" {
+		t.Fatalf("arbitrary SVG rotation = %q", got)
+	}
+}
+
+func TestProcessTransform_MatrixSwap(t *testing.T) {
+	vals := []interface{}{float64(0), float64(1), float64(-1), float64(0), float64(0), float64(0)}
+	if got := processTransformWithSwap(vals, true, true); got != "rotate(90)" {
+		t.Fatalf("swapped SVG rotation = %q", got)
 	}
 }
