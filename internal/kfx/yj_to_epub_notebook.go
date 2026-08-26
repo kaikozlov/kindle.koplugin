@@ -10,7 +10,6 @@ import (
 	"image/png"
 	"log"
 	"math"
-	"math/rand"
 	"sort"
 	"strings"
 )
@@ -1250,18 +1249,10 @@ func generateDensityPNG(groupElem *svgElement, points []strokePoint, bounds [4]i
 		hasLast = true
 	}
 
-	// Create PRNG
-	prng := rand.New(rand.NewSource(0))
-	if nmdlRandomSeed != nil {
-		switch v := nmdlRandomSeed.(type) {
-		case int:
-			prng.Seed(int64(v))
-		case int64:
-			prng.Seed(v)
-		case float64:
-			prng.Seed(int64(v))
-		}
-	}
+	// Python kfxlib uses random.Random (CPython MT19937), not Go math/rand.
+	// Matching the generator is required for identical seeded density-stroke
+	// feathering/dithering pixels (yj_to_epub_notebook.py:484-511).
+	prng := pythonRandomFromIonSeed(nmdlRandomSeed)
 
 	pngWidth := boundWidth / PNG_SCALE_FACTOR
 	pngHeight := boundHeight / PNG_SCALE_FACTOR
