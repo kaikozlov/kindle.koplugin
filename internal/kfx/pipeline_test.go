@@ -211,7 +211,7 @@ func TestPromotedBodyContainerDoesNotPromoteSemanticTextLeaf(t *testing.T) {
 }
 
 func TestPromotedBodyContainerDoesNotPromoteSemanticContainers(t *testing.T) {
-	for _, nodeType := range []string{"table", "list"} {
+	for _, nodeType := range []string{"table", "list", "container"} {
 		nodes := []interface{}{map[string]interface{}{
 			"type": nodeType,
 			"style": "s1",
@@ -222,13 +222,14 @@ func TestPromotedBodyContainerDoesNotPromoteSemanticContainers(t *testing.T) {
 		}
 	}
 
+	// Keep compatibility with old/untyped structures for which the historical Go
+	// body-promotion heuristic was originally introduced.
 	nodes := []interface{}{map[string]interface{}{
-		"type": "container",
 		"style": "s1",
 		"content_list": []interface{}{map[string]interface{}{"content": "child"}},
 	}}
 	if _, _, ok, _, _ := promotedBodyContainer(nodes, nil); !ok {
-		t.Fatal("generic container should remain eligible for body promotion")
+		t.Fatal("untyped legacy container should remain eligible for body promotion")
 	}
 }
 

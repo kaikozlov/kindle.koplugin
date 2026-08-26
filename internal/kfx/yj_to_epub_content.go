@@ -7172,7 +7172,7 @@ func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[st
 	// Case 1: Generic container node with content_list children. A semantic table/list/etc.
 	// is not the page-template <div> and must remain a child of body.
 	nodeType, _ := asString(node["type"])
-	if children, ok := asSlice(node["content_list"]); ok && len(children) > 0 && styleID != "" && (nodeType == "" || nodeType == "container") {
+	if children, ok := asSlice(node["content_list"]); ok && len(children) > 0 && styleID != "" && nodeType == "" {
 		if _, ok := asMap(node["content"]); !ok {
 			if _, ok := asString(node["resource_name"]); !ok {
 				return styleID, children, true, false, nodeID // container: use renderNode
