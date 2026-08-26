@@ -88,7 +88,10 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	// determine_book_symbol_format (yj_to_epub.py:78-80), before any content is
 	// rendered. Keep the parsed rule table on the renderer for the dictionary
 	// entry branch in process_content (yj_to_epub_content.py:542-588).
-	dictionaryRules := processDictionaryRules(state.Fragments.AuxiliaryData, state.Fragments.AuxiliaryDataOrder)
+	dictionaryRules, err := processDictionaryRules(state.Fragments.AuxiliaryData, state.Fragments.AuxiliaryDataOrder)
+	if err != nil {
+		return nil, err
+	}
 
 	fontFixer := newFontNameFixer()
 	fontFixer.registerFontFamilies(fontFragments)

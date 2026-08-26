@@ -22,7 +22,10 @@ func TestProcessDictionaryRulesFromAuxiliaryMetadata(t *testing.T) {
 			map[string]interface{}{"key": "yj.dictionary.inflection_rules", "value": []byte(`[{id:3,rule:"0+s"}]`)},
 		}},
 	}
-	rules := processDictionaryRules(aux, []string{"rules"})
+	rules, err := processDictionaryRules(aux, []string{"rules"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(rules) != 1 || rules[3] != "0+s" {
 		t.Fatalf("dictionary rules = %#v", rules)
 	}
@@ -41,9 +44,53 @@ func TestProcessDictionaryRulesPreservesAuxiliaryOrder(t *testing.T) {
 			"key": "yj.dictionary.inflection_rules", "value": []byte(`[{id:3,rule:"0+es"}]`),
 		}}},
 	}
-	rules := processDictionaryRules(aux, []string{"first", "second"})
+	rules, err := processDictionaryRules(aux, []string{"first", "second"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := rules[3]; got != "0+es" {
 		t.Fatalf("rule 3 = %q, want later auxiliary definition %q", got, "0+es")
+	}
+}
+
+func TestProcessDictionaryRulesOuterStructureErrorsAbort(t *testing.T) {
+	// Python yj_to_epub_misc.py:495-497 accesses aux[$258] and md[$492]
+	// outside the parsing try block. Those structural errors abort conversion.
+	tests := []struct {
+		name string
+		aux  map[string]map[string]interface{}
+	}{
+		{"missing auxiliary", map[string]map[string]interface{}{}},
+		{"missing metadata", map[string]map[string]interface{}{"rules": {}}},
+		{"metadata not list", map[string]map[string]interface{}{"rules": {"metadata": "bad"}}},
+		{"metadata item not struct", map[string]map[string]interface{}{"rules": {"metadata": []interface{}{42}}}},
+		{"metadata item missing key", map[string]map[string]interface{}{"rules": {"metadata": []interface{}{map[string]interface{}{"value": []byte(`[]`)}}}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := processDictionaryRules(tc.aux, []string{"rules"}); err == nil {
+				t.Fatal("malformed outer dictionary rule structure did not abort")
+			}
+		})
+	}
+}
+
+func TestProcessDictionaryRulesPayloadErrorsAreNonFatal(t *testing.T) {
+	// Python yj_to_epub_misc.py:498-505 catches failures while reading/parsing
+	// md[$307] and the rule payload. A bad matching payload is logged and skipped.
+	aux := map[string]map[string]interface{}{
+		"rules": {"metadata": []interface{}{
+			map[string]interface{}{"key": "yj.dictionary.inflection_rules"},
+			map[string]interface{}{"key": "yj.dictionary.inflection_rules", "value": []byte(`not ion`)},
+			map[string]interface{}{"key": "yj.dictionary.inflection_rules", "value": []byte(`[{id:4,rule:"0+s"}]`)},
+		}},
+	}
+	rules, err := processDictionaryRules(aux, []string{"rules"})
+	if err != nil {
+		t.Fatalf("payload parse errors must remain non-fatal: %v", err)
+	}
+	if got := rules[4]; got != "0+s" {
+		t.Fatalf("valid payload after malformed entries was lost: rule 4 = %q", got)
 	}
 }
 

@@ -16,7 +16,7 @@ var dictionaryRuleInstructionRE = regexp.MustCompile(`^([0-9]+)(.)(.+)$`)
 // processDictionaryRules ports KFX_EPUB_Misc.process_dictionary_rules added in
 // KFX Input 2.34.0. Dictionary rules are stored as Ion-text blobs inside $597
 // auxiliary_data metadata entries named yj.dictionary.inflection_rules.
-func processDictionaryRules(auxiliaryData map[string]map[string]interface{}, auxiliaryDataOrder []string) map[int]string {
+func processDictionaryRules(auxiliaryData map[string]map[string]interface{}, auxiliaryDataOrder []string) (map[int]string, error) {
 	rules := map[int]string{}
 	// Python yj_to_epub_misc.py:495 iterates book_data[$597].values(), whose
 	// insertion order is the original fragment-list order established by
@@ -25,12 +25,30 @@ func processDictionaryRules(auxiliaryData map[string]map[string]interface{}, aux
 	for _, auxID := range auxiliaryDataOrder {
 		aux := auxiliaryData[auxID]
 		if aux == nil {
-			continue
+			// Python: `for md in aux["$258"]` is outside the parse try block;
+			// malformed auxiliary structure aborts conversion rather than being
+			// silently ignored (yj_to_epub_misc.py:495-496).
+			return nil, &UnsupportedError{Message: fmt.Sprintf("dictionary auxiliary_data %q is missing", auxID)}
 		}
-		metadata, _ := asSlice(aux["metadata"])
-		for _, rawMD := range metadata {
+		rawMetadata, exists := aux["metadata"]
+		if !exists {
+			return nil, &UnsupportedError{Message: fmt.Sprintf("dictionary auxiliary_data %q is missing metadata", auxID)}
+		}
+		metadata, ok := asSlice(rawMetadata)
+		if !ok {
+			return nil, &UnsupportedError{Message: fmt.Sprintf("dictionary auxiliary_data %q metadata is %T, want list", auxID, rawMetadata)}
+		}
+		for metadataIndex, rawMD := range metadata {
 			md, ok := asMap(rawMD)
-			if !ok || asStringDefault(md["key"]) != "yj.dictionary.inflection_rules" {
+			if !ok {
+				return nil, &UnsupportedError{Message: fmt.Sprintf("dictionary auxiliary_data %q metadata[%d] is %T, want struct", auxID, metadataIndex, rawMD)}
+			}
+			rawKey, exists := md["key"]
+			if !exists {
+				// Python md["$492"] is also outside the try block.
+				return nil, &UnsupportedError{Message: fmt.Sprintf("dictionary auxiliary_data %q metadata[%d] is missing key", auxID, metadataIndex)}
+			}
+			if asStringDefault(rawKey) != "yj.dictionary.inflection_rules" {
 				continue
 			}
 			raw, ok := md["value"].([]byte)
@@ -49,7 +67,7 @@ func processDictionaryRules(auxiliaryData map[string]map[string]interface{}, aux
 			log.Printf("kfx: info: Parsed %d dictionary rules", len(rules))
 		}
 	}
-	return rules
+	return rules, nil
 }
 
 func parseDictionaryRuleSet(data []byte) (map[int]string, error) {
