@@ -233,7 +233,8 @@ python3 scripts/kp3/dump_kdf_maps.py /tmp/kp3-pos/long-text/book.unwrapped.kdf
 ./scripts/kp3/reverse_compare.py --fixture long-text --workdir /tmp/kp3-rev-longtext
 ```
 
-Tooling notes: `run_probe.py --positions`; probe stages 2/4 label the position
+Tooling notes: `run_probe.py --positions` (optionally `--locmap-out PATH` to serialize
+the native location map); probe stages 2/4 label the position
 object's ID field `eid` and convert global PIDs explicitly through
 `BookPositionInfo_getNativePositionId` (vtable +0x20); unsafe calls (location 0,
 `getNativeAnchor`) are avoided/gated. JVM fatal-error files are routed to `/tmp`
