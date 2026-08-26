@@ -248,12 +248,15 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 		locationFn = replaceExtension(locationFn, extension)
 	}
 
-	// 13. PDF page extraction (Python: yj_to_epub_resources.py:93-115)
+	// 13. PDF page extraction (Python: yj_to_epub_resources.py:128-165)
 	suffix := ""
 	if resourceFormat == "pdf" && rawMedia != nil {
 		if pageNumVal, ok := asInt(resource["page_index"]); ok {
 			pageNum := pageNumVal + 1
 			suffix = pdfPageSuffix(pageNum)
+			// Python pops $564 here, so the generic #page=N path below must
+			// not also run for this PDF resource.
+			delete(resource, "page_index")
 		} else {
 			// no $564 → page_num = 1
 		}
@@ -289,27 +292,15 @@ func (rp *resourceProcessor) getExternalResource(resource_name string, ignore_va
 		}
 	}
 
-	// 14. Generate filename using existing helper
-	// Note: MediaType hardcoded to "image/jpeg". Python uses SYMBOL_FORMATS to resolve
-	// the correct MIME type from the resource format symbol. Since Go converts all image
-	// resources to JPEG (or PNG via JXR conversion which updates locationFn extension),
-	// this works correctly for current test books. If non-JPEG/PNG resources are encountered,
-	// the Format field on resourceFragment should be set to resourceFormat for proper MIME resolution.
-	filename := uniquePackageResourceFilename(resourceFragment{
+	// 14. Generate filename. Python resource_location_filename applies suffix
+	// before its case-insensitive uniqueness loop; do the same here. The real
+	// resource format, not a hardcoded JPEG MIME, determines the extension.
+	filename := uniquePackageResourceFilenameWithSuffix(resourceFragment{
 		ID:        resource_name,
 		Location:  locationFn,
-		MediaType: "image/jpeg",
-	}, symOriginal, rp.usedOEBPSNames, rawMedia)
-
-	// Apply page suffix to filename
-	if suffix != "" {
-		dot := strings.LastIndex(filename, ".")
-		if dot >= 0 {
-			filename = filename[:dot] + suffix + filename[dot:]
-		} else {
-			filename = filename + suffix
-		}
-	}
+		MediaType: mime,
+		Format:    resourceFormat,
+	}, suffix, symOriginal, rp.usedOEBPSNames, rawMedia)
 
 	// 15. VARIANT SELECTION — key logic (Python L170-179)
 	// $635 may not be in shared symbol catalog, check raw form too.
@@ -752,23 +743,69 @@ func buildResources(book *decodedBook, resources map[string]resourceFragment, fo
 				format = "" // conversion changed format; clear so extension comes from mediaType
 			}
 		}
-		filename := uniquePackageResourceFilename(resourceFragment{
+
+		// PDF page extraction (Python yj_to_epub_resources.py:128-175).
+		// $564 is consumed by a real PDF-with-data branch and becomes a
+		// filename suffix (-pageN). If that branch is not taken, $564 survives
+		// and is represented later as the href fragment #page=N.
+		suffix := ""
+		pdfPageConsumed := false
+		if format == "pdf" && data != nil {
+			pdfPageConsumed = true
+			pageNum := 1
+			if resource.PageIndex >= 0 {
+				pageNum = resource.PageIndex + 1
+				suffix = fmt.Sprintf("-page%d", pageNum)
+			}
+			if FIX_PDF {
+				imgData, imgFmt, convErr := convertPDFPageToImage(resource.Location, data, pageNum, nil, false)
+				if convErr != nil {
+					// Python keeps the original PDF raw_media/format/mime on failure.
+					fmt.Fprintf(os.Stderr, "kfx: error: Exception during conversion of PDF \"%s\" page %d to image: %v\n",
+						resource.Location, pageNum, convErr)
+				} else {
+					data = imgData
+					format = imgFmt
+					// Python sets mime=None and manifest_resource derives the final
+					// media type from the converted extension. Go's EPUB writer does
+					// not infer empty MediaType, so store the equivalent final MIME.
+					switch imgFmt {
+					case "jpg":
+						mediaType = "image/jpeg"
+					case "png":
+						mediaType = "image/png"
+					default:
+						fmt.Fprintf(os.Stderr, "kfx: error: PDF conversion returned unexpected image format %q for %s\n", imgFmt, resource.Location)
+						mediaType = extensionMediaType(imgFmt)
+					}
+				}
+			}
+		}
+
+		filename := uniquePackageResourceFilenameWithSuffix(resourceFragment{
 			ID:        resource.ID,
 			Location:  resource.Location,
 			MediaType: mediaType,
 			Format:    format,
-		}, symFmt, usedOEBPSNames, data)
+		}, suffix, symFmt, usedOEBPSNames, data)
+		hrefFilename := filename
+		if resource.PageIndex >= 0 && !pdfPageConsumed {
+			// Python appends this after resource_location_filename; the physical
+			// manifest/ZIP member remains filename while references retain the
+			// page fragment (process_external_resource partitions at '#').
+			hrefFilename += fmt.Sprintf("#page=%d", resource.PageIndex+1)
+		}
 		output = append(output, epub.Resource{
 			Filename:  filename,
 			MediaType: mediaType,
 			Data:      data,
 		})
-		resourceFilenameByID[resourceID] = filename
+		resourceFilenameByID[resourceID] = hrefFilename
 		if resource.Width > 0 || resource.Height > 0 {
 			resourceDimensions[filename] = [2]int{resource.Width, resource.Height}
 		}
 		if firstImageFilename == "" {
-			firstImageFilename = filename
+			firstImageFilename = hrefFilename
 		}
 	}
 
@@ -956,11 +993,19 @@ func sanitizeLocation(loc string) string {
 }
 
 func uniquePackageResourceFilename(resource resourceFragment, symFmt symType, used map[string]struct{}, data []byte) string {
+	return uniquePackageResourceFilenameWithSuffix(resource, "", symFmt, used, data)
+}
+
+// uniquePackageResourceFilenameWithSuffix mirrors Python
+// resource_location_filename(location, suffix, ...): suffix participates in
+// the case-insensitive uniqueness check, rather than being appended after an
+// unsuffixed name has already been reserved.
+func uniquePackageResourceFilenameWithSuffix(resource resourceFragment, suffix string, symFmt symType, used map[string]struct{}, data []byte) string {
 	stem, ext := packageResourceStem(resource, symFmt, data)
 	for n := 0; ; n++ {
-		name := stem + ext
+		name := stem + suffix + ext
 		if n > 0 {
-			name = fmt.Sprintf("%s-%d%s", stem, n-1, ext)
+			name = fmt.Sprintf("%s%s-%d%s", stem, suffix, n-1, ext)
 		}
 		key := strings.ToLower(name)
 		if _, dup := used[key]; !dup {
@@ -996,6 +1041,27 @@ func uniqueFontPackageFilename(location string, data []byte, symFmt symType, use
 			used[key] = struct{}{}
 			return name
 		}
+	}
+}
+
+func extensionMediaType(format string) string {
+	switch strings.ToLower(format) {
+	case "jpg", "jpeg":
+		return "image/jpeg"
+	case "png":
+		return "image/png"
+	case "gif":
+		return "image/gif"
+	case "bmp":
+		return "image/bmp"
+	case "tif", "tiff":
+		return "image/tiff"
+	case "jxr":
+		return "image/jxr"
+	case "pdf":
+		return "application/pdf"
+	default:
+		return "application/octet-stream"
 	}
 }
 

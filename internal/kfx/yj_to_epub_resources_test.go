@@ -508,9 +508,10 @@ func TestGetExternalResource_PDFResource_ExtractsAndConverts(t *testing.T) {
 	}
 }
 
-func TestGetExternalResource_PDFResource_PageFragment(t *testing.T) {
-	// Python L181: if "$564" in resource: filename += "#page=%d" % (resource.pop("$564") + 1)
-	// Go: page_index → filename fragment
+func TestGetExternalResource_PDFResource_PageSuffix(t *testing.T) {
+	// Python yj_to_epub_resources.py:132-134 consumes $564 inside the PDF
+	// branch and passes -pageN as the generated filename suffix. The later
+	// generic #page=N path therefore does NOT run for a PDF with raw media.
 	rp := newTestResourceProcessor()
 
 	pdfData := createMinimalPDF(1)
@@ -535,9 +536,10 @@ func TestGetExternalResource_PDFResource_PageFragment(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
-	// Filename should contain "#page=3" (page_index 2 + 1)
-	if !strings.Contains(result.filename, "#page=3") {
-		t.Fatalf("expected filename to contain '#page=3', got %q", result.filename)
+	// page_index 2 is page 3, so the physical/generated filename carries
+	// -page3 and no #page fragment.
+	if !strings.Contains(result.filename, "-page3") || strings.Contains(result.filename, "#page=") {
+		t.Fatalf("expected PDF filename to contain '-page3' and no #page fragment, got %q", result.filename)
 	}
 }
 
@@ -1750,6 +1752,106 @@ func TestGetExternalResource_PDFResource_RenderedConversion(t *testing.T) {
 	}
 	if cfg, err := jpeg.DecodeConfig(bytes.NewReader(result.rawMedia)); err != nil || cfg.Width != 300 || cfg.Height != 450 {
 		t.Fatalf("expected 300x450 rendered JPEG, got %vx%v err=%v", cfg.Width, cfg.Height, err)
+	}
+}
+
+func TestBuildResources_PDFProductionSuccessUsesPageIndexAndImageMime(t *testing.T) {
+	requirePdftoppm(t)
+
+	pdfData := createTwoPageImagePDF(t)
+	fragment := parseResourceFragment("pdf-res", map[string]interface{}{
+		"resource_name": "pdf-res",
+		"location":      "document.pdf",
+		"format":        "pdf",
+		"page_index":    1, // Python $564 is zero-based; request page 2.
+	})
+	if fragment.PageIndex != 1 || fragment.MediaType != "application/pdf" {
+		t.Fatalf("parsed PDF fragment = %#v", fragment)
+	}
+
+	book := &decodedBook{}
+	out, _, _, hrefs := buildResources(book,
+		map[string]resourceFragment{"pdf-res": fragment}, nil,
+		map[string][]byte{"document.pdf": pdfData}, nil, symOriginal)
+	if len(out) != 1 {
+		t.Fatalf("expected one production resource, got %d", len(out))
+	}
+	res := out[0]
+	if res.MediaType != "image/jpeg" {
+		t.Fatalf("converted PDF media type = %q, want image/jpeg", res.MediaType)
+	}
+	if !strings.Contains(res.Filename, "-page2.jpg") || strings.Contains(res.Filename, "#page=") {
+		t.Fatalf("converted PDF filename = %q, want physical -page2.jpg with no fragment", res.Filename)
+	}
+	if hrefs["pdf-res"] != res.Filename {
+		t.Fatalf("PDF href = %q, physical filename = %q", hrefs["pdf-res"], res.Filename)
+	}
+
+	img, err := jpeg.Decode(bytes.NewReader(res.Data))
+	if err != nil {
+		t.Fatalf("converted page is not JPEG: %v", err)
+	}
+	b := img.Bounds()
+	if b.Dx() != 200 || b.Dy() != 400 {
+		t.Fatalf("requested page image size = %dx%d, want 200x400", b.Dx(), b.Dy())
+	}
+	r, _, blue, _ := img.At(b.Min.X+b.Dx()/2, b.Min.Y+b.Dy()/2).RGBA()
+	if blue <= r {
+		t.Fatalf("page_index=1 did not select blue page 2: center R=%d B=%d", r, blue)
+	}
+}
+
+func TestBuildResources_PDFFailureKeepsOriginalPDF(t *testing.T) {
+	t.Setenv("PATH", "/nonexistent")
+
+	pdfData := createTwoPageImagePDF(t)
+	fragment := parseResourceFragment("pdf-res", map[string]interface{}{
+		"resource_name": "pdf-res",
+		"location":      "document.pdf",
+		"format":        "pdf",
+		"page_index":    1,
+	})
+	out, _, _, hrefs := buildResources(&decodedBook{},
+		map[string]resourceFragment{"pdf-res": fragment}, nil,
+		map[string][]byte{"document.pdf": pdfData}, nil, symOriginal)
+	if len(out) != 1 {
+		t.Fatalf("expected one production resource, got %d", len(out))
+	}
+	res := out[0]
+	if res.MediaType != "application/pdf" {
+		t.Fatalf("failed PDF conversion media type = %q, want application/pdf", res.MediaType)
+	}
+	if !strings.Contains(res.Filename, "-page2.pdf") || strings.Contains(res.Filename, "#page=") {
+		t.Fatalf("failed PDF filename = %q, want -page2.pdf with no fragment", res.Filename)
+	}
+	if !bytes.Equal(res.Data, pdfData) {
+		t.Fatal("failed PDF conversion did not preserve the original PDF bytes")
+	}
+	if hrefs["pdf-res"] != res.Filename {
+		t.Fatalf("failed PDF href = %q, physical filename = %q", hrefs["pdf-res"], res.Filename)
+	}
+}
+
+func TestBuildResources_NonPDFPageIndexUsesHrefFragmentOnly(t *testing.T) {
+	jpegData := createTestJPEG(t, 32, 48)
+	fragment := parseResourceFragment("img-res", map[string]interface{}{
+		"resource_name": "img-res",
+		"location":      "image.jpg",
+		"format":        "jpg",
+		"page_index":    2,
+	})
+	out, _, _, hrefs := buildResources(&decodedBook{},
+		map[string]resourceFragment{"img-res": fragment}, nil,
+		map[string][]byte{"image.jpg": jpegData}, nil, symOriginal)
+	if len(out) != 1 {
+		t.Fatalf("expected one resource, got %d", len(out))
+	}
+	if strings.Contains(out[0].Filename, "#") {
+		t.Fatalf("physical manifest filename must not contain a fragment: %q", out[0].Filename)
+	}
+	wantHref := out[0].Filename + "#page=3"
+	if hrefs["img-res"] != wantHref {
+		t.Fatalf("non-PDF page href = %q, want %q", hrefs["img-res"], wantHref)
 	}
 }
 
