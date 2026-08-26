@@ -5585,6 +5585,33 @@ func (r *storylineRenderer) renderContentChild(child interface{}, depth int, par
 	if text, ok := asString(child); ok {
 		return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: text}}}
 	}
+
+	// Python add_content (yj_to_epub_content.py:362-380) gives content, content_list,
+	// and story_name strict precedence in that order. A story_name is not itself
+	// renderable content: it names a $259 storyline whose content_list is rendered
+	// into the current content element. Keep the outer node intact and splice a
+	// cloned storyline list into it so the normal semantic renderer still decides
+	// the outer tag/style.
+	if node, ok := asMap(child); ok {
+		_, hasContent := node["content"]
+		_, hasContentList := node["content_list"]
+		if !hasContent && !hasContentList {
+			if storyName, hasStory := asString(node["story_name"]); hasStory && storyName != "" {
+				working := cloneMap(node)
+				delete(working, "story_name")
+				if story := r.storylines[storyName]; story != nil {
+					storyCopy := cloneMap(story)
+					if storyContent, ok := asSlice(storyCopy["content_list"]); ok {
+						working["content_list"] = append([]interface{}(nil), storyContent...)
+					}
+				} else {
+					log.Printf("kfx: error: content references missing storyline %q", storyName)
+				}
+				child = working
+			}
+		}
+	}
+
 	if rendered := r.renderNode(child, depth); rendered != nil {
 		return rendered
 	}
