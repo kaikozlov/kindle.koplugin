@@ -1124,6 +1124,27 @@ func TestParagraphLayoutHintControlsFinalClassPrefix(t *testing.T) {
 	}
 }
 
+func TestParagraphLayoutHintDropsUnknownValues(t *testing.T) {
+	renderer := storylineRenderer{
+		styleFragments: map[string]map[string]interface{}{
+			"sD": {
+				"margin_top":   0,
+				"layout_hints": []interface{}{"unknown_hint"},
+			},
+		},
+		styles: newStyleCatalog(),
+		symFmt: symOriginal,
+	}
+	element := &htmlElement{Tag: "p", Attrs: map[string]string{
+		"style": renderer.paragraphClass("sD", ""),
+	}}
+	book := &decodedBook{RenderedSections: []renderedSection{{Root: &htmlElement{Children: []htmlPart{element}}}}}
+	fixupStylesAndClasses(book, renderer.styles, nil, "serif")
+	if got := element.Attrs["class"]; got != "class_sD" {
+		t.Fatalf("unknown layout hint changed class prefix: got %q, want class_sD", got)
+	}
+}
+
 func TestPruneUnusedStylesheetRulesKeepsPseudoClassRulesForUsedBaseClass(t *testing.T) {
 	stylesheet := strings.Join([]string{
 		".kfx-firstline-0::first-line { font-size: 2em; }",

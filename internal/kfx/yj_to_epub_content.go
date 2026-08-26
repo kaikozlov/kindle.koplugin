@@ -6942,7 +6942,7 @@ func extractLayoutHintsFromStyle(style map[string]interface{}) []string {
 			if hint := layoutHintElementNames[value]; hint != "" {
 				hints = append(hints, hint)
 			} else {
-				hints = append(hints, value)
+				log.Printf("kfx: warning: Unexpected layout_hint %s", value)
 			}
 		}
 		if len(hints) == 0 {

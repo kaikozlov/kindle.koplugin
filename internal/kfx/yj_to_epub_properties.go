@@ -89,32 +89,6 @@ func (c *styleCatalog) bind(baseName string, declarations []string) string {
 	return entry.token
 }
 
-func (c *styleCatalog) reserveClass(baseName string) string {
-	if c == nil || baseName == "" {
-		return ""
-	}
-	baseName = strings.TrimPrefix(baseName, ".")
-	for index := 0; ; index++ {
-		candidate := baseName
-		if index > 0 {
-			candidate = fmt.Sprintf("%s-%d", baseName, index)
-		}
-		if _, ok := c.staticRules["."+candidate]; ok {
-			continue
-		}
-		conflict := false
-		for _, entry := range c.entries {
-			if entry.baseName == candidate || entry.finalName == candidate {
-				conflict = true
-				break
-			}
-		}
-		if !conflict {
-			return candidate
-		}
-	}
-}
-
 func (c *styleCatalog) finalize() {
 	if c == nil || c.finalized {
 		return
