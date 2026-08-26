@@ -2106,37 +2106,9 @@ func pdfImageModeAllowed(img image.Image) bool {
 	return false
 }
 
-// pdfPageHasText implements Python's page.extract_text() check
-// (resources.py:394-395): a page that paints any text cannot be represented by
-// extracting its single embedded image. It scans the page content streams and
-// any Form XObjects they invoke for text-showing operators.
-func pdfPageHasText(ctx *model.Context, pageDict types.Dict, pAttrs *model.InheritedPageAttrs) bool {
-	if o, found := pageDict.Find("Contents"); found {
-		if scanPDFContentObjectForText(ctx, o) {
-			return true
-		}
-	}
-
-	res := pdfPageResourcesDict(ctx, pageDict, pAttrs)
-	if res == nil {
-		return false
-	}
-	o, found := res.Find("XObject")
-	if !found {
-		return false
-	}
-	xobjs, err := ctx.DereferenceDict(o)
-	if err != nil {
-		return false
-	}
-	visited := map[int]bool{}
-	for _, v := range xobjs {
-		if pdfFormXObjectHasText(ctx, v, visited, 0) {
-			return true
-		}
-	}
-	return false
-}
+// maxPDFFormInvocations mirrors the bundled pypdf
+// MAX_XFORM_INVOCATIONS_PER_EXTRACTION (_page.py:101).
+const maxPDFFormInvocations = 5000
 
 // pdfPageResourcesDict returns the effective resource dict of a page.
 func pdfPageResourcesDict(ctx *model.Context, pageDict types.Dict, pAttrs *model.InheritedPageAttrs) types.Dict {
@@ -2151,9 +2123,154 @@ func pdfPageResourcesDict(ctx *model.Context, pageDict types.Dict, pAttrs *model
 	return nil
 }
 
-// scanPDFContentObjectForText scans a page /Contents entry (a stream or an
-// array of streams) for text-showing operators.
-func scanPDFContentObjectForText(ctx *model.Context, obj types.Object) bool {
+// pdfPageHasText implements Python's page.extract_text() check
+// (resources.py:394-395): a page that paints any text cannot be represented by
+// extracting its single embedded image.
+//
+// Bundled-pypdf semantics (calibre-plugin-modules/pypdf/_page.py, 20260822):
+//   - text is produced only by Tj/TJ/'/" operators receiving non-empty
+//     operands (empty strings and kerning-only arrays extract no text);
+//   - Form XObjects contribute text only when invoked by a “Do“ operator
+//     (L1899/1923); uninvoked resources are never consulted;
+//   - “_extract_text__xform“ (L1971-2023) guards cycles with a known-ids
+//     set that is discarded after each recursion (siblings may reuse a form)
+//     and a global invocation budget of 5000.
+func pdfPageHasText(ctx *model.Context, pageDict types.Dict, pAttrs *model.InheritedPageAttrs) bool {
+	s := &pdfTextScanner{ctx: ctx, knownObjs: map[int]bool{}}
+	res := pdfPageResourcesDict(ctx, pageDict, pAttrs)
+	if o, found := pageDict.Find("Contents"); found {
+		if s.scanContentObject(o, res) {
+			return true
+		}
+	}
+	return false
+}
+
+// pdfPageHasInlineImage reports whether the PAGE content stream (not Form
+// streams) paints an inline image. pypdf's PageObject.images includes inline
+// images parsed from the page content stream
+// (_parse_images_from_content_stream, _page.py:823+); pdfcpu counts XObject
+// images only, so this check restores the "exactly one image" parity.
+func pdfPageHasInlineImage(ctx *model.Context, pageDict types.Dict) bool {
+	if o, found := pageDict.Find("Contents"); !found {
+		return false
+	} else if hasPDFInlineImage(ctx, o) {
+		return true
+	}
+	return false
+}
+
+// pdfTextScanner walks page and Form content streams with pypdf's Do/known-ids
+// traversal semantics.
+type pdfTextScanner struct {
+	ctx         *model.Context
+	knownObjs   map[int]bool // pypdf known_ids: added before recursion, discarded after
+	invocations int          // pypdf traversal_state.entry_count
+}
+
+// scanContentObject scans a /Contents entry (stream or array of streams) for
+// text, resolving Do-invoked Form XObjects against res.
+func (s *pdfTextScanner) scanContentObject(obj types.Object, res types.Dict) bool {
+	streams := []types.Object{obj}
+	if arr, err := s.ctx.DereferenceArray(obj); err == nil && arr != nil {
+		streams = arr
+	}
+	for _, o := range streams {
+		sd, _, err := s.ctx.DereferenceStreamDict(o)
+		if err != nil || sd == nil {
+			continue
+		}
+		if err := sd.Decode(); err != nil || sd.Content == nil {
+			continue
+		}
+		if hasText, _ := pdfScanContent(sd.Content, func(name string) bool {
+			return s.formHasText(res, name)
+		}); hasText {
+			return true
+		}
+	}
+	return false
+}
+
+// formHasText implements the Do handler: resolve the named XObject in res and
+// report whether that Form shows text. Image XObjects return no text
+// (pypdf _extract_text__xform: "/Image" -> None).
+func (s *pdfTextScanner) formHasText(res types.Dict, name string) bool {
+	if res == nil {
+		return false
+	}
+	o, found := res.Find("XObject")
+	if !found {
+		return false
+	}
+	xobjs, err := s.ctx.DereferenceDict(o)
+	if err != nil || xobjs == nil {
+		return false
+	}
+	obj, found := xobjs.Find(name)
+	if !found {
+		return false
+	}
+
+	// pypdf budget guard (traversal_state.entry_count >= 5000 -> skip).
+	if s.invocations >= maxPDFFormInvocations {
+		return false
+	}
+
+	objNr := 0
+	if ir, isRef := obj.(types.IndirectRef); isRef {
+		objNr = ir.ObjectNumber.Value()
+		if s.knownObjs[objNr] {
+			// pypdf: cyclic form reference -> skip this invocation.
+			return false
+		}
+	}
+
+	sd, _, err := s.ctx.DereferenceStreamDict(obj)
+	if err != nil || sd == nil {
+		return false
+	}
+	if subtype, found := sd.Find("Subtype"); !found {
+		return false
+	} else if n, ok := subtype.(types.Name); !ok {
+		return false
+	} else if n == "Image" {
+		return false
+	} else if n != "Form" {
+		return false
+	}
+
+	// pypdf known_ids: add before recursing, discard afterwards so sibling
+	// invocations of the same form are still traversed.
+	if objNr != 0 {
+		s.knownObjs[objNr] = true
+	}
+	s.invocations++
+	defer func() {
+		if objNr != 0 {
+			delete(s.knownObjs, objNr)
+		}
+	}()
+
+	if err := sd.Decode(); err != nil || sd.Content == nil {
+		return false
+	}
+
+	var formRes types.Dict
+	if o, found := sd.Find("Resources"); found {
+		if d, err := s.ctx.DereferenceDict(o); err == nil {
+			formRes = d
+		}
+	}
+	hasText, _ := pdfScanContent(sd.Content, func(n string) bool {
+		return s.formHasText(formRes, n)
+	})
+	return hasText
+}
+
+// hasPDFInlineImage reports whether a /Contents entry paints an inline image
+// (BI ... EI) in its page content stream.
+func hasPDFInlineImage(ctx *model.Context, obj types.Object) bool {
 	streams := []types.Object{obj}
 	if arr, err := ctx.DereferenceArray(obj); err == nil && arr != nil {
 		streams = arr
@@ -2163,57 +2280,11 @@ func scanPDFContentObjectForText(ctx *model.Context, obj types.Object) bool {
 		if err != nil || sd == nil {
 			continue
 		}
-		if err := sd.Decode(); err != nil {
+		if err := sd.Decode(); err != nil || sd.Content == nil {
 			continue
 		}
-		if sd.Content != nil && pdfContentStreamHasText(sd.Content) {
+		if _, hasInline := pdfScanContent(sd.Content, nil); hasInline {
 			return true
-		}
-	}
-	return false
-}
-
-// pdfFormXObjectHasText reports whether a Form XObject (or any nested Form)
-// shows text. Depth guards against pathological recursion; visited guards
-// against cycles in the object graph.
-func pdfFormXObjectHasText(ctx *model.Context, obj types.Object, visited map[int]bool, depth int) bool {
-	if depth > 8 {
-		return false
-	}
-	ir, isRef := obj.(types.IndirectRef)
-	if isRef {
-		objNr := ir.ObjectNumber.Value()
-		if visited[objNr] {
-			return false
-		}
-		visited[objNr] = true
-	}
-
-	sd, _, err := ctx.DereferenceStreamDict(obj)
-	if err != nil || sd == nil {
-		return false
-	}
-	if subtype, found := sd.Find("Subtype"); !found {
-		return false
-	} else if name, ok := subtype.(types.Name); !ok || name != "Form" {
-		return false
-	}
-	if err := sd.Decode(); err == nil && sd.Content != nil && pdfContentStreamHasText(sd.Content) {
-		return true
-	}
-
-	// Nested forms via this form's own resource dict.
-	if o, found := sd.Find("Resources"); found {
-		if res, err := ctx.DereferenceDict(o); err == nil && res != nil {
-			if xo, found := res.Find("XObject"); found {
-				if xobjs, err := ctx.DereferenceDict(xo); err == nil {
-					for _, v := range xobjs {
-						if pdfFormXObjectHasText(ctx, v, visited, depth+1) {
-							return true
-						}
-					}
-				}
-			}
 		}
 	}
 	return false
