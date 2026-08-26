@@ -84,6 +84,12 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	book.usedFragmentAccess = map[string]bool{}
 	organizeFragmentsByType(book)
 
+	// Python KFX_EPUB.__init__ calls process_dictionary_rules immediately after
+	// determine_book_symbol_format (yj_to_epub.py:78-80), before any content is
+	// rendered. Keep the parsed rule table on the renderer for the dictionary
+	// entry branch in process_content (yj_to_epub_content.py:542-588).
+	dictionaryRules := processDictionaryRules(state.Fragments.AuxiliaryData, state.Fragments.AuxiliaryDataOrder)
+
 	fontFixer := newFontNameFixer()
 	fontFixer.registerFontFamilies(fontFragments)
 	fontFixer.setDefaultFontFamily(book.DefaultFontFamily)
@@ -198,6 +204,8 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 		structureFragments: rubyContents,
 		pathBundles:        state.Fragments.PathBundles,
 		isPDFBacked:        book.IsPDFBacked,
+		dictionaryRules:    dictionaryRules,
+		usedDictionaryRules: map[int]struct{}{},
 	}
 	// Create resource resolver matching Python's self.process_external_resource
 	// (yj_to_epub_properties.py:1272-1273). Resolves $479/$528 symbol values

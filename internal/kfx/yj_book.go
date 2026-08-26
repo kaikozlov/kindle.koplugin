@@ -71,6 +71,7 @@ type fragmentCatalog struct {
 	Generators            map[string]map[string]interface{} // $270 fragments keyed by fragment ID.
 	PathBundles           map[string]map[string]interface{} // $692 path_bundle fragments keyed by bundle name.
 	AuxiliaryData         map[string]map[string]interface{} // $597 auxiliary_data fragments, including dictionary rule metadata.
+	AuxiliaryDataOrder    []string                          // $597 insertion order; Python preserves fragment-list order (yj_to_epub.py:201-219).
 	FontFragments         map[string]fontFragment
 	RawFragments          map[string][]byte
 	PositionAliases       map[int]string
@@ -262,6 +263,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 		Generators:        map[string]map[string]interface{}{},
 		PathBundles:       map[string]map[string]interface{}{},
 		AuxiliaryData:     map[string]map[string]interface{}{},
+		AuxiliaryDataOrder: []string{},
 		FontFragments:     map[string]fontFragment{},
 		RawFragments:      map[string][]byte{},
 		PositionAliases:   map[int]string{},
@@ -457,6 +459,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 					}
 				case "auxiliary_data":
 					fragments.AuxiliaryData[summaryID] = value
+					fragments.AuxiliaryDataOrder = append(fragments.AuxiliaryDataOrder, summaryID)
 				case "path_bundle":
 					// Python: self.book_data["$692"][fragment_name] = value
 					// $692=path_bundle, keyed by "name" field.

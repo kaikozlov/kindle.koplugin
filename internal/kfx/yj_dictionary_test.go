@@ -19,9 +19,28 @@ func TestProcessDictionaryRulesFromAuxiliaryMetadata(t *testing.T) {
 			map[string]interface{}{"key": "yj.dictionary.inflection_rules", "value": []byte(`[{id:3,rule:"0+s"}]`)},
 		}},
 	}
-	rules := processDictionaryRules(aux)
+	rules := processDictionaryRules(aux, []string{"rules"})
 	if len(rules) != 1 || rules[3] != "0+s" {
 		t.Fatalf("dictionary rules = %#v", rules)
+	}
+}
+
+
+func TestProcessDictionaryRulesPreservesAuxiliaryOrder(t *testing.T) {
+	// Python yj_to_epub.py:201-219 + yj_to_epub_misc.py:495-503: the
+	// categorized $597 dict preserves fragment insertion order and a later
+	// duplicate rule id overwrites the earlier definition.
+	aux := map[string]map[string]interface{}{
+		"first": {"metadata": []interface{}{map[string]interface{}{
+			"key": "yj.dictionary.inflection_rules", "value": []byte(`[{id:3,rule:"0+s"}]`),
+		}}},
+		"second": {"metadata": []interface{}{map[string]interface{}{
+			"key": "yj.dictionary.inflection_rules", "value": []byte(`[{id:3,rule:"0+es"}]`),
+		}}},
+	}
+	rules := processDictionaryRules(aux, []string{"first", "second"})
+	if got := rules[3]; got != "0+es" {
+		t.Fatalf("rule 3 = %q, want later auxiliary definition %q", got, "0+es")
 	}
 }
 

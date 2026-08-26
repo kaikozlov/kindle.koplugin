@@ -3979,6 +3979,11 @@ type storylineRenderer struct {
 	structureFragments  map[string]map[string]interface{}
 	pathBundles         map[string]map[string]interface{}
 	isPDFBacked         bool
+	// Python KFX_EPUB_Content.__init__ initializes used_dictionary_rules
+	// (yj_to_epub_content.py:98-104), while KFX_EPUB.__init__ populates the
+	// rule table before content rendering (yj_to_epub.py:78-80).
+	dictionaryRules     map[int]string
+	usedDictionaryRules map[int]struct{}
 	// textCombineInUse is set to true when any text-combine-upright: all
 	// declaration is encountered during style processing (Python: self.text_combine_in_use).
 	// Port of Python yj_to_epub_properties.py L1127 and yj_to_epub_content.py L103.

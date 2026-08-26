@@ -15,9 +15,17 @@ var dictionaryRuleInstructionRE = regexp.MustCompile(`^([0-9]+)(.)(.+)$`)
 // processDictionaryRules ports KFX_EPUB_Misc.process_dictionary_rules added in
 // KFX Input 2.34.0. Dictionary rules are stored as Ion-text blobs inside $597
 // auxiliary_data metadata entries named yj.dictionary.inflection_rules.
-func processDictionaryRules(auxiliaryData map[string]map[string]interface{}) map[int]string {
+func processDictionaryRules(auxiliaryData map[string]map[string]interface{}, auxiliaryDataOrder []string) map[int]string {
 	rules := map[int]string{}
-	for _, aux := range auxiliaryData {
+	// Python yj_to_epub_misc.py:495 iterates book_data[$597].values(), whose
+	// insertion order is the original fragment-list order established by
+	// organize_fragments_by_type (yj_to_epub.py:201-219). Preserve that order
+	// because later duplicate rule IDs overwrite earlier ones.
+	for _, auxID := range auxiliaryDataOrder {
+		aux := auxiliaryData[auxID]
+		if aux == nil {
+			continue
+		}
 		metadata, _ := asSlice(aux["metadata"])
 		for _, rawMD := range metadata {
 			md, ok := asMap(rawMD)
