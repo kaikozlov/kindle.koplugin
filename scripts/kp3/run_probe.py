@@ -147,6 +147,9 @@ def kaf_command(fc: Path, jar: Path, classes: Path, klass: str, *args: str) -> l
         str(fc / "jre" / "bin" / "java"),
         "-Dklibname=shared",
         f"-Djava.library.path={fc / 'lib'}",
+        # Exploratory KAF/JNI paths can segfault the bundled runtime. Keep any
+        # JVM fatal-error reports out of the repository working tree.
+        "-XX:ErrorFile=/tmp/kp3-jvm-err-pid%p.log",
         "-cp", os.pathsep.join([str(jar), str(classes)]),
         f"com.amazon.kaf.jni.adapters.{klass}",
         *args,
