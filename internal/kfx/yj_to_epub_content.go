@@ -2906,6 +2906,7 @@ func filterBodyStyleValues(values map[string]interface{}) map[string]interface{}
 		"fill_opacity":  true,
 		"box_align": true,
 		"glyph_transform": true,
+		"writing_mode":    true,
 	}
 	filtered := map[string]interface{}{}
 	for key, value := range values {

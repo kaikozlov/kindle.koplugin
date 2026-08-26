@@ -99,6 +99,23 @@ func TestParseSectionFragmentKeepsAllPageTemplatesAndUsesLastAsPrimary(t *testin
 	}
 }
 
+func TestParseSectionFragmentPreservesPageTemplateWritingMode(t *testing.T) {
+	section := parseSectionFragment("ignored", map[string]interface{}{
+		"section_name": "c0",
+		"page_templates": []interface{}{
+			map[string]interface{}{
+				"id":           866,
+				"story_name":   "l4",
+				"writing_mode": "horizontal_tb",
+			},
+		},
+	})
+
+	if got := asStringDefault(section.PageTemplateValues["writing_mode"]); got != "horizontal_tb" {
+		t.Fatalf("page template writing_mode = %q, want horizontal_tb", got)
+	}
+}
+
 func TestRenderSectionFragmentsUsesLastTemplateAsMainAndPrependsOverlaysAfterMain(t *testing.T) {
 	section := sectionFragment{
 		ID: "cX",
