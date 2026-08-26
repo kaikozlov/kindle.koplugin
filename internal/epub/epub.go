@@ -115,7 +115,7 @@ func Write(path string, book Book) error {
 		book.Modified = time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	}
 	if len(book.Navigation) == 0 {
-		book.Navigation = navigationFromSections(book.Sections)
+		book.Navigation = fallbackNavigation(book.Guide, book.Sections)
 	}
 
 	files := map[string][]byte{
@@ -196,6 +196,36 @@ func writeDeflated(zw *zip.Writer, name string, data []byte) error {
 	}
 	_, err = writer.Write(data)
 	return err
+}
+
+func fallbackNavigation(guide []GuideEntry, sections []Section) []NavPoint {
+	// Python EPUB_Output.generate_epub (epub_output.py:459-465) synthesizes exactly
+	// one TOC entry from the highest-priority guide item when KFX has no explicit TOC.
+	// Only when the guide is empty does it fall back to a generic "Content" entry.
+	priority := func(guideType string) int {
+		switch guideType {
+		case "toc":
+			return 1
+		case "text":
+			return 2
+		case "cover":
+			return 3
+		default:
+			return 999
+		}
+	}
+	if len(guide) > 0 {
+		sorted := append([]GuideEntry(nil), guide...)
+		sort.SliceStable(sorted, func(i, j int) bool {
+			return priority(sorted[i].Type) < priority(sorted[j].Type)
+		})
+		g := sorted[0]
+		return []NavPoint{{Title: g.Title, Href: g.Href}}
+	}
+	if len(sections) > 0 {
+		return []NavPoint{{Title: "Content", Href: sections[0].Filename}}
+	}
+	return nil
 }
 
 func navigationFromSections(sections []Section) []NavPoint {

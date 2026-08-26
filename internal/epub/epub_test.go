@@ -986,6 +986,32 @@ func TestSectionXHTMLLanguageFallback(t *testing.T) {
 // VAL-B-017: Default navigation from sections when Navigation is empty
 // =========================================================================== //
 
+func TestFallbackNavigationUsesGuidePriority(t *testing.T) {
+	guide := []GuideEntry{
+		{Type: "cover", Title: "Cover", Href: "cover.xhtml"},
+		{Type: "text", Title: "text", Href: "c0.xhtml"},
+		{Type: "toc", Title: "Contents", Href: "toc.xhtml"},
+	}
+	nav := fallbackNavigation(guide, []Section{{Filename: "c0.xhtml", Title: "Section 1"}})
+	if len(nav) != 1 || nav[0].Title != "Contents" || nav[0].Href != "toc.xhtml" {
+		t.Fatalf("fallback navigation = %#v", nav)
+	}
+}
+
+func TestFallbackNavigationUsesTextGuideWithoutExplicitTOC(t *testing.T) {
+	nav := fallbackNavigation([]GuideEntry{{Type: "text", Title: "text", Href: "c0.xhtml"}}, []Section{{Filename: "c0.xhtml", Title: "Section 1"}})
+	if len(nav) != 1 || nav[0].Title != "text" || nav[0].Href != "c0.xhtml" {
+		t.Fatalf("fallback navigation = %#v", nav)
+	}
+}
+
+func TestFallbackNavigationUsesGenericContentWithoutGuide(t *testing.T) {
+	nav := fallbackNavigation(nil, []Section{{Filename: "c0.xhtml", Title: "Section 1"}, {Filename: "c1.xhtml", Title: "Section 2"}})
+	if len(nav) != 1 || nav[0].Title != "Content" || nav[0].Href != "c0.xhtml" {
+		t.Fatalf("fallback navigation = %#v", nav)
+	}
+}
+
 func TestDefaultNavigationFromSections(t *testing.T) {
 	book := Book{
 		Identifier: "urn:uuid:default-nav",
