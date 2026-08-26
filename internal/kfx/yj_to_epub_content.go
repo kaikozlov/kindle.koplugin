@@ -594,7 +594,10 @@ func processSectionComic(section sectionFragment, cfg pageSpreadConfig, storylin
 	// In Go, the page template's PageTemplateValues already holds the resolved $608 data
 	// (organized during organizeFragments). Pass it directly to processPageSpreadPageTemplate.
 	template := templates[0]
-	templateData := template.PageTemplateValues
+	templateData := cloneMap(template.RawValues)
+	if templateData == nil {
+		templateData = cloneMap(template.PageTemplateValues)
+	}
 	if templateData == nil {
 		templateData = map[string]interface{}{}
 	}
@@ -627,11 +630,12 @@ func processSectionMagazine(section sectionFragment, renderer *storylineRenderer
 			continue
 		}
 
-		// Get template data. In Python, page_template is the actual template struct.
-		// In Go, the template data is in PageTemplateValues (already resolved from $608).
-		templateData := template.PageTemplateValues
+		// Get the complete page-template structure. Python operates on the actual
+		// template struct here; PageTemplateValues is intentionally only the subset
+		// that can seed body CSS for the reflowable renderer.
+		templateData := template.RawValues
 		if templateData == nil {
-			templateData = map[string]interface{}{}
+			templateData = template.PageTemplateValues
 		}
 
 		// Make a working copy to pop from (matching Python's mutation of the template)
@@ -1746,6 +1750,7 @@ func parseSectionFragment(fragmentID string, value map[string]interface{}) secti
 			Storyline:          storylineID,
 			PageTemplateStyle:  pageTemplateStyle,
 			PageTemplateValues: filterBodyStyleValues(container),
+			RawValues:          cloneMap(container),
 			HasCondition:       container["condition"] != nil,
 			Condition:          container["condition"],
 		})

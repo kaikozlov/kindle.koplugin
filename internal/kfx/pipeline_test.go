@@ -99,6 +99,34 @@ func TestParseSectionFragmentKeepsAllPageTemplatesAndUsesLastAsPrimary(t *testin
 	}
 }
 
+func TestParseSectionFragmentPreservesRawPageTemplateStructure(t *testing.T) {
+	section := parseSectionFragment("ignored", map[string]interface{}{
+		"section_name": "c0",
+		"page_templates": []interface{}{
+			map[string]interface{}{
+				"id":            863,
+				"story_name":    "l4",
+				"type":          "container",
+				"layout":        "scale_fit",
+				"fixed_width":   450,
+				"fixed_height":  600,
+				"virtual_panel": "enabled",
+			},
+		},
+	})
+
+	raw := section.PageTemplates[0].RawValues
+	if asStringDefault(raw["type"]) != "container" || asStringDefault(raw["layout"]) != "scale_fit" {
+		t.Fatalf("raw page template lost structural type/layout: %#v", raw)
+	}
+	if asIntDefault(raw["fixed_width"], 0) != 450 || asIntDefault(raw["fixed_height"], 0) != 600 {
+		t.Fatalf("raw page template lost viewport dimensions: %#v", raw)
+	}
+	if _, leaked := section.PageTemplateValues["layout"]; leaked {
+		t.Fatalf("structural layout should not leak into body style values: %#v", section.PageTemplateValues)
+	}
+}
+
 func TestParseSectionFragmentPreservesPageTemplateWritingMode(t *testing.T) {
 	section := parseSectionFragment("ignored", map[string]interface{}{
 		"section_name": "c0",

@@ -223,6 +223,7 @@ type pageTemplateFragment struct {
 	Storyline          string
 	PageTemplateStyle  string
 	PageTemplateValues map[string]interface{}
+	RawValues          map[string]interface{}
 	HasCondition       bool
 	Condition          interface{}
 }
