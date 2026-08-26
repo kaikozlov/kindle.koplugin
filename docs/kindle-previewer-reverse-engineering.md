@@ -1532,6 +1532,7 @@ Current pieces:
 scripts/kp3/
 ├── compare_catalog.py
 ├── make_fixture.py
+├── reverse_compare.py
 ├── run_probe.py
 └── com/amazon/kaf/jni/adapters/
     ├── KafPropertyCatalog.java
@@ -1643,7 +1644,7 @@ The Python serializer is deliberately only the storage bridge. Both reverse impl
 
 This immediately found behavior outside the old ten-book corpus, despite that corpus having reached zero structural differences before the branch was abandoned.
 
-Current Previewer 3.106 results for the first nine fixtures are:
+The **initial** Previewer 3.106 differential run against the historical Go branch produced the following results. This table is retained as the baseline that exposed the missing behavior; it is not the current post-fix state:
 
 | Fixture | Go reverse result | Non-timestamp structural diffs | Important semantic difference |
 | --- | --- | ---: | --- |
@@ -1763,6 +1764,48 @@ So the fixed-layout failure is not “Go cannot parse current Amazon fixed layou
 There are also lower-severity systematic differences in these synthetic books: Python generates an opaque fallback identifier and `Unknown` author where Go derives an identifier from the input path; Python uses `Content` as the synthesized navigation label while Go derives text such as `Hello`, `Probe table`, or the first paragraph. The vertical fixture additionally differs in how document writing mode/default margins are emitted. Those need source-level comparison before deciding which are functional bugs versus output-normalization choices.
 
 This experiment is important for the maintenance question. A green arbitrary-book corpus did not mean the old port had captured the semantic space. The Amazon producer can now generate small canonical cases that exercise branches absent from those books, and the first few such cases already found several real gaps. That makes a systematic generated corpus much more valuable than another hand-picked pile of books, while still leaving historical/consumer compatibility to real samples.
+
+### Current post-fix matrix against KFX Input 20260822
+
+The baseline failures above were used as targeted regression cases rather than accepted as permanent differences. After correcting the semantic issues they exposed, the full nine-fixture matrix was rerun on 2026-08-26 using:
+
+- Kindle Previewer **3.106** as the forward producer;
+- the same serialized CONT KFX bytes for both reverse implementations;
+- current vendored KFX Input **20260822 / 2.34.0** as the Python reverse reference; and
+- the reviewed cumulative Go integration branch.
+
+The result is:
+
+| Fixture | Structural diffs | Image diffs | Other diffs | Timestamp-only |
+| --- | ---: | ---: | ---: | ---: |
+| `minimal` | 0 | 0 | 0 | 1 (`content.opf`) |
+| `footnote` | 0 | 0 | 0 | 1 (`content.opf`) |
+| `table` | 0 | 0 | 0 | 0 |
+| `fixed-layout` | 0 | 0 | 0 | 0 |
+| `vertical-ruby` | 0 | 0 | 0 | 0 |
+| `link` | 0 | 0 | 0 | 0 |
+| `bidi` | 0 | 0 | 0 | 0 |
+| `list` | 0 | 0 | 0 | 0 |
+| `svg` | 0 | 0 | 0 | 0 |
+
+Thus all nine current Amazon-generated semantic fixtures are structurally/content-equivalent to current Python KFX Input, with the only remaining differences being nondeterministic OPF timestamps in two fixtures.
+
+The fixes required to reach that state are instructive because they were not all local syntax mistakes. They included:
+
+- accepting direct-string `ruby_content` rather than assuming a reference/container;
+- applying footnote classification before ordinary paragraph simplification;
+- replacing the raw-YJ `promotedBodyContainer` shortcut with rendered-element/top-level behavior consistent with Python;
+- preserving list/table/container wrappers rather than promoting their styles into `body` prematurely;
+- preserving nested bidi ranges and applying direction at the same DOM phase as Python;
+- integrating page-spread/fixed-layout results into actual rendered EPUB sections;
+- retaining the full page-template structure until the renderer has consumed it;
+- separating manifest properties from spine `itemref` properties and reproducing the fixed-layout/comic rewrite rules;
+- matching Python's PDF-backed pixel semantics (`round(value / 100, 2)`) not only for ordinary CSS values but also for KVG path coordinates, SVG dimensions, and transform translations; and
+- synchronizing current Amazon/KFX Input symbol and metadata tails through Previewer 3.106 (`page_regions`, `bcSequenceNumber`, `yj.conversion.*`, current creator versions, and max symbol IDs).
+
+This is stronger evidence than the old ten-book result because each fixture has a known source feature and a current Amazon-produced intermediate representation. It is still **not a completeness proof**. The fixture matrix covers canonical producer behavior for nine deliberately small semantic families; it says nothing by itself about historical generator variants, malformed-but-tolerated books, DRM packaging, dictionaries not expressible by the current fixture generator, Scribe KPF/KDF ingestion, or other features not represented in the matrix.
+
+The static parity auditor has consequently been reframed as a conservative structural-coverage tool rather than a parity score. Against all 961 current upstream core definitions it deliberately reports many gaps, including alternate-architecture functions that have not yet received reviewed identity mappings. A clean semantic fixture result is behavioral evidence for the exercised path; a static name/body match is not.
 
 ## Generated KDF storage format: SQLite plus Amazon fingerprint records
 
@@ -2065,22 +2108,24 @@ This would not remove the need for historical compatibility handling, but it wou
 
 ## Recommended next investigation order
 
-1. Extend the now-reusable KAF/KDF harness into a feature matrix:
-   - add navigation, links, drop caps, bidi, conditional content, page spreads, comics/guided view, SVG/KVG, and richer fixed-layout specimens;
-   - continue comparing each typed KAF graph with its raw KDF/Ion/storage representation;
-   - add isolated subprocess probes for additional JNI APIs only when a concrete semantic question requires them.
+1. Expand the controlled semantic matrix beyond the nine now-green baseline fixtures:
+   - drop caps and first-line styles;
+   - ordinary raster-image/figure behavior distinct from fixed layout;
+   - CSS transforms/absolute positioning outside the PDF-backed case;
+   - conditional/crop-bleed/hero-image properties;
+   - page spreads, guided-view/document regions, and the producer trigger for `page_regions`;
+   - additional language/layout combinations only when each fixture answers a specific semantic question.
+   Continue comparing the typed KAF graph, raw KDF/Ion representation, Python reverse output, and Go reverse output for every new specimen.
 
-2. Locate the missing YJ -> HTML/EPUB decompiler payload historically:
+2. Determine the producer/consumer contract for `page_regions` and the new shared-symbol tail:
+   - identify which Previewer authoring profile emits property 852 rather than merely consuming it;
+   - establish whether `bcSequenceNumber` is storage/book-content bookkeeping or affects EPUB-relevant semantics;
+   - use current Previewer output as the primary oracle instead of guessing from the numeric IDs.
+
+3. Locate the missing YJ -> HTML/EPUB decompiler payload historically:
    - inspect older Previewer/Kindle Create distributions for `com.amazon.yj.decompiler.app.DecompilerApp`;
    - trace callers of the reverse `yjhtmlmapper` method and `YJDECOMPILER_*` resources for reusable reverse components that remain in the current JAR;
    - use the already-recovered KDF -> EPUB argument contract to recognize candidate payloads immediately.
-
-3. Create a controlled feature fixture corpus:
-   - one semantic or style feature per EPUB;
-   - run Previewer;
-   - dump produced KDF/YJ through both raw Ion and KAF;
-   - render in Previewer;
-   - compare with KFX Input's reverse output.
 
 4. Recover and document the KAF native class/vtable layout in Ghidra, beginning with:
    - `KAFDigitalBook`;
@@ -2091,7 +2136,10 @@ This would not remove the need for historical compatibility handling, but it wou
    - `KAFBookPositionInfo`;
    - storage/symbol-table classes.
 
-5. Build an ID/name/meaning cross-reference generated from Previewer's enum and mapping files, then use it when reading kfxlib so that `$NNN` occurrences are immediately presented with Amazon's current semantic names.
+5. Build the adversarial/historical layer separately from the canonical producer matrix:
+   - classify real consumer KFX by generator/version/profile when samples are available;
+   - treat malformed-but-tolerated and historical structures as compatibility cases rather than contaminating the canonical semantic model;
+   - keep KPF/KDF-only features such as production Scribe detection explicitly separate from the currently supported CONT/KFX input path.
 
 ## Reproducibility notes
 
