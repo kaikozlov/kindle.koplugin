@@ -50,7 +50,7 @@ EOF
   - `com/amazon/q/a/g/b/a/c.class` — a workflow step that writes a metadata file and throws
     `YJDECOMPILER_FILE_IO_EXCEPTION` (see § 3.2).
 
-## 2. CONFIRMED: no dynamic jar / classpath / download mechanism provisions the decompiler
+## 2. CONFIRMED: no decompiler provisioning mechanism was found in the current bundle
 
 - The native launcher constructs exactly one classpath jar: `/lib/EpubToKFXConverter-4.0.jar`
   (native strings, file offsets `0x2708a90` region). `constructEnvironmentVars`
@@ -61,12 +61,13 @@ EOF
   an Amazon Brazil build-config mechanism, not a payload fetcher.
 - The app's download machinery (DOW/DOWCacher, presigned S3 artifact URLs) fetches **book
   artifacts for cloud previews**, not jars.
-- Conclusion: the decompiler was never dynamically provisioned in this build. It was either
-  stripped from the jar at build time or existed only in internal builds.
+- Conclusion: **no mechanism in the inspected current bundle was found that supplies the missing class at runtime.**
+  That rules out the obvious bundled classpath/download paths, but does not prove what historical or external deployments
+  may have supplied. A build-time strip or a separately deployed/internal artifact remain possibilities.
 
 ## 3. CONFIRMED: surviving decompiler-side components (the reusable inventory)
 
-### 3.1 `com.amazon.yjhtmlmapper` — dual-direction style mapper (106 classes, intact)
+### 3.1 `com.amazon.yjhtmlmapper` — dual-direction style mapper (106 classes; reverse implementation retained)
 
 The package implements **both** mapping directions behind one abstract class:
 
@@ -81,9 +82,9 @@ com.amazon.yjhtmlmapper.f.c            (abstract style mapper)
 ```
 
 Verified on raw ZIP bytes: the reverse method's exact descriptor occurs in exactly two
-entries — `f/c.class` (abstract + public wrapper) and `e/k.class` (implementation). The
-consumer was the stripped decompiler driver. **The reverse engine is present, orphaned, and
-callable.**
+entries — `f/c.class` (abstract + public wrapper) and `e/k.class` (implementation). No surviving external caller was found. The reverse implementation is therefore **present and orphaned in this
+bundle**. Its method body and dependencies are inspectable, but this investigation did not yet exercise that reverse method
+end-to-end, so "callable as a complete reverse engine" is not established.
 
 Argument contract for the reverse method (types confirmed by `javap`):
 
@@ -112,7 +113,8 @@ Supporting machinery, all shipped:
   ignore_for_yj_to_html_mapping`.
 - `e.e` — style-map entry; holds `Class<SpecialStyleTransformer>` decoded from
   `converter_classname`.
-- `transformers/` — 22 **unobfuscated** transformer classes, uniform contract:
+- `transformers/` — 23 top-level **unobfuscated** classes: 21 concrete transformers plus
+  `StyleTransformer` and `SpecialStyleTransformer` bases. The concrete classes follow the common contract:
   `ctor(e.c styleKey, e.e mapEntry, B.d.b doc, e.b flags[, Set extras, c.c docContext])`,
   `a() → List<f.a>` (decompiled HTML styles), `b() → List<f.d>` (YJ containers).
   Includes `BGColor, BGRepeat, BorderRadius, DefaultStyle, ImageBorder, Language,
@@ -125,11 +127,12 @@ Supporting machinery, all shipped:
   generated from the .txt and how to regenerate/extend it).
 - `g.a` — container post-processing on `List<f.d>` (forward-side sibling kept for symmetry).
 
-### 3.2 `com.amazon.q.a.g` — EPUB output subsystem (31 classes, self-contained, orphaned)
+### 3.2 `com.amazon.q.a.g` — EPUB output subsystem (30 package classes; no surviving KAF bridge found)
 
-Raw-zip scan: 31 entries reference `com/amazon/q/a/g`; **30 are inside the package; the only
-external referent is `com/amazon/F/d/h`** (§ 3.3). No code bridges `kaf` (native book) to
-`q.a.g` (writers) — zero classes reference both. That bridge was the decompiler driver.
+Raw-zip scan: **30 class entries are inside `com/amazon/q/a/g`**. One observed class outside the package,
+`com/amazon/F/d/h`, references it (§ 3.3). A raw class-reference scan found zero classes referencing both the KAF JNI
+namespace and `q.a.g`; therefore no surviving direct KAF→writer bridge was identified. That does not by itself prove that
+the historical bridge had a particular class/package shape.
 
 - `q.a.g.a.a` — `ResourceType` enum (with folder names): `HTML, CSS, FONT, IMAGE, NCX, OPF,
   EPUB_2_YJ_MAPPING, XML, MIMETYPE, NAVIGATION`. `EPUB_2_YJ_MAPPING` matches the error
@@ -178,9 +181,10 @@ external referent is `com/amazon/F/d/h`** (§ 3.3). No code bridges `kaf` (nativ
 - `BookFactory.a(String path)` → `com.amazon.kaf.c.y` (native book interface: sections,
   positions, anchors, metadata, resource reads via `kaf.c.x`).
 - **Surviving minimal loader recipe** — `com.amazon.kcflocationmap.c.a`:
-  `public static kaf.c.y a(String path)` validates a `.yj`/`.kdf` file, logs "KFX sdk is
-  being initialized for …", initializes the JNI singleton, and returns the book. This is a
-  complete, shipped example of file→native-book loading from a plain `main`.
+  `public static kaf.c.y a(String path)` validates file existence; `.yj` gets its YJ path, while non-`.yj` input
+  is handled as the SQLite/KDF path. It logs "KFX sdk is being initialized for …", initializes the JNI singleton,
+  and returns the book. This is a shipped example of file→native-book loading from a plain `main`; the helper itself
+  does **not** explicitly suffix-check `.kdf`.
 - Standalone shipped mains that already drive this stack: `KCFLocationMapCreatorApp`,
   `kcfpositionmapcreator.*`, `kfxconverter.app.KFXGenApp` (forward direction).
 - `com.amazon.B.c.*` — KCF DOM SDK layer over the JNI objects; `B.c.a.a.b.a()` constructs a
@@ -201,21 +205,22 @@ external referent is `com/amazon/F/d/h`** (§ 3.3). No code bridges `kaf` (nativ
 | `Templates/*.dotx`, `template-properties.ion`, `font-info.ion`, `Fonts/` | style templates | `F.d.h`, `F.a.a`, `F.d.j` |
 | `semantics.ion`, `mapping_ignorable_patterns.ion`, `puaMapper.ion` | semantic/ignorable mappings | various |
 
-## 4. CONFIRMED: what is *missing* (the actual gaps)
+## 4. CONFIRMED: pieces not located / not reconnected in the current bundle
 
 1. `com.amazon.yj.decompiler.app.DecompilerApp` — arg parsing + orchestration.
-2. **Entry-point container transformers** — the structural YJ-container→HTML walk.
-   `error_en.properties` names `BlockImageTransformer.getHeightOrWidthValueInPixel`;
-   raw-zip scan finds `BlockImageTransformer` in exactly one entry:
-   `yjhtmlmapper/transformers/NonBlockingBlockImageTransformer` (the *forward* counterpart,
-   different class). No entry-point transformer classes survive.
-3. **HTML link resolver** — `YJDECOMPILER_LINK_RESOLVER_DATA` ("Overwriting with anchors on
-   html … resolved/unresolved anchor count") and `YJDECOMPILER_HTML_LINK_RESOLVING_FAILURE`
-   have no surviving logger; `N.f` utilities exist but the resolver itself is gone.
-4. **HTML context initialization** (`YJDECOMPILER_HTML_CONTEXT_INITIALISATION_FAILURE`) —
-   the builder that creates per-file HTML contexts is gone.
-5. **KFX validation step** (`YJDECOMPILER_KFX_VALIDATION_FAILURE`) — gone.
-6. The **bridge** from `kaf` book → `q.a.g` writers (zero classes reference both).
+2. **Entry-point container-transformer implementation matching the decompiler diagnostics** — the structural
+   YJ-container→HTML walk was not located. `error_en.properties` names
+   `BlockImageTransformer.getHeightOrWidthValueInPixel`; raw-zip scan finds the string only through
+   `yjhtmlmapper/transformers/NonBlockingBlockImageTransformer`, a different class. No class matching the named
+   decompiler transformer was identified.
+3. **HTML link-resolver wiring** — the `YJDECOMPILER_LINK_RESOLVER_DATA` /
+   `YJDECOMPILER_HTML_LINK_RESOLVING_FAILURE` diagnostics have no surviving direct logger found. `N.f` DOM/link
+   utilities remain, but the historical resolver orchestration was not identified.
+4. **HTML-context initialization wiring** — the code corresponding to
+   `YJDECOMPILER_HTML_CONTEXT_INITIALISATION_FAILURE` was not identified as a surviving reverse-pipeline component.
+5. **KFX validation stage** — no reverse-pipeline consumer corresponding to
+   `YJDECOMPILER_KFX_VALIDATION_FAILURE` was identified.
+6. A direct **bridge** from `kaf` book → `q.a.g` writers (raw class-reference scan found zero classes referencing both).
 
 ## 5. CONFIRMED: launcher environment contract (extends the existing doc)
 
@@ -246,44 +251,37 @@ beyond confirming the immediate-encoded fragments (`--format`, `epub3`, `--gener
 
 ## 6. INFERENCE (clearly labeled — not byte-level proven)
 
-- **Reconstructability: high for everything except the structural walk.** The surviving set
-  covers style mapping (both directions), all EPUB resource writing (xhtml/css/ncx/opf/nav/
-  mimetype/metadata), the final zip, style templates, and native YJ book access. The pieces
-  to re-implement are: the driver `main` (arg contract already known from the native
-  launcher), the entry-point container→HTML transformers, the link resolver, and HTML
-  context assembly. This is a structural walk over `B.d.b`/`kaf.c.y` sections emitting
-  xhtml via `q.a.g.b.b` — comparable in size to the yj_to_epub work already done in this
-  repo's Go port, not to kfxlib as a whole.
-- **No kfxlib shadowing needed for object-model access.** `libshared.dylib` + `kaf` JNI +
-  `B.c` DOM give a complete native YJ/KDF reader — the same one the original decompiler
-  used. What would still be "shadowed" is only the *emitter* logic, which we already
-  independently implement in Go.
+- **The surviving pieces materially reduce a reconstruction, but its remaining size is not yet bounded.** The bundle
+  retains the reverse style-mapping implementation, EPUB resource writers/zipper, style-template machinery, and native
+  YJ/KDF object access. Missing or unproven integration still includes the driver, structural container→HTML traversal,
+  link resolution, HTML-context assembly, validation, and the glue/data contracts among those stages. None of the retained
+  reverse mapper/writer stack has yet been driven end-to-end on a KDF, so estimating the reconstruction as only a structural
+  walk would overstate the evidence.
+- **Native KAF can potentially avoid duplicating object-model parsing for Previewer KDFs.** `libshared.dylib` + KAF JNI +
+  `B.c` expose the typed model used by Previewer. That is strong evidence for reusing Amazon's reader during research, not a
+  proof that a standalone reconstruction can replace kfxlib for every historical/consumer KFX variant or without lifecycle
+  constraints.
 - **The strip was selective, not complete.** The presence of message bundles, the module
   registration, the orphaned writer package, and the reverse-mapper implementation suggests
   the decompiler jar was pruned by package (removing `com/amazon/yj/decompiler/**`-style
   entry points and entry-point transformers) rather than rebuilt from a decompiler-free
   source tree. Older Previewer/Kindle Create builds plausibly shipped the full set
   (testable only with an older installer, out of scope here).
-- **JNI lifecycle hazards are real.** The parallel in-repo probe
-  (`scripts/kp3/com/amazon/kaf/jni/adapters/KafPositionProbe.java`, crash log
-  `hs_err_pid16862.log`) shows `libshared.dylib` can abort a plain JVM when native
-  ownership rules are violated (crash inside `jni_ThrowNew` from `libshared+0x1b7e`).
-  Any reconstruction should follow the shipped `kcflocationmap`/`kcfpositionmapcreator`
-  call ordering and treat probes as one-shot subprocesses.
+- **JNI lifecycle hazards are real.** Exploratory standalone probes have reproduced fatal native/JVM crashes on
+  some KAF calls. Any reconstruction should follow shipped `kcflocationmap`/`kcfpositionmapcreator` call ordering, isolate
+  risky probes in one-shot subprocesses, and not infer API safety merely from a successful getter.
 - The decompiler's `--format epub3` and generator flag imply the driver selected OPF/NAV
   (EPUB3) output by default; `q.a.g.b.k` writing both `opf` and `nav` plus `j` writing
   `ncx` suggests both EPUB2 and EPUB3 outputs were supported, selected by that flag.
 
 ## 7. Bottom line
 
-The missing YJ→EPUB decompiler is **not** recoverable as a runnable whole from the current
-bundle: the driver, entry-point transformers, link resolver, HTML context, and validator are
-absent, and nothing dynamically provisions them. However, the bundle retains every
-*leaf* subsystem the driver called — reverse style mapper + `stylemap.ion`, the complete
-EPUB resource-writer package, the template manager, the zipper, and the native YJ book
-reader — all orphaned but callable under `YJCONVERSION_ENV_ROOT`/`-Dklibname=shared`. A
-reconstruction therefore reduces to writing one driver plus the structural container→HTML
-walk, and does not require shadowing kfxlib.
+The current bundle does **not** contain a runnable YJ→EPUB decompiler entry point, and the surviving reverse
+pieces are not reconnected end-to-end. It nevertheless retains unusually valuable components: the reverse style-mapper
+implementation and mapping data, EPUB resource writers/zipper, template machinery, and native typed YJ/KDF access. Those
+components make a reconstruction materially more constrained than a from-scratch format implementation, but the remaining
+link/context/validation/glue contracts still need to be recovered or reimplemented before its scope can be stated confidently.
+No bundled mechanism was found that dynamically supplies the missing driver in Previewer 3.106.
 
 Appendix: key evidence offsets (Mach-O `Contents/MacOS/Kindle Previewer 3`, `__cstring`
 at vmaddr `0x102701ba0`, file off `40901536`): `DecompilerApp` `0x2707865`; env/prop table
