@@ -350,3 +350,44 @@ func TestScribeResourceFilenameSanitization(t *testing.T) {
 		t.Errorf("duplicate name: got %q", got)
 	}
 }
+
+// TestScribeNotebookPipelineInlinePlacement covers the
+// nmdl.inline_placement_type branch (yj_to_epub_notebook.py:146-150): the
+// section's content properties are processed and replace the svg element's
+// style instead of the default height/width 100% (L152-153).
+func TestScribeNotebookPipelineInlinePlacement(t *testing.T) {
+	state := newScribeNotebookState(t)
+	// Rebuild the page section with inline placement and a fixed position.
+	state.Fragments.SectionFragments["page-1"] = parseSectionFragment("page-1", map[string]interface{}{
+		"section_name":               "page-1",
+		"nmdl.canvas_width":          15624,
+		"nmdl.canvas_height":         20832,
+		"nmdl.normalized_ppi":        2520,
+		"nmdl.template_id":           "tpl-lined",
+		"nmdl.inline_placement_type": "yj.after", // $670
+		"position":                   "fixed",
+		"top":                        float64(100),
+		"left":                       float64(200),
+		"page_templates":             []interface{}{"pt-page"},
+	})
+
+	book, err := renderBookState(state, nil)
+	if err != nil {
+		t.Fatalf("renderBookState failed: %v", err)
+	}
+	if len(book.Sections) != 1 {
+		t.Fatalf("expected 1 spine section, got %d", len(book.Sections))
+	}
+	body := book.Sections[0].BodyHTML
+	// process_content_properties converts the YJ properties into CSS
+	// declarations applied to the svg element with replace=True. KFX fixed
+	// positioning maps to CSS absolute positioning in convert_yj_properties.
+	for _, want := range []string{"position: absolute", "top: 100px", "left: 200px"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("inline placement style missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `style="height: 100%; width: 100%"`) {
+		t.Errorf("inline placement must replace the default height/width style:\n%s", body)
+	}
+}
