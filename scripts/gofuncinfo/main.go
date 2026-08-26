@@ -40,6 +40,7 @@ type FuncInfo struct {
 	Line      int      `json:"line"`
 	EndLine   int      `json:"end_line"`
 	NStmt     int      `json:"nstmt"`
+	NLit      int      `json:"nlit"` // composite literal element count (struct/map/slice literals)
 	NChars    int      `json:"nchars"`
 	Empty     bool     `json:"empty"`
 	ConstOnly bool     `json:"const_only"`
@@ -179,12 +180,16 @@ func analyzeFunc(file string, fd *ast.FuncDecl, fset *token.FileSet) FuncInfo {
 	}
 
 	stmts := 0
+	nlit := 0
 	calls := map[string]bool{}
 	ast.Inspect(fd.Body, func(n ast.Node) bool {
 		if _, ok := n.(ast.Stmt); ok {
 			if _, isBlock := n.(*ast.BlockStmt); !isBlock {
 				stmts++
 			}
+		}
+		if cl, ok := n.(*ast.CompositeLit); ok {
+			nlit += len(cl.Elts)
 		}
 		if ce, ok := n.(*ast.CallExpr); ok {
 			if name := callName(ce.Fun); name != "" {
@@ -197,6 +202,7 @@ func analyzeFunc(file string, fd *ast.FuncDecl, fset *token.FileSet) FuncInfo {
 		return true
 	})
 	info.NStmt = stmts
+	info.NLit = nlit
 	info.Empty = len(fd.Body.List) == 0
 
 	callNames := make([]string, 0, len(calls))

@@ -186,6 +186,32 @@ func TestJSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestNLitCountsCompositeLiterals(t *testing.T) {
+	fns := runScan(t, `package p
+
+type cfg struct{ A, B, C int }
+
+func constructor() cfg {
+	return cfg{A: 1, B: 2, C: 3}
+}
+
+func table() map[string]int {
+	return map[string]int{"one": 1, "two": 2, "three": 3, "four": 4}
+}
+
+func nothing() cfg { return cfg{} }
+`)
+	if got := fns["constructor"].NLit; got != 3 {
+		t.Errorf("constructor NLit = %d, want 3", got)
+	}
+	if got := fns["table"].NLit; got != 4 {
+		t.Errorf("table NLit = %d, want 4", got)
+	}
+	if got := fns["nothing"].NLit; got != 0 {
+		t.Errorf("nothing NLit = %d, want 0", got)
+	}
+}
+
 func TestTrivialReturnIsZeroValueOnly(t *testing.T) {
 	// A function returning a non-constant computed value must NOT be
 	// const_only even if its body is a single return.
