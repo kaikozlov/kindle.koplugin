@@ -1012,7 +1012,7 @@ func TestFallbackNavigationUsesGenericContentWithoutGuide(t *testing.T) {
 	}
 }
 
-func TestDefaultNavigationFromSections(t *testing.T) {
+func TestDefaultNavigationWithoutGuideUsesFirstContentSection(t *testing.T) {
 	book := Book{
 		Identifier: "urn:uuid:default-nav",
 		Title:      "Default Nav",
@@ -1024,23 +1024,19 @@ func TestDefaultNavigationFromSections(t *testing.T) {
 			{Filename: "ch2.xhtml", Title: "Chapter Two", BodyHTML: "<p>2</p>"},
 			{Filename: "ch3.xhtml", Title: "Chapter Three", BodyHTML: "<p>3</p>"},
 		},
-		// Navigation is empty — should auto-generate
 	}
 	path := writeBookToTemp(t, book)
 	files := readZIP(t, path)
 
-	// Check NCX has 3 navPoints matching section titles
+	// Python generate_epub creates one generic Content entry pointing at the first
+	// book part when both ncx_toc and guide are empty.
 	ncxData := string(files["OEBPS/toc.ncx"])
 	tocLabels := extractAllMatches(ncxData, `<navPoint[^>]*>\s*<navLabel>\s*<text>([^<]+)</text>`)
-
-	expected := []string{"Chapter One", "Chapter Two", "Chapter Three"}
-	if len(tocLabels) != len(expected) {
-		t.Fatalf("nav labels: got %v (count %d), want %v", tocLabels, len(tocLabels), expected)
+	if len(tocLabels) != 1 || tocLabels[0] != "Content" {
+		t.Fatalf("nav labels: got %v, want [Content]", tocLabels)
 	}
-	for i, got := range tocLabels {
-		if got != expected[i] {
-			t.Errorf("nav label %d: got %q, want %q", i, got, expected[i])
-		}
+	if !strings.Contains(ncxData, `<content src="ch1.xhtml"/>`) {
+		t.Fatalf("fallback TOC does not target first section: %s", ncxData)
 	}
 }
 
