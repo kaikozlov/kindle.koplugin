@@ -7180,17 +7180,10 @@ func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[st
 		}
 	}
 
-	// Case 2: Leaf text node with style (heading or non-heading).
-	// Python's process_content creates a <div> for this node, then is_top_level
-	// renames it to <body>. The style goes on <body> and the text content
-	// is rendered inline inside <body>.
-	if styleID != "" {
-		if _, hasContent := asMap(node["content"]); hasContent {
-			if _, hasResource := asString(node["resource_name"]); !hasResource {
-				return styleID, nodes, true, true, nodeID // leaf text: render inline
-			}
-		}
-	}
+	// Case 2: Do not promote semantic text nodes. In the current YJ section model the
+	// page template is the top-level object that becomes <body>; a text node inside its
+	// referenced storyline remains a child and is simplified to <p>/<heading>. Promoting
+	// the storyline leaf here bypasses annotation spans and reverse inheritance.
 
 	// Case 3: Resource node with style (image-only bodies).
 	// Python's process_content creates a <div> for resource nodes ($274 type),

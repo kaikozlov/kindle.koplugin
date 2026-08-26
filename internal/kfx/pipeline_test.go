@@ -199,6 +199,17 @@ func TestRenderSectionFragmentsSelectsActiveConditionalTemplateForFixedLayout(t 
 	}
 }
 
+func TestPromotedBodyContainerDoesNotPromoteSemanticTextLeaf(t *testing.T) {
+	nodes := []interface{}{map[string]interface{}{
+		"type": "text",
+		"style": "s1",
+		"content": map[string]interface{}{"name": "content", "index": 0},
+	}}
+	if _, _, ok, _, _ := promotedBodyContainer(nodes, nil); ok {
+		t.Fatal("semantic text node must remain a child of body")
+	}
+}
+
 func TestPromotedBodyContainerDoesNotPromoteSemanticContainers(t *testing.T) {
 	for _, nodeType := range []string{"table", "list"} {
 		nodes := []interface{}{map[string]interface{}{
