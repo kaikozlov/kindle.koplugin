@@ -1831,43 +1831,13 @@ The verified `dropcap` fixture (12pt/14pt paragraph, 42pt floated initial) yield
 `image-figure` carries a reflowable `<figure><img/><figcaption/></figure>` with a deterministic 60x40 PNG. Two observations:
 
 1. **Producer keeps PNG resources untouched.** The KDF stores the source PNG verbatim (`res/rsrc9`), so the serialized KFX handed to both reversers contains a PNG resource — a case the ten real-book corpus (all JPEG) never exercises. Both implementations emit byte-identical `image_rsrc9.png` (same sha256). Python logs `Resource e8 is unexpected PNG` (`yj_structure.py` L573: a PNG outside illustrated/print-replica/magazine/prepublication contexts is flagged); the Go `internal/kfx/yj_structure.go` port has no equivalent `unexpected PNG/WEBP/GIF` diagnostics — a diagnostics-parity gap, not an output gap.
-2. **Class-name gap on the caption.** The YJ stylesheet names the caption style `sC` with `$761: [$282]` (figure layout hint). Python prefixes the class with the sorted layout-hint list (`yj_to_epub_properties.py` L77-81 `LAYOUT_HINT_ELEMENT_NAMES`, L1522-1531), producing `figure_sC`; Go emits `class_sC`, i.e. the figure hint is not applied to the caption's class base name (Go `styleMetadataForBaseName`/`styleInfoFromClasses`, `internal/kfx/yj_to_epub_properties.go` L469-500 and L1969-1990). The styles themselves are identical; only the class name differs. Unified diff (`--diff`):
-
-```diff
- <figure class="figure_sA"><img src="image_rsrc9.png" alt="Probe gradient" class="class_sA"/></figure>
--<p class="figure_sC">Probe figure caption.</p>
-+<p class="class_sC">Probe figure caption.</p>
-```
-
-```diff
- .class_sA {width: 50%}
-+.class_sC {margin-bottom: 0; margin-left: 4.688%; margin-right: 4.688%; margin-top: 0}
- .figure_sA {margin-bottom: 0; margin-left: 4.688%; margin-right: 4.688%; margin-top: 1.34em}
--.figure_sC {margin-bottom: 0; margin-left: 4.688%; margin-right: 4.688%; margin-top: 0}
-```
+2. **The fixture exposed and then closed a class-name gap on the caption.** The YJ stylesheet names the caption style `sC` with `$761: [$282]` (figure layout hint). Python prefixes the class with the sorted layout-hint list (`yj_to_epub_properties.py` L77-81 `LAYOUT_HINT_ELEMENT_NAMES`, L1522-1531), producing `figure_sC`. The first Go run emitted `class_sC` because `paragraphClass` discarded the style's layout hints before `fixupStylesAndClasses` derived the final class prefix. The cumulative integration now carries those hints into the intermediate style metadata; the rerun emits `figure_sC` and the fixture has zero structural/image/other diffs.
 
 ### First-line pseudo-element findings
 
-`first-line` exercises `::first-line` and `::first-letter`. The preprocessor materializes `::first-line` as a `data-first-line-style` attribute on the paragraph (`coreprocessor.js` `FIRST_LINE_STYLE`), which the adapter turns into YJ `$622` `yj.first_line_style`; `::first-letter` becomes an ordinary inline span with relativized styles and lands as a `$142` style event. The drop cap and `::first-letter` paths both reverse exactly; the `$622` path diverges:
+`first-line` exercises `::first-line` and `::first-letter`. The preprocessor materializes `::first-line` as a `data-first-line-style` attribute on the paragraph (`coreprocessor.js` `FIRST_LINE_STYLE`), which the adapter turns into YJ `$622` `yj.first_line_style`; `::first-letter` becomes an ordinary inline span with relativized styles and lands as a `$142` style event.
 
-- Python (`yj_to_epub_content.py` L1123-1133) writes the first-line properties onto the element's own style as `-kfx-firstline-*` properties, and the class pass (`yj_to_epub_properties.py` L1548-1560) extracts them into a `.{same-class}::first-line` CSS rule attached to the class the element already uses.
-- Go (`internal/kfx/yj_to_epub_content.go` L6215-6237) instead reserves a separate `kfx-firstline` marker class, appends it to the element, and emits `.kfx-firstline::first-line` as a late static rule.
-
-Observable diff:
-
-```diff
--<p class="class_s6">The first line of this paragraph ...</p>
-+<p class="class_s6 kfx-firstline">The first line of this paragraph ...</p>
-```
-
-```diff
- .class_s6 {margin-bottom: 0; margin-top: 0}
--.class_s6::first-line {font-variant: small-caps; letter-spacing: 1pt}
- .class_sA {font-size: 2em; font-weight: bold}
-+.kfx-firstline::first-line {font-variant: small-caps; letter-spacing: 1pt}
-```
-
-Three user-visible consequences: an extra class token in the XHTML, a differently named (and, for multiple distinct first-line styles, potentially colliding) selector, and different CSS rule ordering.
+The first differential run exposed a real `$622` mismatch. Python (`yj_to_epub_content.py` L1123-1133) prefixes the processed declarations onto the element's own style as `-kfx-firstline-*`; the class pass (`yj_to_epub_properties.py` L1548-1560) then extracts them into a `.{same-class}::first-line` rule. Go instead created a separate `kfx-firstline` marker class, which changed both XHTML and selector naming. The cumulative integration now follows Python's two-stage representation: `applyFirstLineStyle` attaches the `-kfx-firstline-*` properties to the element style and `fixupStylesAndClasses` extracts them onto the element's normal final class. The current fixture rerun is exact (zero structural/image/other diffs), including the `$142` first-letter path.
 
 ### Why not CSS transforms for the third slot
 
@@ -1884,13 +1854,13 @@ CSS `transform`/`rotate` was evaluated first for the third fixture family and re
 | `vertical-ruby` | 0 | 0 | 0 | |
 | `link` | 0 | 0 | 0 | |
 | `bidi` | 0 | 0 | 0 | |
-| `list` | 0 | 0 | 0 | timestamp-only OPF varies by run |
+| `list` | 0 | 0 | 0 | |
 | `svg` | 0 | 0 | 0 | |
 | `dropcap` | 0 | 0 | 0 | `$125`/`$126` reversal byte-identical |
-| `image-figure` | 2 | 0 | 0 | `figure_sC` vs `class_sC` class naming |
-| `first-line` | 2 | 0 | 0 | `kfx-firstline` marker class vs same-class `::first-line` |
+| `image-figure` | 0 | 0 | 0 | PNG bytes and figure layout-hint class naming now match |
+| `first-line` | 0 | 0 | 0 | same-class `::first-line` and `$142` first-letter now match |
 
-The two divergences above are recorded as discovery outcomes for the converter work; no production converter code was changed in the branch that added these fixtures.
+The two new fixtures initially exposed output divergences; both were then fixed in the cumulative converter integration and the twelve-fixture matrix was rerun end to end. Timestamp-only `content.opf` differences can appear on arbitrary fixtures when the two reversers cross a wall-clock second; after excluding that nondeterministic field, all twelve fixtures currently have zero structural, image, and other differences.
 
 ## Generated KDF storage format: SQLite plus Amazon fingerprint records
 
@@ -2195,10 +2165,9 @@ This would not remove the need for historical compatibility handling, but it wou
 
 1. Expand the controlled semantic matrix beyond the twelve current fixtures:
    - ~~drop caps and first-line styles~~ (covered by `dropcap` and `first-line`, 2026-08-26;
-     `first-line` exposed the `kfx-firstline` marker-class divergence recorded above);
+     the first-line class/selector divergence they exposed is fixed and the fixtures now reverse exactly);
    - ~~ordinary raster-image/figure behavior distinct from fixed layout~~ (covered by
-     `image-figure`, 2026-08-26; exposed the `figure_sC` class-naming divergence and
-     confirmed PNG resources reverse byte-identically);
+     `image-figure`, 2026-08-26; the layout-hint class-name divergence is fixed and PNG resources reverse byte-identically);
    - ~~CSS transforms/absolute positioning outside the PDF-backed case~~ (evaluated and
      dropped: `stylemap.ion` has no CSS `transform`/`rotate`/absolute-position mappings
      for reflowable content, so no fixture can exercise them through this producer;

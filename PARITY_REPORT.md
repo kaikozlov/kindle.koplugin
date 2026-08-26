@@ -144,13 +144,13 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
-| `KFX_EPUB.decompile_to_epub` (L193) | 1 | `decompileToEpub` (yj_to_epub.go:L735) | 1 | dead [dead] |
-| `KFX_EPUB.replace_ion_data` (L285) | 15 | `replaceIonData` (yj_to_epub.go:L778) | 2 | dead [dead] |
-| `KFX_EPUB.get_fragment_name` (L353) | 1 | `getFragmentName` (yj_to_epub.go:L857) | 1 | dead [dead] |
-| `KFX_EPUB.get_structure_name` (L356) | 1 | `getStructureName` (yj_to_epub.go:L897) | 2 | dead [dead] |
-| `KFX_EPUB.check_empty` (L359) | 1 | `checkEmpty` (yj_to_epub.go:L904) | 0 | dead [dead] |
-| `KFX_EPUB.progress_countdown` (L362) | 4 | `progressCountdown` (yj_to_epub.go:L910) | 2 | dead [dead] |
-| `KFX_EPUB.update_progress` (L368) | 2 | `updateProgress` (yj_to_epub.go:L918) | 0 | dead [dead] |
+| `KFX_EPUB.decompile_to_epub` (L193) | 1 | `decompileToEpub` (yj_to_epub.go:L738) | 1 | dead [dead] |
+| `KFX_EPUB.replace_ion_data` (L285) | 15 | `replaceIonData` (yj_to_epub.go:L781) | 2 | dead [dead] |
+| `KFX_EPUB.get_fragment_name` (L353) | 1 | `getFragmentName` (yj_to_epub.go:L860) | 1 | dead [dead] |
+| `KFX_EPUB.get_structure_name` (L356) | 1 | `getStructureName` (yj_to_epub.go:L900) | 2 | dead [dead] |
+| `KFX_EPUB.check_empty` (L359) | 1 | `checkEmpty` (yj_to_epub.go:L907) | 0 | dead [dead] |
+| `KFX_EPUB.progress_countdown` (L362) | 4 | `progressCountdown` (yj_to_epub.go:L913) | 2 | dead [dead] |
+| `KFX_EPUB.update_progress` (L368) | 2 | `updateProgress` (yj_to_epub.go:L921) | 0 | dead [dead] |
 
 ### yj_to_epub_metadata.py
 
@@ -580,7 +580,7 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
-| `check_empty` (L175) | 8 | `checkEmpty` (yj_to_epub.go:L904) | 0 | dead [dead,cross-file] |
+| `check_empty` (L175) | 8 | `checkEmpty` (yj_to_epub.go:L907) | 0 | dead [dead,cross-file] |
 | `tempdir` (L67) | 12 | — | 0 | missing |
 | `temp_file_cleanup` (L87) | 13 | — | 0 | missing |
 | `temp_filename` (L108) | 7 | — | 0 | missing |
