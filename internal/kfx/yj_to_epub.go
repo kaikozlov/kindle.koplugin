@@ -77,6 +77,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 		"format_capabilities": state.Fragments.FormatCapabilities,
 		"container":         state.Fragments.Generators,
 		"path_bundle":       state.Fragments.PathBundles,
+		"auxiliary_data":    state.Fragments.AuxiliaryData,
 		"structure":         rubyContents,
 		"ruby_content":      rubyGroups,
 	}

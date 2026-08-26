@@ -70,6 +70,7 @@ type fragmentCatalog struct {
 	FormatCapabilities    map[string]map[string]interface{} // $593 fragments keyed by fragment ID.
 	Generators            map[string]map[string]interface{} // $270 fragments keyed by fragment ID.
 	PathBundles           map[string]map[string]interface{} // $692 path_bundle fragments keyed by bundle name.
+	AuxiliaryData         map[string]map[string]interface{} // $597 auxiliary_data fragments, including dictionary rule metadata.
 	FontFragments         map[string]fontFragment
 	RawFragments          map[string][]byte
 	PositionAliases       map[int]string
@@ -260,6 +261,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 		FormatCapabilities: map[string]map[string]interface{}{},
 		Generators:        map[string]map[string]interface{}{},
 		PathBundles:       map[string]map[string]interface{}{},
+		AuxiliaryData:     map[string]map[string]interface{}{},
 		FontFragments:     map[string]fontFragment{},
 		RawFragments:      map[string][]byte{},
 		PositionAliases:   map[int]string{},
@@ -366,7 +368,7 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 			categorizedData[fragmentType][summaryID] = true
 
 			switch fragmentType {
-			case "content", "style", "external_resource", "metadata", "storyline", "section", "font", "anchor", "container", "nav_container", "book_metadata", "document_data", "content_features", "format_capabilities", "structure", "section_position_id_map", "ruby_content", "path_bundle":
+			case "content", "style", "external_resource", "metadata", "storyline", "section", "font", "anchor", "container", "nav_container", "book_metadata", "document_data", "content_features", "format_capabilities", "structure", "section_position_id_map", "ruby_content", "path_bundle", "auxiliary_data":
 				value, err := decodeIonMap(payload, srcDocSymbols, resolver)
 				if err != nil {
 					return nil, err
@@ -453,6 +455,8 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 							fragments.PositionAliases[positionID] = sectionID
 						}
 					}
+				case "auxiliary_data":
+					fragments.AuxiliaryData[summaryID] = value
 				case "path_bundle":
 					// Python: self.book_data["$692"][fragment_name] = value
 					// $692=path_bundle, keyed by "name" field.
