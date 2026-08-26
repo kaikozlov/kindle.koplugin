@@ -3,6 +3,7 @@ package kfx
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -677,6 +678,36 @@ func TestProcessScribeNotebookPageSection_UnexpectedPPI(t *testing.T) {
 // VAL-D-019: processScribeNotebookTemplateSection — non-nil context returns true
 // Python: yj_to_epub_notebook.py:158-218
 // ---------------------------------------------------------------------------
+
+func TestProcessScribeNotebookPageSection_DesaturatesNotebookContent(t *testing.T) {
+	var svgData []byte
+	ctx := &ScribeNotebookContext{
+		DesaturateNotebooks: true,
+		ManifestResource: func(_ string, data []byte) {
+			svgData = append([]byte(nil), data...)
+		},
+	}
+	section := map[string]interface{}{
+		"nmdl.canvas_width": 15624,
+		"nmdl.canvas_height": 20832,
+		"nmdl.normalized_ppi": 2520,
+	}
+	if !processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "desaturate", 0) {
+		t.Fatal("processScribeNotebookPageSection returned false")
+	}
+	got := string(svgData)
+	for _, want := range []string{
+		`id="desaturate"`,
+		`color-interpolation-filters="sRGB"`,
+		`<feColorMatrix`,
+		`values="0.5 0.25 0.25 0 0 0.25 0.5 0.25 0 0 0.25 0.25 0.5 0 0 0 0 0 1 0"`,
+		`style="filter: url(#desaturate);"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("desaturated notebook SVG missing %q: %s", want, got)
+		}
+	}
+}
 
 func TestProcessScribeNotebookTemplateSection_NilContext(t *testing.T) {
 	// Nil context should return false

@@ -1462,6 +1462,11 @@ type ScribeNotebookContext struct {
 	// WritingMode is the current writing mode (self.writing_mode in Python).
 	WritingMode string
 
+	// DesaturateNotebooks mirrors KFX_EPUB_Notebook.desaturate_notebooks. When
+	// enabled, notebook strokes are rendered through the same SVG color-matrix
+	// filter used by the Python reference. The normal conversion path leaves it false.
+	DesaturateNotebooks bool
+
 	// NewBookPart creates a new book part with the given filename.
 	// Returns a *ScribeBookPart.
 	// Port of Python: self.new_book_part(filename=...)
@@ -1629,9 +1634,25 @@ func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[st
 	pageSvgElem.Attrib["xmlns"] = "http://www.w3.org/2000/svg"
 	pageSvgElem.Attrib["xmlns:xlink"] = "http://www.w3.org/1999/xlink"
 
-	// Python L118-119: self.process_notebook_content(page_template, page_svg_elem)
+	// Python yj_to_epub_notebook.py:117-125 optionally inserts an SVG filter
+	// and renders all notebook content inside a filtered group.
+	notebookContentParent := pageSvgElem
+	if ctx.DesaturateNotebooks {
+		desaturateFilter := newSVGElement(pageSvgElem, "filter", map[string]string{
+			"id": "desaturate", "color-interpolation-filters": "sRGB",
+		})
+		newSVGElement(desaturateFilter, "feColorMatrix", map[string]string{
+			"type": "matrix",
+			"values": "0.5 0.25 0.25 0 0 0.25 0.5 0.25 0 0 0.25 0.25 0.5 0 0 0 0 0 1 0",
+		})
+		notebookContentParent = newSVGElement(pageSvgElem, "g", map[string]string{
+			"style": "filter: url(#desaturate);",
+		})
+	}
+
+	// Python L126: self.process_notebook_content(page_template, notebook_content_parent)
 	if ctx.notebookContext != nil {
-		processNotebookContent(ctx.notebookContext, pageTemplate, pageSvgElem)
+		processNotebookContent(ctx.notebookContext, pageTemplate, notebookContentParent)
 	}
 	checkEmptyNotebookSafe(pageTemplate, fmt.Sprintf("Section %s page_template", sectionName))
 
