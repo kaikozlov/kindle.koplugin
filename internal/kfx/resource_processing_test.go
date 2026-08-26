@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"strings"
 	"testing"
 )
 
@@ -287,12 +288,14 @@ func TestConvertPDFPageToImage_NoPanic(t *testing.T) {
 	t.Setenv("PATH", "/nonexistent") // force the no-renderer deployment
 	pdfData := createMinimalPDF(1)
 
-	// Should not panic even when rendering tools are unavailable
+	// Python resources.py:324: the render runs BEFORE any extraction; without
+	// a renderer the whole conversion raises and the caller keeps the PDF.
 	result, format, err := convertPDFPageToImage("test.pdf", pdfData, 1, nil, false)
-	// A page with no extractable single image must be reported as an error
-	// (honest failure) rather than silently returning a blank placeholder JPEG.
 	if err == nil {
-		t.Fatal("expected error for PDF page with no images")
+		t.Fatal("expected render error for PDF conversion without renderer")
+	}
+	if !strings.Contains(err.Error(), "pdftoppm") {
+		t.Fatalf("expected pdftoppm render error, got: %v", err)
 	}
 	if result != nil || format != "" {
 		t.Fatalf("expected nil data/format on failure, got (%d bytes, %q)", len(result), format)

@@ -1194,7 +1194,11 @@ func TestGetPDFPageImage_MultiPagePDF_ExtractsCorrectPage(t *testing.T) {
 	// We use a single-page PDF and request page 1.
 	pdfData := createPDFWithJPEG(80, 60, 72, 54) // 80 DPI, aspect 4:3
 
-	result, format, err := getPDFPageImage("multipage.pdf", pdfData, 1, false, nil)
+	rendered, renderErr := renderPDFPageJPEG("multipage.pdf", pdfData, 1)
+	if renderErr != nil {
+		t.Skipf("pdftoppm not available; cannot verify extraction: %v", renderErr)
+	}
+	result, format, err := getPDFPageImage("multipage.pdf", pdfData, 1, false, rendered)
 	if err != nil {
 		t.Fatalf("expected successful extraction, got: %v", err)
 	}
@@ -1280,10 +1284,12 @@ func testStreamObject(data string) []byte {
 
 func expectPDFConversionError(t *testing.T, location string, pdfData []byte, wantSubstr string) {
 	t.Helper()
-	// Force the no-renderer deployment (Kindle): with pdftoppm available the
-	// failure path would return the rendered page image like Python does.
-	t.Setenv("PATH", "/nonexistent")
-	result, format, err := convertPDFPageToImage(location, pdfData, 1, nil, false)
+	// Branch-level observability: call getPDFPageImage directly without a
+	// rendered reference. Production (convertPDFPageToImage) is render-first:
+	// without pdftoppm every conversion fails with the render error before any
+	// validation runs, and with pdftoppm every validation failure returns the
+	// rendered page like Python's default_image.
+	result, format, err := getPDFPageImage(location, pdfData, 1, false, nil)
 	if err == nil {
 		t.Fatalf("expected error containing %q, got success (format %q)", wantSubstr, format)
 	}
@@ -1303,7 +1309,7 @@ func TestGetPDFPageImage_TextOnlyPage_Rejected(t *testing.T) {
 		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 144 216] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
 		testStreamObject("BT /F1 12 Tf 72 108 Td (Hello) Tj ET"),
 		[]byte("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"))
-	expectPDFConversionError(t, "text.pdf", pdfData, "0 images")
+	expectPDFConversionError(t, "text.pdf", pdfData, "no extractable XObject image")
 }
 
 func TestGetPDFPageImage_TextWithImage_Rejected(t *testing.T) {
@@ -1412,22 +1418,114 @@ func TestGetPDFPageImage_PageOutOfRange_Rejected(t *testing.T) {
 	}
 }
 
-func TestGetPDFPageImage_SoftMask_Rejected(t *testing.T) {
-	// Python relies on image_match (resources.py:444-445) to catch images whose
-	// extraction loses transparency. Without a rasterizer Go rejects masked
-	// images outright (documented deviation — see getPDFPageImage).
-	pdfData := buildSinglePageTestPDF(
-		testImagePageBody(72, 108, ""),
-		testJPEGImageObject(t, 100, 150, "/SMask 6 0 R "),
-		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"),
-		[]byte("<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 4 >>\nstream\n\x00\x40\x80\xff\nendstream"))
-	expectPDFConversionError(t, "smask.pdf", pdfData, "transparency mask")
+// solidColorJPEG encodes a solid-color JPEG (high contrast for image_match).
+func solidColorJPEG(t *testing.T, w, h int, r, g, b uint8) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.SetRGBA(x, y, color.RGBA{R: r, G: g, B: b, A: 255})
+		}
+	}
+	var jb bytes.Buffer
+	if err := jpeg.Encode(&jb, img, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatalf("failed to encode JPEG: %v", err)
+	}
+	return jb.Bytes()
 }
 
-func TestGetPDFPageImage_FlateDecodeImage_ExtractedAsPNG(t *testing.T) {
-	// Python resources.py:421-422: FlateDecode → page_image.image (decoded raster).
-	// pdfcpu renders flate images as PNG; Go re-encodes the decoded raster.
-	const w, h = 100, 150
+// solidJPEGImageXObject builds a DCTDecode image XObject with a solid fill.
+func solidJPEGImageXObject(t *testing.T, w, h int, r, g, b uint8, extraDict string) []byte {
+	t.Helper()
+	jpegData := solidColorJPEG(t, w, h, r, g, b)
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 %s/Filter /DCTDecode /Length %d >>\nstream\n", w, h, extraDict, len(jpegData))
+	buf.Write(jpegData)
+	buf.WriteString("\nendstream")
+	return buf.Bytes()
+}
+
+// smaskXObject builds a 2x2 DeviceGray soft-mask image XObject with the given
+// pixel bytes (0x00 transparent ... 0xff opaque).
+func smaskXObject(pixels string) []byte {
+	return []byte(fmt.Sprintf("<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length %d >>\nstream\n%s\nendstream", len(pixels), pixels))
+}
+
+func TestGetPDFPageImage_DCTSoftMask_VisuallyEffective_RenderedFallback(t *testing.T) {
+	// Python has no mask rejection (resources.py:382-464): DCT+SMask extracts
+	// the base JPEG and image_match decides. A gradient mask changes the page
+	// appearance, so the match fails and the rendered page is returned.
+	requirePdftoppm(t)
+
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, ""),
+		solidJPEGImageXObject(t, 100, 150, 255, 0, 0, "/SMask 6 0 R "),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"),
+		smaskXObject("\x00\x40\x80\xff"))
+
+	result, format, err := convertPDFPageToImage("smask.pdf", pdfData, 1, nil, false)
+	if err != nil {
+		t.Fatalf("expected rendered fallback, got: %v", err)
+	}
+	if format != "jpg" {
+		t.Fatalf("expected rendered fallback format jpg, got %q", format)
+	}
+	if cfg, err := jpeg.DecodeConfig(bytes.NewReader(result)); err != nil || cfg.Width != 300 || cfg.Height != 450 {
+		t.Fatalf("expected 300x450 rendered page, got %vx%v err=%v", cfg.Width, cfg.Height, err)
+	}
+}
+
+func TestGetPDFPageImage_DCTSoftMask_NoOpMask_Extracts(t *testing.T) {
+	// A fully opaque (no-op) SMask does not change the page appearance: the
+	// extracted base JPEG matches the render and extraction is accepted —
+	// exactly Python's behavior (the mask is not applied to DCT data, and
+	// image_match passes).
+	requirePdftoppm(t)
+
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, ""),
+		solidJPEGImageXObject(t, 100, 150, 255, 0, 0, "/SMask 6 0 R "),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"),
+		smaskXObject("\xff\xff\xff\xff"))
+
+	result, format, err := convertPDFPageToImage("smask_noop.pdf", pdfData, 1, nil, false)
+	if err != nil {
+		t.Fatalf("expected extraction despite no-op mask, got: %v", err)
+	}
+	if format != "jpg" {
+		t.Fatalf("expected extracted format jpg, got %q", format)
+	}
+	if cfg, err := jpeg.DecodeConfig(bytes.NewReader(result)); err != nil || cfg.Width != 100 || cfg.Height != 150 {
+		t.Fatalf("expected extracted 100x150 image, got %vx%v err=%v", cfg.Width, cfg.Height, err)
+	}
+}
+
+func TestGetPDFPageImage_FlateSoftMask_ConservativeFallback(t *testing.T) {
+	// DEVIATION (documented in getPDFPageImage): pypdf applies /SMask to Flate
+	// images (RGBA PNG); pdfcpu exposes the base raster only. Go conservatively
+	// falls back to the rendered page instead of extracting unmasked pixels.
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, ""),
+		flateImageXObject(t, 100, 150, "/SMask 6 0 R "),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"),
+		smaskXObject("\x00\x40\x80\xff"))
+	expectPDFConversionError(t, "flate_smask.pdf", pdfData, "transparency mask")
+
+	requirePdftoppm(t)
+	result, format, err := convertPDFPageToImage("flate_smask.pdf", pdfData, 1, nil, false)
+	if err != nil {
+		t.Fatalf("expected rendered fallback, got: %v", err)
+	}
+	if cfg, err := jpeg.DecodeConfig(bytes.NewReader(result)); err != nil || cfg.Width != 300 || cfg.Height != 450 {
+		t.Fatalf("expected 300x450 rendered page, got %vx%v err=%v", cfg.Width, cfg.Height, err)
+	}
+	_ = format
+}
+
+// flateImageXObject builds a FlateDecode (zlib) RGB image XObject with a
+// solid 0x204080 fill.
+func flateImageXObject(t *testing.T, w, h int, extraDict string) []byte {
+	t.Helper()
 	raw := make([]byte, w*h*3)
 	for i := 0; i < len(raw); i += 3 {
 		raw[i], raw[i+1], raw[i+2] = 0x20, 0x40, 0x80
@@ -1438,13 +1536,19 @@ func TestGetPDFPageImage_FlateDecodeImage_ExtractedAsPNG(t *testing.T) {
 	zw.Close()
 
 	var img bytes.Buffer
-	fmt.Fprintf(&img, "<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length %d >>\nstream\n", w, h, fbuf.Len())
+	fmt.Fprintf(&img, "<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 %s/Filter /FlateDecode /Length %d >>\nstream\n", w, h, extraDict, fbuf.Len())
 	img.Write(fbuf.Bytes())
 	img.WriteString("\nendstream")
+	return img.Bytes()
+}
 
+func TestGetPDFPageImage_FlateDecodeImage_ExtractedAsPNG(t *testing.T) {
+	// Python resources.py:421-422: FlateDecode → page_image.image (decoded raster).
+	// pdfcpu renders flate images as PNG; Go re-encodes the decoded raster.
+	const w, h = 100, 150
 	pdfData := buildSinglePageTestPDF(
 		testImagePageBody(72, 108, ""),
-		img.Bytes(),
+		flateImageXObject(t, w, h, ""),
 		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"))
 
 	result, format, err := convertPDFPageToImage("flate.pdf", pdfData, 1, nil, false)

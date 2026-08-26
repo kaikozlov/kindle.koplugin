@@ -1714,15 +1714,27 @@ func hasAlpha(img image.Image) bool {
 func convertPDFPageToImage(location string, pdfData []byte, pageNum int, reportedErrors map[string]bool, forceJPEG bool) ([]byte, string, error) {
 	_ = reportedErrors // Python passes reported_errors through to the renderer; unused here.
 
-	// Python resources.py:324: default_image = (convert_pdf_page_to_jpeg(...), "$285")
-	// The rendering is computed up front — it is both the fallback for every
-	// validation failure and the reference for image_match.
-	// On the Kindle there is no pdftoppm and no pure-Go rasterizer, so the
-	// rendered default is simply unavailable there and getPDFPageImage reports
-	// failures as errors instead (the caller then keeps the original PDF).
+	// Python resources.py:323-326:
+	//
+	//	def convert_pdf_page_to_image(location, pdf_data, page_num, ...):
+	//	    default_image = (convert_pdf_page_to_jpeg(location, pdf_data, page_num, reported_errors), "$285")
+	//	    return get_pdf_page_image(location, pdf_data, page_num, force_jpeg, default_image, pdf_cache)
+	//
+	// The rendering is computed unconditionally BEFORE extraction. If rendering
+	// raises, convert_pdf_page_to_image itself raises and the caller keeps the
+	// original PDF (yj_to_epub_resources.py L147-154) — extraction is never
+	// attempted without the rendered default. This is also a soundness
+	// requirement: image_match against the render is the only visual proof that
+	// the single embedded image equals the page (a page can carry one full-page
+	// image plus vector overlays with no text and no annotations, defeating all
+	// static checks).
+	//
+	// On the Kindle there is no pdftoppm and no pure-Go rasterizer, so
+	// conversion of PDF-backed resources requires a renderer and fails honestly
+	// without one.
 	renderedJPEG, renderErr := renderPDFPageJPEG(location, pdfData, pageNum)
 	if renderErr != nil {
-		log.Printf("kfx: warning: PDF page rendering unavailable for %s page %d: %v", location, pageNum, renderErr)
+		return nil, "", renderErr
 	}
 
 	return getPDFPageImage(location, pdfData, pageNum, forceJPEG, renderedJPEG)
@@ -1911,8 +1923,20 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 			pageImages = append(pageImages, img)
 		}
 	}
-	if len(pageImages) != 1 {
-		return fail("PDF %s page %d has %d images, expected exactly 1", location, pageNum, len(pageImages))
+	// pypdf's PageObject.images also includes inline images parsed from the
+	// page content stream (_parse_images_from_content_stream, _page.py:823+);
+	// pdfcpu counts XObject images only. Restore the exact count semantics:
+	// any inline image makes the page a non-single-image page, and a sole
+	// inline image cannot be extracted (conservative: rendered fallback).
+	imageCount := len(pageImages)
+	if pdfPageHasInlineImage(ctx, pageDict) {
+		imageCount++
+	}
+	if len(pageImages) == 0 {
+		return fail("PDF %s page %d has no extractable XObject image", location, pageNum)
+	}
+	if imageCount != 1 {
+		return fail("PDF %s page %d has %d images, expected exactly 1", location, pageNum, imageCount)
 	}
 	pdfImg := pageImages[0]
 
@@ -1936,14 +1960,18 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 	// Python L402-406: /Type /XObject and /Subtype /Image are guaranteed here —
 	// pdfcpu only extracts image XObjects.
 
-	// Masked images: Python rejects these implicitly — image_match (L444-445)
-	// compares the extracted base image against the rendered page, which differs
-	// whenever a soft/stencil mask contributes to the page appearance. Without a
-	// rasterizer that comparison cannot run, so masked images are rejected
-	// outright rather than extracted without their transparency.
-	if pdfImg.HasSMask || pdfImg.HasImgMask {
-		return fail("PDF %s page %d image has a transparency mask", location, pageNum)
-	}
+	// Masks: Python has no explicit mask rejection (resources.py:382-464).
+	// For DCTDecode and CCITTFaxDecode Python opens image_object.get_data()
+	// directly — the mask is NOT applied — and image_match against the rendered
+	// page decides: a no-op/opaque mask still extracts, a visually effective
+	// mask fails the match and falls back to the render. The same holds here
+	// because extraction is render-first.
+	//
+	// DEVIATION (FlateDecode + SMask only): pypdf's page_image.image applies
+	// the soft mask and yields an RGBA PNG; pdfcpu provides the base raster
+	// only. Applying the mask here would duplicate pypdf's compositing, so
+	// Flate images carrying /SMask or /Mask conservatively fall back to the
+	// rendered page image. Safe (never wrong pixels), documented, tested.
 
 	// Python L408-414: page/image aspect ratio must agree to 0.1%
 	mediaWidth := pAttrs.MediaBox.Width()
@@ -1981,14 +2009,25 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 	// (decoded raster via page_image.image); anything else — JPXDecode,
 	// LZWDecode, RunLengthDecode, or filter pipelines — falls back to the
 	// rendered default image.
+	// Python resources.py:427-434 — asymmetric /Filter matching:
+	//   DCTDecode:   /Filter == "/DCTDecode"            (exact single Name)
+	//   CCITTFaxDecode: "/CCITTFaxDecode" in /Filter    (membership — accepted
+	//                even inside a filter array/pipeline, provided the decoded
+	//                data sniffs .tif, i.e. pypdf's TIFF-wrapped CCITT)
+	//   FlateDecode: /Filter == "/FlateDecode"          (exact single Name)
+	// Anything else falls back to the rendered default image.
 	pipeline := pdfImageFilterPipeline(ctx, pdfImg)
-	if len(pipeline) != 1 {
-		return fail("PDF %s page %d image uses a filter pipeline (%d filters), not extractable",
-			location, pageNum, len(pipeline))
+	isSingleDCT := len(pipeline) == 1 && pipeline[0].Name == "DCTDecode"
+	isSingleFlate := len(pipeline) == 1 && pipeline[0].Name == "FlateDecode"
+	hasCCITT := false
+	for _, f := range pipeline {
+		if f.Name == "CCITTFaxDecode" {
+			hasCCITT = true
+		}
 	}
 
-	switch pipeline[0].Name {
-	case "DCTDecode":
+	switch {
+	case isSingleDCT:
 		// Python L407-408: image_file_ext(image_data) == ".jpg"
 		if !bytes.HasPrefix(imgData, []byte("\xff\xd8\xff")) {
 			return fail("PDF %s page %d DCTDecode image is not JPEG data", location, pageNum)
@@ -2006,16 +2045,30 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 		// Python resources.py:444-445: image_match(pil_img, rendered) before
 		// returning the extraction.
 		if !pdfExtractedImageMatchesRender(decoded, renderedJPEG) {
+			if renderedJPEG == nil {
+				return fail("no rendered page reference available to verify extraction")
+			}
 			return fail("extracted image does not match rendered page")
 		}
 		log.Printf("kfx: info: Extracting JPEG image (%dx%d mode %s) from PDF %s page %d",
 			pdfImg.Width, pdfImg.Height, fullImageModeString(decoded), location, pageNum)
 		return imgData, "jpg", nil
 
-	case "CCITTFaxDecode", "FlateDecode":
-		// pdfcpu renders these images: DeviceGray/RGB as PNG, CMYK as TIFF.
-		// Python converts CCITT TIFF to PNG (L425-430) and uses the decoded
-		// raster for Flate, then applies the same format/mode checks.
+	case hasCCITT, isSingleFlate:
+		// CCITT: pypdf wraps CCITT data in a TIFF container (filters.py:673+)
+		// and resources.py L425-430 converts that TIFF to PNG, so Python ends
+		// with a decoded raster too. pdfcpu decodes CCITT (G3/G4) internally
+		// and renders the raster directly (PNG for Gray/RGB); the .tif sniff
+		// is an artifact of pypdf's container and has no Go equivalent.
+		//
+		// Flate: pypdf's page_image.image yields the decoded raster (with the
+		// soft mask applied — see the mask deviation below).
+		if isSingleFlate && (hasSMask || hasMask) {
+			// DEVIATION: pypdf applies /SMask to Flate images producing an
+			// RGBA PNG; pdfcpu exposes the base raster only. Conservatively
+			// use the rendered page instead of extracting unmasked pixels.
+			return fail("PDF %s page %d Flate image has a transparency mask", location, pageNum)
+		}
 		decoded, err := decodeImageBytes(imgData)
 		if err != nil {
 			log.Printf("kfx: warning: failed to decode extracted image from PDF %s page %d: %v", location, pageNum, err)
@@ -2042,6 +2095,9 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 		// Python resources.py:444-445: image_match(pil_img, rendered) before
 		// returning the extraction.
 		if !pdfExtractedImageMatchesRender(decoded, renderedJPEG) {
+			if renderedJPEG == nil {
+				return fail("no rendered page reference available to verify extraction")
+			}
 			return fail("extracted image does not match rendered page")
 		}
 		log.Printf("kfx: info: Extracting PNG image (%dx%d mode %s) from PDF %s page %d",
@@ -2049,8 +2105,9 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 		return pngData, "png", nil
 
 	default:
-		// JPXDecode / LZWDecode / RunLengthDecode → rendered default in Python.
-		return fail("PDF %s page %d image filter %q is not extractable", location, pageNum, pipeline[0].Name)
+		// JPXDecode / LZWDecode / RunLengthDecode / pipelines → rendered
+		// default image in Python.
+		return fail("PDF %s page %d image filter is not extractable", location, pageNum)
 	}
 }
 
@@ -2465,10 +2522,12 @@ const reportPdfMargins = false
 // without a renderer the static validation checks carry the decision alone.
 func pdfExtractedImageMatchesRender(extracted image.Image, renderedJPEG []byte) bool {
 	if renderedJPEG == nil {
-		// No renderer available (Kindle deployment): image_match cannot run.
-		// The static checks (cropbox, single image, no text, no annotations,
-		// aspect, DPI, filter, mode) have all passed at this point.
-		return true
+		// No rendered reference: image_match cannot run and the static checks
+		// do not prove the image equals the page (vector overlays with no text
+		// or annotations are a counterexample). Unverified extraction is
+		// rejected. convertPDFPageToImage is render-first, so production never
+		// reaches this; only direct callers without a render do.
+		return false
 	}
 	rendered, err := decodeImageBytes(renderedJPEG)
 	if err != nil {
