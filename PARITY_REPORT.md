@@ -7,17 +7,17 @@ Regenerate after any Go or Python reference change.
 
 - **Upstream core kfxlib defs: 961** (154 waived at file scope with reviewed reasons — **they remain in the upstream denominator above and below, always visible**)
 - In-scope defs audited: **807** (structural coverage only — name + body substance; NOT behavioral parity, see §Method limits)
-- Implemented (substantive): **199**
-- Implemented (delegation wrappers): **30**
+- Implemented (substantive): **118**
+- Implemented (delegation wrappers): **11**
 - Mapped via reviewed identity overrides: **0**
 - Implemented (trivial↔trivial, value-equal): **0**
-- Stubs (silent name-only shims): **10**
+- Stubs (silent name-only shims): **1**
 - Stubs (admitted not-implemented): **0**
-- Thin (suspiciously small): **8**
-- Missing (no name match): **306**
+- Thin (suspiciously small): **3**
+- Missing (no name match): **304**
 - Excluded (explicit, per-def, validated): **167**
-- **In-scope structural coverage: 229/640 = 35.8%** (strict, counting explicit exclusions against coverage: 28.4%)
-- **Upstream structural coverage: 229/961 = 23.8%** — the denominator is EVERY upstream core def
+- **In-scope structural coverage: 129/640 = 20.2%** (strict, counting explicit exclusions against coverage: 16.0%)
+- **Upstream structural coverage: 129/961 = 13.4%** — the denominator is EVERY upstream core def
 
 ## Method limits — what this number is NOT
 
@@ -41,21 +41,48 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `KFX_EPUB_Content.process_content_list` (L403) | 4 | `processContentList` (yj_to_epub_content.go:L3978) | 4 | dead [dead] |
+| `KFX_EPUB_Content.process_content` (L411) | 753 | `processContent` (yj_to_epub_content.go:L4008) | 1 | dead [dead] |
+| `KFX_EPUB_Content.create_container` (L1531) | 8 | `createContainer` (yj_to_epub_content.go:L1842) | 11 | dead [dead] |
+| `KFX_EPUB_Content.fix_vertical_align_properties` (L1566) | 13 | `fixVerticalAlignProperties` (yj_to_epub_content.go:L1877) | 23 | dead [dead] |
+| `KFX_EPUB_Content.preformat_spaces` (L1747) | 15 | `preformatSpaces` (yj_to_epub_content.go:L2479) | 1 | dead [dead] |
+| `KFX_EPUB_Content.preformat_text` (L1776) | 22 | `preformatText` (yj_to_epub_content.go:L2487) | 6 | dead [dead] |
+| `KFX_EPUB_Content.replace_eol_with_br` (L1811) | 26 | `replaceEolWithBr` (yj_to_epub_content.go:L2503) | 1 | dead [dead] |
+| `KFX_EPUB_Content.add_kfx_style` (L1862) | 10 | `addKfxStyle` (yj_to_epub_content.go:L3954) | 10 | dead [dead] |
+| `KFX_EPUB_Content.replace_element_with_container` (L1887) | 7 | `replaceElementWithContainer` (yj_to_epub_content.go:L2682) | 11 | dead [dead] |
+| `KFX_EPUB_Content.create_element_content_container` (L1897) | 9 | `createElementContentContainer` (yj_to_epub_content.go:L2719) | 12 | dead [dead] |
+| `KFX_EPUB_Content.find_or_create_style_event_element` (L1910) | 48 | `findOrCreateStyleEventElement` (yj_to_epub_content.go:L3001) | 53 | dead [dead] |
 | `KFX_EPUB_Content.get_px_value` (L701) | 10 | — | 0 | missing |
 | `KFX_EPUB_Content.check_crop_bleed_condition` (L1077) | 5 | — | 0 | missing |
 | `KFX_EPUB_Content.clean_text_for_lxml` (L1876) | 6 | — | 0 | missing |
-| `KFX_EPUB_Content.add_content` (L383) | 13 | `addContent` (yj_to_epub_content.go:L3877) | 1 | thin |
-| `KFX_EPUB_Content.process_content` (L411) | 753 | `processContent` (yj_to_epub_content.go:L3888) | 1 | thin [dead] |
+| `KFX_EPUB_Content.add_content` (L383) | 13 | `addContent` (yj_to_epub_content.go:L3997) | 1 | thin |
 
 ### yj_to_epub_properties.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `KFX_EPUB_Properties.Style` (L1079) | 1 | `Style` (yj_to_epub_properties.go:L5329) | 6 | dead [dead] |
+| `KFX_EPUB_Properties.process_content_properties` (L1082) | 5 | `processContentProperties` (yj_to_epub_properties.go:L4364) | 6 | dead [dead] |
+| `KFX_EPUB_Properties.property_value` (L1175) | 141 | `propertyValue` (yj_to_epub_properties.go:L3918) | 1 | dead [dead] |
+| `KFX_EPUB_Properties.simplify_styles` (L1679) | 205 | `simplifyStyles` (yj_to_epub_properties.go:L4992) | 1 | dead [dead] |
+| `KFX_EPUB_Properties.color_int` (L2140) | 16 | `colorInt` (yj_to_epub_properties.go:L5014) | 27 | dead [dead] |
+| `KFX_EPUB_Properties.pixel_value` (L2181) | 15 | `pixelValue` (yj_to_epub_properties.go:L5050) | 4 | dead [dead] |
+| `KFX_EPUB_Properties.add_class` (L2212) | 6 | `addClass` (yj_to_epub_properties.go:L5059) | 6 | dead [dead] |
+| `KFX_EPUB_Properties.get_style` (L2222) | 1 | `getStyle` (yj_to_epub_properties.go:L5073) | 1 | dead [dead] |
+| `KFX_EPUB_Properties.quote_css_str` (L2287) | 3 | `quoteCssStr` (yj_to_epub_properties.go:L5120) | 1 | dead [dead] |
+| `Style.__init__` (L2297) | 11 | `Style` (yj_to_epub_properties.go:L5329) | 6 | dead [dead] |
+| `Style.tostring` (L2339) | 3 | `styleTostring` (yj_to_epub_properties.go:L5139) | 1 | dead [dead] |
+| `Style.keys` (L2345) | 1 | `styleKeys` (yj_to_epub_properties.go:L5145) | 5 | dead [dead] |
+| `Style.items` (L2348) | 1 | `styleItems` (yj_to_epub_properties.go:L5156) | 4 | dead [dead] |
+| `Style.get` (L2351) | 1 | `styleGet` (yj_to_epub_properties.go:L5166) | 4 | dead [dead] |
+| `Style.pop` (L2391) | 3 | `stylePop` (yj_to_epub_properties.go:L5316) | 5 | dead [dead] |
+| `Style.remove_default_properties` (L2462) | 6 | `styleRemoveDefaultProperties` (yj_to_epub_properties.go:L5306) | 4 | dead [dead] |
+| `class_selector` (L2489) | 1 | `classSelector` (yj_to_epub_properties.go:L4985) | 1 | dead [dead] |
 | `KFX_EPUB_Properties.convert_yj_properties` (L1090) | 54 | — | 0 | missing |
 | `KFX_EPUB_Properties.set_html_defaults` (L1656) | 15 | — | 0 | missing |
 | `KFX_EPUB_Properties.create_css_files` (L2249) | 14 | — | 0 | missing |
 | `KFX_EPUB_Properties.css_url` (L2284) | 1 | — | 0 | missing |
-| `KFX_EPUB_Properties.fix_language` (L2093) | 7 | `fixLanguage` (yj_to_epub_properties.go:L4962) | 3 | thin |
+| `KFX_EPUB_Properties.fix_language` (L2093) | 7 | `fixLanguage` (yj_to_epub_properties.go:L5004) | 3 | thin |
 | `KFX_EPUB_Properties.fix_and_quote_font_family_list` (L2027) | 2 | — | 0 | unresolved_match |
 | `KFX_EPUB_Properties.split_and_fix_font_family_list` (L2032) | 1 | — | 0 | unresolved_match |
 | `KFX_EPUB_Properties.strip_font_name` (L2035) | 6 | — | 0 | unresolved_match |
@@ -75,63 +102,111 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `KFX_EPUB_Misc.evaluate_binary_condition` (L111) | 5 | `evaluateBinaryCondition` (yj_to_epub_misc.go:L1821) | 5 | dead [dead] |
+| `KFX_EPUB_Misc.evaluate_condition` (L119) | 32 | `evaluateCondition` (yj_to_epub_misc.go:L1832) | 1 | dead [dead] |
+| `KFX_EPUB_Misc.process_path` (L345) | 25 | `processPath` (yj_to_epub_misc.go:L1552) | 1 | dead [dead] |
 | `KFX_EPUB_Misc.add_svg_wrapper_to_block_image` (L166) | 42 | — | 0 | missing |
 | `KFX_EPUB_Misc.horizontal_fxl_block_images` (L240) | 23 | — | 0 | missing |
 | `KFX_EPUB_Misc.process_kvg_shape` (L278) | 42 | — | 0 | missing |
-| `KFX_EPUB_Misc.process_dictionary_rules` (L492) | 10 | — | 0 | missing |
-| `KFX_EPUB_Misc.unapply_dictionary_rule` (L509) | 30 | — | 0 | missing |
 | `KFX_EPUB_Misc.process_plugin_uri` (L719) | 6 | — | 0 | missing |
-| `KFX_EPUB_Misc.evaluate_condition` (L119) | 32 | `evaluateCondition` (yj_to_epub_misc.go:L1739) | 1 | thin [dead] |
+| `KFX_EPUB_Misc.process_dictionary_rules` (L492) | 10 | — | 0 | unresolved_match |
+| `KFX_EPUB_Misc.unapply_dictionary_rule` (L509) | 30 | — | 0 | unresolved_match |
 
 ### yj_to_epub_navigation.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `KFX_EPUB_Navigation.process_anchors` (L40) | 22 | `processAnchors` (yj_to_epub_navigation.go:L999) | 9 | dead [dead] |
+| `KFX_EPUB_Navigation.process_nav_container` (L118) | 58 | `processNavContainer` (yj_to_epub_navigation.go:L1018) | 1 | dead [dead] |
+| `KFX_EPUB_Navigation.get_position` (L285) | 4 | `getPosition` (yj_to_epub_navigation.go:L1024) | 3 | dead [dead] |
+| `KFX_EPUB_Navigation.get_representation` (L291) | 16 | `getRepresentation` (yj_to_epub_navigation.go:L1032) | 12 | dead [dead] |
+| `KFX_EPUB_Navigation.position_str` (L315) | 1 | `positionStr` (yj_to_epub_navigation.go:L1051) | 1 | dead [dead] |
+| `KFX_EPUB_Navigation.position_of_anchor` (L345) | 5 | `positionOfAnchor` (yj_to_epub_navigation.go:L1057) | 6 | dead [dead] |
+| `KFX_EPUB_Navigation.process_position` (L375) | 20 | `processPosition` (yj_to_epub_navigation.go:L1086) | 16 | dead [dead] |
+| `KFX_EPUB_Navigation.move_anchors` (L412) | 5 | `moveAnchors` (yj_to_epub_navigation.go:L1126) | 1 | dead [dead] |
+| `KFX_EPUB_Navigation.id_of_anchor` (L443) | 5 | `idOfAnchor` (yj_to_epub_navigation.go:L1153) | 5 | dead [dead] |
+| `KFX_EPUB_Navigation.resolve_toc_target` (L507) | 5 | `resolveTocTarget` (yj_to_epub_navigation.go:L1164) | 3 | dead [dead] |
+| `root_element` (L518) | 3 | `rootElement` (yj_to_epub_navigation.go:L1178) | 1 | dead [dead] |
+| `visible_elements_before` (L525) | 12 | `visibleElementsBefore` (yj_to_epub_navigation.go:L1186) | 7 | dead [dead] |
 | `KFX_EPUB_Navigation.register_link_id` (L362) | 1 | — | 0 | missing |
 | `KFX_EPUB_Navigation.get_anchor_id` (L365) | 4 | — | 0 | missing |
 | `KFX_EPUB_Navigation.get_location_id` (L372) | 1 | — | 0 | missing |
 | `KFX_EPUB_Navigation.get_anchor_uri` (L420) | 6 | — | 0 | missing |
 | `KFX_EPUB_Navigation.anchor_as_uri` (L437) | 1 | — | 0 | missing |
 | `KFX_EPUB_Navigation.anchor_from_uri` (L440) | 1 | — | 0 | missing |
-| `root_element` (L518) | 3 | `rootElement` (yj_to_epub_navigation.go:L1178) | 1 | stub_silent [dead] |
-| `KFX_EPUB_Navigation.process_nav_container` (L118) | 58 | `processNavContainer` (yj_to_epub_navigation.go:L1018) | 1 | thin [dead] |
 
 ### yj_to_epub_resources.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `KFX_EPUB_Resources.resource_location_filename` (L249) | 25 | `resourceLocationFilename` (yj_to_epub_resources.go:L2523) | 17 | dead [dead] |
+| `KFX_EPUB_Resources.uri_reference` (L333) | 16 | `uriReference` (yj_to_epub_resources.go:L2564) | 10 | dead [dead] |
 | `KFX_EPUB_Resources.unique_file_id` (L359) | 13 | — | 0 | missing |
 
 ### yj_to_epub.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
-| `KFX_EPUB.get_named_fragment` (L345) | 1 | `getNamedFragment` (yj_to_epub.go:L877) | 1 | stub_silent |
-| `KFX_EPUB.check_empty` (L359) | 1 | `checkEmpty` (yj_to_epub.go:L936) | 0 | stub_silent [dead] |
-| `KFX_EPUB.update_progress` (L368) | 2 | `updateProgress` (yj_to_epub.go:L950) | 0 | stub_silent [dead] |
-| `KFX_EPUB.replace_ion_data` (L285) | 15 | `replaceIonData` (yj_to_epub.go:L832) | 2 | thin [dead] |
+| `KFX_EPUB.decompile_to_epub` (L193) | 1 | `decompileToEpub` (yj_to_epub.go:L735) | 1 | dead [dead] |
+| `KFX_EPUB.replace_ion_data` (L285) | 15 | `replaceIonData` (yj_to_epub.go:L778) | 2 | dead [dead] |
+| `KFX_EPUB.get_fragment_name` (L353) | 1 | `getFragmentName` (yj_to_epub.go:L857) | 1 | dead [dead] |
+| `KFX_EPUB.get_structure_name` (L356) | 1 | `getStructureName` (yj_to_epub.go:L897) | 2 | dead [dead] |
+| `KFX_EPUB.check_empty` (L359) | 1 | `checkEmpty` (yj_to_epub.go:L904) | 0 | dead [dead] |
+| `KFX_EPUB.progress_countdown` (L362) | 4 | `progressCountdown` (yj_to_epub.go:L910) | 2 | dead [dead] |
+| `KFX_EPUB.update_progress` (L368) | 2 | `updateProgress` (yj_to_epub.go:L918) | 0 | dead [dead] |
+
+### yj_to_epub_metadata.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `KFX_EPUB_Metadata.process_document_data` (L30) | 76 | `processDocumentData` (yj_to_epub_metadata.go:L612) | 1 | dead [dead] |
+| `KFX_EPUB_Metadata.process_content_features` (L136) | 12 | `processContentFeatures` (yj_to_epub_metadata.go:L618) | 1 | dead [dead] |
+| `KFX_EPUB_Metadata.process_metadata` (L154) | 20 | `processMetadata` (yj_to_epub_metadata.go:L624) | 1 | dead [dead] |
+| `KFX_EPUB_Metadata.process_metadata_item` (L184) | 104 | `processMetadataItem` (yj_to_epub_metadata.go:L630) | 1 | dead [dead] |
+
+### yj_to_epub_illustrated_layout.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `find_by_id` (L378) | 6 | `findById` (yj_to_epub_illustrated_layout.go:L965) | 4 | dead [dead] |
+| `positions_in_tree` (L389) | 6 | `positionsInTree` (yj_to_epub_illustrated_layout.go:L183) | 11 | dead [dead] |
+| `is_in_tree` (L401) | 6 | `isInTree` (yj_to_epub_illustrated_layout.go:L206) | 3 | dead [dead] |
 
 ### yj_to_epub_notebook.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `adjust_color_for_density` (L646) | 6 | `adjustColorForDensity` (yj_to_epub_notebook.go:L151) | 10 | dead [dead] |
 | `KFX_EPUB_Notebook.add_points_if_needed` (L460) | 9 | — | 0 | missing |
 
 ### yj_to_image_book.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `KFX_IMAGE_BOOK.convert_book_to_cbz` (L25) | 18 | `convertBookToCbz` (yj_to_image_book.go:L1518) | 1 | dead [dead] |
+| `KFX_IMAGE_BOOK.convert_book_to_pdf` (L57) | 14 | `convertBookToPdf` (yj_to_image_book.go:L1524) | 1 | dead [dead] |
+| `KFX_IMAGE_BOOK.get_ordered_images` (L101) | 33 | `getOrderedImages` (yj_to_image_book.go:L178) | 31 | dead [dead] |
 | `KFX_IMAGE_BOOK.__init__` (L22) | 1 | — | 0 | missing |
 | `combine_images_into_pdf` (L215) | 54 | — | 0 | missing |
 | `combine_images_into_cbz` (L304) | 30 | — | 0 | missing |
+
+### yj_book.py
+
+| Python function | py nstmt | Go match | go nstmt | status |
+|---|---|---|---|---|
+| `YJ_Book.convert_to_epub` (L104) | 5 | `convertToEpub` (yj_book.go:L627) | 1 | dead [dead] |
 
 ### yj_container.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `YJContainer.get_fragments` (L160) | 1 | `getFragments` (yj_container.go:L153) | 1 | dead [dead] |
+| `YJFragmentList.extend` (L341) | 4 | `extend` (yj_container.go:L200) | 1 | dead [dead] |
+| `YJFragmentList.discard` (L352) | 8 | `discard` (yj_container.go:L217) | 1 | dead [dead] |
+| `YJFragmentList.ftypes` (L364) | 3 | `ftypes` (yj_container.go:L223) | 4 | dead [dead] |
+| `YJFragmentList.filtered` (L370) | 11 | `filtered` (yj_container.go:L233) | 5 | dead [dead] |
+| `YJFragmentList.clear` (L387) | 1 | `clear` (yj_container.go:L245) | 1 | dead [dead] |
 | `YJContainer.is_drm_free_dictionary` (L163) | 1 | — | 0 | missing |
-| `YJContainer.get_fragments` (L160) | 1 | `getFragments` (yj_container.go:L153) | 1 | stub_silent [dead] |
-| `YJFragmentList.discard` (L352) | 8 | `discard` (yj_container.go:L217) | 1 | thin [dead] |
 | `YJFragmentKey.sort_key` (L185) | 1 | — | 0 | unresolved_match |
 | `YJFragmentKey.__eq__` (L189) | 5 | — | 0 | unresolved_match |
 | `YJFragmentKey.__lt__` (L198) | 5 | — | 0 | unresolved_match |
@@ -155,6 +230,22 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `BookMetadata.has_metadata` (L251) | 1 | `hasMetadata` (yj_metadata.go:L557) | 1 | dead [dead] |
+| `BookMetadata.has_cover_data` (L255) | 1 | `hasCoverData` (yj_metadata.go:L564) | 1 | dead [dead] |
+| `BookMetadata.is_magazine` (L269) | 1 | `isMagazine` (yj_metadata.go:L232) | 1 | dead [dead] |
+| `BookMetadata.is_sample` (L273) | 1 | `isSample` (yj_metadata.go:L239) | 1 | dead [dead] |
+| `BookMetadata.is_image_based_fixed_layout` (L286) | 6 | `isImageBasedFixedLayout` (yj_metadata.go:L331) | 7 | dead [dead] |
+| `BookMetadata.is_print_replica` (L298) | 5 | `isPrintReplica` (yj_metadata.go:L263) | 17 | dead [dead] |
+| `BookMetadata.is_illustrated_layout` (L314) | 3 | `isIllustratedLayout` (yj_metadata.go:L310) | 5 | dead [dead] |
+| `BookMetadata.is_kfx_v1` (L331) | 4 | `isKfxV1` (yj_metadata.go:L351) | 15 | dead [dead] |
+| `BookMetadata.get_generators` (L389) | 6 | `getGenerators` (yj_metadata.go:L575) | 11 | dead [dead] |
+| `BookMetadata.report_features_and_metadata` (L434) | 71 | `reportFeaturesAndMetadata` (yj_metadata.go:L1214) | 8 | dead [dead] |
+| `BookMetadata.fix_cover_image_data` (L556) | 16 | `fixCoverImageData` (yj_metadata.go:L455) | 16 | dead [dead] |
+| `BookMetadata.check_cover_section_and_storyline` (L648) | 96 | `checkCoverSectionAndStoryline` (yj_metadata.go:L768) | 167 | dead [dead] |
+| `BookMetadata.update_cover_section_and_storyline` (L793) | 5 | `updateCoverSectionAndStoryline` (yj_metadata.go:L1120) | 12 | dead [dead] |
+| `author_sort_name` (L849) | 11 | `authorSortName` (yj_metadata.go:L672) | 14 | dead [dead] |
+| `unsort_author_name` (L870) | 4 | `unsortAuthorName` (yj_metadata.go:L725) | 5 | dead [dead] |
+| `fix_language_for_kfx` (L878) | 5 | `fixLanguageForKfx` (yj_metadata.go:L1233) | 1 | dead [dead] |
 | `BookMetadata.get_asset_id` (L258) | 1 | — | 0 | missing |
 | `BookMetadata.is_pdf_backed_fixed_layout` (L307) | 3 | — | 0 | missing |
 | `BookMetadata.has_pdf_resource` (L339) | 7 | — | 0 | missing |
@@ -164,7 +255,16 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
-| `PosData.chunk` (L859) | 1 | `chunk` (yj_position_location.go:L2128) | 1 | stub_silent [dead] |
+| `ContentChunk.__init__` (L32) | 10 | `NewContentChunk` (yj_position_location.go:L50) | 9 | dead [dead] |
+| `BookPosLoc.check_position_and_location_maps` (L104) | 15 | `CheckPositionAndLocationMaps` (yj_position_location.go:L1515) | 5 | dead [dead] |
+| `BookPosLoc.has_non_image_render_inline` (L588) | 8 | `HasNonImageRenderInline` (yj_position_location.go:L356) | 15 | dead [dead] |
+| `BookPosLoc.process_spim` (L632) | 52 | `processSpim` (yj_position_location.go:L2099) | 4 | dead [dead] |
+| `PosData.chunk` (L859) | 1 | `chunk` (yj_position_location.go:L2128) | 1 | dead [dead] |
+| `PosData.at_end` (L862) | 1 | `atEnd` (yj_position_location.go:L2134) | 1 | dead [dead] |
+| `BookPosLoc.create_position_map` (L906) | 32 | `CreatePositionMap` (yj_position_location.go:L737) | 39 | dead [dead] |
+| `BookPosLoc.generate_approximate_locations` (L1083) | 23 | `GenerateApproximateLocations` (yj_position_location.go:L464) | 23 | dead [dead] |
+| `BookPosLoc.create_location_map` (L1116) | 10 | `CreateLocationMap` (yj_position_location.go:L510) | 11 | dead [dead] |
+| `BookPosLoc.create_approximate_page_list` (L1132) | 82 | `CreateApproximatePageList` (yj_position_location.go:L1282) | 86 | dead [dead] |
 | `BookPosLoc.end_add_loc` (L1018) | 2 | `endAddLoc` (yj_position_location.go:L2114) | 0 | stub_silent |
 | `BookPosLoc.have_content` (L149) | 139 | `haveContent` (yj_position_location.go:L2087) | 7 | thin |
 | `ContentChunk.__eq__` (L45) | 7 | — | 0 | unresolved_match |
@@ -176,6 +276,15 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `BookStructure.check_fragment_usage` (L718) | 96 | `CheckFragmentUsage` (yj_structure.go:L1193) | 1 | dead [dead] |
+| `BookStructure.walk_fragment` (L857) | 4 | `WalkFragment` (yj_structure.go:L305) | 1 | dead [dead] |
+| `BookStructure.determine_entity_dependencies` (L952) | 35 | `DetermineEntityDependencies` (yj_structure.go:L1210) | 48 | dead [dead] |
+| `BookStructure.rebuild_container_entity_map` (L1006) | 20 | `RebuildContainerEntityMap` (yj_structure.go:L1326) | 31 | dead [dead] |
+| `BookStructure.allowed_symbol_prefix` (L1092) | 1 | `allowedSymbolPrefix` (yj_structure.go:L1574) | 1 | dead [dead] |
+| `BookStructure.check_symbol_table` (L1102) | 34 | `checkSymbolTable` (yj_structure.go:L1819) | 1 | dead [dead] |
+| `BookStructure.extract_section_story_names` (L1207) | 3 | `extractSectionStoryNames` (yj_structure.go:L2127) | 7 | dead [dead] |
+| `BookStructure.has_illustrated_layout_page_template_condition` (L1231) | 4 | `hasIllustratedLayoutPageTemplateCondition` (yj_structure.go:L1651) | 9 | dead [dead] |
+| `BookStructure.log_known_error` (L1303) | 4 | `logKnownError` (yj_structure.go:L2143) | 4 | dead [dead] |
 | `BookStructure.extract_fragment_id_from_value` (L703) | 10 | — | 0 | missing |
 | `BookStructure.create_container_id` (L854) | 1 | — | 0 | missing |
 | `BookStructure._extract_story_names` (L1210) | 12 | — | 0 | missing |
@@ -186,6 +295,11 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `is_known_generator` (L1094) | 5 | `IsKnownGenerator` (yj_versions.go:L825) | 5 | dead [dead] |
+| `is_known_feature` (L1107) | 2 | `IsKnownFeature` (yj_versions.go:L851) | 12 | dead [dead] |
+| `kindle_feature_version` (L1112) | 3 | `KindleFeatureVersion` (yj_versions.go:L877) | 19 | dead [dead] |
+| `is_known_metadata` (L1118) | 7 | `IsKnownMetadata` (yj_versions.go:L905) | 12 | dead [dead] |
+| `is_known_aux_metadata` (L1129) | 2 | `IsKnownAuxMetadata` (yj_versions.go:L928) | 6 | dead [dead] |
 | `is_known_kcb_data` (L1134) | 2 | — | 0 | missing |
 
 ### epub_output.py
@@ -287,8 +401,9 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
-| `SymbolTableCatalog.add_global_shared_symbol_tables` (L28) | 1 | `addGlobalSharedSymbolTables` (ion_symbol_table.go:L192) | 0 | stub_silent [dead] |
-| `SymbolTableCatalog.create_shared_symbol_table` (L38) | 1 | `createSharedSymbolTable` (ion_symbol_table.go:L204) | 0 | stub_silent [dead] |
+| `SymbolTableCatalog.add_global_shared_symbol_tables` (L28) | 1 | `addGlobalSharedSymbolTables` (ion_symbol_table.go:L192) | 0 | dead [dead] |
+| `SymbolTableCatalog.create_shared_symbol_table` (L38) | 1 | `createSharedSymbolTable` (ion_symbol_table.go:L204) | 0 | dead [dead] |
+| `LocalSymbolTable.get_local_symbols` (L277) | 1 | `getLocalSymbols` (ion_symbol_table.go:L108) | 3 | dead [dead] |
 | `SymbolTableCatalog.clear` (L24) | 2 | — | 0 | unresolved_match |
 | `LocalSymbolTable.__repr__` (L340) | 1 | — | 0 | unresolved_match |
 
@@ -468,6 +583,7 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `check_empty` (L175) | 8 | `checkEmpty` (yj_to_epub.go:L904) | 0 | dead [dead,cross-file] |
 | `tempdir` (L67) | 12 | — | 0 | missing |
 | `temp_file_cleanup` (L87) | 13 | — | 0 | missing |
 | `temp_filename` (L108) | 7 | — | 0 | missing |
@@ -547,7 +663,6 @@ substantive Go implementation and no approved exclusion.
 | `CONVERSION_PROGRESS.increment_count` (L811) | 1 | — | 0 | missing |
 | `CONVERSION_PROGRESS.update_count` (L814) | 4 | — | 0 | missing |
 | `make_progress` (L825) | 1 | — | 0 | missing |
-| `check_empty` (L175) | 8 | `checkEmpty` (yj_to_epub.go:L936) | 0 | stub_silent [dead,cross-file] |
 | `natural_sort_key` (L131) | 1 | — | 0 | unresolved_match |
 | `list_truncated` (L151) | 1 | — | 0 | unresolved_match |
 | `root_filename` (L345) | 1 | — | 0 | unresolved_match |
