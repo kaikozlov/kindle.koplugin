@@ -1577,6 +1577,99 @@ func TestScribeNotebookAnnotation_HWR(t *testing.T) {
 	}
 }
 
+func TestScribeNotebookAnnotationSymbolChildReachesResolver(t *testing.T) {
+	// Python calls scribe_annotation_content for every HWR story item, including
+	// IonSymbol references (yj_to_epub_notebook.py:576-589). The Go port used
+	// to pre-filter to structs and silently drop this branch.
+	resolved := false
+	story := map[string]interface{}{
+		"story_name":   "hwr_story",
+		"content_list": []interface{}{"fragment-ref"},
+	}
+	nc := &notebookContext{
+		getFragment: func(ftype, fid string) map[string]interface{} {
+			if ftype == "structure" && fid == "fragment-ref" {
+				resolved = true
+				return map[string]interface{}{"type": "container", "content_list": []interface{}{}}
+			}
+			return nil
+		},
+		getNamedFragment: func(content map[string]interface{}, ftype, nameSymbol string) map[string]interface{} {
+			delete(content, nameSymbol)
+			return story
+		},
+		contentContext: "test",
+	}
+	scribeNotebookAnnotation(nc, map[string]interface{}{
+		"annotation_type": "nmdl.hwr",
+		"alt_content":     "hwr_story",
+	}, &svgElement{Tag: "g"})
+	if !resolved {
+		t.Fatal("IonSymbol HWR content was dropped before fragment resolution")
+	}
+}
+
+func TestScribeAnnotationContentUsesPythonUnicodeSlices(t *testing.T) {
+	// Python text[offset:offset+length] indexes Unicode code points. Go byte
+	// slicing corrupts HWR words whenever non-ASCII text precedes/is inside the
+	// requested range.
+	nc := &notebookContext{contentContext: "test"}
+	parent := &svgElement{Tag: "g"}
+	content := map[string]interface{}{
+		"type":    "text",
+		"top":     float64(10),
+		"left":    float64(20),
+		"height":  float64(30),
+		"width":   float64(80),
+		"content": "café猫",
+		"style_events": []interface{}{map[string]interface{}{
+			"offset": 3, "length": 2,
+			"top": float64(10), "left": float64(20),
+			"height": float64(30), "width": float64(40),
+		}},
+	}
+	scribeAnnotationContent(nc, content, parent)
+	var tspan *svgElement
+	for _, child := range parent.Children {
+		if child.Tag != "text" {
+			continue
+		}
+		for _, grandchild := range child.Children {
+			if grandchild.Tag == "tspan" {
+				tspan = grandchild
+			}
+		}
+	}
+	if tspan == nil {
+		t.Fatal("missing HWR tspan")
+	}
+	if tspan.Text != "é猫" {
+		t.Fatalf("HWR word = %q, want Python slice %q", tspan.Text, "é猫")
+	}
+	// width=40, two Python characters => int((40*2)/2) = 40.
+	if got := tspan.Attrib["font-size"]; got != "40" {
+		t.Fatalf("HWR font-size = %q, want 40 using Python character length", got)
+	}
+}
+
+func TestPythonStringSliceMatchesNegativeAndClampedBounds(t *testing.T) {
+	text := "aé猫z"
+	tests := []struct {
+		start, end int
+		want       string
+	}{
+		{1, 3, "é猫"},
+		{-2, 99, "猫z"},
+		{-99, 2, "aé"},
+		{3, 1, ""},
+	}
+	for _, tc := range tests {
+		if got := pythonStringSlice(text, tc.start, tc.end); got != tc.want {
+			t.Errorf("pythonStringSlice(%q,%d,%d) = %q, want %q", text, tc.start, tc.end, got, tc.want)
+		}
+	}
+}
+
 func TestScribeNotebookAnnotation_UnexpectedType(t *testing.T) {
 	// Verify unexpected annotation type logs error.
 	nc := &notebookContext{

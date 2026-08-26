@@ -1379,10 +1379,10 @@ func scribeNotebookAnnotation(nc *notebookContext, annotation map[string]interfa
 				list, ok := content.([]interface{})
 				if ok {
 					for _, child := range list {
-						childMap, ok := child.(map[string]interface{})
-						if ok {
-							scribeAnnotationContent(nc, childMap, elem)
-						}
+						// Python passes every story item through scribe_annotation_content,
+						// including IonSymbol references (yj_to_epub_notebook.py:576-589).
+						// Do not pre-filter to structs here.
+						scribeAnnotationContent(nc, child, elem)
 					}
 				}
 			}
@@ -1410,10 +1410,14 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 	dataType := detectIonType(content)
 
 	if dataType == ionTypeSymbol {
-		// IonSymbol: resolve to fragment via $608 lookup.
-		// Python (L575-580): self.process_content(self.get_fragment(ftype="$608", fid=content))
-		// In Python, process_content is the full content rendering pipeline.
-		// In Go's notebook context, processNotebookContent handles the rendering.
+		// IonSymbol: resolve to fragment via $608 lookup. Current upstream
+		// 20260822 calls self.process_content(self.get_fragment(...)) here
+		// (yj_to_epub_notebook.py:588-590), but process_content requires parent,
+		// book_part, and writing_mode (yj_to_epub_content.py:411-412), so that
+		// exact branch raises TypeError if reached. The explicit IonSymbol branch
+		// nevertheless shows the intended operation: resolve and render the
+		// referenced content. Preserve that intent rather than reproducing the
+		// upstream arity bug.
 		fid, _ := content.(string)
 		var fragment map[string]interface{}
 		if nc.getFragment != nil {
@@ -1525,17 +1529,15 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 					// Python: self.check_empty(style_event, "%s style_event" % self.content_context)
 					checkEmptyNotebook(eventMap, nc.contentContext+" style_event")
 
-					word := ""
-					if offset >= 0 && offset+length <= len(text) {
-						word = text[offset : offset+length]
-					}
+					word := pythonStringSlice(text, offset, offset+length)
 
 					if word != "" {
+						wordLen := len([]rune(word))
 						tspanElem := newSVGElement(textElem, "tspan", map[string]string{
 							"x":                 fmt.Sprintf("%d", int(wordLeft)),
 							"y":                 fmt.Sprintf("%d", int(wordTop+(wordHeight/2))),
 							"textLength":        fmt.Sprintf("%d", int(wordWidth)),
-							"font-size":         fmt.Sprintf("%d", int((wordWidth*2)/float64(len(word)))),
+							"font-size":         fmt.Sprintf("%d", int((wordWidth*2)/float64(wordLen))),
 							"dominant-baseline": "middle",
 						})
 						tspanElem.Text = word
@@ -1556,6 +1558,32 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
+
+// pythonStringSlice reproduces Python str[start:end] on Unicode code points,
+// including negative-index normalization and clamping. Scribe HWR offsets in
+// yj_to_epub_notebook.py:629 are Python string indexes, not UTF-8 byte offsets.
+func pythonStringSlice(text string, start, end int) string {
+	runes := []rune(text)
+	n := len(runes)
+	normalize := func(index int) int {
+		if index < 0 {
+			index += n
+			if index < 0 {
+				return 0
+			}
+		}
+		if index > n {
+			return n
+		}
+		return index
+	}
+	start = normalize(start)
+	end = normalize(end)
+	if end <= start {
+		return ""
+	}
+	return string(runes[start:end])
+}
 
 // toFloat64 converts interface{} to float64.
 func toFloat64(v interface{}) float64 {
