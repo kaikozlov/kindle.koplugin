@@ -58,26 +58,26 @@ upstream_total_defs=961
 in_scope_defs=807
 upstream_out_of_scope_defs=154
 
-implemented=211
+implemented=199
 implemented_delegation=30
 implemented_trivial=0
 mapped=0
 excluded=167
 
-stub_silent=32
+stub_silent=10
 thin=8
-missing=256
-unresolved_match=103
-gap_functions=399
+missing=306
+unresolved_match=87
+gap_functions=411
 
-in-scope structural coverage = 241 / 640 = 37.7%
-strict in-scope coverage      = 241 / 807 = 29.9%
-upstream structural coverage = 241 / 961 = 25.1%
+in-scope structural coverage = 229 / 640 = 35.8%
+strict in-scope coverage      = 229 / 807 = 28.4%
+upstream structural coverage = 229 / 961 = 23.8%
 ```
 
 The `640` denominator removes only validated per-definition exclusions from the 807 in-scope definitions. Reviewed identity mappings, when present, count as substantive structural mappings rather than disappearing from the denominator.
 
-These numbers are much lower than the historical 96.5% because the current audit refuses to infer equivalence merely from a name and now includes the previously omitted upstream files.
+These numbers are much lower than the historical 96.5% because the current audit refuses to infer equivalence merely from a name, now includes the previously omitted upstream files, and no longer lets explicit Python-name-only no-op blocks contribute structural credit. Removing the first two confirmed audit-only stub blocks reduced structural credit by another 12 functions, which is exactly the direction an honest cleanup should move the metric.
 
 ## Branch audit
 

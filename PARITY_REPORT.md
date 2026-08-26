@@ -7,17 +7,17 @@ Regenerate after any Go or Python reference change.
 
 - **Upstream core kfxlib defs: 961** (154 waived at file scope with reviewed reasons — **they remain in the upstream denominator above and below, always visible**)
 - In-scope defs audited: **807** (structural coverage only — name + body substance; NOT behavioral parity, see §Method limits)
-- Implemented (substantive): **211**
+- Implemented (substantive): **199**
 - Implemented (delegation wrappers): **30**
 - Mapped via reviewed identity overrides: **0**
 - Implemented (trivial↔trivial, value-equal): **0**
-- Stubs (silent name-only shims): **32**
+- Stubs (silent name-only shims): **10**
 - Stubs (admitted not-implemented): **0**
 - Thin (suspiciously small): **8**
-- Missing (no name match): **256**
+- Missing (no name match): **306**
 - Excluded (explicit, per-def, validated): **167**
-- **In-scope structural coverage: 241/640 = 37.7%** (strict, counting explicit exclusions against coverage: 29.9%)
-- **Upstream structural coverage: 241/961 = 25.1%** — the denominator is EVERY upstream core def
+- **In-scope structural coverage: 229/640 = 35.8%** (strict, counting explicit exclusions against coverage: 28.4%)
+- **Upstream structural coverage: 229/961 = 23.8%** — the denominator is EVERY upstream core def
 
 ## Method limits — what this number is NOT
 
@@ -192,39 +192,61 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `EPUB_Output.reference_resource` (L376) | 2 | — | 0 | missing |
+| `EPUB_Output.add_guide_entry` (L397) | 2 | — | 0 | missing |
+| `EPUB_Output.add_pagemap_entry` (L405) | 1 | — | 0 | missing |
+| `EPUB_Output.add_oebps_file` (L408) | 1 | — | 0 | missing |
+| `EPUB_Output.remove_oebps_file` (L411) | 1 | — | 0 | missing |
 | `EPUB_Output.fix_html_id` (L489) | 7 | — | 0 | missing |
+| `EPUB_Output.do_remove_html_cover` (L560) | 8 | — | 0 | missing |
+| `EPUB_Output.add_generic_cover_page` (L571) | 23 | — | 0 | missing |
+| `EPUB_Output.save_book_parts` (L686) | 36 | — | 0 | missing |
 | `EPUB_Output.consolidate_html` (L744) | 50 | — | 0 | missing |
 | `EPUB_Output.beautify_html` (L818) | 12 | — | 0 | missing |
-| `EPUB_Output.reference_resource` (L376) | 2 | `referenceResource` (epub_output.go:L1104) | 0 | stub_silent [dead] |
-| `EPUB_Output.add_guide_entry` (L397) | 2 | `addGuideEntry` (epub_output.go:L1105) | 0 | stub_silent [dead] |
-| `EPUB_Output.add_pagemap_entry` (L405) | 1 | `addPagemapEntry` (epub_output.go:L1106) | 0 | stub_silent [dead] |
-| `EPUB_Output.add_oebps_file` (L408) | 1 | `addOebpsFile` (epub_output.go:L1107) | 0 | stub_silent [dead] |
-| `EPUB_Output.remove_oebps_file` (L411) | 1 | `removeOebpsFile` (epub_output.go:L1108) | 0 | stub_silent [dead] |
-| `EPUB_Output.do_remove_html_cover` (L560) | 8 | `doRemoveHtmlCover` (epub_output.go:L1112) | 0 | stub_silent [dead] |
-| `EPUB_Output.add_generic_cover_page` (L571) | 23 | `addGenericCoverPage` (epub_output.go:L1113) | 0 | stub_silent [dead] |
-| `EPUB_Output.save_book_parts` (L686) | 36 | `saveBookParts` (epub_output.go:L1115) | 0 | stub_silent [dead] |
-| `EPUB_Output.hide_element` (L1267) | 3 | `hideElement` (epub_output.go:L1122) | 0 | stub_silent [dead] |
-| `EPUB_Output.mimetype_of_filename` (L1305) | 2 | `mimetypeOfFilename` (epub_output.go:L1126) | 1 | stub_silent [dead] |
-| `add_meta_name_content` (L1354) | 1 | `addMetaNameContent` (epub_output.go:L1150) | 1 | stub_silent [dead] |
-| `xhtmlns` (L1469) | 1 | `xhtmlns` (epub_output.go:L1177) | 1 | stub_silent [dead] |
-| `new_xhtml` (L1473) | 1 | `newXhtml` (epub_output.go:L1178) | 1 | stub_silent [dead] |
+| `EPUB_Output.add_metadata_meta_name_content` (L840) | 1 | — | 0 | missing |
+| `EPUB_Output.add_metadata_meta_property` (L843) | 2 | — | 0 | missing |
+| `EPUB_Output.add_metadata_meta_refines_property` (L847) | 4 | — | 0 | missing |
+| `EPUB_Output.hide_element` (L1267) | 3 | — | 0 | missing |
+| `EPUB_Output.mimetype_of_filename` (L1305) | 2 | — | 0 | missing |
+| `add_meta_name_content` (L1354) | 1 | — | 0 | missing |
+| `add_attribs` (L1358) | 3 | — | 0 | missing |
+| `remove_url_fragment` (L1370) | 1 | — | 0 | missing |
+| `split_value` (L1397) | 6 | — | 0 | missing |
+| `xhtmlns` (L1469) | 1 | — | 0 | missing |
+| `new_xhtml` (L1473) | 1 | — | 0 | missing |
+| `localname` (L1484) | 1 | — | 0 | missing |
+| `qname` (L1488) | 3 | — | 0 | missing |
+| `BookPart.head` (L172) | 5 | — | 0 | unresolved_match |
 | `PageMapEntry.__repr__` (L222) | 1 | — | 0 | unresolved_match |
 | `EPUB_Output.unreference_resource` (L380) | 12 | — | 0 | unresolved_match |
 | `EPUB_Output.add_style_` (L1302) | 1 | — | 0 | unresolved_match |
+| `roman_to_int` (L1408) | 20 | — | 0 | unresolved_match |
 
 ### ion.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
+| `isstring` (L42) | 1 | — | 0 | missing |
+| `IonAnnotation.is_single` (L61) | 1 | — | 0 | missing |
+| `IonAnnotation.has_annotation` (L64) | 1 | — | 0 | missing |
+| `IonAnnotation.is_annotation` (L67) | 1 | — | 0 | missing |
+| `IonAnnotation.get_annotation` (L70) | 3 | — | 0 | missing |
+| `IonAnnotation.verify_annotation` (L76) | 3 | — | 0 | missing |
+| `IonBLOB.is_large` (L146) | 1 | — | 0 | missing |
+| `IonBLOB.tobytes` (L149) | 1 | — | 0 | missing |
+| `IonCLOB.tobytes` (L155) | 1 | — | 0 | missing |
+| `IonSExp.tolist` (L167) | 1 | — | 0 | missing |
+| `IonStruct.todict` (L187) | 1 | — | 0 | missing |
+| `IonTimestampTZ.utcoffset` (L252) | 1 | — | 0 | missing |
+| `IonTimestampTZ.dst` (L265) | 1 | — | 0 | missing |
+| `IonTimestampTZ.offset_minutes` (L268) | 1 | — | 0 | missing |
+| `IonTimestampTZ.present` (L274) | 1 | — | 0 | missing |
+| `IonTimestampTZ.fraction_len` (L277) | 1 | — | 0 | missing |
+| `unannotated` (L300) | 1 | — | 0 | missing |
+| `filtered_IonList` (L369) | 8 | — | 0 | missing |
 | `ion_type` (L28) | 8 | — | 0 | unresolved_match |
-| `isstring` (L42) | 1 | — | 0 | unresolved_match |
 | `IonAnnotation.__repr__` (L55) | 1 | — | 0 | unresolved_match |
 | `IonAnnotation.__str__` (L58) | 1 | — | 0 | unresolved_match |
-| `IonAnnotation.is_single` (L61) | 1 | — | 0 | unresolved_match |
-| `IonAnnotation.has_annotation` (L64) | 1 | — | 0 | unresolved_match |
-| `IonAnnotation.is_annotation` (L67) | 1 | — | 0 | unresolved_match |
-| `IonAnnotation.get_annotation` (L70) | 3 | — | 0 | unresolved_match |
-| `IonAnnotation.verify_annotation` (L76) | 3 | — | 0 | unresolved_match |
 | `IonAnnots.__new__` (L85) | 7 | — | 0 | unresolved_match |
 | `IonAnnots.__repr__` (L97) | 1 | — | 0 | unresolved_match |
 | `IonBLOB.__eq__` (L103) | 5 | — | 0 | unresolved_match |
@@ -234,42 +256,32 @@ substantive Go implementation and no approved exclusion.
 | `IonBLOB.__gt__` (L121) | 1 | — | 0 | unresolved_match |
 | `IonBLOB.__ge__` (L124) | 1 | — | 0 | unresolved_match |
 | `IonBLOB.__repr__` (L127) | 1 | — | 0 | unresolved_match |
-| `IonBLOB.is_large` (L146) | 1 | — | 0 | unresolved_match |
-| `IonBLOB.tobytes` (L149) | 1 | — | 0 | unresolved_match |
-| `IonCLOB.tobytes` (L155) | 1 | — | 0 | unresolved_match |
 | `IonSExp.__repr__` (L164) | 1 | — | 0 | unresolved_match |
-| `IonSExp.tolist` (L167) | 1 | — | 0 | unresolved_match |
 | `IonStruct.__repr__` (L184) | 1 | — | 0 | unresolved_match |
-| `IonStruct.todict` (L187) | 1 | — | 0 | unresolved_match |
 | `IonSymbol.__repr__` (L193) | 3 | — | 0 | unresolved_match |
 | `IonSymbol.tostring` (L199) | 1 | — | 0 | unresolved_match |
-| `IonTimestampTZ.utcoffset` (L252) | 1 | — | 0 | unresolved_match |
-| `IonTimestampTZ.dst` (L265) | 1 | — | 0 | unresolved_match |
-| `IonTimestampTZ.offset_minutes` (L268) | 1 | — | 0 | unresolved_match |
 | `IonTimestampTZ.format` (L271) | 1 | — | 0 | unresolved_match |
-| `IonTimestampTZ.present` (L274) | 1 | — | 0 | unresolved_match |
-| `IonTimestampTZ.fraction_len` (L277) | 1 | — | 0 | unresolved_match |
 | `IonTimestampTZ.__eq__` (L280) | 3 | — | 0 | unresolved_match |
 | `IonTimestampTZ.__ne__` (L286) | 1 | — | 0 | unresolved_match |
 | `IonTimestampTZ.__copy__` (L289) | 1 | — | 0 | unresolved_match |
 | `IonTimestampTZ.__deepcopy__` (L292) | 1 | — | 0 | unresolved_match |
-| `unannotated` (L300) | 1 | — | 0 | unresolved_match |
 | `ion_data_eq` (L304) | 5 | — | 0 | unresolved_match |
-| `filtered_IonList` (L369) | 8 | — | 0 | unresolved_match |
 
 ### ion_binary.py
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
-| `IonBinary.deserialize_multiple_values` (L29) | 2 | `deserializeMultipleValues` (ion_binary.go:L136) | 1 | stub_silent [dead] |
-| `IonBinary.deserialize_posint_value` (L147) | 1 | `deserializePosintValue` (ion_binary.go:L145) | 1 | stub_silent [dead] |
-| `IonBinary.deserialize_symbol_value` (L301) | 1 | `deserializeSymbolValue` (ion_binary.go:L154) | 1 | stub_silent [dead] |
-| `IonBinary.deserialize_string_value` (L309) | 1 | `deserializeStringValue` (ion_binary.go:L156) | 1 | stub_silent [dead] |
-| `IonBinary.deserialize_clob_value` (L318) | 2 | `deserializeClobValue` (ion_binary.go:L158) | 1 | stub_silent [dead] |
-| `IonBinary.deserialize_blob_value` (L327) | 1 | `deserializeBlobValue` (ion_binary.go:L160) | 1 | stub_silent [dead] |
-| `IonBinary.deserialize_sexp_value` (L355) | 1 | `deserializeSexpValue` (ion_binary.go:L164) | 1 | stub_silent [dead] |
-| `IonBinary.deserialize_reserved_value` (L432) | 1 | `deserializeReservedValue` (ion_binary.go:L169) | 1 | stub_silent [dead] |
-| `serialize_unsignedint` (L479) | 1 | `serializeUnsignedint` (ion_binary.go:L171) | 1 | stub_silent [dead] |
+| `IonBinary.deserialize_multiple_values` (L29) | 2 | — | 0 | missing |
+| `IonBinary.deserialize_posint_value` (L147) | 1 | — | 0 | missing |
+| `IonBinary.deserialize_symbol_value` (L301) | 1 | — | 0 | missing |
+| `IonBinary.deserialize_string_value` (L309) | 1 | — | 0 | missing |
+| `IonBinary.deserialize_clob_value` (L318) | 2 | — | 0 | missing |
+| `IonBinary.deserialize_blob_value` (L327) | 1 | — | 0 | missing |
+| `IonBinary.deserialize_sexp_value` (L355) | 1 | — | 0 | missing |
+| `IonBinary.deserialize_reserved_value` (L432) | 1 | — | 0 | missing |
+| `serialize_unsignedint` (L479) | 1 | — | 0 | missing |
+| `and_first_byte` (L618) | 1 | — | 0 | missing |
+| `or_first_byte` (L622) | 1 | — | 0 | missing |
 
 ### ion_symbol_table.py
 
