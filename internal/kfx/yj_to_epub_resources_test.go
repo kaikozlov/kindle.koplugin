@@ -2,10 +2,12 @@ package kfx
 
 import (
 	"bytes"
+	"compress/zlib"
 	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
+	"image/png"
 	"strings"
 	"testing"
 )
@@ -80,11 +82,11 @@ func newTestResourceProcessor() *resourceProcessor {
 // addTestResource adds a synthetic $164 resource fragment to the processor.
 func (rp *resourceProcessor) addTestResource(name string, location string, format string, mediaType string, width, height int, variantNames []string) {
 	frag := map[string]interface{}{
-		"resource_name": name,   // internal resource name
-		"location": location,
-		"format": format, // resource format (e.g., "jpg" for jpg)
-		"mime": mediaType,
-		"resource_width": width,
+		"resource_name":   name, // internal resource name
+		"location":        location,
+		"format":          format, // resource format (e.g., "jpg" for jpg)
+		"mime":            mediaType,
+		"resource_width":  width,
 		"resource_height": height,
 	}
 	if len(variantNames) > 0 {
@@ -464,10 +466,10 @@ func TestGetExternalResource_PDFResource_ExtractsAndConverts(t *testing.T) {
 
 	pdfData := createMinimalPDF(1)
 	frag := map[string]interface{}{
-		"resource_name": "pdf_res",
-		"location":      "loc_pdf",
-		"format":        "pdf",
-		"mime":          "application/pdf",
+		"resource_name":   "pdf_res",
+		"location":        "loc_pdf",
+		"format":          "pdf",
+		"mime":            "application/pdf",
 		"resource_width":  612,
 		"resource_height": 792,
 		"page_index":      0,
@@ -510,10 +512,10 @@ func TestGetExternalResource_PDFResource_PageFragment(t *testing.T) {
 
 	pdfData := createMinimalPDF(1)
 	frag := map[string]interface{}{
-		"resource_name": "pdf_frag",
-		"location":      "loc_pdf_frag",
-		"format":        "pdf",
-		"mime":          "application/pdf",
+		"resource_name":   "pdf_frag",
+		"location":        "loc_pdf_frag",
+		"format":          "pdf",
+		"mime":            "application/pdf",
 		"resource_width":  612,
 		"resource_height": 792,
 		"page_index":      2, // 0-based, so page 3
@@ -664,10 +666,10 @@ func TestProcessExternalResource_NonPluginPobjectValidation(t *testing.T) {
 
 	data := []byte("pobject-data")
 	frag := map[string]interface{}{
-		"resource_name": "non_plugin_pobj",
-		"location":      "loc_pobj",
-		"format":        "pobject",
-		"mime":          "application/azn-plugin-object",
+		"resource_name":   "non_plugin_pobj",
+		"location":        "loc_pobj",
+		"format":          "pobject",
+		"mime":            "application/azn-plugin-object",
 		"resource_width":  100,
 		"resource_height": 100,
 	}
@@ -697,10 +699,10 @@ func TestGetExternalResource_MimeFigure_DetectsExtensionFromData(t *testing.T) {
 	jpegData := createTestJPEG(t, 10, 10)
 
 	frag := map[string]interface{}{
-		"resource_name": "fig_res",
-		"location":      "loc_fig",
-		"format":        "pobject", // will be overridden by mime "figure"
-		"mime":          "figure",
+		"resource_name":   "fig_res",
+		"location":        "loc_fig",
+		"format":          "pobject", // will be overridden by mime "figure"
+		"mime":            "figure",
 		"resource_width":  100,
 		"resource_height": 100,
 	}
@@ -723,10 +725,10 @@ func TestGetExternalResource_UnknownMimeType_LogsError(t *testing.T) {
 
 	data := []byte("some-data")
 	frag := map[string]interface{}{
-		"resource_name": "unknown_mime_res",
-		"location":      "loc_um",
-		"format":        "jpg",
-		"mime":          "application/x-unknown-test-type",
+		"resource_name":   "unknown_mime_res",
+		"location":        "loc_um",
+		"format":          "jpg",
+		"mime":            "application/x-unknown-test-type",
 		"resource_width":  100,
 		"resource_height": 100,
 	}
@@ -749,10 +751,10 @@ func TestGetExternalResource_IncorrectInternalName(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	frag := map[string]interface{}{
-		"resource_name": "wrong_name", // mismatched with fragment key
-		"location":      "loc_mismatch",
-		"format":        "jpg",
-		"mime":          "image/jpeg",
+		"resource_name":   "wrong_name", // mismatched with fragment key
+		"location":        "loc_mismatch",
+		"format":          "jpg",
+		"mime":            "image/jpeg",
 		"resource_width":  100,
 		"resource_height": 100,
 	}
@@ -777,12 +779,12 @@ func TestGetExternalResource_ExtensionFromSourceFilename(t *testing.T) {
 
 	data := []byte("data")
 	frag := map[string]interface{}{
-		"resource_name": "src_fn_res",
-		"location":      "loc_srcfn",
-		"format":        "", // unknown format → .bin extension
-		"mime":          "",
-		"resource_width":  100,
-		"resource_height": 100,
+		"resource_name":                          "src_fn_res",
+		"location":                               "loc_srcfn",
+		"format":                                 "", // unknown format → .bin extension
+		"mime":                                   "",
+		"resource_width":                         100,
+		"resource_height":                        100,
 		"yj.conversion.source_resource_filename": "image/photo.gif",
 	}
 	rp.fragments["$164:src_fn_res"] = frag
@@ -808,10 +810,10 @@ func TestGetExternalResource_IgnoreVariantsMissingMedia(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	frag := map[string]interface{}{
-		"resource_name": "missing_res",
-		"location":      "loc_missing",
-		"format":        "jpg",
-		"mime":          "image/jpeg",
+		"resource_name":   "missing_res",
+		"location":        "loc_missing",
+		"format":          "jpg",
+		"mime":            "image/jpeg",
 		"resource_width":  100,
 		"resource_height": 100,
 	}
@@ -839,9 +841,9 @@ func TestBuildResources_FontFaceSkipsNormalValues(t *testing.T) {
 	font := fontFragment{
 		Location: "font1",
 		Family:   "TestFont",
-		Style:    "normal",  // should be skipped in CSS
-		Weight:   "normal",  // should be skipped in CSS
-		Stretch:  "normal",  // should be skipped in CSS
+		Style:    "normal", // should be skipped in CSS
+		Weight:   "normal", // should be skipped in CSS
+		Stretch:  "normal", // should be skipped in CSS
 	}
 
 	declarations := []string{"font-family: " + quoteFontName(font.Family)}
@@ -878,9 +880,11 @@ func TestBuildResources_FontFaceSkipsNormalValues(t *testing.T) {
 // Python: resources.py:323-425 — convert_pdf_page_to_image + get_pdf_page_image
 // ---------------------------------------------------------------------------
 
-// createPDFWithJPEG creates a minimal single-page PDF containing a JPEG image.
-// This is used to test real image extraction from PDF pages.
-func createPDFWithJPEG(imgWidth, imgHeight int) []byte {
+// createPDFWithJPEG creates a minimal single-page PDF containing a JPEG image
+// filling the page. The MediaBox is independent of the image dimensions so tests
+// can control the effective DPI (image_dpi = img_width / (media_width / 72),
+// Python resources.py:416-417 requires >= 75 DPI) and the aspect ratio.
+func createPDFWithJPEG(imgWidth, imgHeight, pageWidth, pageHeight int) []byte {
 	// Create a small JPEG image
 	img := image.NewRGBA(image.Rect(0, 0, imgWidth, imgHeight))
 	// Fill with a recognizable color pattern (red)
@@ -907,7 +911,7 @@ func createPDFWithJPEG(imgWidth, imgHeight int) []byte {
 
 	// Object 3: Page
 	obj3Off := buf.Len()
-	fmt.Fprintf(&buf, "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents 5 0 R /Resources << /XObject << /Im0 4 0 R >> >> >>\nendobj\n", imgWidth, imgHeight)
+	fmt.Fprintf(&buf, "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents 5 0 R /Resources << /XObject << /Im0 4 0 R >> >> >>\nendobj\n", pageWidth, pageHeight)
 
 	// Object 4: Image XObject (DCTDecode = JPEG)
 	obj4Off := buf.Len()
@@ -916,7 +920,7 @@ func createPDFWithJPEG(imgWidth, imgHeight int) []byte {
 	buf.WriteString("\nendstream\nendobj\n")
 
 	// Object 5: Content stream (draw the image)
-	contentStream := fmt.Sprintf("q %d 0 0 %d 0 0 cm /Im0 Do Q", imgWidth, imgHeight)
+	contentStream := fmt.Sprintf("q %d 0 0 %d 0 0 cm /Im0 Do Q", pageWidth, pageHeight)
 	obj5Off := buf.Len()
 	fmt.Fprintf(&buf, "5 0 obj\n<< /Length %d >>\nstream\n%s\nendstream\nendobj\n", len(contentStream), contentStream)
 
@@ -942,7 +946,7 @@ func TestConvertPDFPageToImage_PDFWithEmbeddedJPEG_ExtractsImage(t *testing.T) {
 	// image from a PDF page when conditions are met (single image, no text, etc.)
 	// This test verifies that Go's pdfcpu-based extraction works for the common case:
 	// a single-page PDF with one embedded JPEG image.
-	pdfData := createPDFWithJPEG(100, 150)
+	pdfData := createPDFWithJPEG(100, 150, 72, 108) // 100 DPI, aspect 2:3
 
 	result, format, err := convertPDFPageToImage("test_embedded.pdf", pdfData, 1, nil, false)
 	if err != nil {
@@ -969,7 +973,7 @@ func TestConvertPDFPageToImage_PDFWithEmbeddedJPEG_ExtractsImage(t *testing.T) {
 
 func TestConvertPDFPageToImage_PDFWithEmbeddedJPEG_ForceJPEG(t *testing.T) {
 	// Python resources.py:419-424 — when force_jpeg=True, convert to JPEG
-	pdfData := createPDFWithJPEG(50, 50)
+	pdfData := createPDFWithJPEG(50, 50, 36, 36) // 100 DPI, aspect 1:1
 
 	result, format, err := convertPDFPageToImage("force.jpg", pdfData, 1, nil, true)
 	if err != nil {
@@ -1184,7 +1188,7 @@ func TestGetPDFPageImage_MultiPagePDF_ExtractsCorrectPage(t *testing.T) {
 	// Python resources.py:370 — pdf.pages[page_num - 1]
 	// Verify that extraction targets the correct page number.
 	// We use a single-page PDF and request page 1.
-	pdfData := createPDFWithJPEG(80, 60)
+	pdfData := createPDFWithJPEG(80, 60, 72, 54) // 80 DPI, aspect 4:3
 
 	result, format, err := getPDFPageImage("multipage.pdf", pdfData, 1, false)
 	if err != nil {
@@ -1207,4 +1211,247 @@ func TestGetPDFPageImage_MultiPagePDF_ExtractsCorrectPage(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// get_pdf_page_image validation parity tests
+// Python: resources.py:382-460 — every branch of the validation chain that
+// gates extraction of the single embedded image. Each test builds a minimal
+// PDF whose page violates exactly one Python check and asserts the honest
+// error path (Python returns the rendered default image; Go reports an error
+// because no rasterizer is available — see convertPDFPageToImage).
+// ---------------------------------------------------------------------------
 
+// buildSinglePageTestPDF builds a PDF with object 1 = catalog, object 2 = pages
+// (single kid = object 3), object 3 = pageBody, and any extra objects appended
+// verbatim as objects 4, 5, ...
+func buildSinglePageTestPDF(pageBody string, extraObjects ...[]byte) []byte {
+	bodies := [][]byte{
+		[]byte("<< /Type /Catalog /Pages 2 0 R >>"),
+		[]byte("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+		[]byte(pageBody),
+	}
+	bodies = append(bodies, extraObjects...)
+
+	var buf bytes.Buffer
+	buf.WriteString("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+	offsets := make([]int, len(bodies))
+	for i, b := range bodies {
+		offsets[i] = buf.Len()
+		fmt.Fprintf(&buf, "%d 0 obj\n", i+1)
+		buf.Write(b)
+		buf.WriteString("\nendobj\n")
+	}
+	xref := buf.Len()
+	fmt.Fprintf(&buf, "xref\n0 %d\n0000000000 65535 f \n", len(bodies)+1)
+	for _, off := range offsets {
+		fmt.Fprintf(&buf, "%010d 00000 n \n", off)
+	}
+	fmt.Fprintf(&buf, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(bodies)+1, xref)
+	return buf.Bytes()
+}
+
+// testImagePageBody returns a page dict body that draws image XObject Im0
+// (object 4) full-page via content stream object 5.
+func testImagePageBody(pageW, pageH int, extraEntries string) string {
+	return fmt.Sprintf(
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents 5 0 R %s"+
+			"/Resources << /XObject << /Im0 4 0 R >> >> >>",
+		pageW, pageH, extraEntries)
+}
+
+// testJPEGImageObject returns a DCTDecode image XObject body.
+func testJPEGImageObject(t *testing.T, w, h int, extraDict string) []byte {
+	t.Helper()
+	jpegData := createTestJPEG(t, w, h)
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 %s/Filter /DCTDecode /Length %d >>\nstream\n", w, h, extraDict, len(jpegData))
+	buf.Write(jpegData)
+	buf.WriteString("\nendstream")
+	return buf.Bytes()
+}
+
+// testStreamObject returns an uncompressed stream object body.
+func testStreamObject(data string) []byte {
+	return []byte(fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(data), data))
+}
+
+func expectPDFConversionError(t *testing.T, location string, pdfData []byte, wantSubstr string) {
+	t.Helper()
+	result, format, err := convertPDFPageToImage(location, pdfData, 1, nil, false)
+	if err == nil {
+		t.Fatalf("expected error containing %q, got success (format %q)", wantSubstr, format)
+	}
+	if !strings.Contains(err.Error(), wantSubstr) {
+		t.Fatalf("expected error containing %q, got: %v", wantSubstr, err)
+	}
+	if result != nil || format != "" {
+		t.Fatalf("expected nil data/format on failure, got (%d bytes, %q)", len(result), format)
+	}
+}
+
+func TestGetPDFPageImage_TextOnlyPage_Rejected(t *testing.T) {
+	// A page with text and no image at all. Python's check order applies:
+	// len(page.images) != 1 (resources.py:392) rejects before the text check
+	// (resources.py:394) would even run.
+	pdfData := buildSinglePageTestPDF(
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 144 216] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+		testStreamObject("BT /F1 12 Tf 72 108 Td (Hello) Tj ET"),
+		[]byte("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"))
+	expectPDFConversionError(t, "text.pdf", pdfData, "0 images")
+}
+
+func TestGetPDFPageImage_TextWithImage_Rejected(t *testing.T) {
+	// The image count check passes (single image) but the page also paints
+	// text, so extraction must be refused.
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, ""),
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q BT 12 12 Td (caption) Tj ET"))
+	expectPDFConversionError(t, "textimg.pdf", pdfData, "contains text")
+}
+
+func TestGetPDFPageImage_TextInFormXObject_Rejected(t *testing.T) {
+	// Text inside an invoked Form XObject is still page text — the scanner must
+	// recurse into form streams (Python: page.extract_text() covers forms).
+	pageBody := "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 108] /Contents 5 0 R /Resources << /XObject << /Im0 4 0 R /Fm0 6 0 R >> >> >>"
+	formContent := "BT (form text) Tj ET"
+	form := []byte(fmt.Sprintf("<< /Type /XObject /Subtype /Form /BBox [0 0 72 108] /Resources << >> /Length %d >>\nstream\n%s\nendstream", len(formContent), formContent))
+	pdfData := buildSinglePageTestPDF(
+		pageBody,
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q q 1 0 0 1 0 0 cm /Fm0 Do Q"),
+		form)
+	expectPDFConversionError(t, "formtext.pdf", pdfData, "contains text")
+}
+
+func TestGetPDFPageImage_AnnotationWithContents_Rejected(t *testing.T) {
+	// Python resources.py:397-400: /Annots entry carrying /Contents → default.
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, "/Annots [6 0 R] "),
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"),
+		[]byte("<< /Type /Annot /Subtype /Text /Contents (sticky note) >>"))
+	expectPDFConversionError(t, "annot.pdf", pdfData, "annotations with content")
+}
+
+func TestGetPDFPageImage_AnnotationWithoutContents_Extracts(t *testing.T) {
+	// Annotations without /Contents do not block extraction (Python only
+	// rejects when "/Contents" is present in the annotation dict).
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, "/Annots [6 0 R] "),
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"),
+		[]byte("<< /Type /Annot /Subtype /Link /Rect [0 0 10 10] >>"))
+	result, format, err := convertPDFPageToImage("annot_ok.pdf", pdfData, 1, nil, false)
+	if err != nil {
+		t.Fatalf("expected extraction to succeed, got: %v", err)
+	}
+	if format != "jpg" {
+		t.Fatalf("expected format jpg, got %q", format)
+	}
+	if cfg, err := jpeg.DecodeConfig(bytes.NewReader(result)); err != nil || cfg.Width != 100 || cfg.Height != 150 {
+		t.Fatalf("expected 100x150 JPEG, got %vx%v err=%v", cfg.Width, cfg.Height, err)
+	}
+}
+
+func TestGetPDFPageImage_CropBoxDiffers_Rejected(t *testing.T) {
+	// Python resources.py:390-391: cropbox != mediabox → default image.
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, "/CropBox [10 10 60 100] "),
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"))
+	expectPDFConversionError(t, "crop.pdf", pdfData, "cropbox != mediabox")
+}
+
+func TestGetPDFPageImage_AspectMismatch_Rejected(t *testing.T) {
+	// Python resources.py:411-414: |page_aspect - image_aspect| * page_aspect > 0.001.
+	// Image 100x150 (aspect 0.667) on page 72x144 (aspect 0.5).
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 144, ""),
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 144 0 0 cm /Im0 Do Q"))
+	expectPDFConversionError(t, "aspect.pdf", pdfData, "aspect")
+}
+
+func TestGetPDFPageImage_LowDPI_Rejected(t *testing.T) {
+	// Python resources.py:416-417: image_dpi < 75 → default.
+	// Image 100x150 on page 144x216 → 100 / (144/72) = 50 DPI.
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(144, 216, ""),
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 144 0 0 216 0 0 cm /Im0 Do Q"))
+	expectPDFConversionError(t, "lowdpi.pdf", pdfData, "below 75")
+}
+
+func TestGetPDFPageImage_MultipleImages_Rejected(t *testing.T) {
+	// Python resources.py:392-393: len(page.images) != 1 → default.
+	pageBody := "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 108] /Contents 6 0 R /Resources << /XObject << /Im0 4 0 R /Im1 5 0 R >> >> >>"
+	pdfData := buildSinglePageTestPDF(
+		pageBody,
+		testJPEGImageObject(t, 100, 150, ""),
+		testJPEGImageObject(t, 101, 151, ""), // distinct: pdfcpu deduplicates identical images
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q q 10 0 0 10 10 10 cm /Im1 Do Q"))
+	expectPDFConversionError(t, "twoimg.pdf", pdfData, "2 images")
+}
+
+func TestGetPDFPageImage_PageOutOfRange_Rejected(t *testing.T) {
+	// Python resources.py:388: pdf.pages[page_num - 1] raises IndexError.
+	pdfData := createPDFWithJPEG(100, 150, 72, 108)
+	result, format, err := convertPDFPageToImage("range.pdf", pdfData, 3, nil, false)
+	if err == nil {
+		t.Fatal("expected error for out-of-range page")
+	}
+	if result != nil || format != "" {
+		t.Fatalf("expected nil data/format on failure, got (%d bytes, %q)", len(result), format)
+	}
+}
+
+func TestGetPDFPageImage_SoftMask_Rejected(t *testing.T) {
+	// Python relies on image_match (resources.py:444-445) to catch images whose
+	// extraction loses transparency. Without a rasterizer Go rejects masked
+	// images outright (documented deviation — see getPDFPageImage).
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, ""),
+		testJPEGImageObject(t, 100, 150, "/SMask 6 0 R "),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"),
+		[]byte("<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 4 >>\nstream\n\x00\x40\x80\xff\nendstream"))
+	expectPDFConversionError(t, "smask.pdf", pdfData, "transparency mask")
+}
+
+func TestGetPDFPageImage_FlateDecodeImage_ExtractedAsPNG(t *testing.T) {
+	// Python resources.py:421-422: FlateDecode → page_image.image (decoded raster).
+	// pdfcpu renders flate images as PNG; Go re-encodes the decoded raster.
+	const w, h = 100, 150
+	raw := make([]byte, w*h*3)
+	for i := 0; i < len(raw); i += 3 {
+		raw[i], raw[i+1], raw[i+2] = 0x20, 0x40, 0x80
+	}
+	var fbuf bytes.Buffer
+	zw := zlib.NewWriter(&fbuf)
+	zw.Write(raw)
+	zw.Close()
+
+	var img bytes.Buffer
+	fmt.Fprintf(&img, "<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length %d >>\nstream\n", w, h, fbuf.Len())
+	img.Write(fbuf.Bytes())
+	img.WriteString("\nendstream")
+
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, ""),
+		img.Bytes(),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"))
+
+	result, format, err := convertPDFPageToImage("flate.pdf", pdfData, 1, nil, false)
+	if err != nil {
+		t.Fatalf("expected flate image extraction, got: %v", err)
+	}
+	if format != "png" {
+		t.Fatalf("expected format png, got %q", format)
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("expected valid PNG, got: %v", err)
+	}
+	if cfg.Width != w || cfg.Height != h {
+		t.Fatalf("expected %dx%d PNG, got %dx%d", w, h, cfg.Width, cfg.Height)
+	}
+}

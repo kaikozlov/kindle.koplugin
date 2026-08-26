@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"io"
 	"log"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,7 +20,9 @@ import (
 	"github.com/kaikozlov/kindle-koplugin/internal/epub"
 	"github.com/kaikozlov/kindle-koplugin/internal/jxr"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
+	pdfcpu "github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -56,9 +59,9 @@ type outputFile struct {
 
 // manifestEntry mirrors Python's ManifestEntry (epub_output.py line 181).
 type manifestEntry struct {
-	filename      string
-	id            string
-	mimetype      string // set only for referred resources (Python line 219)
+	filename       string
+	id             string
+	mimetype       string // set only for referred resources (Python line 219)
 	referenceCount int
 }
 
@@ -66,15 +69,15 @@ type manifestEntry struct {
 // yj_to_epub_resources.py, handling resource caching, variant selection,
 // and deduplication.
 type resourceProcessor struct {
-	resourceCache    map[string]*resourceObj    // cache of processed resources by name
-	usedRawMedia     map[string]bool            // set of accessed raw media locations
-	saveResources    bool                       // Python self.save_resources (yj_to_epub_resources.py L30)
+	resourceCache    map[string]*resourceObj           // cache of processed resources by name
+	usedRawMedia     map[string]bool                   // set of accessed raw media locations
+	saveResources    bool                              // Python self.save_resources (yj_to_epub_resources.py L30)
 	fragments        map[string]map[string]interface{} // synthetic fragment store: "$164:name" → fragment data
-	rawMedia         map[string][]byte          // raw media data ($417 equivalent)
-	oebpsFiles       map[string]*outputFile     // saved files (dedup target)
-	manifestFiles    map[string]*manifestEntry  // filename → manifest entry
-	manifestRefCount map[string]int             // reference counting by filename
-	usedOEBPSNames   map[string]struct{}        // used OEBPS filenames for dedup
+	rawMedia         map[string][]byte                 // raw media data ($417 equivalent)
+	oebpsFiles       map[string]*outputFile            // saved files (dedup target)
+	manifestFiles    map[string]*manifestEntry         // filename → manifest entry
+	manifestRefCount map[string]int                    // reference counting by filename
+	usedOEBPSNames   map[string]struct{}               // used OEBPS filenames for dedup
 }
 
 // getExternalResource implements Python get_external_resource (yj_to_epub_resources.py lines 35-183).
@@ -458,7 +461,7 @@ func (rp *resourceProcessor) processExternalResource(resource_name string, save,
 			if resourceObj.manifestEntry == nil {
 				// New file: add to manifest
 				me := &manifestEntry{
-					filename:      filename,
+					filename:       filename,
 					referenceCount: 1,
 				}
 				// Python line 219: mimetype set only for referred resources
@@ -1100,12 +1103,12 @@ func mimeTypeToExtension(mime string) (string, bool) {
 
 // resourceExtension resolves the file extension for a resource following Python's
 // get_external_resource extension logic (yj_to_epub_resources.py:84-105):
-//   1. If resource_format ($161) maps to a known extension, use that
-//   2. Else use .bin
-//   3. If mime ($162) maps to a known extension AND current ext is .bin/.pobject:
-//      a. If mime is "figure", detect from raw data bytes
-//      b. Else use the MIME's extension
-//   4. If still .bin/.pobject AND location has a dot, use extension from location
+//  1. If resource_format ($161) maps to a known extension, use that
+//  2. Else use .bin
+//  3. If mime ($162) maps to a known extension AND current ext is .bin/.pobject:
+//     a. If mime is "figure", detect from raw data bytes
+//     b. Else use the MIME's extension
+//  4. If still .bin/.pobject AND location has a dot, use extension from location
 func resourceExtension(format, mediaType string, location string, data []byte) string {
 	// Step 1-2: extension from resource format symbol ($161)
 	ext := ".bin"
@@ -1341,15 +1344,15 @@ func addJFIFMarker(jpegData []byte) ([]byte, error) {
 		0x00, 0x10, // Length (16 bytes including length itself)
 		0x4A, 0x46, 0x49, 0x46, 0x00, // "JFIF\0"
 		0x01, 0x01, // Version 1.1
-		0x00, // Density units: no units
+		0x00,       // Density units: no units
 		0x00, 0x01, // X density: 1
 		0x00, 0x01, // Y density: 1
 		0x00, 0x00, // No thumbnail
 	}
 	result := make([]byte, 0, len(jpegData)+len(jfifAPP0))
-	result = append(result, jpegData[:2]...)   // SOI
-	result = append(result, jfifAPP0...)      // JFIF APP0
-	result = append(result, jpegData[2:]...)  // Rest of JPEG
+	result = append(result, jpegData[:2]...) // SOI
+	result = append(result, jfifAPP0...)     // JFIF APP0
+	result = append(result, jpegData[2:]...) // Rest of JPEG
 	return result, nil
 }
 
@@ -1727,82 +1730,361 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 		return nil, "", fmt.Errorf("no PDF data")
 	}
 
-	// Use pdfcpu to extract images from the specified page.
-	// Python: pypdf.PdfReader(raw_media_file) + page.images
+	// Parse the document once for all page checks and image extraction.
+	// Python: pdf = get_pdf_reader(pdf_data, pdf_cache) (resources.py:366-380, 385-387)
 	rs := io.ReadSeeker(bytes.NewReader(pdfData))
-	conf := model.NewDefaultConfiguration()
-
-	pageStr := fmt.Sprintf("%d", pageNum)
-	pageImages, err := api.ExtractImagesRaw(rs, []string{pageStr}, conf)
+	ctx, err := api.ReadValidateAndOptimize(rs, model.NewDefaultConfiguration())
 	if err != nil {
 		log.Printf("kfx: warning: PDF image extraction failed for %s page %d: %v", location, pageNum, err)
 		return nil, "", err
 	}
 
-	// Python L384: if len(page.images.keys()) != 1: return default_image
-	// pageImages is []map[int]model.Image, one map per page
-	if len(pageImages) == 0 {
-		return nil, "", fmt.Errorf("PDF %s page %d has no extractable image", location, pageNum)
+	// Python L388: page = pdf.pages[page_num - 1] (IndexError → default image)
+	pageDict, _, pAttrs, err := ctx.PageDict(pageNum, false)
+	if err != nil {
+		return nil, "", err
 	}
 
-	// Get the first page's images
-	imgMap := pageImages[0]
-	if len(imgMap) != 1 {
-		// Python validates exactly 1 image on the page
-		return nil, "", fmt.Errorf("PDF %s page %d has %d images, expected exactly 1", location, pageNum, len(imgMap))
+	// Python L390-391: if box_tuple(page.cropbox) != box_tuple(page.mediabox): return default_image
+	// pypdf reports cropbox == mediabox when no cropbox is defined, so a missing
+	// CropBox compares equal.
+	if pAttrs.MediaBox == nil {
+		return nil, "", fmt.Errorf("PDF %s page %d has no mediabox", location, pageNum)
+	}
+	if pAttrs.CropBox != nil && !pdfRectsEqual(pAttrs.CropBox, pAttrs.MediaBox) {
+		return nil, "", fmt.Errorf("PDF %s page %d cropbox != mediabox", location, pageNum)
 	}
 
-	// Get the single image from the map
-	var pdfImg model.Image
+	// Python L392-393: if len(page.images.keys()) != 1: return default_image
+	imgMap, err := pdfcpu.ExtractPageImages(ctx, pageNum, false)
+	if err != nil {
+		log.Printf("kfx: warning: PDF image extraction failed for %s page %d: %v", location, pageNum, err)
+		return nil, "", err
+	}
+	// pdfcpu also reports page thumbnails (/Thumb) as images; pypdf's
+	// page.images does not — filter them out before counting.
+	pageImages := make([]model.Image, 0, len(imgMap))
 	for _, img := range imgMap {
-		pdfImg = img
-		break
+		if !img.Thumb {
+			pageImages = append(pageImages, img)
+		}
+	}
+	if len(pageImages) != 1 {
+		return nil, "", fmt.Errorf("PDF %s page %d has %d images, expected exactly 1", location, pageNum, len(pageImages))
+	}
+	pdfImg := pageImages[0]
+
+	// pdfcpu only fills Width/Height on image stubs; read the geometry and mask
+	// flags from the image dictionary (Python: int(image_object.get("/Width")),
+	// resources.py:409-410).
+	imgWidth, imgHeight, hasSMask, hasMask := pdfImageProperties(ctx, pdfImg)
+	pdfImg.Width, pdfImg.Height = imgWidth, imgHeight
+	pdfImg.HasSMask, pdfImg.HasImgMask = hasSMask, hasMask
+
+	// Python L394-395: text = page.extract_text(); if text: return default_image
+	if pdfPageHasText(ctx, pageDict, pAttrs) {
+		return nil, "", fmt.Errorf("PDF %s page %d contains text", location, pageNum)
 	}
 
-	// Read the image data from the model.Image's io.Reader
+	// Python L397-400: any annotation carrying /Contents → default image
+	if pdfPageHasContentAnnotations(ctx, pageDict) {
+		return nil, "", fmt.Errorf("PDF %s page %d has annotations with content", location, pageNum)
+	}
+
+	// Python L402-406: /Type /XObject and /Subtype /Image are guaranteed here —
+	// pdfcpu only extracts image XObjects.
+
+	// Masked images: Python rejects these implicitly — image_match (L444-445)
+	// compares the extracted base image against the rendered page, which differs
+	// whenever a soft/stencil mask contributes to the page appearance. Without a
+	// rasterizer that comparison cannot run, so masked images are rejected
+	// outright rather than extracted without their transparency.
+	if pdfImg.HasSMask || pdfImg.HasImgMask {
+		return nil, "", fmt.Errorf("PDF %s page %d image has a transparency mask", location, pageNum)
+	}
+
+	// Python L408-414: page/image aspect ratio must agree to 0.1%
+	mediaWidth := pAttrs.MediaBox.Width()
+	mediaHeight := pAttrs.MediaBox.Height()
+	if pdfImg.Width <= 0 || pdfImg.Height <= 0 || mediaWidth <= 0 || mediaHeight <= 0 {
+		return nil, "", fmt.Errorf("PDF %s page %d has degenerate geometry (page %gx%g, image %dx%d)",
+			location, pageNum, mediaWidth, mediaHeight, pdfImg.Width, pdfImg.Height)
+	}
+	pageAspect := mediaWidth / mediaHeight
+	imageAspect := float64(pdfImg.Width) / float64(pdfImg.Height)
+	if math.Abs(pageAspect-imageAspect)*pageAspect > 0.001 {
+		return nil, "", fmt.Errorf("PDF %s page %d image aspect %.6f differs from page aspect %.6f",
+			location, pageNum, imageAspect, pageAspect)
+	}
+
+	// Python L416-417: image_dpi = img_width / (media_width / 72.0); if < 75 → default
+	imageDPI := float64(pdfImg.Width) / (mediaWidth / 72.0)
+	if imageDPI < 75.0 {
+		return nil, "", fmt.Errorf("PDF %s page %d image resolution %.1f DPI is below 75", location, pageNum, imageDPI)
+	}
+
+	// Read the image data from the model.Image's io.Reader.
 	imgData, err := io.ReadAll(pdfImg.Reader)
 	if err != nil {
 		log.Printf("kfx: warning: failed to read extracted PDF image from %s page %d: %v", location, pageNum, err)
 		return nil, "", err
 	}
-
 	if len(imgData) == 0 {
 		return nil, "", fmt.Errorf("PDF %s page %d image stream is empty", location, pageNum)
 	}
 
-	// Determine format based on the file type
-	switch strings.ToLower(pdfImg.FileType) {
-	case "jpg", "jpeg":
-		// DCTDecode — raw JPEG, same as Python L407-408:
-		// "if image_object.get('/Filter') == '/DCTDecode' and image_file_ext(image_data) == '.jpg'"
-		log.Printf("kfx: info: Extracting JPEG image (%dx%d) from PDF %s page %d",
-			pdfImg.Width, pdfImg.Height, location, pageNum)
+	// Python L419-423: filter whitelist. Python matches the exact single-filter
+	// forms "/DCTDecode" (with JPEG magic), "/CCITTFaxDecode" (pypdf wraps CCITT
+	// data as TIFF, later converted to PNG at L425-430) and "/FlateDecode"
+	// (decoded raster via page_image.image); anything else — JPXDecode,
+	// LZWDecode, RunLengthDecode, or filter pipelines — falls back to the
+	// rendered default image.
+	pipeline := pdfImageFilterPipeline(ctx, pdfImg)
+	if len(pipeline) != 1 {
+		return nil, "", fmt.Errorf("PDF %s page %d image uses a filter pipeline (%d filters), not extractable",
+			location, pageNum, len(pipeline))
+	}
+
+	switch pipeline[0].Name {
+	case "DCTDecode":
+		// Python L407-408: image_file_ext(image_data) == ".jpg"
+		if !bytes.HasPrefix(imgData, []byte("\xff\xd8\xff")) {
+			return nil, "", fmt.Errorf("PDF %s page %d DCTDecode image is not JPEG data", location, pageNum)
+		}
+		// Python L432-435: PIL opens the data — format must be JPEG and the
+		// mode one of RGB/RGBA/L/1 (CMYK JPEGs are rejected).
+		decoded, err := decodeImageBytes(imgData)
+		if err != nil {
+			log.Printf("kfx: warning: failed to decode extracted image from PDF %s page %d: %v", location, pageNum, err)
+			return nil, "", err
+		}
+		if !pdfImageModeAllowed(decoded) {
+			return nil, "", fmt.Errorf("PDF %s page %d image color mode %s is not supported", location, pageNum, fullImageModeString(decoded))
+		}
+		log.Printf("kfx: info: Extracting JPEG image (%dx%d mode %s) from PDF %s page %d",
+			pdfImg.Width, pdfImg.Height, fullImageModeString(decoded), location, pageNum)
 		return imgData, "jpg", nil
 
-	case "png":
-		// FlateDecode — PNG image
-		// Python L410-412: handles FlateDecode via page_image.image
-		log.Printf("kfx: info: Extracting PNG image (%dx%d) from PDF %s page %d",
-			pdfImg.Width, pdfImg.Height, location, pageNum)
-		if forceJPEG {
-			// Python L419-424: force_jpeg conversion
-			return convertImageToJPEG(imgData, location, pageNum)
+	case "CCITTFaxDecode", "FlateDecode":
+		// pdfcpu renders these images: DeviceGray/RGB as PNG, CMYK as TIFF.
+		// Python converts CCITT TIFF to PNG (L425-430) and uses the decoded
+		// raster for Flate, then applies the same format/mode checks.
+		decoded, err := decodeImageBytes(imgData)
+		if err != nil {
+			log.Printf("kfx: warning: failed to decode extracted image from PDF %s page %d: %v", location, pageNum, err)
+			return nil, "", err
 		}
-		return imgData, "png", nil
-
-	case "tif", "tiff":
-		// CCITTFaxDecode — TIFF image
-		// Python L409-413: converts TIFF to PNG
-		log.Printf("kfx: info: Extracting TIFF image (%dx%d) from PDF %s page %d, converting to PNG",
-			pdfImg.Width, pdfImg.Height, location, pageNum)
-		return convertTIFFToPNG(imgData, location, pageNum)
+		// Python L432-435: pil_img.format in {"JPEG", "PNG"} and mode in
+		// {"RGB", "RGBA", "L", "1"} — CMYK output (TIFF) is rejected here.
+		if !pdfImageModeAllowed(decoded) {
+			return nil, "", fmt.Errorf("PDF %s page %d image color mode %s is not supported", location, pageNum, fullImageModeString(decoded))
+		}
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, decoded); err != nil {
+			return nil, "", err
+		}
+		pngData := buf.Bytes()
+		if forceJPEG {
+			// Python L436-440: force_jpeg → JPEG quality 95
+			return convertImageToJPEG(pngData, location, pageNum)
+		}
+		log.Printf("kfx: info: Extracting PNG image (%dx%d mode %s) from PDF %s page %d",
+			pdfImg.Width, pdfImg.Height, fullImageModeString(decoded), location, pageNum)
+		return pngData, "png", nil
 
 	default:
-		// Python L415-416: any other filter (e.g. JPXDecode) is not extractable
-		// losslessly — Python falls back to the rendered default image.
-		return nil, "", fmt.Errorf("PDF %s page %d image has unsupported filter/file type %q",
-			location, pageNum, pdfImg.FileType)
+		// JPXDecode / LZWDecode / RunLengthDecode → rendered default in Python.
+		return nil, "", fmt.Errorf("PDF %s page %d image filter %q is not extractable", location, pageNum, pipeline[0].Name)
 	}
+}
+
+// pdfRectsEqual compares two PDF rectangles like Python's box_tuple equality
+// (resources.py:390 uses exact tuple comparison of cropbox vs mediabox).
+func pdfRectsEqual(a, b *types.Rectangle) bool {
+	return a.LL.X == b.LL.X && a.LL.Y == b.LL.Y && a.UR.X == b.UR.X && a.UR.Y == b.UR.Y
+}
+
+// pdfImageProperties reads /Width, /Height and the /SMask // /Mask presence
+// flags from an extracted image object's dictionary. pdfcpu only populates
+// these model.Image fields for stubs (see pkg/pdfcpu/extract.go imageStub),
+// so mirror that logic here.
+func pdfImageProperties(ctx *model.Context, img model.Image) (width, height int, hasSMask, hasMask bool) {
+	io, ok := ctx.Optimize.ImageObjects[img.ObjNr]
+	if !ok || io.ImageDict == nil {
+		return 0, 0, false, false
+	}
+	if w := io.ImageDict.IntEntry("Width"); w != nil {
+		width = *w
+	}
+	if h := io.ImageDict.IntEntry("Height"); h != nil {
+		height = *h
+	}
+	if sm, _ := io.ImageDict.Find("SMask"); sm != nil {
+		hasSMask = true
+	}
+	if m, _ := io.ImageDict.Find("Mask"); m != nil {
+		hasMask = true
+	}
+	return width, height, hasSMask, hasMask
+}
+
+// pdfImageFilterPipeline returns the filter pipeline of the extracted image
+// object, used to mirror Python's /Filter checks (resources.py:419-423).
+func pdfImageFilterPipeline(ctx *model.Context, img model.Image) []types.PDFFilter {
+	if io, ok := ctx.Optimize.ImageObjects[img.ObjNr]; ok && io.ImageDict != nil {
+		return io.ImageDict.FilterPipeline
+	}
+	return nil
+}
+
+// pdfImageModeAllowed implements Python's mode check (resources.py:434-435):
+// pil_img.mode must be one of {"RGB", "RGBA", "L", "1"}.
+// Go type mapping: YCbCr (decoded JPEG) → RGB; Gray/Gray16 → L (1-bit PNG
+// decodes to Gray as well); NRGBA/RGBA* → RGBA. Paletted and CMYK are rejected.
+func pdfImageModeAllowed(img image.Image) bool {
+	switch img.(type) {
+	case *image.YCbCr, *image.RGBA, *image.NRGBA, *image.RGBA64, *image.NRGBA64,
+		*image.Gray, *image.Gray16:
+		return true
+	}
+	return false
+}
+
+// pdfPageHasText implements Python's page.extract_text() check
+// (resources.py:394-395): a page that paints any text cannot be represented by
+// extracting its single embedded image. It scans the page content streams and
+// any Form XObjects they invoke for text-showing operators.
+func pdfPageHasText(ctx *model.Context, pageDict types.Dict, pAttrs *model.InheritedPageAttrs) bool {
+	if o, found := pageDict.Find("Contents"); found {
+		if scanPDFContentObjectForText(ctx, o) {
+			return true
+		}
+	}
+
+	res := pdfPageResourcesDict(ctx, pageDict, pAttrs)
+	if res == nil {
+		return false
+	}
+	o, found := res.Find("XObject")
+	if !found {
+		return false
+	}
+	xobjs, err := ctx.DereferenceDict(o)
+	if err != nil {
+		return false
+	}
+	visited := map[int]bool{}
+	for _, v := range xobjs {
+		if pdfFormXObjectHasText(ctx, v, visited, 0) {
+			return true
+		}
+	}
+	return false
+}
+
+// pdfPageResourcesDict returns the effective resource dict of a page.
+func pdfPageResourcesDict(ctx *model.Context, pageDict types.Dict, pAttrs *model.InheritedPageAttrs) types.Dict {
+	if pAttrs != nil && pAttrs.Resources != nil {
+		return pAttrs.Resources
+	}
+	if o, found := pageDict.Find("Resources"); found {
+		if d, err := ctx.DereferenceDict(o); err == nil && d != nil {
+			return d
+		}
+	}
+	return nil
+}
+
+// scanPDFContentObjectForText scans a page /Contents entry (a stream or an
+// array of streams) for text-showing operators.
+func scanPDFContentObjectForText(ctx *model.Context, obj types.Object) bool {
+	streams := []types.Object{obj}
+	if arr, err := ctx.DereferenceArray(obj); err == nil && arr != nil {
+		streams = arr
+	}
+	for _, o := range streams {
+		sd, _, err := ctx.DereferenceStreamDict(o)
+		if err != nil || sd == nil {
+			continue
+		}
+		if err := sd.Decode(); err != nil {
+			continue
+		}
+		if sd.Content != nil && pdfContentStreamHasText(sd.Content) {
+			return true
+		}
+	}
+	return false
+}
+
+// pdfFormXObjectHasText reports whether a Form XObject (or any nested Form)
+// shows text. Depth guards against pathological recursion; visited guards
+// against cycles in the object graph.
+func pdfFormXObjectHasText(ctx *model.Context, obj types.Object, visited map[int]bool, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	ir, isRef := obj.(types.IndirectRef)
+	if isRef {
+		objNr := ir.ObjectNumber.Value()
+		if visited[objNr] {
+			return false
+		}
+		visited[objNr] = true
+	}
+
+	sd, _, err := ctx.DereferenceStreamDict(obj)
+	if err != nil || sd == nil {
+		return false
+	}
+	if subtype, found := sd.Find("Subtype"); !found {
+		return false
+	} else if name, ok := subtype.(types.Name); !ok || name != "Form" {
+		return false
+	}
+	if err := sd.Decode(); err == nil && sd.Content != nil && pdfContentStreamHasText(sd.Content) {
+		return true
+	}
+
+	// Nested forms via this form's own resource dict.
+	if o, found := sd.Find("Resources"); found {
+		if res, err := ctx.DereferenceDict(o); err == nil && res != nil {
+			if xo, found := res.Find("XObject"); found {
+				if xobjs, err := ctx.DereferenceDict(xo); err == nil {
+					for _, v := range xobjs {
+						if pdfFormXObjectHasText(ctx, v, visited, depth+1) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// pdfPageHasContentAnnotations implements Python's annotation check
+// (resources.py:397-400): any annotation dictionary carrying /Contents makes
+// the page unextractable.
+func pdfPageHasContentAnnotations(ctx *model.Context, pageDict types.Dict) bool {
+	o, found := pageDict.Find("Annots")
+	if !found {
+		return false
+	}
+	arr, err := ctx.DereferenceArray(o)
+	if err != nil || arr == nil {
+		return false
+	}
+	for _, e := range arr {
+		d, err := ctx.DereferenceDict(e)
+		if err != nil {
+			continue
+		}
+		if _, has := d.Find("Contents"); has {
+			return true
+		}
+	}
+	return false
 }
 
 // convertImageToJPEG decodes image data and re-encodes as JPEG.

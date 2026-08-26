@@ -26,22 +26,22 @@ func TestGetOrderedImagesReturnValues(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"format": "jpg",
-				"resource_width": 100,
+				"format":          "jpg",
+				"resource_width":  100,
 				"resource_height": 200,
-				"location": "res/img1.jpg",
+				"location":        "res/img1.jpg",
 			},
 			"img2": {
-				"format": "jpg",
-				"resource_width": 100,
+				"format":          "jpg",
+				"resource_width":  100,
 				"resource_height": 200,
-				"location": "res/img2.jpg",
+				"location":        "res/img2.jpg",
 			},
 			"img3": {
-				"format": "jpg",
-				"resource_width": 100,
+				"format":          "jpg",
+				"resource_width":  100,
 				"resource_height": 200,
-				"location": "res/img3.jpg",
+				"location":        "res/img3.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -70,10 +70,10 @@ func TestGetOrderedImagesWithPids(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"format": "jpg",
-				"resource_width": 100,
+				"format":          "jpg",
+				"resource_width":  100,
 				"resource_height": 50,
-				"location": "res/img1.jpg",
+				"location":        "res/img1.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -101,10 +101,10 @@ func TestGetOrderedImagesSplitLandscape(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"format": "jpg",
-				"resource_width": 200,
+				"format":          "jpg",
+				"resource_width":  200,
 				"resource_height": 100,
-				"location": "res/img1.jpg",
+				"location":        "res/img1.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -140,10 +140,10 @@ func TestGetOrderedImagesSplitLandscapeRTL(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"format": "jpg",
-				"resource_width": 200,
+				"format":          "jpg",
+				"resource_width":  200,
 				"resource_height": 100,
-				"location": "res/img1.jpg",
+				"location":        "res/img1.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -281,7 +281,7 @@ func TestCropImage_ResourceScaling(t *testing.T) {
 func TestCBZ_ConvertPDFPages(t *testing.T) {
 	// A single-image PDF page converts to a real page image; a second direct
 	// image resource passes through unchanged.
-	pdfData := createPDFWithJPEG(100, 200)
+	pdfData := createPDFWithJPEG(100, 200, 72, 144) // 100 DPI, aspect 1:2
 
 	imgData := createTestJPEG(t, 100, 200)
 
@@ -377,8 +377,8 @@ func TestCombineImagesIntoPDF(t *testing.T) {
 	}
 
 	metadata := map[string]string{
-		"/Title":       "Test Book",
-		"/Author":      "Test Author",
+		"/Title":        "Test Book",
+		"/Author":       "Test Author",
 		"/CreationDate": "D:20240101000000",
 	}
 
@@ -448,13 +448,13 @@ func TestTOCPageResolution(t *testing.T) {
 		tocPid   int
 		expected int
 	}{
-		{50, 0},   // Before all → page 0 (loop never breaks, pageNum stays at 0)
-		{100, 0},  // 100 <= 100 → break at page 0
-		{250, 2},  // 250 > 100 → pageNum=0; 250 > 200 → pageNum=1; 250 <= 300 → break at page 2
-		{300, 2},  // 300 > 100 → pageNum=0; 300 > 200 → pageNum=1; 300 <= 300 → break at page 2
-		{350, 3},  // 350 > 100 → pageNum=0; 350 > 200 → pageNum=1; 350 > 300 → pageNum=2; 350 <= 400 → break at page 3
-		{500, 4},  // 500 > 100→0; 500>200→1; 500>300→2; 500>400→3; 500<=500 → break at page 4
-		{600, 4},  // 600 > all → loop finishes with pageNum=4
+		{50, 0},  // Before all → page 0 (loop never breaks, pageNum stays at 0)
+		{100, 0}, // 100 <= 100 → break at page 0
+		{250, 2}, // 250 > 100 → pageNum=0; 250 > 200 → pageNum=1; 250 <= 300 → break at page 2
+		{300, 2}, // 300 > 100 → pageNum=0; 300 > 200 → pageNum=1; 300 <= 300 → break at page 2
+		{350, 3}, // 350 > 100 → pageNum=0; 350 > 200 → pageNum=1; 350 > 300 → pageNum=2; 350 <= 400 → break at page 3
+		{500, 4}, // 500 > 100→0; 500>200→1; 500>300→2; 500>400→3; 500<=500 → break at page 4
+		{600, 4}, // 600 > all → loop finishes with pageNum=4
 	}
 
 	for _, tc := range testCases {
@@ -488,15 +488,15 @@ func TestGetResourceImageTiles(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"tiled-img": {
-				"format": "png",
-				"resource_width": 200,
+				"format":          "png",
+				"resource_width":  200,
 				"resource_height": 200,
 				"yj.tiles": []interface{}{
 					[]interface{}{"loc-tile-0-0", "loc-tile-0-1"},
 					[]interface{}{"loc-tile-1-0", "loc-tile-1-1"},
 				},
-				"yj.tile_width": tileW,
-				"yj.tile_height": tileH,
+				"yj.tile_width":   tileW,
+				"yj.tile_height":  tileH,
 				"yj.tile_padding": 0,
 			},
 		},
@@ -540,23 +540,23 @@ func TestGetResourceImageTilesWithPadding(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"tiled-img": {
-				"format": "png",
-				"resource_width": 200,
+				"format":          "png",
+				"resource_width":  200,
 				"resource_height": 200,
 				"yj.tiles": []interface{}{
 					[]interface{}{"tile-0-0", "tile-0-1"},
 					[]interface{}{"tile-1-0", "tile-1-1"},
 				},
-				"yj.tile_width": tileW,
-				"yj.tile_height": tileH,
+				"yj.tile_width":   tileW,
+				"yj.tile_height":  tileH,
 				"yj.tile_padding": padding,
 			},
 		},
 		RawFragments: map[string][]byte{
 			"tile-0-0": createTestPNG(t, tileW, tileH), // edge tile, no left/top padding
-			"tile-0-1": tileWithPadding,                 // edge tile, no top padding, right padding
-			"tile-1-0": tileWithPadding,                 // edge tile, no left padding, bottom padding
-			"tile-1-1": tileWithPadding,                 // interior tile, all padding
+			"tile-0-1": tileWithPadding,                // edge tile, no top padding, right padding
+			"tile-1-0": tileWithPadding,                // edge tile, no left padding, bottom padding
+			"tile-1-1": tileWithPadding,                // interior tile, all padding
 		},
 	}
 
@@ -583,10 +583,10 @@ func TestGetResourceImageNoTiles(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"format": "jpg",
-				"resource_width": 100,
+				"format":          "jpg",
+				"resource_width":  100,
 				"resource_height": 200,
-				"location": "res/img1.jpg",
+				"location":        "res/img1.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -615,17 +615,17 @@ func TestGetResourceImageVariantSelection(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"format": "jpg",
-				"resource_width": 100,
+				"format":          "jpg",
+				"resource_width":  100,
 				"resource_height": 200,
-				"location": "res/img1.jpg",
-				"yj.variants": []interface{}{"img1-hd"},
+				"location":        "res/img1.jpg",
+				"yj.variants":     []interface{}{"img1-hd"},
 			},
 			"img1-hd": {
-				"format": "jpg",
-				"resource_width": 200,
+				"format":          "jpg",
+				"resource_width":  200,
 				"resource_height": 400,
-				"location": "res/img1-hd.jpg",
+				"location":        "res/img1-hd.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -666,8 +666,8 @@ func TestGetResourceImagePDFResource(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"pdf1": {
-				"format": "pdf",
-				"location": "res/doc.pdf",
+				"format":     "pdf",
+				"location":   "res/doc.pdf",
 				"page_index": 2, // page_index = 2, page_nums = [3]
 			},
 		},
@@ -723,10 +723,10 @@ func TestGetOrderedImagesPageCountWarning(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"format":         "jpg",
-				"resource_width": 100,
+				"format":          "jpg",
+				"resource_width":  100,
 				"resource_height": 200,
-				"location":       "res/img1.jpg",
+				"location":        "res/img1.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{
@@ -764,10 +764,10 @@ func TestGetOrderedImagesV2PageCountWarning(t *testing.T) {
 	frags := fragmentCatalog{
 		ResourceRawData: map[string]map[string]interface{}{
 			"img1": {
-				"format":         "jpg",
-				"resource_width": 100,
+				"format":          "jpg",
+				"resource_width":  100,
 				"resource_height": 200,
-				"location":       "res/img1.jpg",
+				"location":        "res/img1.jpg",
 			},
 		},
 		RawFragments: map[string][]byte{

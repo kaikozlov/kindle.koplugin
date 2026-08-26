@@ -341,12 +341,12 @@ func TestResourceSearchPath_Mismatch(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	frag := map[string]interface{}{
-		"resource_name": "r1",
-		"location": "loc_A",
-		"search_path": "loc_B",
-		"format": "jpg",
-		"mime": "image/jpeg",
-		"resource_width": 100,
+		"resource_name":   "r1",
+		"location":        "loc_A",
+		"search_path":     "loc_B",
+		"format":          "jpg",
+		"mime":            "image/jpeg",
+		"resource_width":  100,
 		"resource_height": 100,
 	}
 	rp.fragments["$164:r1"] = frag
@@ -365,12 +365,12 @@ func TestResourceSearchPath_Match(t *testing.T) {
 	rp := newTestResourceProcessor()
 
 	frag := map[string]interface{}{
-		"resource_name": "r2",
-		"location": "loc_same",
-		"search_path": "loc_same",
-		"format": "jpg",
-		"mime": "image/jpeg",
-		"resource_width": 100,
+		"resource_name":   "r2",
+		"location":        "loc_same",
+		"search_path":     "loc_same",
+		"format":          "jpg",
+		"mime":            "image/jpeg",
+		"resource_width":  100,
 		"resource_height": 100,
 	}
 	rp.fragments["$164:r2"] = frag
@@ -396,13 +396,13 @@ func TestResourceExternalRef(t *testing.T) {
 
 	mainData := []byte("main-resource-data")
 	frag := map[string]interface{}{
-		"resource_name": "main_res",
-		"location": "loc_main",
-		"format": "jpg",
-		"mime": "image/jpeg",
-		"resource_width": 100,
+		"resource_name":   "main_res",
+		"location":        "loc_main",
+		"format":          "jpg",
+		"mime":            "image/jpeg",
+		"resource_width":  100,
 		"resource_height": 100,
-		"thumbnails": "ext_ref",
+		"thumbnails":      "ext_ref",
 	}
 	rp.fragments["$164:main_res"] = frag
 	rp.addTestRawMedia("loc_main", mainData)
@@ -526,16 +526,16 @@ func TestGetExternalResource_TiledImage(t *testing.T) {
 	png.Encode(&tileBuf, tileImg)
 
 	frag := map[string]interface{}{
-		"resource_name": "tiled_res",
-		"format": "png",
-		"mime": "image/png",
-		"resource_width": 100,
+		"resource_name":   "tiled_res",
+		"format":          "png",
+		"mime":            "image/png",
+		"resource_width":  100,
 		"resource_height": 50,
 		"yj.tiles": []interface{}{
 			[]interface{}{"tiled_res-tile-0-0", "tiled_res-tile-0-1"},
 		},
-		"yj.tile_width": tileWidth,
-		"yj.tile_height": tileHeight,
+		"yj.tile_width":   tileWidth,
+		"yj.tile_height":  tileHeight,
 		"yj.tile_padding": 0,
 	}
 	rp.fragments["$164:tiled_res"] = frag
@@ -561,18 +561,18 @@ func TestGetExternalResource_PDFPage(t *testing.T) {
 	pdfData := createMinimalPDF(1)
 
 	frag := map[string]interface{}{
-		"resource_name": "pdf_res",
-		"location": "loc_pdf",
-		"format": "pdf",
-		"mime": "application/pdf",
-		"resource_width": 612,
+		"resource_name":   "pdf_res",
+		"location":        "loc_pdf",
+		"format":          "pdf",
+		"mime":            "application/pdf",
+		"resource_width":  612,
 		"resource_height": 792,
-		"page_index": 0,
-		"margin":  0,
-		"margin_left":  0,
-		"margin_right":  0,
-		"margin_top":  0,
-		"margin_bottom":  0,
+		"page_index":      0,
+		"margin":          0,
+		"margin_left":     0,
+		"margin_right":    0,
+		"margin_top":      0,
+		"margin_bottom":   0,
 	}
 	rp.fragments["$164:pdf_res"] = frag
 	rp.addTestRawMedia("loc_pdf", pdfData)
@@ -599,13 +599,13 @@ func TestGetExternalResource_ExternalRefProcessed(t *testing.T) {
 
 	mainData := []byte("main-data")
 	frag := map[string]interface{}{
-		"resource_name": "main214",
-		"location": "loc_main214",
-		"format": "jpg",
-		"mime": "image/jpeg",
-		"resource_width": 100,
+		"resource_name":   "main214",
+		"location":        "loc_main214",
+		"format":          "jpg",
+		"mime":            "image/jpeg",
+		"resource_width":  100,
 		"resource_height": 100,
-		"thumbnails": "ext213",
+		"thumbnails":      "ext213",
 	}
 	rp.fragments["$164:main214"] = frag
 	rp.addTestRawMedia("loc_main214", mainData)
