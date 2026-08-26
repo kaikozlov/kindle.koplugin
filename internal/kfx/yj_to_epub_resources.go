@@ -11,9 +11,11 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -23,6 +25,7 @@ import (
 	pdfcpu "github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
+	xdraw "golang.org/x/image/draw"
 )
 
 // ---------------------------------------------------------------------------
@@ -1710,7 +1713,133 @@ func hasAlpha(img image.Image) bool {
 // blank page.
 func convertPDFPageToImage(location string, pdfData []byte, pageNum int, reportedErrors map[string]bool, forceJPEG bool) ([]byte, string, error) {
 	_ = reportedErrors // Python passes reported_errors through to the renderer; unused here.
-	return getPDFPageImage(location, pdfData, pageNum, forceJPEG)
+
+	// Python resources.py:324: default_image = (convert_pdf_page_to_jpeg(...), "$285")
+	// The rendering is computed up front — it is both the fallback for every
+	// validation failure and the reference for image_match.
+	// On the Kindle there is no pdftoppm and no pure-Go rasterizer, so the
+	// rendered default is simply unavailable there and getPDFPageImage reports
+	// failures as errors instead (the caller then keeps the original PDF).
+	renderedJPEG, renderErr := renderPDFPageJPEG(location, pdfData, pageNum)
+	if renderErr != nil {
+		log.Printf("kfx: warning: PDF page rendering unavailable for %s page %d: %v", location, pageNum, renderErr)
+	}
+
+	return getPDFPageImage(location, pdfData, pageNum, forceJPEG, renderedJPEG)
+}
+
+// pdfToImageDPI mirrors Python PDF_TO_IMAGE_DPI (resources.py:32).
+const pdfToImageDPI = 300
+
+// renderPDFPageJPEG implements Python convert_pdf_page_to_jpeg
+// (resources.py:328-364): render one PDF page to JPEG with pdftoppm at
+// PDF_TO_IMAGE_DPI honoring the cropbox. Uses the PATH-lookup variant of
+// Python's subprocess branch (the calibre-internal page_images tooling does
+// not exist in the standalone helper). Returns an error when pdftoppm is not
+// installed or fails, mirroring the exceptions Python raises (which propagate
+// to yj_to_epub_resources.py L112-115 and retain the original PDF resource).
+func renderPDFPageJPEG(location string, pdfData []byte, pageNum int) ([]byte, error) {
+	pdftoppm, err := exec.LookPath("pdftoppm")
+	if err != nil {
+		return nil, fmt.Errorf("pdftoppm is not available: %w", err)
+	}
+
+	pdfFile, err := os.CreateTemp("", "kfx-pdf-*.pdf")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(pdfFile.Name())
+	if _, err := pdfFile.Write(pdfData); err != nil {
+		pdfFile.Close()
+		return nil, err
+	}
+	if err := pdfFile.Close(); err != nil {
+		return nil, err
+	}
+
+	jpegDir, err := os.MkdirTemp("", "kfx-pdf-jpeg-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(jpegDir)
+
+	// Python: pdftoppm -cropbox -jpeg -r DPI -f page -l page <pdf> <prefix>
+	pageStr := strconv.Itoa(pageNum)
+	prefix := filepath.Join(jpegDir, "page-images")
+	cmd := exec.Command(pdftoppm,
+		"-cropbox", "-jpeg", "-r", strconv.Itoa(pdfToImageDPI),
+		"-f", pageStr, "-l", pageStr,
+		pdfFile.Name(), prefix)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("Failed to render PDF, pdftoppm errorcode: %v (%s)", err, bytes.TrimSpace(out))
+	}
+
+	entries, err := os.ReadDir(jpegDir)
+	if err != nil {
+		return nil, err
+	}
+	jpegs := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(e.Name(), ".jpg") || strings.HasSuffix(e.Name(), ".jpeg") {
+			jpegs = append(jpegs, filepath.Join(jpegDir, e.Name()))
+		} else {
+			// Python: raise Exception("pdftoppm created unexpected file: %s")
+			return nil, fmt.Errorf("pdftoppm created unexpected file: %s", e.Name())
+		}
+	}
+	if len(jpegs) != 1 {
+		// Python: raise Exception("pdftoppm created %d files" / "... created no files")
+		return nil, fmt.Errorf("pdftoppm %s page %d created %d files", location, pageNum, len(jpegs))
+	}
+
+	return os.ReadFile(jpegs[0])
+}
+
+// pdfImageMatch implements Python image_match (resources.py:464-510):
+// downscale both images to 1/16 of the smaller dimension, then compare the
+// interior (2px margin removed). The sum of squared per-pixel differences —
+// only counted for pixels whose channel-difference sum exceeds 50 — must stay
+// under 10 * width * height. Python resizes with PIL's BICUBIC; Go uses the
+// bicubic-family CatmullRom kernel from golang.org/x/image/draw.
+func pdfImageMatch(img1, img2 image.Image) bool {
+	const (
+		scale           = 16
+		maxDiffPerPixel = 10
+		removeMargin    = 2
+	)
+
+	b1, b2 := img1.Bounds(), img2.Bounds()
+	width := min(b1.Dx(), b2.Dx()) / scale
+	height := min(b1.Dy(), b2.Dy()) / scale
+	if width < 2*removeMargin || height < 2*removeMargin {
+		// Python's loops would not execute; total stays 0 and the images match.
+		return true
+	}
+
+	dst1 := image.NewRGBA(image.Rect(0, 0, width, height))
+	dst2 := image.NewRGBA(image.Rect(0, 0, width, height))
+	xdraw.CatmullRom.Scale(dst1, dst1.Bounds(), img1, b1, xdraw.Over, nil)
+	xdraw.CatmullRom.Scale(dst2, dst2.Bounds(), img2, b2, xdraw.Over, nil)
+
+	maxDiff := maxDiffPerPixel * width * height
+	total := 0
+	for y := removeMargin; y < height-removeMargin; y++ {
+		for x := removeMargin; x < width-removeMargin; x++ {
+			p1 := dst1.RGBAAt(x, y)
+			p2 := dst2.RGBAAt(x, y)
+			diff := absInt(int(p1.R)-int(p2.R)) + absInt(int(p1.G)-int(p2.G)) + absInt(int(p1.B)-int(p2.B))
+			if diff > 50 {
+				total += diff * diff
+				if total > maxDiff {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // getPDFPageImage implements Python get_pdf_page_image (resources.py:382-460).
@@ -1725,9 +1854,22 @@ func convertPDFPageToImage(location string, pdfData []byte, pageNum int, reporte
 //     original PDF data instead of fabricating image content.
 //
 // Python reference: resources.py:382-460
-func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG bool) ([]byte, string, error) {
+func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG bool, renderedJPEG []byte) ([]byte, string, error) {
 	if len(pdfData) == 0 || !bytes.HasPrefix(pdfData, []byte("%PDF")) {
 		return nil, "", fmt.Errorf("no PDF data")
+	}
+
+	// fail reports a validation failure. Python returns default_image — the
+	// pdftoppm rendering of the page — for every one of these branches. When no
+	// renderer is available (Kindle deployment), the failure is surfaced as an
+	// error so the caller retains the original PDF resource honestly.
+	fail := func(format string, args ...any) ([]byte, string, error) {
+		if renderedJPEG != nil {
+			log.Printf("kfx: info: PDF %s page %d not extractable: %s; using rendered page image",
+				location, pageNum, fmt.Sprintf(format, args...))
+			return renderedJPEG, "jpg", nil
+		}
+		return nil, "", fmt.Errorf(format, args...)
 	}
 
 	// Parse the document once for all page checks and image extraction.
@@ -1736,30 +1878,30 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 	ctx, err := api.ReadValidateAndOptimize(rs, model.NewDefaultConfiguration())
 	if err != nil {
 		log.Printf("kfx: warning: PDF image extraction failed for %s page %d: %v", location, pageNum, err)
-		return nil, "", err
+		return fail("pdf parse failed: %v", err)
 	}
 
 	// Python L388: page = pdf.pages[page_num - 1] (IndexError → default image)
 	pageDict, _, pAttrs, err := ctx.PageDict(pageNum, false)
 	if err != nil {
-		return nil, "", err
+		return fail("%v", err)
 	}
 
 	// Python L390-391: if box_tuple(page.cropbox) != box_tuple(page.mediabox): return default_image
 	// pypdf reports cropbox == mediabox when no cropbox is defined, so a missing
 	// CropBox compares equal.
 	if pAttrs.MediaBox == nil {
-		return nil, "", fmt.Errorf("PDF %s page %d has no mediabox", location, pageNum)
+		return fail("PDF %s page %d has no mediabox", location, pageNum)
 	}
 	if pAttrs.CropBox != nil && !pdfRectsEqual(pAttrs.CropBox, pAttrs.MediaBox) {
-		return nil, "", fmt.Errorf("PDF %s page %d cropbox != mediabox", location, pageNum)
+		return fail("PDF %s page %d cropbox != mediabox", location, pageNum)
 	}
 
 	// Python L392-393: if len(page.images.keys()) != 1: return default_image
 	imgMap, err := pdfcpu.ExtractPageImages(ctx, pageNum, false)
 	if err != nil {
 		log.Printf("kfx: warning: PDF image extraction failed for %s page %d: %v", location, pageNum, err)
-		return nil, "", err
+		return fail("%v", err)
 	}
 	// pdfcpu also reports page thumbnails (/Thumb) as images; pypdf's
 	// page.images does not — filter them out before counting.
@@ -1770,7 +1912,7 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 		}
 	}
 	if len(pageImages) != 1 {
-		return nil, "", fmt.Errorf("PDF %s page %d has %d images, expected exactly 1", location, pageNum, len(pageImages))
+		return fail("PDF %s page %d has %d images, expected exactly 1", location, pageNum, len(pageImages))
 	}
 	pdfImg := pageImages[0]
 
@@ -1783,12 +1925,12 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 
 	// Python L394-395: text = page.extract_text(); if text: return default_image
 	if pdfPageHasText(ctx, pageDict, pAttrs) {
-		return nil, "", fmt.Errorf("PDF %s page %d contains text", location, pageNum)
+		return fail("PDF %s page %d contains text", location, pageNum)
 	}
 
 	// Python L397-400: any annotation carrying /Contents → default image
 	if pdfPageHasContentAnnotations(ctx, pageDict) {
-		return nil, "", fmt.Errorf("PDF %s page %d has annotations with content", location, pageNum)
+		return fail("PDF %s page %d has annotations with content", location, pageNum)
 	}
 
 	// Python L402-406: /Type /XObject and /Subtype /Image are guaranteed here —
@@ -1800,37 +1942,37 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 	// rasterizer that comparison cannot run, so masked images are rejected
 	// outright rather than extracted without their transparency.
 	if pdfImg.HasSMask || pdfImg.HasImgMask {
-		return nil, "", fmt.Errorf("PDF %s page %d image has a transparency mask", location, pageNum)
+		return fail("PDF %s page %d image has a transparency mask", location, pageNum)
 	}
 
 	// Python L408-414: page/image aspect ratio must agree to 0.1%
 	mediaWidth := pAttrs.MediaBox.Width()
 	mediaHeight := pAttrs.MediaBox.Height()
 	if pdfImg.Width <= 0 || pdfImg.Height <= 0 || mediaWidth <= 0 || mediaHeight <= 0 {
-		return nil, "", fmt.Errorf("PDF %s page %d has degenerate geometry (page %gx%g, image %dx%d)",
+		return fail("PDF %s page %d has degenerate geometry (page %gx%g, image %dx%d)",
 			location, pageNum, mediaWidth, mediaHeight, pdfImg.Width, pdfImg.Height)
 	}
 	pageAspect := mediaWidth / mediaHeight
 	imageAspect := float64(pdfImg.Width) / float64(pdfImg.Height)
 	if math.Abs(pageAspect-imageAspect)*pageAspect > 0.001 {
-		return nil, "", fmt.Errorf("PDF %s page %d image aspect %.6f differs from page aspect %.6f",
+		return fail("PDF %s page %d image aspect %.6f differs from page aspect %.6f",
 			location, pageNum, imageAspect, pageAspect)
 	}
 
 	// Python L416-417: image_dpi = img_width / (media_width / 72.0); if < 75 → default
 	imageDPI := float64(pdfImg.Width) / (mediaWidth / 72.0)
 	if imageDPI < 75.0 {
-		return nil, "", fmt.Errorf("PDF %s page %d image resolution %.1f DPI is below 75", location, pageNum, imageDPI)
+		return fail("PDF %s page %d image resolution %.1f DPI is below 75", location, pageNum, imageDPI)
 	}
 
 	// Read the image data from the model.Image's io.Reader.
 	imgData, err := io.ReadAll(pdfImg.Reader)
 	if err != nil {
 		log.Printf("kfx: warning: failed to read extracted PDF image from %s page %d: %v", location, pageNum, err)
-		return nil, "", err
+		return fail("%v", err)
 	}
 	if len(imgData) == 0 {
-		return nil, "", fmt.Errorf("PDF %s page %d image stream is empty", location, pageNum)
+		return fail("PDF %s page %d image stream is empty", location, pageNum)
 	}
 
 	// Python L419-423: filter whitelist. Python matches the exact single-filter
@@ -1841,7 +1983,7 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 	// rendered default image.
 	pipeline := pdfImageFilterPipeline(ctx, pdfImg)
 	if len(pipeline) != 1 {
-		return nil, "", fmt.Errorf("PDF %s page %d image uses a filter pipeline (%d filters), not extractable",
+		return fail("PDF %s page %d image uses a filter pipeline (%d filters), not extractable",
 			location, pageNum, len(pipeline))
 	}
 
@@ -1849,17 +1991,22 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 	case "DCTDecode":
 		// Python L407-408: image_file_ext(image_data) == ".jpg"
 		if !bytes.HasPrefix(imgData, []byte("\xff\xd8\xff")) {
-			return nil, "", fmt.Errorf("PDF %s page %d DCTDecode image is not JPEG data", location, pageNum)
+			return fail("PDF %s page %d DCTDecode image is not JPEG data", location, pageNum)
 		}
 		// Python L432-435: PIL opens the data — format must be JPEG and the
 		// mode one of RGB/RGBA/L/1 (CMYK JPEGs are rejected).
 		decoded, err := decodeImageBytes(imgData)
 		if err != nil {
 			log.Printf("kfx: warning: failed to decode extracted image from PDF %s page %d: %v", location, pageNum, err)
-			return nil, "", err
+			return fail("%v", err)
 		}
 		if !pdfImageModeAllowed(decoded) {
-			return nil, "", fmt.Errorf("PDF %s page %d image color mode %s is not supported", location, pageNum, fullImageModeString(decoded))
+			return fail("PDF %s page %d image color mode %s is not supported", location, pageNum, fullImageModeString(decoded))
+		}
+		// Python resources.py:444-445: image_match(pil_img, rendered) before
+		// returning the extraction.
+		if !pdfExtractedImageMatchesRender(decoded, renderedJPEG) {
+			return fail("extracted image does not match rendered page")
 		}
 		log.Printf("kfx: info: Extracting JPEG image (%dx%d mode %s) from PDF %s page %d",
 			pdfImg.Width, pdfImg.Height, fullImageModeString(decoded), location, pageNum)
@@ -1872,21 +2019,30 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 		decoded, err := decodeImageBytes(imgData)
 		if err != nil {
 			log.Printf("kfx: warning: failed to decode extracted image from PDF %s page %d: %v", location, pageNum, err)
-			return nil, "", err
+			return fail("%v", err)
 		}
 		// Python L432-435: pil_img.format in {"JPEG", "PNG"} and mode in
 		// {"RGB", "RGBA", "L", "1"} — CMYK output (TIFF) is rejected here.
 		if !pdfImageModeAllowed(decoded) {
-			return nil, "", fmt.Errorf("PDF %s page %d image color mode %s is not supported", location, pageNum, fullImageModeString(decoded))
+			return fail("PDF %s page %d image color mode %s is not supported", location, pageNum, fullImageModeString(decoded))
 		}
 		var buf bytes.Buffer
 		if err := png.Encode(&buf, decoded); err != nil {
-			return nil, "", err
+			return fail("%v", err)
 		}
 		pngData := buf.Bytes()
 		if forceJPEG {
 			// Python L436-440: force_jpeg → JPEG quality 95
-			return convertImageToJPEG(pngData, location, pageNum)
+			jpegData, _, err := convertImageToJPEG(pngData, location, pageNum)
+			if err != nil {
+				return fail("%v", err)
+			}
+			return jpegData, "jpg", nil
+		}
+		// Python resources.py:444-445: image_match(pil_img, rendered) before
+		// returning the extraction.
+		if !pdfExtractedImageMatchesRender(decoded, renderedJPEG) {
+			return fail("extracted image does not match rendered page")
 		}
 		log.Printf("kfx: info: Extracting PNG image (%dx%d mode %s) from PDF %s page %d",
 			pdfImg.Width, pdfImg.Height, fullImageModeString(decoded), location, pageNum)
@@ -1894,7 +2050,7 @@ func getPDFPageImage(location string, pdfData []byte, pageNum int, forceJPEG boo
 
 	default:
 		// JPXDecode / LZWDecode / RunLengthDecode → rendered default in Python.
-		return nil, "", fmt.Errorf("PDF %s page %d image filter %q is not extractable", location, pageNum, pipeline[0].Name)
+		return fail("PDF %s page %d image filter %q is not extractable", location, pageNum, pipeline[0].Name)
 	}
 }
 
@@ -2231,3 +2387,24 @@ func uniqueFileID(filename string, existing map[string]string) string {
 
 // reportPdfMargins enables PDF margin reporting. Port of Python REPORT_PDF_MARGINS (yj_to_epub_resources.py L19).
 const reportPdfMargins = false
+
+// pdfExtractedImageMatchesRender implements Python's final verification
+// (resources.py:444-445): the extracted image must visually match the rendered
+// page. It can only run when a rendering is available (pdftoppm installed);
+// without a renderer the static validation checks carry the decision alone.
+func pdfExtractedImageMatchesRender(extracted image.Image, renderedJPEG []byte) bool {
+	if renderedJPEG == nil {
+		// No renderer available (Kindle deployment): image_match cannot run.
+		// The static checks (cropbox, single image, no text, no annotations,
+		// aspect, DPI, filter, mode) have all passed at this point.
+		return true
+	}
+	rendered, err := decodeImageBytes(renderedJPEG)
+	if err != nil {
+		// Python: Image.open(default_image) raising would propagate out of the
+		// try block and return default_image — treat as a mismatch fallback to
+		// the render, which is what returning false does here.
+		return false
+	}
+	return pdfImageMatch(extracted, rendered)
+}

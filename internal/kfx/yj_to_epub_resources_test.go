@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -425,6 +426,7 @@ func TestConvertPDFPageToImage_ValidPDF_NoImage_ReturnsError(t *testing.T) {
 	// A valid PDF whose page contains no extractable image must fail honestly
 	// (Python: len(page.images) != 1 → rendered default; without a renderer Go
 	// propagates the failure to the caller).
+	t.Setenv("PATH", "/nonexistent") // force the no-renderer deployment
 	pdfData := createMinimalPDF(1)
 
 	result, format, err := convertPDFPageToImage("test.pdf", pdfData, 1, nil, false)
@@ -462,6 +464,7 @@ func TestGetExternalResource_PDFResource_ExtractsAndConverts(t *testing.T) {
 	// This PDF has no extractable page image, so conversion fails honestly and the
 	// original PDF data, format and extension are retained
 	// (Python: yj_to_epub_resources.py L112-115 exception path).
+	t.Setenv("PATH", "/nonexistent") // force the no-renderer deployment
 	rp := newTestResourceProcessor()
 
 	pdfData := createMinimalPDF(1)
@@ -996,7 +999,8 @@ func TestConvertPDFPageToImage_EmptyPDFPages_NoImages_ReturnsError(t *testing.T)
 	// Python resources.py:384 — if len(page.images.keys()) != 1: return default_image
 	// A PDF page with no embedded images cannot be extracted and there is no
 	// renderer available — failure must be reported honestly.
-	pdfData := createMinimalPDF(1) // no embedded images
+	t.Setenv("PATH", "/nonexistent") // force the no-renderer deployment
+	pdfData := createMinimalPDF(1)   // no embedded images
 
 	result, format, err := convertPDFPageToImage("empty_pages.pdf", pdfData, 1, nil, false)
 	if err == nil {
@@ -1190,7 +1194,7 @@ func TestGetPDFPageImage_MultiPagePDF_ExtractsCorrectPage(t *testing.T) {
 	// We use a single-page PDF and request page 1.
 	pdfData := createPDFWithJPEG(80, 60, 72, 54) // 80 DPI, aspect 4:3
 
-	result, format, err := getPDFPageImage("multipage.pdf", pdfData, 1, false)
+	result, format, err := getPDFPageImage("multipage.pdf", pdfData, 1, false, nil)
 	if err != nil {
 		t.Fatalf("expected successful extraction, got: %v", err)
 	}
@@ -1276,6 +1280,9 @@ func testStreamObject(data string) []byte {
 
 func expectPDFConversionError(t *testing.T, location string, pdfData []byte, wantSubstr string) {
 	t.Helper()
+	// Force the no-renderer deployment (Kindle): with pdftoppm available the
+	// failure path would return the rendered page image like Python does.
+	t.Setenv("PATH", "/nonexistent")
 	result, format, err := convertPDFPageToImage(location, pdfData, 1, nil, false)
 	if err == nil {
 		t.Fatalf("expected error containing %q, got success (format %q)", wantSubstr, format)
@@ -1453,5 +1460,199 @@ func TestGetPDFPageImage_FlateDecodeImage_ExtractedAsPNG(t *testing.T) {
 	}
 	if cfg.Width != w || cfg.Height != h {
 		t.Fatalf("expected %dx%d PNG, got %dx%d", w, h, cfg.Width, cfg.Height)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// pdftoppm rendering fallback + image_match parity
+// Python: resources.py:324-326 (default_image), 328-364 (convert_pdf_page_to_jpeg),
+// 444-445 (image_match), 464-510 (image_match implementation).
+// ---------------------------------------------------------------------------
+
+// requirePdftoppm skips the test when pdftoppm is not installed (e.g. CI or
+// the Kindle itself).
+func requirePdftoppm(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("pdftoppm"); err != nil {
+		t.Skip("pdftoppm not available; skipping renderer parity test")
+	}
+}
+
+func TestRenderPDFPageJPEG_NotAvailable(t *testing.T) {
+	// Kindle deployment: no pdftoppm on PATH. Python's convert_pdf_page_to_jpeg
+	// raises, which propagates to the resource exception path.
+	t.Setenv("PATH", "/nonexistent")
+	if _, err := renderPDFPageJPEG("test.pdf", createPDFWithJPEG(100, 150, 72, 108), 1); err == nil {
+		t.Fatal("expected error when pdftoppm is not on PATH")
+	}
+}
+
+func TestRenderPDFPageJPEG_RendersPageAt300DPI(t *testing.T) {
+	requirePdftoppm(t)
+
+	// 72x108pt page rendered at 300 DPI -> 300x450 pixels.
+	jpegData, err := renderPDFPageJPEG("test.pdf", createPDFWithJPEG(100, 150, 72, 108), 1)
+	if err != nil {
+		t.Fatalf("expected successful render, got: %v", err)
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(jpegData))
+	if err != nil {
+		t.Fatalf("rendered page should be a valid JPEG, got: %v", err)
+	}
+	if cfg.Width != 300 || cfg.Height != 450 {
+		t.Fatalf("expected 300x450 render at 300 DPI, got %dx%d", cfg.Width, cfg.Height)
+	}
+}
+
+func TestRenderPDFPageJPEG_MissingPage_Fails(t *testing.T) {
+	requirePdftoppm(t)
+
+	pdfData := createPDFWithJPEG(100, 150, 72, 108)
+	if _, err := renderPDFPageJPEG("test.pdf", pdfData, 3); err == nil {
+		t.Fatal("expected error rendering an out-of-range page")
+	}
+}
+
+func TestConvertPDFPageToImage_ValidationFailure_ReturnsRenderedPage(t *testing.T) {
+	// Python resources.py:324: every get_pdf_page_image failure returns
+	// default_image — the rendered page. A text page cannot be extracted, so
+	// with pdftoppm available the render must be returned, never an error.
+	requirePdftoppm(t)
+
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, ""),
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q BT 12 12 Td (caption) Tj ET"))
+
+	result, format, err := convertPDFPageToImage("textimg.pdf", pdfData, 1, nil, false)
+	if err != nil {
+		t.Fatalf("expected rendered fallback, got error: %v", err)
+	}
+	if format != "jpg" {
+		t.Fatalf("expected format jpg for rendered fallback, got %q", format)
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("rendered fallback should be valid JPEG, got: %v", err)
+	}
+	// Rendered at 300 DPI of a 72x108pt page.
+	if cfg.Width != 300 || cfg.Height != 450 {
+		t.Fatalf("expected 300x450 rendered page, got %dx%d", cfg.Width, cfg.Height)
+	}
+}
+
+func TestConvertPDFPageToImage_ExtractedOnlyWhenMatch(t *testing.T) {
+	// With a renderer available, a valid single-image page returns the exact
+	// embedded JPEG (extraction preferred over rendering, Python resources.py:446-447).
+	requirePdftoppm(t)
+
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, ""),
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q"))
+
+	result, format, err := convertPDFPageToImage("match.pdf", pdfData, 1, nil, false)
+	if err != nil {
+		t.Fatalf("expected successful extraction, got: %v", err)
+	}
+	if format != "jpg" {
+		t.Fatalf("expected format jpg, got %q", format)
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(result))
+	if err != nil {
+		t.Fatalf("expected valid JPEG, got: %v", err)
+	}
+	// Extraction returns the embedded 100x150 image, not the 300x450 render.
+	if cfg.Width != 100 || cfg.Height != 150 {
+		t.Fatalf("expected extracted 100x150 image, got %dx%d", cfg.Width, cfg.Height)
+	}
+}
+
+func TestConvertPDFPageToImage_NoRenderer_HonestError(t *testing.T) {
+	// Without a renderer the same text-page failure must surface as an error so
+	// the caller keeps the original PDF (Python exception path,
+	// yj_to_epub_resources.py L112-115).
+	t.Setenv("PATH", "/nonexistent")
+
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, ""),
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q BT 12 12 Td (caption) Tj ET"))
+
+	expectPDFConversionError(t, "textimg.pdf", pdfData, "contains text")
+}
+
+func TestGetExternalResource_PDFResource_RenderedConversion(t *testing.T) {
+	// With pdftoppm available the FIX_PDF branch converts using the rendered
+	// page and updates format/extension exactly like Python's success path
+	// (yj_to_epub_resources.py L115-118).
+	requirePdftoppm(t)
+
+	rp := newTestResourceProcessor()
+	pdfData := buildSinglePageTestPDF(
+		testImagePageBody(72, 108, ""),
+		testJPEGImageObject(t, 100, 150, ""),
+		testStreamObject("q 72 0 0 108 0 0 cm /Im0 Do Q BT 12 12 Td (caption) Tj ET"))
+
+	frag := map[string]interface{}{
+		"resource_name":   "pdf_res",
+		"location":        "loc_pdf",
+		"format":          "pdf",
+		"mime":            "application/pdf",
+		"resource_width":  72,
+		"resource_height": 108,
+		"page_index":      0,
+		"yj.margin":       0,
+		"margin_left":     0,
+		"margin_right":    0,
+		"margin_top":      0,
+		"margin_bottom":   0,
+	}
+	rp.fragments["$164:pdf_res"] = frag
+	rp.addTestRawMedia("loc_pdf", pdfData)
+
+	result := rp.getExternalResource("pdf_res", false)
+	if result == nil {
+		t.Fatal("expected non-nil result for PDF resource")
+	}
+	if result.format != "jpg" {
+		t.Fatalf("expected format 'jpg' after rendered conversion, got %q", result.format)
+	}
+	if result.extension != ".jpg" {
+		t.Fatalf("expected extension '.jpg' after rendered conversion, got %q", result.extension)
+	}
+	if cfg, err := jpeg.DecodeConfig(bytes.NewReader(result.rawMedia)); err != nil || cfg.Width != 300 || cfg.Height != 450 {
+		t.Fatalf("expected 300x450 rendered JPEG, got %vx%v err=%v", cfg.Width, cfg.Height, err)
+	}
+}
+
+func TestPDFImageMatch(t *testing.T) {
+	red := func(w, h int) image.Image {
+		img := image.NewRGBA(image.Rect(0, 0, w, h))
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				img.SetRGBA(x, y, color.RGBA{R: 255, A: 255})
+			}
+		}
+		return img
+	}
+	blue := func(w, h int) image.Image {
+		img := image.NewRGBA(image.Rect(0, 0, w, h))
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				img.SetRGBA(x, y, color.RGBA{B: 255, A: 255})
+			}
+		}
+		return img
+	}
+
+	if !pdfImageMatch(red(512, 512), red(1024, 1024)) {
+		t.Fatal("identical images at different scales must match")
+	}
+	if pdfImageMatch(red(512, 512), blue(512, 512)) {
+		t.Fatal("solid red vs solid blue must not match")
+	}
+	if !pdfImageMatch(red(4, 4), blue(4, 4)) {
+		t.Fatal("tiny images cannot be compared and must match (Python loops do not execute)")
 	}
 }

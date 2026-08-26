@@ -284,6 +284,7 @@ func TestConvertJXR_RGBA(t *testing.T) {
 func TestConvertPDFPageToImage_NoPanic(t *testing.T) {
 	// PDF page extraction in Go requires external tool (pdftoppm) or library.
 	// For synthetic testing, verify it doesn't panic and handles invalid data.
+	t.Setenv("PATH", "/nonexistent") // force the no-renderer deployment
 	pdfData := createMinimalPDF(1)
 
 	// Should not panic even when rendering tools are unavailable
