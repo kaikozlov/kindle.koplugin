@@ -79,6 +79,7 @@ class PyFunc:
     docstring_first_line: Optional[str]
     nstmt: int = 0
     nlit: int = 0
+    trivial_shape: str = ""  # semantic no-op/identity/constant classification
 
     @property
     def is_dunder(self):
@@ -90,7 +91,9 @@ class PyFunc:
 
     @property
     def py_trivial(self):
-        return self.substance <= PY_TRIVIAL_MAX
+        """Semantically trivial: no-op, identity, or constant (shape-based,
+        NOT size-based). `return self.lookup[x]` is substantive."""
+        return bool(self.trivial_shape)
 
     @property
     def substance(self):
@@ -141,6 +144,130 @@ def count_stmts(node) -> tuple[int, int]:
     return n, lit
 
 
+def _py_expr_shape(e: ast.expr, arg_pos: dict) -> str:
+    """Semantically classify a Python return expression for trivial matching.
+
+    Mirrors gofuncinfo's TrivialShape vocabulary. Constants carry their
+    literal VALUE so compatibility can require value equality; identity
+    returns carry the argument POSITION. Call/index/attribute returns are
+    never trivial ("call:<name>" marks them for diagnostics).
+    """
+    if isinstance(e, ast.Constant):
+        v = e.value
+        if v is None:
+            return "const:nil"
+        if v is True:
+            return "const:true"
+        if v is False:
+            return "const:false"
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return f"const:{'int' if isinstance(v, int) else 'float'}:{v}"
+        if isinstance(v, str):
+            return "const:empty-string" if v == "" else f"const:string:{v}"
+        return ""
+    if isinstance(e, ast.Name):
+        if e.id in arg_pos:
+            return f"arg:{arg_pos[e.id]}"
+        return ""
+    if isinstance(e, (ast.List, ast.Tuple, ast.Dict, ast.Set)):
+        if len(getattr(e, "elts", []) or getattr(e, "keys", [])) == 0:
+            return "const:empty-lit"
+        return ""
+    if isinstance(e, ast.Call):
+        name = e.func.id if isinstance(e.func, ast.Name) else (
+            e.func.attr if isinstance(e.func, ast.Attribute) else "?")
+        return f"call:{name}"
+    return ""
+
+
+def py_trivial_shape(node: ast.FunctionDef, arg_pos: dict) -> str:
+    """Classify a Python function body as no-op/identity/constant.
+
+    Only true trivial SHAPES qualify: docstring + pass/... (void), a single
+    constant return, or a single identity return of a parameter. Anything
+    computed, called, indexed, or looked up is substantive — one line does
+    not make it trivial. Returns "" for substantive bodies.
+    """
+    body = list(node.body)
+    if body and (isinstance(body[0], ast.Expr)
+                 and isinstance(body[0].value, ast.Constant)
+                 and isinstance(body[0].value.value, str)):
+        body = body[1:]
+    if not body:
+        return "void"
+    shapes = []
+    for stmt in body:
+        if isinstance(stmt, ast.Pass):
+            shapes.append("void")
+            continue
+        if isinstance(stmt, ast.Return):
+            if stmt.value is None:
+                shapes.append("void")
+            else:
+                s = _py_expr_shape(stmt.value, arg_pos)
+                if not s or s.startswith("call:"):
+                    return ""  # computed/call value: substantive
+                shapes.append(s)
+            continue
+        return ""  # any other statement: substantive
+    if not shapes:
+        return "void"
+    if any(s != shapes[0] for s in shapes[1:]):
+        return ""
+    return shapes[0]
+
+
+def _norm_num(shape: str) -> str:
+    """Normalize a const:<int|float>:<value> shape for cross-language
+    comparison (Python 1 == Go 1; 1.0 == 1)."""
+    body = shape[len("const:"):] if shape.startswith("const:") else shape
+    kind, sep, value = body.partition(":")
+    if kind not in ("int", "float") or not sep:
+        return shape
+    try:
+        f = float(value)
+        if f == int(f):
+            return f"const:num:{int(f)}"
+        return f"const:num:{f}"
+    except ValueError:
+        return shape
+
+
+def _norm_str(shape: str) -> str:
+    """Strip Go/Python string quoting so literals compare by content."""
+    if shape.startswith("const:string:"):
+        lit = shape[len("const:string:"):]
+        if len(lit) >= 2 and lit[0] in "\"'" and lit[-1] == lit[0]:
+            lit = lit[1:-1]
+        return f"const:string:{lit}"
+    return shape
+
+
+def trivial_shapes_compatible(py_shape: str, go_shape: Optional[str]) -> bool:
+    """Can a semantically-trivial Python function be satisfied by a
+    semantically-trivial Go body? Requires shape AND value equality:
+    True != false, 0 != 1, identity must hit the same argument position.
+    """
+    if not py_shape or not go_shape:
+        return False
+    p, g = py_shape, go_shape
+    if p.startswith("const:empty-string"):
+        p = "const:string:"
+    if g.startswith("const:empty-string"):
+        g = "const:string:"
+    if p.startswith("const:empty-lit") or g.startswith("const:empty-lit"):
+        return p.startswith("const:empty-lit") and g.startswith("const:empty-lit")
+    if p.startswith("const:int:") or p.startswith("const:float:"):
+        if not (g.startswith("const:int:") or g.startswith("const:float:")):
+            return False
+        return _norm_num(p) == _norm_num(g)
+    if p.startswith("const:string:"):
+        return g.startswith("const:string:") and _norm_str(p) == _norm_str(g)
+    if p.startswith("arg:") or g.startswith("arg:"):
+        return p == g  # both must be identity of the same argument position
+    return p == g  # void/nil/true/false/… exact
+
+
 def extract_python_functions(filepath: str) -> list[PyFunc]:
     """Extract all function definitions from a Python file, preserving class context."""
     with open(filepath, "r") as f:
@@ -163,6 +290,12 @@ def extract_python_functions(filepath: str) -> list[PyFunc]:
                 doc = node.body[0].value.value.split("\n")[0][:80]
                 doc_stmts = 1
             nstmt, nlit = count_stmts(node)
+            arg_pos = {}
+            pos = 0
+            for a in node.args.args:
+                if a.arg != "self":
+                    arg_pos[a.arg] = pos
+                    pos += 1
             result.append(PyFunc(
                 name=node.name,
                 class_name=class_name,
@@ -172,6 +305,7 @@ def extract_python_functions(filepath: str) -> list[PyFunc]:
                 docstring_first_line=doc,
                 nstmt=max(0, nstmt - doc_stmts),
                 nlit=nlit,
+                trivial_shape=py_trivial_shape(node, arg_pos),
             ))
             for child in node.body:
                 visit(child)
@@ -318,6 +452,18 @@ FILES_TO_AUDIT = [
     "kfx_container.py",
 ]
 
+# Go identifier names that are too generic to auto-match by name even when
+# unique in the expected file: a `String`/`Equal`/`Get` that happens to exist
+# proves nothing about a Python __repr__/__eq__/__getitem__. These require an
+# explicit identity override.
+GENERIC_GO_NAMES = {
+    "String", "GoString", "Equal", "Less", "Len", "Get", "At", "Hash",
+    "Contains", "Copy", "DeepCopy", "SetItem", "Ne", "Le", "Gt", "Ge", "New",
+    "Clear", "Keys", "Items", "Format", "Init", "Head", "Body", "Walk",
+}
+
+DEFAULT_OVERRIDES = os.path.join(BASE, "scripts/parity_identity_overrides.json")
+
 
 # ---------------------------------------------------------------------------
 # Go function substance index (from scripts/gofuncinfo)
@@ -325,9 +471,11 @@ FILES_TO_AUDIT = [
 
 @lru_cache(maxsize=1)
 def gofuncinfo(path=None) -> dict:
-    """Run (or load) gofuncinfo and index Go functions by lowercase name.
+    """Run (or load) gofuncinfo and index Go functions.
 
-    Returns {"functions": [FuncInfo...], "by_lower": {name: [FuncInfo...]}}.
+    Indexing is EXACT-CASE (Go identifiers are case-sensitive: decodeKFX and
+    DecodeKFX are different functions). Lowercased conflation of distinct
+    identifiers is how evidence used to match the wrong function.
     """
     if path and os.path.exists(path):
         with open(path) as f:
@@ -343,11 +491,26 @@ def gofuncinfo(path=None) -> dict:
         data = json.loads(proc.stdout)
 
     funcs = data.get("functions", [])
-    by_lower = {}
+    by_name = {}
     for f in funcs:
-        by_lower.setdefault(f["name"].lower(), []).append(f)
-    data["by_lower"] = by_lower
+        by_name.setdefault(f["name"], []).append(f)
+    data["by_name"] = by_name
     return data
+
+
+def go_index_lookup(go_index: dict, name: str, go_file: Optional[str] = None,
+                    allow_multiple: bool = False) -> "list[dict]":
+    """Exact-case lookup, optionally scoped to one file.
+
+    Returns the candidate list; callers decide how ambiguity is handled.
+    """
+    if go_file:
+        want = go_file.split("/")[-1]
+        cands = [f for f in go_index["by_name"].get(name, []) if f["file"] == want]
+        if cands:
+            return cands
+        return []
+    return go_index["by_name"].get(name, [])
 
 
 def go_trivial(go_fn: dict) -> bool:
@@ -359,21 +522,27 @@ def go_substance(go_fn: dict) -> int:
 
 
 def _resolve_callee(go_index: dict, callee: str, from_fn: dict) -> Optional[dict]:
-    """Resolve a called name to a scanned Go function, preferring the same file."""
-    candidates = go_index["by_lower"].get(callee.lower())
-    if not candidates:
-        return None
-    for c in candidates:
-        if c["file"] == from_fn["file"]:
-            return c
-    return candidates[0]
+    """Resolve an unqualified Ident callee EXACT-CASE for delegation credit.
+
+    Only same-file-unique or corpus-unique resolutions count; an ambiguous
+    name (multiple candidates) yields no credit — we prefer false negatives
+    over grafting an unrelated function's substance onto a wrapper.
+    """
+    cands = go_index_lookup(go_index, callee, from_fn["file"])
+    if len(cands) == 1:
+        return cands[0]
+    if not cands:
+        cands = go_index_lookup(go_index, callee)
+    if len(cands) == 1:
+        return cands[0]
+    return None
 
 
 def transitive_substance(go_index: dict, go_fn: dict) -> int:
-    """Total substance reachable through same-module calls, each function
-    counted once (cycle-safe). Credits one-line delegation wrappers: a
-    wrapper delegating to a substantive implementation is implemented, a
-    wrapper calling only library functions is not."""
+    """Total substance reachable through unqualified Ident calls only, each
+    function counted once (cycle-safe). Selector calls are excluded by
+    gofuncinfo (IdentCalls) — they cannot prove the target. Credits one-line
+    delegation wrappers only when they provably delegate within the corpus."""
     cache = go_index.setdefault("_tsub_cache", {})
 
     def visit(fn: dict, visiting: set) -> int:
@@ -384,7 +553,7 @@ def transitive_substance(go_index: dict, go_fn: dict) -> int:
             return 0  # cycle
         visiting.add(key)
         total = go_substance(fn)
-        for callee in fn.get("calls", []):
+        for callee in fn.get("ident_calls", []):
             target = _resolve_callee(go_index, callee, fn)
             if target is not None:
                 total += visit(target, visiting)
@@ -396,25 +565,34 @@ def transitive_substance(go_index: dict, go_fn: dict) -> int:
 
 
 def internal_delegates(go_index: dict, go_fn: dict) -> list[str]:
-    """Direct callees that resolve to scanned Go functions (for the report)."""
+    """Unqualified callees that resolve unambiguously (for the report)."""
     out = []
-    for callee in go_fn.get("calls", []):
+    for callee in go_fn.get("ident_calls", []):
         if _resolve_callee(go_index, callee, go_fn) is not None:
             out.append(callee)
     return out
 
 
 def classify(py: PyFunc, go_fn: Optional[dict], excluded_entry: Optional[dict],
+             override_entry: Optional[dict] = None,
              tsub: Optional[int] = None) -> str:
-    """Classify one Python function against its matched Go function."""
+    """Classify one Python function against its matched Go function.
+
+    trivial↔trivial credit requires SEMANTIC compatibility (shape + literal
+    value equality + argument position), never mere size or kind.
+    """
     if excluded_entry is not None:
         return "excluded"
+    if override_entry is not None:
+        return "mapped"
     if go_fn is None:
         return "missing"
     if go_fn.get("notimpl"):
         return "stub_admitted"
     if go_trivial(go_fn):
-        return "implemented_trivial" if py.py_trivial else "stub_silent"
+        if py.py_trivial and trivial_shapes_compatible(py.trivial_shape, go_fn.get("trivial_shape")):
+            return "implemented_trivial"
+        return "stub_silent"
     if py.substance >= PY_BIG:
         need = py.substance * THIN_RATIO
         if go_substance(go_fn) < need:
@@ -422,6 +600,78 @@ def classify(py: PyFunc, go_fn: Optional[dict], excluded_entry: Optional[dict],
                 return "implemented_delegation"
             return "thin"
     return "implemented"
+
+
+def load_overrides(path: str) -> list[dict]:
+    """Identity overrides: explicit, reviewed cross-file/ambiguous mappings.
+
+    An override says "Python (file,class,name[,line]) is implemented by Go
+    (go_file,go_func)" — the ONLY way a cross-file or name-ambiguous match
+    can count as implemented. Without one, such matches are unresolved_match.
+    """
+    if not path or not os.path.exists(path):
+        return []
+    with open(path) as f:
+        data = json.load(f)
+    return data.get("overrides", [])
+
+
+def override_matches(entry: dict, pf: PyFunc, py_file: str) -> bool:
+    if entry.get("py_file") != py_file:
+        return False
+    if entry.get("py_name") != pf.name:
+        return False
+    if entry.get("py_class") not in (None, "", pf.class_name):
+        return False
+    if entry.get("py_line") not in (None, 0) and entry["py_line"] != pf.line_start:
+        return False
+    return True
+
+
+def validate_overrides(entries: list[dict], pyfuncs_by_file: dict,
+                       go_index: dict) -> tuple[list[str], list[dict]]:
+    """Validate identity overrides. Mapping targets must resolve EXACT-CASE
+    to a substantive Go function; reasons must be reviewable; targets that
+    are themselves trivial are rejected. Invalid entries are reported and
+    never applied."""
+    problems = []
+    valid = []
+    for i, e in enumerate(entries):
+        where = f"overrides[{i}]"
+        errs = []
+        mapping = e.get("mapping") or {}
+        if not mapping.get("go_file") or not mapping.get("go_func"):
+            errs.append(f"{where}: mapping requires go_file and go_func")
+        reason = (e.get("reason") or "").strip()
+        if len(reason) < 10:
+            errs.append(f"{where}: reason too short to be reviewable "
+                        f"({len(reason)} chars, need >= 10)")
+        py_file = e.get("py_file")
+        if py_file not in pyfuncs_by_file:
+            errs.append(f"{where}: py_file {py_file!r} is not an audited file")
+        else:
+            matches = [pf for pf in pyfuncs_by_file[py_file]
+                       if pf.name == e.get("py_name")
+                       and e.get("py_class") in (None, "", pf.class_name)]
+            if not matches:
+                errs.append(f"{where}: no audited Python function matches "
+                            f"{py_file}:{e.get('py_class')}.{e.get('py_name')}")
+            elif len(matches) > 1 and not e.get("py_line"):
+                lines = sorted(pf.line_start for pf in matches)
+                errs.append(f"{where}: {len(matches)} defs share this name "
+                            f"(lines {lines}); py_line is required")
+        if mapping.get("go_func"):
+            fn = find_go_evidence(go_index, mapping)
+            if fn is None:
+                errs.append(f"{where}.mapping: no EXACT-CASE Go function "
+                            f"{mapping.get('go_func')!r} in {mapping.get('go_file')!r}")
+            elif go_trivial(fn) or fn["nstmt"] < 3:
+                errs.append(f"{where}.mapping: {mapping.get('go_func')!r} is itself "
+                            f"trivial ({fn['file']}), not a valid mapping target")
+        problems.extend(errs)
+        if not errs:
+            valid.append(e)
+    return problems, valid
 
 
 # ---------------------------------------------------------------------------
@@ -526,12 +776,23 @@ def validate_exclusions(entries: list[dict], pyfuncs_by_file: dict[str, list[PyF
 
 
 def find_go_evidence(go_index: dict, target: dict) -> Optional[dict]:
-    """Resolve an evidence pointer to a substantive Go function record."""
+    """Resolve an evidence pointer EXACT-CASE to a Go function record.
+
+    Evidence must name the function as it is spelled in Go; decodeKFX does
+    not satisfy evidence for DecodeKFX and vice versa.
+    """
     want_file = (target.get("go_file") or "").split("/")[-1]
-    for fn in go_index["by_lower"].get(target.get("go_func", "").lower(), []):
-        if not want_file or fn["file"] == want_file:
-            return fn
-    return None
+    cands = go_index_lookup(go_index, target.get("go_func", ""), want_file or None)
+    if len(cands) == 1:
+        return cands[0]
+    if len(cands) > 1 and want_file:
+        # Multiple same-named funcs in the file: disambiguate by line if given
+        if target.get("go_line"):
+            for c in cands:
+                if c["line"] == target["go_line"]:
+                    return c
+        return None
+    return cands[0] if len(cands) == 1 else None
 
 
 # ---------------------------------------------------------------------------
@@ -540,7 +801,8 @@ def find_go_evidence(go_index: dict, target: dict) -> Optional[dict]:
 
 def audit_file(py_name: str, go_funcs: dict = None,
                go_index: Optional[dict] = None,
-               exclusions: Optional[list[dict]] = None) -> dict:
+               exclusions: Optional[list[dict]] = None,
+               overrides: Optional[list[dict]] = None) -> dict:
     """Audit a single Python file against its Go counterpart."""
     py_path = os.path.join(PY_DIR, py_name)
     go_name = py_name.replace(".py", ".go")
@@ -553,38 +815,79 @@ def audit_file(py_name: str, go_funcs: dict = None,
         go_index = gofuncinfo()
     if exclusions is None:
         exclusions = []
+    if overrides is None:
+        overrides = []
 
     py_funcs = extract_python_functions(py_path)
 
-    same_file = [fn for fn in go_index["functions"] if fn["file"] == go_name]
-    same_file_by_lower = {}
-    for fn in same_file:
-        same_file_by_lower.setdefault(fn["name"].lower(), []).append(fn)
+    same_file_by_name = {}
+    for fn in go_index["functions"]:
+        if fn["file"] == go_name:
+            same_file_by_name.setdefault(fn["name"], []).append(fn)
 
     entries = []
     for pf in py_funcs:
         excl = next((e for e in exclusions if exclusion_matches(e, pf, py_name)), None)
+        over = next((o for o in overrides if override_matches(o, pf, py_name)), None)
 
+        # --- Matching (conservative by design) ---
+        # 1. Automatic credit ONLY for an EXACT-CASE, UNIQUE, same-file match.
+        # 2. Generic Go names (String/Equal/Get/…) never auto-match: one
+        #    existing `String` proves nothing about a Python __repr__.
+        # 3. Anything else (ambiguous, generic, cross-file) is
+        #    unresolved_match — a GAP unless an explicit override maps it.
         go_fn = None
-        same_file_match = True
+        match_note = None
         for cand in expected_go_names(pf):
-            key = cand.lower()
-            if key in same_file_by_lower:
-                go_fn = same_file_by_lower[key][0]
+            if cand in GENERIC_GO_NAMES:
+                continue
+            cands = same_file_by_name.get(cand, [])
+            if len(cands) == 1:
+                go_fn = cands[0]
                 break
+            if len(cands) > 1:
+                match_note = f"ambiguous same-file candidates for {cand!r} " \
+                             f"({[c['line'] for c in cands]})"
+        if go_fn is None and over is not None:
+            mapping = over.get("mapping") or {}
+            cands = go_index_lookup(go_index, mapping.get("go_func", ""),
+                                    mapping.get("go_file"))
+            if len(cands) == 1:
+                go_fn = cands[0]
+        unresolved_reason = None
         if go_fn is None:
-            same_file_match = False
+            # Cross-file exact-case unique matches are NOT auto-counted; note
+            # them for the report so porting work is discoverable.
+            cross = []
+            ambiguous = False
             for cand in expected_go_names(pf):
-                key = cand.lower()
-                if key in go_index["by_lower"]:
-                    go_fn = go_index["by_lower"][key][0]
-                    break
+                if cand in GENERIC_GO_NAMES:
+                    continue
+                cands = go_index_lookup(go_index, cand)
+                if len(cands) == 1:
+                    cross.append(cands[0])
+                elif len(cands) > 1:
+                    ambiguous = True
+            if cross:
+                unresolved_reason = (f"cross-file name-only match: "
+                                     f"{cross[0]['name']} in {cross[0]['file']}:L{cross[0]['line']} "
+                                     f"(requires explicit identity override)")
+            elif ambiguous:
+                unresolved_reason = ("multiple same-named Go functions across files; "
+                                     "requires explicit identity override")
+            elif match_note:
+                unresolved_reason = match_note + " (requires explicit identity override)"
+            elif any(cand in GENERIC_GO_NAMES for cand in expected_go_names(pf)):
+                unresolved_reason = "only generic Go name candidates (String/Equal/Get/…); " \
+                                    "requires explicit identity override"
 
         tsub = None
-        status = classify(pf, go_fn, excl)
+        status = classify(pf, go_fn, excl, over)
         if status == "thin":
             tsub = transitive_substance(go_index, go_fn)
-            status = classify(pf, go_fn, excl, tsub)
+            status = classify(pf, go_fn, excl, over, tsub)
+        if go_fn is None and excl is None:
+            status = "unresolved_match" if unresolved_reason else "missing"
         entry = {
             "py_name": pf.name,
             "py_class": pf.class_name,
@@ -592,6 +895,7 @@ def audit_file(py_name: str, go_funcs: dict = None,
             "py_nstmt": pf.nstmt,
             "py_substance": pf.substance,
             "py_trivial": pf.py_trivial,
+            "py_trivial_shape": pf.trivial_shape,
             "go_name": go_fn["name"] if go_fn else None,
             "go_file": go_fn["file"] if go_fn else None,
             "go_line": go_fn["line"] if go_fn else None,
@@ -599,9 +903,11 @@ def audit_file(py_name: str, go_funcs: dict = None,
             "go_trivial": go_trivial(go_fn) if go_fn else None,
             "go_notimpl": bool(go_fn and go_fn.get("notimpl")),
             "go_dead": bool(go_fn and go_fn.get("called_by", 0) == 0),
-            "cross_file": bool(go_fn and not same_file_match),
+            "cross_file": bool(go_fn and go_fn["file"] != go_name),
             "status": status,
+            "unresolved_reason": unresolved_reason,
             "excluded_entry": excl,
+            "override_entry": over,
         }
         if status == "implemented_delegation" and go_fn is not None:
             entry["delegates"] = internal_delegates(go_index, go_fn)
@@ -621,8 +927,10 @@ def audit_file(py_name: str, go_funcs: dict = None,
     }
 
 
-def audit_all(exclusions_path: str = None, gofuncinfo_path: str = None) -> list[dict]:
+def audit_all(exclusions_path: str = None, gofuncinfo_path: str = None,
+              overrides_path: str = None) -> list[dict]:
     exclusions = load_exclusions(exclusions_path or DEFAULT_EXCLUSIONS)
+    overrides = load_overrides(overrides_path or DEFAULT_OVERRIDES)
     go_index = gofuncinfo(gofuncinfo_path)
 
     pyfuncs_by_file = {}
@@ -633,23 +941,29 @@ def audit_all(exclusions_path: str = None, gofuncinfo_path: str = None) -> list[
 
     problems, valid_exclusions = validate_exclusions(
         exclusions, pyfuncs_by_file, go_index)
+    o_problems, valid_overrides = validate_overrides(
+        overrides, pyfuncs_by_file, go_index)
+    problems = problems + o_problems
 
     results = []
     for py_name in FILES_TO_AUDIT:
-        result = audit_file(py_name, go_index=go_index, exclusions=valid_exclusions)
+        result = audit_file(py_name, go_index=go_index,
+                            exclusions=valid_exclusions,
+                            overrides=valid_overrides)
         if result:
             results.append(result)
     return results, exclusions, problems
 
 
-STATUS_ORDER = ["stub_silent", "stub_admitted", "thin", "missing", "excluded",
-                "implemented_trivial", "implemented_delegation", "implemented"]
+STATUS_ORDER = ["stub_silent", "stub_admitted", "thin", "missing", "unresolved_match",
+                "excluded", "mapped", "implemented_trivial", "implemented_delegation",
+                "implemented"]
 STATUS_ICONS = {
     "implemented": "✓", "implemented_trivial": "○", "implemented_delegation": "→",
-    "stub_silent": "✗", "stub_admitted": "✗", "thin": "≈",
-    "missing": "∅", "excluded": "⊘",
+    "mapped": "⇢", "stub_silent": "✗", "stub_admitted": "✗", "thin": "≈",
+    "missing": "∅", "unresolved_match": "?", "excluded": "⊘",
 }
-GAP_STATUSES = {"stub_silent", "stub_admitted", "thin", "missing"}
+GAP_STATUSES = {"stub_silent", "stub_admitted", "thin", "missing", "unresolved_match"}
 
 
 def print_report(result, verbose=False):
@@ -669,8 +983,8 @@ def print_report(result, verbose=False):
     for e in result["entries"]:
         by_status.setdefault(e["status"], []).append(e)
 
-    for status in ["stub_silent", "stub_admitted", "thin", "missing", "excluded",
-                   "implemented_trivial"]:
+    for status in ["stub_silent", "stub_admitted", "thin", "missing", "unresolved_match",
+                   "excluded", "mapped", "implemented_trivial"]:
         for e in by_status.get(status, []):
             if status in ("implemented_trivial",) and not verbose:
                 continue
@@ -686,6 +1000,12 @@ def print_report(result, verbose=False):
                 loc += " → (no Go match)"
             mark = STATUS_ICONS.get(status, "?")
             print(f"  {mark} {cls}{e['py_name']}  {loc}")
+            if e.get("unresolved_reason"):
+                print(f"      ? {e['unresolved_reason']}")
+            if status == "mapped" and e.get("override_entry"):
+                oe = e["override_entry"]
+                m = oe.get("mapping") or {}
+                print(f"      ⇢ mapped to {m.get('go_file')}::{m.get('go_func')}: {oe.get('reason')}")
             if status == "excluded" and e["excluded_entry"]:
                 ee = e["excluded_entry"]
                 print(f"      ⊘ excluded [{ee.get('category')}]: {ee.get('reason')}")
@@ -701,16 +1021,24 @@ def print_metric(results, exclusions):
                    + counts.get("implemented_delegation", 0))
     gaps = sum(counts.get(s, 0) for s in GAP_STATUSES)
     excluded = counts.get("excluded", 0)
-    audited = total - excluded
+    mapped = counts.get("mapped", 0)
+    audited = total - excluded - mapped
     pct = (implemented / audited * 100) if audited > 0 else 100.0
     strict = (implemented / total * 100) if total > 0 else 100.0
 
     print(f"METRIC py_functions={total}")
     for status in STATUS_ORDER:
+        if status == "excluded":
+            print(f"METRIC excluded={excluded}")  # exactly once
+            continue
         print(f"METRIC {status}={counts.get(status, 0)}")
-    print(f"METRIC excluded={excluded}")
+    print(f"METRIC structural_coverage_pct={pct:.1f}")
+    print(f"METRIC strict_structural_coverage_pct={strict:.1f}")
+    # Backward-compatible alias — this metric is STRUCTURAL COVERAGE (name +
+    # body substance), NOT behavioral parity. Do not present it as proof of
+    # semantic equivalence; behavioral evidence lives in branch/golden/
+    # differential tests.
     print(f"METRIC parity_pct={pct:.1f}")
-    print(f"METRIC strict_parity_pct={strict:.1f}")
     print(f"METRIC gap_functions={gaps}")
     return counts
 
@@ -843,6 +1171,8 @@ def main():
     parser.add_argument("--init-exclusions", action="store_true",
                         help="Write skeleton exclusions manifest for current gaps")
     parser.add_argument("--exclusions", metavar="PATH", default=DEFAULT_EXCLUSIONS)
+    parser.add_argument("--overrides", metavar="PATH", default=DEFAULT_OVERRIDES,
+                        help="Identity overrides manifest (explicit cross-file/ambiguous mappings)")
     parser.add_argument("--gofuncinfo", metavar="PATH", default=None,
                         help="Use pre-generated gofuncinfo JSON instead of running Go")
     args = parser.parse_args()
@@ -858,26 +1188,33 @@ def main():
             sys.exit(1)
         exclusions = [e for e in load_exclusions(args.exclusions)
                       if e.get("py_file") == py_name]
+        overrides = [o for o in load_overrides(args.overrides)
+                     if o.get("py_file") == py_name]
         go_index = gofuncinfo(args.gofuncinfo)
         # Same validation as the full audit: an invalid/ambiguous exclusion
-        # must be reported (and ignored) in single-file mode too. Exclusions
-        # targeting other files are out of scope here, not invalid.
+        # or override must be reported (and ignored) in single-file mode too.
+        # Entries targeting other files are out of scope here, not invalid.
         problems, valid_exclusions = validate_exclusions(
             exclusions, {py_name: extract_python_functions(py_path)}, go_index)
-        result = audit_file(py_name, go_index=go_index, exclusions=valid_exclusions)
+        o_problems, valid_overrides = validate_overrides(
+            overrides, {py_name: extract_python_functions(py_path)}, go_index)
+        problems = problems + o_problems
+        result = audit_file(py_name, go_index=go_index,
+                            exclusions=valid_exclusions, overrides=valid_overrides)
         if result:
             if args.json:
                 print(json.dumps(result, indent=2, default=str))
             else:
                 print_report(result, verbose=True)
         if problems:
-            print("\n⚠ EXCLUSION VALIDATION PROBLEMS:")
+            print("\n⚠ VALIDATION PROBLEMS:")
             for p in problems:
                 print(f"  - {p}")
             sys.exit(1)
         return
 
-    results, exclusions, problems = audit_all(args.exclusions, args.gofuncinfo)
+    results, exclusions, problems = audit_all(args.exclusions, args.gofuncinfo,
+                                              args.overrides)
 
     if args.init_exclusions:
         if args.exclusions == DEFAULT_EXCLUSIONS:
@@ -888,7 +1225,21 @@ def main():
 
     if args.metric:
         print_metric(results, exclusions)
+        if problems:
+            print("⚠ VALIDATION PROBLEMS:")
+            for p in problems:
+                print(f"  - {p}")
+            sys.exit(1)
         return
+
+    if args.json:
+        # Full-run JSON: the advertised --json flag now applies to the whole
+        # audit, not only --file mode.
+        print(json.dumps({"results": results,
+                          "exclusions": exclusions,
+                          "problems": problems}, indent=2, default=str))
+        sys.exit(1 if (problems or any(
+            s in r["counts"] for r in results for s in GAP_STATUSES)) else 0)
 
     for r in results:
         print_report(r, verbose=args.verbose)

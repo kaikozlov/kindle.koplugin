@@ -35,50 +35,103 @@ def mkpy(src: str) -> list:
 
 
 def mkgo(name, file="fake.go", nstmt=10, nlit=0, empty=False, const_only=False,
-         error_only=False, notimpl=False, calls=None, called_by=1, line=1):
+         error_only=False, notimpl=False, calls=None, called_by=1, line=1,
+         trivial_shape="", ident_calls=None):
     return {
         "file": file, "name": name, "line": line, "end_line": line + nstmt,
         "nstmt": nstmt, "nlit": nlit, "nchars": 100, "empty": empty,
         "const_only": const_only, "error_only": error_only, "notimpl": notimpl,
-        "calls": calls or [], "self_calls": 0, "called_by": called_by,
+        "trivial_shape": trivial_shape, "nparams": 0,
+        "calls": calls or [], "ident_calls": ident_calls if ident_calls is not None else (calls or []),
+        "self_calls": 0, "called_by": called_by,
     }
 
 
 def index(*funcs):
-    by_lower = {}
+    # Exact-case index, matching audit_parity's gofuncinfo indexing.
+    by_name = {}
     for f in funcs:
-        by_lower.setdefault(f["name"].lower(), []).append(f)
-    return {"functions": list(funcs), "by_lower": by_lower, "call_counts": {}}
+        by_name.setdefault(f["name"], []).append(f)
+    return {"functions": list(funcs), "by_name": by_name, "call_counts": {}}
 
 
 class TestClassify(unittest.TestCase):
-    def pf(self, name="do_work", nstmt=50, nlit=0, cls=None):
+    def pf(self, name="do_work", nstmt=50, nlit=0, cls=None, shape=""):
         return ap.PyFunc(name=name, class_name=cls, line_start=1, line_end=99,
-                         args="", docstring_first_line=None, nstmt=nstmt, nlit=nlit)
+                         args="", docstring_first_line=None, nstmt=nstmt, nlit=nlit,
+                         trivial_shape=shape)
 
     def test_substantive_match_is_implemented(self):
         go = mkgo("doWork", nstmt=45)
         self.assertEqual(ap.classify(self.pf(), go, None), "implemented")
 
     def test_const_only_stub_is_silent_stub(self):
-        go = mkgo("doWork", nstmt=1, const_only=True)
-        self.assertEqual(ap.classify(self.pf(), go, None), "stub_silent")
+        go = mkgo("doWork", nstmt=1, const_only=True, trivial_shape="const:nil")
+        self.assertEqual(ap.classify(self.pf(shape=""), go, None), "stub_silent")
 
     def test_empty_stub_is_silent_stub(self):
-        go = mkgo("doWork", empty=True, nstmt=0)
-        self.assertEqual(ap.classify(self.pf(), go, None), "stub_silent")
+        go = mkgo("doWork", empty=True, nstmt=0, trivial_shape="void")
+        self.assertEqual(ap.classify(self.pf(shape=""), go, None), "stub_silent")
 
     def test_error_only_stub_is_silent_stub(self):
         go = mkgo("doWork", nstmt=1, error_only=True)
-        self.assertEqual(ap.classify(self.pf(), go, None), "stub_silent")
+        self.assertEqual(ap.classify(self.pf(shape=""), go, None), "stub_silent")
 
     def test_notimpl_is_admitted_stub(self):
         go = mkgo("doWork", nstmt=1, notimpl=True)
-        self.assertEqual(ap.classify(self.pf(), go, None), "stub_admitted")
+        self.assertEqual(ap.classify(self.pf(shape=""), go, None), "stub_admitted")
 
     def test_trivial_py_trivial_go_is_implemented_trivial(self):
-        go = mkgo("noop", nstmt=1, const_only=True)
-        self.assertEqual(ap.classify(self.pf("noop", nstmt=1), go, None),
+        go = mkgo("noop", nstmt=1, const_only=True, trivial_shape="const:nil")
+        self.assertEqual(ap.classify(self.pf("noop", shape="const:nil"), go, None),
+                         "implemented_trivial")
+
+    def test_py_true_vs_go_false_not_trivial(self):
+        go = mkgo("flag", nstmt=1, const_only=True, trivial_shape="const:false")
+        self.assertEqual(ap.classify(self.pf("flag", shape="const:true"), go, None),
+                         "stub_silent")
+
+    def test_py_zero_vs_go_one_not_trivial(self):
+        go = mkgo("count", nstmt=1, const_only=True, trivial_shape="const:int:1")
+        self.assertEqual(ap.classify(self.pf("count", shape="const:int:0"), go, None),
+                         "stub_silent")
+
+    def test_py_int_matches_go_equal_int(self):
+        go = mkgo("count", nstmt=1, const_only=True, trivial_shape="const:int:3")
+        self.assertEqual(ap.classify(self.pf("count", shape="const:int:3"), go, None),
+                         "implemented_trivial")
+
+    def test_py_int_vs_go_float_same_value_matches(self):
+        go = mkgo("count", nstmt=1, const_only=True, trivial_shape="const:float:2.0")
+        self.assertEqual(ap.classify(self.pf("count", shape="const:int:2"), go, None),
+                         "implemented_trivial")
+
+    def test_py_string_vs_go_string_value_equality(self):
+        go = mkgo("name", nstmt=1, const_only=True, trivial_shape='const:string:"nav"')
+        self.assertEqual(ap.classify(self.pf("name", shape='const:string:nav'), go, None),
+                         "implemented_trivial")
+        go2 = mkgo("name", nstmt=1, const_only=True, trivial_shape='const:string:"toc"')
+        self.assertEqual(ap.classify(self.pf("name", shape='const:string:nav'), go2, None),
+                         "stub_silent")
+
+    def test_py_identity_vs_go_constant_not_trivial(self):
+        go = mkgo("passThrough", nstmt=1, const_only=True, trivial_shape="const:nil")
+        self.assertEqual(ap.classify(self.pf("pass_through", shape="arg:0"), go, None),
+                         "stub_silent")
+
+    def test_py_identity_vs_go_same_position_matches(self):
+        go = mkgo("passThrough", nstmt=1, const_only=True, trivial_shape="arg:0")
+        self.assertEqual(ap.classify(self.pf("pass_through", shape="arg:0"), go, None),
+                         "implemented_trivial")
+
+    def test_py_identity_wrong_position_not_trivial(self):
+        go = mkgo("second", nstmt=1, const_only=True, trivial_shape="arg:1")
+        self.assertEqual(ap.classify(self.pf("first", shape="arg:0"), go, None),
+                         "stub_silent")
+
+    def test_py_void_vs_go_void(self):
+        go = mkgo("noop", nstmt=0, empty=True, trivial_shape="void")
+        self.assertEqual(ap.classify(self.pf("noop", shape="void"), go, None),
                          "implemented_trivial")
 
     def test_thin_body_without_delegate_is_thin(self):
@@ -382,7 +435,7 @@ class TestFileModeExclusionValidation(unittest.TestCase):
                 capture_output=True, text=True, cwd=repo)
         finally:
             os.unlink(manifest)
-        self.assertIn("EXCLUSION VALIDATION PROBLEMS", proc.stdout)
+        self.assertIn("VALIDATION PROBLEMS", proc.stdout)
         self.assertIn("unknown category", proc.stdout)
         self.assertEqual(proc.returncode, 1)
 
@@ -436,7 +489,7 @@ def tiny():
         return index(
             mkgo("doRealWork", file="fake.go", nstmt=10),
             mkgo("doStubbedWork", file="fake.go", nstmt=1, const_only=True),
-            mkgo("tiny", file="fake.go", nstmt=1, const_only=True),
+            mkgo("tiny", file="fake.go", nstmt=1, const_only=True, trivial_shape="const:nil"),
         )
 
     def audit(self, exclusions=None):
@@ -539,3 +592,295 @@ class TestRealRepoSmoke(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestExactCaseIdentity(unittest.TestCase):
+    """Go identifiers are case-sensitive; evidence and identity must be too."""
+
+    def setUp(self):
+        self.idx = index(
+            mkgo("decodeKFX", file="yj_to_epub.go", nstmt=30),
+            mkgo("DecodeKFX", file="yj_to_epub.go", nstmt=30),
+        )
+
+    def test_lowercase_evidence_does_not_match_exported(self):
+        fn = ap.find_go_evidence(self.idx, {"go_file": "yj_to_epub.go",
+                                            "go_func": "decodekfx"})
+        self.assertIsNone(fn)  # exact-case only
+
+    def test_evidence_case_mismatch_rejected(self):
+        fn = ap.find_go_evidence(self.idx, {"go_file": "yj_to_epub.go",
+                                            "go_func": "DecodeKFX"})
+        self.assertIsNotNone(fn)
+        self.assertEqual(fn["name"], "DecodeKFX")
+        fn2 = ap.find_go_evidence(self.idx, {"go_file": "yj_to_epub.go",
+                                             "go_func": "decodeKFX"})
+        self.assertIsNotNone(fn2)
+        self.assertEqual(fn2["name"], "decodeKFX")
+
+    def test_go_index_lookup_exact_case(self):
+        cands = ap.go_index_lookup(self.idx, "DecodeKFX", "yj_to_epub.go")
+        self.assertEqual(len(cands), 1)
+        self.assertEqual(cands[0]["name"], "DecodeKFX")
+        self.assertEqual(ap.go_index_lookup(self.idx, "decodekfx"), [])
+
+
+class TestMatchingConservatism(unittest.TestCase):
+    """No automatic credit for ambiguous, generic, or cross-file matches."""
+
+    PY_SRC = '''
+class Style:
+    def __len__(self):
+        return len(self.props)
+
+    def tostring(self):
+        return "x"
+
+def process_widget(w):
+    return render(w)
+
+def elsewhere_helper(x):
+    return x + 1
+'''
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.py_file = "match.py"
+        with open(os.path.join(self.tmp.name, self.py_file), "w") as f:
+            f.write(self.PY_SRC)
+        self._old = ap.PY_DIR
+        ap.PY_DIR = self.tmp.name
+
+    def tearDown(self):
+        ap.PY_DIR = self._old
+        self.tmp.cleanup()
+
+    def idx_with(self, *extra):
+        # Baseline: an unrelated same-file String/Len pair (generic names),
+        # a substantive processWidget in ANOTHER file (cross-file match),
+        # and a unique same-file renderer.
+        return index(
+            mkgo("String", file="match.go", nstmt=5),
+            mkgo("Len", file="match.go", nstmt=5),
+            mkgo("renderer", file="match.go", nstmt=5),
+            mkgo("processWidget", file="other.go", nstmt=40),
+            *extra,
+        )
+
+    def audit(self, idx, overrides=None, exclusions=None):
+        return ap.audit_file(self.py_file, go_index=idx,
+                             exclusions=exclusions or [],
+                             overrides=overrides or [])
+
+    def test_generic_name_never_auto_matches(self):
+        result = self.audit(self.idx_with())
+        by = {e["py_name"]: e["status"] for e in result["entries"]}
+        self.assertEqual(by["__len__"], "unresolved_match")  # Len is generic
+
+    def test_two_same_file_string_methods_ambiguous(self):
+        idx = self.idx_with(mkgo("String", file="match.go", nstmt=5, line=9))
+        result = self.audit(idx)
+        by = {e["py_name"]: e["status"] for e in result["entries"]}
+        self.assertEqual(by["tostring"], "unresolved_match")
+
+    def test_cross_file_unique_match_is_not_counted(self):
+        result = self.audit(self.idx_with())
+        e = next(e for e in result["entries"] if e["py_name"] == "process_widget")
+        self.assertEqual(e["status"], "unresolved_match")
+        self.assertIn("cross-file name-only match", e["unresolved_reason"])
+        self.assertIn("requires explicit identity override", e["unresolved_reason"])
+
+    def test_valid_override_maps_it(self):
+        result = self.audit(self.idx_with(), overrides=[{
+            "py_file": self.py_file, "py_class": None, "py_name": "process_widget",
+            "mapping": {"go_file": "other.go", "go_func": "processWidget"},
+            "reason": "widget rendering moved into other.go during refactor",
+        }])
+        e = next(e for e in result["entries"] if e["py_name"] == "process_widget")
+        self.assertEqual(e["status"], "mapped")
+        self.assertEqual(e["go_file"], "other.go")
+
+    def test_override_with_trivial_target_rejected(self):
+        idx = self.idx_with(mkgo("processWidget", file="stub.go", nstmt=1,
+                                 const_only=True, trivial_shape="const:nil"))
+        overrides = [{
+            "py_file": self.py_file, "py_class": None, "py_name": "process_widget",
+            "mapping": {"go_file": "stub.go", "go_func": "processWidget"},
+            "reason": "mapping to a trivial function must be rejected",
+        }]
+        problems, valid = ap.validate_overrides(
+            overrides, {self.py_file: ap.extract_python_functions(
+                os.path.join(self.tmp.name, self.py_file))}, idx)
+        self.assertTrue(any("trivial" in p for p in problems))
+        self.assertEqual(valid, [])
+        result = self.audit(idx, overrides=valid)
+        e = next(e for e in result["entries"] if e["py_name"] == "process_widget")
+        self.assertEqual(e["status"], "unresolved_match")
+
+    def test_override_missing_reason_rejected(self):
+        overrides = [{
+            "py_file": self.py_file, "py_class": None, "py_name": "process_widget",
+            "mapping": {"go_file": "other.go", "go_func": "processWidget"},
+            "reason": "short",
+        }]
+        problems, valid = ap.validate_overrides(
+            overrides, {self.py_file: ap.extract_python_functions(
+                os.path.join(self.tmp.name, self.py_file))}, self.idx_with())
+        self.assertTrue(any("reason" in p for p in problems))
+
+    def test_same_file_unique_substantive_still_implements(self):
+        idx = self.idx_with(mkgo("elsewhereHelper", file="match.go", nstmt=20))
+        result = self.audit(idx)
+        by = {e["py_name"]: e["status"] for e in result["entries"]}
+        self.assertEqual(by["elsewhere_helper"], "implemented")
+
+
+class TestDelegationEvidence(unittest.TestCase):
+    """Only unambiguous unqualified Ident calls carry delegation credit."""
+
+    def pf(self):
+        return ap.PyFunc(name="do_work", class_name=None, line_start=1,
+                         line_end=99, args="", docstring_first_line=None,
+                         nstmt=50, nlit=0, trivial_shape="")
+
+    def wrapper(self, ident_calls, file="w.go", calls=None):
+        return mkgo("doWork", file=file, nstmt=1,
+                    ident_calls=ident_calls, calls=calls if calls is not None else ident_calls)
+
+    def test_selector_call_grants_no_credit(self):
+        # A corpus func named TrimSpace exists, but the wrapper only calls
+        # strings.TrimSpace (selector) — recorded in Calls, not IdentCalls.
+        idx = index(mkgo("TrimSpace", file="s.go", nstmt=40),
+                    self.wrapper(ident_calls=[], calls=["TrimSpace"]))
+        w = idx["functions"][1]
+        self.assertEqual(ap.transitive_substance(idx, w), 1)
+        self.assertEqual(ap.classify(self.pf(), w, None,
+                                     tsub=ap.transitive_substance(idx, w)), "thin")
+
+    def test_ambiguous_ident_grants_no_credit(self):
+        idx = index(mkgo("helper", file="a.go", nstmt=40),
+                    mkgo("helper", file="b.go", nstmt=40),
+                    self.wrapper(ident_calls=["helper"]))
+        w = idx["functions"][2]
+        self.assertEqual(ap.transitive_substance(idx, w), 1)  # wrapper only
+
+    def test_unambiguous_ident_grants_credit(self):
+        idx = index(mkgo("helper", file="w.go", nstmt=40),
+                    self.wrapper(ident_calls=["helper"]))
+        w = idx["functions"][1]
+        self.assertGreaterEqual(ap.transitive_substance(idx, w), 40)
+        self.assertEqual(ap.classify(self.pf(), w, None,
+                                     tsub=ap.transitive_substance(idx, w)),
+                         "implemented_delegation")
+
+
+class TestSemanticPyTriviality(unittest.TestCase):
+    def shapes(self, src):
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+        try:
+            return {pf.name: pf.trivial_shape
+                    for pf in ap.extract_python_functions(path)}
+        finally:
+            os.unlink(path)
+
+    def test_one_line_lookup_is_not_trivial(self):
+        s = self.shapes("""
+class C:
+    def prop_lookup(self):
+        return self.lookup[self.key]
+
+    def call(self, x):
+        return transform(x)
+
+    def membership(self):
+        return "nav" in self.props
+""")
+        self.assertEqual(s["prop_lookup"], "")   # index/attribute: substantive
+        self.assertEqual(s["call"], "")          # call: substantive
+        self.assertEqual(s["membership"], "")    # comparison: substantive
+
+    def test_true_trivial_shapes(self):
+        s = self.shapes('''
+def f_none():
+    return None
+
+def f_true():
+    return True
+
+def f_int():
+    return 3
+
+def f_str():
+    return "nav"
+
+def f_empty():
+    return ""
+
+def f_identity(x):
+    return x
+
+def f_pass():
+    pass
+
+def f_docstring():
+    """Docs."""
+    pass
+''')
+        self.assertEqual(s["f_none"], "const:nil")
+        self.assertEqual(s["f_true"], "const:true")
+        self.assertEqual(s["f_int"], "const:int:3")
+        self.assertEqual(s["f_str"], "const:string:nav")
+        self.assertEqual(s["f_empty"], "const:empty-string")
+        self.assertEqual(s["f_identity"], "arg:0")
+        self.assertEqual(s["f_pass"], "void")
+        self.assertEqual(s["f_docstring"], "void")
+
+    def test_mixed_returns_not_trivial(self):
+        s = self.shapes("""
+def mixed(flag):
+    if flag:
+        return 1
+    return 2
+""")
+        self.assertEqual(s["mixed"], "")
+
+
+class TestCLIRegressions(unittest.TestCase):
+    """--json must work for the full run; METRIC excluded printed once."""
+
+    @classmethod
+    def setUpClass(cls):
+        repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        cls.repo = repo
+        if not os.path.isdir(os.path.join(repo, "REFERENCE/KFX_Input/kfxlib")):
+            raise unittest.SkipTest("REFERENCE/KFX_Input/kfxlib not present")
+        import shutil
+        if not shutil.which("go"):
+            raise unittest.SkipTest("go toolchain not available")
+
+    def run_cli(self, *flags):
+        import subprocess
+        return subprocess.run(
+            [sys.executable, "scripts/audit_parity.py", *flags],
+            capture_output=True, text=True, cwd=self.repo)
+
+    def test_full_run_json_outputs_json(self):
+        proc = self.run_cli("--json")
+        try:
+            doc = json.loads(proc.stdout)
+        except json.JSONDecodeError as e:
+            self.fail(f"--json full run did not emit JSON: {e}\n{proc.stdout[:400]}")
+        self.assertIn("results", doc)
+        self.assertTrue(all("python_file" in r for r in doc["results"]))
+
+    def test_metric_excluded_printed_once(self):
+        proc = self.run_cli("--metric")
+        self.assertEqual(proc.stdout.count("METRIC excluded="), 1, proc.stdout)
+
+    def test_metric_renames_coverage(self):
+        proc = self.run_cli("--metric")
+        self.assertIn("METRIC structural_coverage_pct=", proc.stdout)
+        # Backward-compatible alias retained
+        self.assertIn("METRIC parity_pct=", proc.stdout)
