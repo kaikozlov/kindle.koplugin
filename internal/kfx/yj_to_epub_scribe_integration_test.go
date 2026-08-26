@@ -1,6 +1,8 @@
 package kfx
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -389,5 +391,46 @@ func TestScribeNotebookPipelineInlinePlacement(t *testing.T) {
 	}
 	if strings.Contains(body, `style="height: 100%; width: 100%"`) {
 		t.Errorf("inline placement must replace the default height/width style:\n%s", body)
+	}
+}
+
+// TestScribeNotebookEPUBWriterSmoke runs the final EPUB packaging over the
+// synthetic notebook to verify the writer accepts the materialized sections
+// and SVG resources (spine properties, xlink:href serialization, manifest).
+func TestScribeNotebookEPUBWriterSmoke(t *testing.T) {
+	state := newScribeNotebookState(t)
+	book, err := renderBookState(state, nil)
+	if err != nil {
+		t.Fatalf("renderBookState failed: %v", err)
+	}
+	if len(book.Sections) == 0 {
+		t.Fatal("no readable sections were extracted from the notebook")
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "notebook.epub")
+	// Same field mapping as the production writers (yj_to_epub.go ConvertFile
+	// and friends) for the fields a notebook exercises.
+	if err := epub.Write(outputPath, epub.Book{
+		Identifier: book.Identifier,
+		Title:      book.Title,
+		Language:   book.Language,
+		Sections:   book.Sections,
+		Resources:  book.Resources,
+	}); err != nil {
+		t.Fatalf("epub write failed: %v", err)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read epub: %v", err)
+	}
+	if len(data) == 0 {
+		t.Fatal("empty EPUB output")
+	}
+	// The EPUB is a zip: local file headers must contain the SVG resources.
+	for _, want := range []string{"OEBPS/page-1.svg", "OEBPS/lined.svg", "OEBPS/page-1.xhtml"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("EPUB missing %s", want)
+		}
 	}
 }
