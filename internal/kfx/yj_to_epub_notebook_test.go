@@ -1365,6 +1365,24 @@ func TestSVGPathGeneration_SinglePath(t *testing.T) {
 	}
 }
 
+func TestSVGPathGeneration_FractionalBaseThickness(t *testing.T) {
+	// Python yj_to_epub_notebook.py:389/412/505 compares each rounded point
+	// thickness to the ORIGINAL float nmdl.thickness. With 47.25, t=47 but
+	// 47 != 47.25, so the redundant path-level stroke-width must be emitted.
+	groupElem := &svgElement{Tag: "g"}
+	points := []strokePoint{
+		{X: 10, Y: 20, T: 47, D: 1.0},
+		{X: 30, Y: 40, T: 47, D: 1.0},
+	}
+	generateSVGPaths(groupElem, points, 47.25)
+	if len(groupElem.Children) != 1 {
+		t.Fatalf("expected 1 path, got %d", len(groupElem.Children))
+	}
+	if got := groupElem.Children[0].Attrib["stroke-width"]; got != "47" {
+		t.Fatalf("fractional-base path stroke-width = %q, want 47", got)
+	}
+}
+
 func TestSVGPathGeneration_VariableThickness(t *testing.T) {
 	groupElem := &svgElement{Tag: "g"}
 	points := []strokePoint{
@@ -1415,6 +1433,43 @@ func TestSVGPathGeneration_IncludePriorLineSegment(t *testing.T) {
 	// Points are added in order [2, 1]: first (10,20), then (30,40), then (50,60)
 	if !containsStr(d, "M") {
 		t.Errorf("path d should contain M: %q", d)
+	}
+}
+
+func TestScribeStrokeUsesPythonBankersRounding(t *testing.T) {
+	// Python round(94.5) == 94 (ties-to-even). Go math.Round would produce 95.
+	posData := []byte{0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x15, 0x0a, 0x54}
+	all100 := []byte{0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x14, 0x64}
+	content := map[string]interface{}{
+		"nmdl.type": "nmdl.stroke", "nmdl.brush_type": 0, "nmdl.color": 0,
+		"nmdl.stroke_bounds": []interface{}{0, 0, 1000, 1000},
+		"nmdl.thickness":     float64(94.5),
+		"nmdl.stroke_points": map[string]interface{}{
+			"nmdl.num_points":              2,
+			"nmdl.position_x":              append([]byte(nil), posData...),
+			"nmdl.position_y":              append([]byte(nil), posData...),
+			"nmdl.density_adjust_factor":   append([]byte(nil), all100...),
+			"nmdl.thickness_adjust_factor": append([]byte(nil), all100...),
+		},
+	}
+	parent := &svgElement{Tag: "svg"}
+	scribeNotebookStroke(&notebookContext{contentContext: "rounding"}, content, parent, "stroke")
+	if len(parent.Children) != 1 {
+		t.Fatalf("created %d stroke groups, want 1", len(parent.Children))
+	}
+	if got := parent.Children[0].Attrib["stroke-width"]; got != "94" {
+		t.Fatalf("stroke-width = %q, want Python round(94.5) = 94", got)
+	}
+}
+
+func TestScribeDensityMidpointUsesFloorDivision(t *testing.T) {
+	// Python `(r1+r2)//2` and `(d1+d2)//2` are floor division even for
+	// floats. This is intentionally very different from an ordinary average.
+	if got := pythonFloorAverage(6.25, 6.5); got != 6.0 {
+		t.Fatalf("radius midpoint = %v, want 6", got)
+	}
+	if got := pythonFloorAverage(0.9, 1.0); got != 0.0 {
+		t.Fatalf("density midpoint = %v, want 0", got)
 	}
 }
 

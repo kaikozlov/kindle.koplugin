@@ -974,7 +974,10 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 		}
 	}
 
-	thickness := int(math.Round(nmdlThickness))
+	// Python round() is bankers' rounding (ties-to-even), not Go math.Round's
+	// ties-away-from-zero. This matters for real Scribe thicknesses such as
+	// 94.5 (Python -> 94, math.Round -> 95).
+	thickness := int(math.RoundToEven(nmdlThickness))
 
 	// Build points list
 	posXVals := nmdlStrokeValues["nmdl.position_x"]
@@ -1019,7 +1022,7 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 			taf = (taf / 10) * 10
 		}
 
-		t := int(math.Round(nmdlThickness * float64(taf) / 100.0))
+		t := int(math.RoundToEven(nmdlThickness * float64(taf) / 100.0))
 		d := float64(daf) / 100.0
 
 		if x != lastX || y != lastY {
@@ -1078,7 +1081,7 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 	if variableDensity {
 		generateDensityPNG(groupElem, points, bounds, boundWidth, boundHeight, nmdlRandomSeed, strokeColor)
 	} else {
-		generateSVGPaths(groupElem, points, thickness)
+		generateSVGPaths(groupElem, points, nmdlThickness)
 	}
 }
 
@@ -1130,7 +1133,7 @@ func classifyBrushTypeWithThickness(brushType int, variableThickness bool) strin
 // Port of Python's "else" branch in scribe_notebook_stroke (yj_to_epub_notebook.py:482-515).
 // ---------------------------------------------------------------------------
 
-func generateSVGPaths(groupElem *svgElement, points []strokePoint, nmdlThickness int) {
+func generateSVGPaths(groupElem *svgElement, points []strokePoint, nmdlThickness float64) {
 	prevT := -1
 	prevD := -1.0
 	type pathGroup struct {
@@ -1168,8 +1171,12 @@ func generateSVGPaths(groupElem *svgElement, points []strokePoint, nmdlThickness
 		if len(pg.points) > 1 {
 			pathElem := newSVGElement(groupElem, "path", nil)
 
-			if pg.t != nmdlThickness {
-				pathElem.setAttrib("stroke-width", fmt.Sprintf("%d", int(math.Round(float64(pg.t)))))
+			// Python compares the integer per-point thickness against the original
+			// (possibly fractional) nmdl.thickness. Preserve that comparison: for
+			// 47.25 a path-level width of 47 is redundantly emitted even though the
+			// group width also rounds to 47.
+			if float64(pg.t) != nmdlThickness {
+				pathElem.setAttrib("stroke-width", fmt.Sprintf("%d", pg.t))
 			}
 
 			var z []string
@@ -1183,6 +1190,13 @@ func generateSVGPaths(groupElem *svgElement, points []strokePoint, nmdlThickness
 			pathElem.setAttrib("d", strings.Join(z, " "))
 		}
 	}
+}
+
+// pythonFloorAverage matches Python's `(a + b) // 2` when a/b are floats.
+// Scribe density interpolation intentionally uses floor division for both
+// radius and density (yj_to_epub_notebook.py:465-466).
+func pythonFloorAverage(a, b float64) float64 {
+	return math.Floor((a + b) / 2)
 }
 
 // ---------------------------------------------------------------------------
@@ -1204,8 +1218,11 @@ func generateDensityPNG(groupElem *svgElement, points []strokePoint, bounds [4]i
 		if distance > math.Max(math.Max(r1, r2), 2) {
 			x3 := (x1 + x2) / 2
 			y3 := (y1 + y2) / 2
-			r3 := (r1 + r2) / 2
-			d3 := (d1 + d2) / 2
+			// Python uses // here even though radius/density are floats
+			// (yj_to_epub_notebook.py:465-466), so the midpoint values are
+			// floored rather than averaged normally.
+			r3 := pythonFloorAverage(r1, r2)
+			d3 := pythonFloorAverage(d1, d2)
 			addPointsIfNeeded(pts, x1, y1, r1, d1, x3, y3, r3, d3)
 			addPointsIfNeeded(pts, x3, y3, r3, d3, x2, y2, r2, d2)
 			*pts = append(*pts, densityPoint{X: x3, Y: y3, R: r3, D: d3})
