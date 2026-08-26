@@ -33,43 +33,43 @@ type Book struct {
 	PageList            []PageTarget
 
 	// EPUB version control
-	Epub2Desired          bool
-	GenerateEpub2         bool
+	Epub2Desired            bool
+	GenerateEpub2           bool
 	GenerateEpub2Compatible bool
 
 	// Layout flags
-	IllustratedLayout      bool
-	FixedLayout             bool
-	OriginalWidth           int
-	OriginalHeight          int
-	BookType                string
-	OrientationLock         string
+	IllustratedLayout        bool
+	FixedLayout              bool
+	OriginalWidth            int
+	OriginalHeight           int
+	BookType                 string
+	OrientationLock          string
 	WritingMode              string
 	PageProgressionDirection string
 
 	// Pronunciations for OPF metadata refinements
-	TitlePronunciation     string
-	AuthorPronunciations   []string
+	TitlePronunciation   string
+	AuthorPronunciations []string
 
 	// Description and icon for NCX mbp: namespace
 	IsMagazine bool
 }
 
 type Section struct {
-	Filename    string
-	Title       string
-	PageTitle   string
-	Language    string
-	BodyLanguage  string // xml:lang for <body> element
-	BodyDirection string // dir for <body> element
+	Filename        string
+	Title           string
+	PageTitle       string
+	Language        string
+	BodyLanguage    string // xml:lang for <body> element
+	BodyDirection   string // dir for <body> element
 	BodyClass       string
 	BodyStyle       string // inline body style retained by fixed-layout book parts
 	ViewportWidth   int
 	ViewportHeight  int
 	ResetStylesheet string
 	Paragraphs      []string
-	BodyHTML    string
-	Properties  string
+	BodyHTML        string
+	Properties      string
 }
 
 type Resource struct {
@@ -122,7 +122,7 @@ func Write(path string, book Book) error {
 		"META-INF/container.xml": []byte(containerXML),
 		"OEBPS/content.opf":      []byte(contentOPF(book)),
 		"OEBPS/nav.xhtml":        []byte(navXHTML(book)),
-		"OEBPS/toc.ncx":          []byte(tocNCX(book)),  // NCX passes book for illustratedLayout access
+		"OEBPS/toc.ncx":          []byte(tocNCX(book)), // NCX passes book for illustratedLayout access
 	}
 	if book.Stylesheet != "" {
 		files["OEBPS/stylesheet.css"] = []byte(book.Stylesheet)
@@ -512,10 +512,14 @@ func contentOPF(book Book) string {
 		id := makeManifestID(section.Filename, usedIDs)
 		sectionIDs[section.Filename] = id
 		items = append(items, manifestItem{
-			href:       section.Filename,
-			id:         id,
-			mediaType:  "application/xhtml+xml",
-			properties: section.Properties,
+			href:      section.Filename,
+			id:        id,
+			mediaType: "application/xhtml+xml",
+			// Split at write time with Python's exact sets (epub_output.py:61-71):
+			// only MANIFEST_ITEM_PROPERTIES belong on <item properties=...>;
+			// SPINE_ITEMREF_PROPERTIES (page-spread-*, facing-page-*, rendition:*,
+			// layout-blank) are emitted on the <itemref> instead.
+			properties: manifestItemProperties(section.Properties),
 		})
 	}
 	for _, resource := range book.Resources {
@@ -574,7 +578,14 @@ func contentOPF(book Book) string {
 		if id == "" {
 			id = section.Filename
 		}
-		out.WriteString(`    <itemref idref="` + xmlEscape(id) + `"/>` + "\n")
+		// Python epub_output.py:1061-1065: itemref properties are the spine-only
+		// subset of the entry's OPF properties, sorted; suppressed for EPUB2.
+		itemrefProps := itemrefProperties(section.Properties)
+		if itemrefProps != "" && !generateEpub2 {
+			out.WriteString(`    <itemref idref="` + xmlEscape(id) + `" properties="` + xmlEscape(itemrefProps) + `"/>` + "\n")
+		} else {
+			out.WriteString(`    <itemref idref="` + xmlEscape(id) + `"/>` + "\n")
+		}
 	}
 	out.WriteString(`  </spine>` + "\n")
 
@@ -589,7 +600,6 @@ func contentOPF(book Book) string {
 	out.WriteString(`</package>` + "\n")
 	return out.String()
 }
-
 
 // bodyEndsWithBlockElement checks if the body content ends with a closing tag
 // for a block-level element. Python's beautify_html adds trailing \n only for
@@ -805,6 +815,62 @@ func naturalSortKeyEpub(value string) string {
 // makeManifestID produces a unique manifest ID from a filename.
 // Port of Python epub_output.py manifest_resource: fix_html_id(filename.rpartition("/")[2][:64])
 // + make_unique_name deduplication.
+// MANIFEST_ITEM_PROPERTIES and SPINE_ITEMREF_PROPERTIES are Python's exact
+// property sets (epub_output.py:61-71, kfxlib 20260822). Section.Properties
+// carries the combined set; the OPF writer splits it at write time:
+// manifest-only properties go on <item properties=...>, spine-only
+// properties on <itemref properties=...>, exactly like Python's
+// generate_epub (L1061-1065) which intersects manifest_entry.opf_properties
+// with SPINE_ITEMREF_PROPERTIES for the itemref.
+var manifestItemPropertySet = map[string]bool{
+	"cover-image": true, "mathml": true, "nav": true,
+	"remote-resources": true, "scripted": true, "svg": true, "switch": true,
+}
+
+var spineItemrefPropertySet = map[string]bool{
+	"page-spread-left": true, "page-spread-right": true, "rendition:align-x-center": true,
+	"rendition:flow-auto": true, "rendition:flow-paginated": true, "rendition:flow-scrolled-continuous": true,
+	"rendition:flow-scrolled-doc": true, "rendition:layout-pre-paginated": true, "rendition:layout-reflowable": true,
+	"rendition:orientation-auto": true, "rendition:orientation-landscape": true, "rendition:orientation-portrait": true,
+	"rendition:page-spread-center": true, "rendition:spread-auto": true, "rendition:spread-both": true,
+	"rendition:spread-landscape": true, "rendition:spread-none": true, "rendition:spread-portrait": true,
+	"facing-page-left": true, "facing-page-right": true, "layout-blank": true,
+}
+
+// splitProperties returns the subset of a space-separated properties string
+// whose tokens are in the given set, deduplicated and lexicographically
+// sorted before joining with single spaces — Python's opf_properties is a SET
+// and both the manifest (epub_output.py:1040-1042) and itemref
+// (epub_output.py:1061-1067) subsets are emitted with sorted(...). Unknown
+// tokens are dropped (set intersection).
+func splitProperties(properties string, allowed map[string]bool) string {
+	kept := map[string]bool{}
+	for _, token := range strings.Fields(properties) {
+		if allowed[token] {
+			kept[token] = true
+		}
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	tokens := make([]string, 0, len(kept))
+	for token := range kept {
+		tokens = append(tokens, token)
+	}
+	sort.Strings(tokens)
+	return strings.Join(tokens, " ")
+}
+
+// manifestItemProperties filters Section.Properties to manifest item properties.
+func manifestItemProperties(properties string) string {
+	return splitProperties(properties, manifestItemPropertySet)
+}
+
+// itemrefProperties filters Section.Properties to spine itemref properties.
+func itemrefProperties(properties string) string {
+	return splitProperties(properties, spineItemrefPropertySet)
+}
+
 func makeManifestID(filename string, used map[string]bool) string {
 	// Get basename, truncate to 64 chars like Python.
 	base := filename

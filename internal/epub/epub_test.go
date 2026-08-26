@@ -321,14 +321,14 @@ func TestOPFCreatorWithRefines(t *testing.T) {
 
 func TestOPFOptionalMetadata(t *testing.T) {
 	book := Book{
-		Identifier: "urn:uuid:opt-test",
-		Title:      "Optional Test",
-		Language:   "en",
-		Authors:    []string{"A"},
-		Publisher:  "Test Publisher",
+		Identifier:  "urn:uuid:opt-test",
+		Title:       "Optional Test",
+		Language:    "en",
+		Authors:     []string{"A"},
+		Publisher:   "Test Publisher",
 		Description: "A test description",
-		Published:  "2024-06-15",
-		Modified:   "2024-06-15T12:00:00Z",
+		Published:   "2024-06-15",
+		Modified:    "2024-06-15T12:00:00Z",
 		Sections: []Section{
 			{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
 		},
@@ -1347,10 +1347,10 @@ func TestFixHTMLID_ArabicIndic(t *testing.T) {
 
 func TestFixHTMLID_IllustratedLayoutDots(t *testing.T) {
 	tests := []struct {
-		name               string
-		input              string
-		illustratedLayout  bool
-		want               string
+		name              string
+		input             string
+		illustratedLayout bool
+		want              string
 	}{
 		{"dot_illustrated", "sec.1", true, "sec_1"},
 		{"dot_not_illustrated", "sec.1", false, "sec.1"},
@@ -1939,3 +1939,87 @@ func TestSectionXHTMLDictionaryNamespace(t *testing.T) {
 	}
 }
 
+// =========================================================================== //
+// Property split between manifest <item> and spine <itemref>
+// (Python epub_output.py:61-71, 1061-1065; kfxlib 20260822)
+// =========================================================================== //
+
+func TestManifestAndItemrefPropertySplit(t *testing.T) {
+	book := sampleBook()
+	// A Scribe notebook page: FXL (spine) + svg (manifest) simultaneously.
+	book.Sections[0].Properties = "svg rendition:layout-pre-paginated"
+	// A comic page-spread spread page: page-spread-left (spine) + svg (manifest).
+	book.Sections[1].Properties = "page-spread-left svg"
+	// A facing-page spread page carrying facing-page-right (spine only).
+	book.Sections[2].Properties = "facing-page-right rendition:page-spread-center layout-blank"
+	// Duplicate tokens and unsorted input must collapse to a sorted set
+	// (Python opf_properties is a set; output uses sorted(...)).
+	book.Sections[2].Properties = "layout-blank facing-page-right rendition:page-spread-center facing-page-right svg"
+
+	path := writeBookToTemp(t, book)
+	opfData := string(readZIP(t, path)["OEBPS/content.opf"])
+
+	// Manifest items keep only MANIFEST_ITEM_PROPERTIES ("svg" stays,
+	// rendition:*/page-spread-*/facing-page-*/layout-blank must NOT appear).
+	manifestSVG := extractFirstMatch(opfData, `<item[^>]*href="charlie\.xhtml"[^>]*properties="([^"]*)"`)
+	if manifestSVG != "svg" {
+		t.Errorf("charlie manifest properties = %q, want %q", manifestSVG, "svg")
+	}
+	manifestAlpha := extractFirstMatch(opfData, `<item[^>]*href="alpha\.xhtml"[^>]*properties="([^"]*)"`)
+	if manifestAlpha != "svg" {
+		t.Errorf("alpha manifest properties = %q, want %q", manifestAlpha, "svg")
+	}
+	// bravo carries one manifest property (svg) alongside its spine ones; the
+	// duplicate facing-page-right and the input order are irrelevant.
+	manifestBravo := extractFirstMatch(opfData, `<item[^>]*href="bravo\.xhtml"[^>]*properties="([^"]*)"`)
+	if manifestBravo != "svg" {
+		t.Errorf("bravo manifest properties = %q, want svg", manifestBravo)
+	}
+
+	// Itemrefs carry the spine-only subset.
+	itemrefCharlie := extractFirstMatch(opfData, `<itemref[^>]*idref="charlie.xhtml"[^>]*properties="([^"]*)"`)
+	if itemrefCharlie != "rendition:layout-pre-paginated" {
+		t.Errorf("charlie itemref properties = %q, want rendition:layout-pre-paginated", itemrefCharlie)
+	}
+	itemrefAlpha := extractFirstMatch(opfData, `<itemref[^>]*idref="alpha.xhtml"[^>]*properties="([^"]*)"`)
+	if itemrefAlpha != "page-spread-left" {
+		t.Errorf("alpha itemref properties = %q, want page-spread-left", itemrefAlpha)
+	}
+	itemrefBravo := extractFirstMatch(opfData, `<itemref[^>]*idref="bravo.xhtml"[^>]*properties="([^"]*)"`)
+	if itemrefBravo != "facing-page-right layout-blank rendition:page-spread-center" {
+		t.Errorf("bravo itemref properties = %q, want sorted combined set", itemrefBravo)
+	}
+
+	// No itemref may leak a manifest-only property and vice versa.
+	if strings.Contains(opfData, `<item href="charlie.xhtml" id="charlie" media-type="application/xhtml+xml" properties="svg rendition:layout-pre-paginated"`) {
+		t.Error("manifest item carries rendition:layout-pre-paginated (invalid on <item>)")
+	}
+	for _, bad := range []string{
+		`<itemref idref="charlie.xhtml" properties="svg`,
+		`<itemref idref="alpha.xhtml" properties="svg`,
+		`properties="facing-page-right rendition:page-spread-center layout-blank"/><meta`, // never on <item>
+	} {
+		if strings.Contains(opfData, bad) {
+			t.Errorf("OPF contains invalid property placement %q", bad)
+		}
+	}
+}
+
+// TestItemrefPropertiesSuppressedForEPUB2 mirrors Python L1064: itemref
+// properties are only emitted when not generating EPUB2 output.
+func TestItemrefPropertiesSuppressedForEPUB2(t *testing.T) {
+	book := sampleBook()
+	book.Sections[0].Properties = "svg rendition:layout-pre-paginated"
+	book.GenerateEpub2 = true
+
+	path := writeBookToTemp(t, book)
+	opfData := string(readZIP(t, path)["OEBPS/content.opf"])
+
+	if !strings.Contains(opfData, `<itemref`) || !strings.Contains(opfData, `</spine>`) {
+		// sanity: spine and itemrefs exist (EPUB2 still emits bare itemrefs)
+		t.Fatalf("spine missing from OPF:\n%s", opfData)
+	}
+	if strings.Contains(opfData, `properties="rendition:layout-pre-paginated"`) {
+		t.Errorf("itemref properties must be suppressed for EPUB2:\n%s", opfData)
+	}
+}

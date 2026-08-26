@@ -458,7 +458,12 @@ func materializeScribeNotebookSections(book *decodedBook, scribeCtx *ScribeNoteb
 			IsFixedLayout:  part.IsFXL,
 			ViewportWidth:  part.ViewportWidth,
 			ViewportHeight: part.ViewportHeight,
-			Properties:     "svg", // epub_output.py:705-706: body contains SVG
+			// Python: book_part.is_fxl = True adds rendition:layout-pre-paginated to
+		// the part's opf_properties (epub_output.py:126-134), and the body SVG adds
+		// "svg" (L705-706). The writer splits these at write time (svg → <item
+		// properties>, rendition:layout-pre-paginated → <itemref properties>),
+		// mirroring epub_output.py:1061-1065 with MANIFEST/SPINE property sets.
+		Properties:     "svg rendition:layout-pre-paginated",
 			Root:           root,
 		})
 	}

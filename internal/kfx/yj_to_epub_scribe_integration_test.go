@@ -1,6 +1,8 @@
 package kfx
 
 import (
+	"archive/zip"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -533,4 +535,85 @@ func TestScribeNotebookEPUBWriterSmoke(t *testing.T) {
 			t.Errorf("EPUB missing %s", want)
 		}
 	}
+}
+
+// TestScribeNotebookEPUBItemrefFXL asserts the per-section FXL spine property:
+// book_part.is_fxl = True (yj_to_epub_notebook.py:98) adds
+// rendition:layout-pre-paginated to the part's opf_properties, which Python
+// emits on the spine <itemref> (epub_output.py:1061-1065) while "svg" stays
+// on the manifest <item>.
+func TestScribeNotebookEPUBItemrefFXL(t *testing.T) {
+	state := newScribeNotebookState(t)
+	book, err := renderBookState(state, nil)
+	if err != nil {
+		t.Fatalf("renderBookState failed: %v", err)
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "notebook.epub")
+	if err := epub.Write(outputPath, epub.Book{
+		Identifier: book.Identifier,
+		Title:      book.Title,
+		Language:   book.Language,
+		Sections:   book.Sections,
+		Resources:  book.Resources,
+	}); err != nil {
+		t.Fatalf("epub write failed: %v", err)
+	}
+
+	zipFile, err := zip.OpenReader(outputPath)
+	if err != nil {
+		t.Fatalf("open epub: %v", err)
+	}
+	defer zipFile.Close()
+
+	var opfData string
+	for _, f := range zipFile.File {
+		if f.Name == "OEBPS/content.opf" {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatalf("open opf: %v", err)
+			}
+			data, _ := io.ReadAll(rc)
+			rc.Close()
+			opfData = string(data)
+		}
+	}
+	if opfData == "" {
+		t.Fatal("OEBPS/content.opf missing from EPUB")
+	}
+
+	if !strings.Contains(opfData, `<itemref idref="page-1.xhtml" properties="rendition:layout-pre-paginated"/>`) {
+		t.Errorf("OPF missing FXL itemref properties for page-1.xhtml:\n%s", opfData)
+	}
+	// "svg" stays a MANIFEST property; it must not leak onto the itemref, and
+	// rendition:* must not leak onto the manifest item.
+	if strings.Contains(opfData, `<itemref idref="page-1.xhtml" properties="svg`) {
+		t.Errorf("itemref carries manifest-only svg property:\n%s", opfData)
+	}
+	manifestProps := extractOPFAttribute(opfData, `charlie|page-1`, "")
+	if strings.Contains(manifestProps, "rendition:") {
+		t.Errorf("manifest item carries rendition property:\n%s", opfData)
+	}
+}
+
+func extractOPFAttribute(opfData, _, _ string) string {
+	// Return the properties attribute of the page-1 manifest item.
+	start := strings.Index(opfData, `<item href="page-1.xhtml"`)
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(opfData[start:], `/>`)
+	if end < 0 {
+		return ""
+	}
+	item := opfData[start : start+end]
+	idx := strings.Index(item, `properties="`)
+	if idx < 0 {
+		return ""
+	}
+	rest := item[idx+len(`properties="`):]
+	if quote := strings.Index(rest, `"`); quote >= 0 {
+		return rest[:quote]
+	}
+	return ""
 }
