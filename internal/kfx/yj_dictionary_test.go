@@ -227,6 +227,60 @@ func TestDictionaryEntryMissingTermFailsConversion(t *testing.T) {
 }
 
 
+func TestDictionaryRenderErrorPropagatesFromRenderBookState(t *testing.T) {
+	// A renderer error is sticky: after a malformed dictionary entry, later
+	// nodes intentionally short-circuit. renderBookState must therefore return
+	// that error instead of silently succeeding with missing section content.
+	state := &bookState{
+		Book: &decodedBook{Title: "Dictionary", Language: "en", IsDictionary: true},
+		BookSymbolFormat: symOriginal,
+		Fragments: fragmentCatalog{
+			ContentFragments:  map[string][]string{},
+			Storylines: map[string]map[string]interface{}{
+				"bad-story": {
+					"story_name": "bad-story",
+					"content_list": []interface{}{map[string]interface{}{
+						"type":                "container",
+						"content_list":        []interface{}{"broken"},
+						"yj.dictionary.rules": []interface{}{1},
+					}},
+				},
+				"good-story": {
+					"story_name":   "good-story",
+					"content_list": []interface{}{map[string]interface{}{
+						"type": "text", "content": "must not be silently dropped",
+					}},
+				},
+			},
+			StyleFragments:   map[string]map[string]interface{}{},
+			RubyGroups:       map[string]map[string]interface{}{},
+			RubyContents:     map[string]map[string]interface{}{},
+			SectionFragments: map[string]sectionFragment{
+				"bad-section":  {ID: "bad-section", Storyline: "bad-story", PageTemplateValues: map[string]interface{}{}},
+				"good-section": {ID: "good-section", Storyline: "good-story", PageTemplateValues: map[string]interface{}{}},
+			},
+			AnchorFragments:       map[string]anchorFragment{},
+			NavContainers:         map[string]map[string]interface{}{},
+			ResourceFragments:     map[string]resourceFragment{},
+			ResourceRawData:       map[string]map[string]interface{}{},
+			FormatCapabilities:    map[string]map[string]interface{}{},
+			Generators:            map[string]map[string]interface{}{},
+			PathBundles:           map[string]map[string]interface{}{},
+			AuxiliaryData:         map[string]map[string]interface{}{},
+			AuxiliaryDataOrder:    []string{},
+			FontFragments:         map[string]fontFragment{},
+			RawFragments:          map[string][]byte{},
+			PositionAliases:       map[int]string{},
+			SectionOrder:          []string{"bad-section", "good-section"},
+			FragmentIDsByType:     map[string][]string{},
+		},
+	}
+
+	if _, err := renderBookState(state, nil); err == nil {
+		t.Fatal("renderBookState succeeded after a malformed dictionary entry")
+	}
+}
+
 func TestDictionaryRulesReachRenderBookState(t *testing.T) {
 	// Production-path proof for Python yj_to_epub.py:79 ->
 	// yj_to_epub_content.py:542-588: renderBookState must parse $597 rules and

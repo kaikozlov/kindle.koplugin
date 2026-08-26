@@ -268,6 +268,9 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	if err := processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, &renderer, navTitles, symFmt, readingOrderCfg, scribeCtx); err != nil {
 		return nil, err
 	}
+	if renderer.renderError != nil {
+		return nil, renderer.renderError
+	}
 	// Python finalization reports defined-vs-used dictionary rules after all
 	// content is processed (yj_to_epub.py:174-184).
 	renderer.reportDictionaryRuleUsage()
