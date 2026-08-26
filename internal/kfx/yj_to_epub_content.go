@@ -1126,13 +1126,15 @@ func processPageSpreadStoryBranch(
 
 	// Get story from storyline reference
 	storyName, _ := popString(pageTemplate, "story_name")
-	story, ok := storylines[storyName]
+	storySource, ok := storylines[storyName]
 	if !ok {
 		result.Err = fmt.Errorf("page spread template references missing storyline %q", storyName)
 		return result
 	}
+	story := cloneMap(storySource)
 
-	// Pop storyline name from story data
+	// Pop storyline name from a working copy. Python consumes fragments, but Go still
+	// needs the canonical storyline later when materializing the leaf book parts.
 	delete(story, "story_name")
 
 	// Determine base property and initial page property
@@ -1158,10 +1160,11 @@ func processPageSpreadStoryBranch(
 	}
 
 	for _, child := range children {
-		childData, ok := asMap(child)
+		childSource, ok := asMap(child)
 		if !ok {
 			continue
 		}
+		childData := cloneMap(childSource)
 
 		// Recursively process each child template
 		childResult := processPageSpreadPageTemplate(
@@ -1241,11 +1244,12 @@ func processPageSpreadScaleFitBranch(
 
 	// Get story
 	storyName, _ := popString(pageTemplate, "story_name")
-	story, ok := storylines[storyName]
+	storySource, ok := storylines[storyName]
 	if !ok {
 		result.Err = fmt.Errorf("scale_fit template references missing storyline %q", storyName)
 		return result
 	}
+	story := cloneMap(storySource)
 	delete(story, "story_name")
 
 	// Process children without page_spread alternation
@@ -1253,10 +1257,11 @@ func processPageSpreadScaleFitBranch(
 	result.Children = make([]pageSpreadChild, 0, len(children))
 
 	for _, child := range children {
-		childData, ok := asMap(child)
+		childSource, ok := asMap(child)
 		if !ok {
 			continue
 		}
+		childData := cloneMap(childSource)
 
 		childResult := processPageSpreadPageTemplate(
 			childData, sectionName, "", childParentID, false, cfg, storylines,
@@ -1315,11 +1320,12 @@ func processPageSpreadConnectedBranch(
 
 	// Get story
 	storyName, _ := popString(pageTemplate, "story_name")
-	story, ok := storylines[storyName]
+	storySource, ok := storylines[storyName]
 	if !ok {
 		result.Err = fmt.Errorf("connected pagination template references missing storyline %q", storyName)
 		return result
 	}
+	story := cloneMap(storySource)
 	delete(story, "story_name")
 
 	// Process children with "rendition:page-spread-center"
@@ -1333,10 +1339,11 @@ func processPageSpreadConnectedBranch(
 	}
 
 	for _, child := range children {
-		childData, ok := asMap(child)
+		childSource, ok := asMap(child)
 		if !ok {
 			continue
 		}
+		childData := cloneMap(childSource)
 
 		childResult := processPageSpreadPageTemplate(
 			childData, sectionName, "rendition:page-spread-center", childParentID, false, cfg, storylines,
