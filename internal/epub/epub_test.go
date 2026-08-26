@@ -1825,3 +1825,11 @@ func TestFontFaceOrdering(t *testing.T) {
 		t.Errorf("stylesheet content not preserved:\ngot: %q\nwant: %q", cssData, fontCSS)
 	}
 }
+
+func TestSectionBodyDirectionIsSerialized(t *testing.T) {
+	book := Book{Identifier: "id", Title: "title", Language: "en", Sections: []Section{{Filename: "s.xhtml", BodyDirection: "rtl", BodyHTML: "<p>text</p>"}}}
+	xhtml := sectionXHTML(book, book.Sections[0])
+	if !strings.Contains(xhtml, `<body dir="rtl">`) {
+		t.Fatalf("section XHTML missing body direction: %s", xhtml)
+	}
+}

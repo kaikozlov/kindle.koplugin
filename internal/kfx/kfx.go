@@ -175,6 +175,7 @@ type renderedSection struct {
 	PageTitle         string
 	Language          string
 	BodyLanguage      string // xml:lang for <body> element (from -kfx-attrib-xml-lang, may differ from Language)
+	BodyDirection     string // dir for <body> after direction/unicode-bidi markup fixup
 	BodyClass         string
 	BodyStyle         string
 	BodyStyleInferred bool   // true if body style was inferred from children (not from content rendering)

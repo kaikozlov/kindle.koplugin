@@ -599,6 +599,90 @@ func setHTMLDefaults(book *decodedBook, defaultFontFamily string) map[int]bool {
 	return fontFamilyAddedByDefaults
 }
 
+// fixupDirectionAndBidiElement ports the direction/unicode-bidi branch from
+// KFX_EPUB_Properties.fixup_styles_and_classes. It operates on one element so the
+// virtual body can follow the same code path as ordinary descendants.
+func fixupDirectionAndBidiElement(elem *htmlElement) {
+	if elem == nil || elem.Attrs == nil || elem.Attrs["style"] == "" {
+		return
+	}
+	style := parseDeclarationString(elem.Attrs["style"])
+	if _, hasDir := style["direction"]; !hasDir {
+		if _, hasBidi := style["unicode-bidi"]; !hasBidi {
+			return
+		}
+	}
+
+	unicodeBidi := style["unicode-bidi"]
+	if unicodeBidi == "" {
+		unicodeBidi = "normal"
+	}
+
+	// Python iterates descendants only when determining whether the element
+	// contains block/content descendants.
+	hasBlock := false
+	hasContent := elemHasDirectText(elem)
+	walkDescendantElements(elem, func(desc *htmlElement) {
+		if desc == nil {
+			return
+		}
+		if !hasBlock {
+			switch desc.Tag {
+			case "aside", "div", "figure", "h1", "h2", "h3", "h4", "h5", "h6",
+				"iframe", "li", "ol", "p", "table", "td", "ul":
+				hasBlock = true
+			}
+		}
+		if !hasContent {
+			if elemHasDirectText(desc) {
+				hasContent = true
+			} else if desc.Tag == "audio" || desc.Tag == "img" || desc.Tag == "li" ||
+				desc.Tag == "math" || desc.Tag == "object" || desc.Tag == "svg" || desc.Tag == "video" {
+				hasContent = true
+			}
+			if !hasContent && elemHasTailText(desc, elem) {
+				hasContent = true
+			}
+		}
+	})
+
+	if !hasContent {
+		delete(style, "direction")
+		delete(style, "unicode-bidi")
+		setElemStyle(elem, style)
+		return
+	}
+	if unicodeBidi == "embed" || unicodeBidi == "normal" || hasBlock {
+		if dir, ok := style["direction"]; ok {
+			elem.Attrs["dir"] = dir
+			delete(style, "direction")
+		}
+		delete(style, "unicode-bidi")
+		setElemStyle(elem, style)
+		return
+	}
+	if unicodeBidi == "isolate" || unicodeBidi == "bidi-override" || unicodeBidi == "isolate-override" {
+		bdx := &htmlElement{}
+		if strings.Contains(unicodeBidi, "override") {
+			bdx.Tag = "bdo"
+		} else {
+			bdx.Tag = "bdi"
+		}
+		if dir, ok := style["direction"]; ok {
+			bdx.Attrs = map[string]string{"dir": dir}
+			delete(style, "direction")
+		}
+		if elem.Tag != "img" {
+			bdx.Children = elem.Children
+			elem.Children = []htmlPart{bdx}
+		}
+		delete(style, "unicode-bidi")
+		setElemStyle(elem, style)
+		return
+	}
+	log.Printf("Cannot produce EPUB3 equivalent for: unicode-bidi:%s direction:%s", unicodeBidi, style["direction"])
+}
+
 // Port of KFX_EPUB_Properties.fixup_styles_and_classes (yj_to_epub_properties.py ~L1388+).
 func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyAddedByDefaults map[int]bool, resolvedDefaultFont string) {
 	if book == nil || catalog == nil {
@@ -648,100 +732,29 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 	}
 
 	// Ported from Python fixup_styles_and_classes direction/unicode-bidi conversion
-	// (yj_to_epub_properties.py L1448-1500).
-	// Convert CSS direction property to HTML dir attribute and unicode-bidi to bdi/bdo elements.
-	// Go always generates EPUB3 so the condition is always true (Python:
-	// CVT_DIRECTION_PROPERTY_TO_MARKUP or not self.generate_epub2).
+	// (yj_to_epub_properties.py L1448-1500). Python's body().iter("*") includes the
+	// body itself, so process the virtual body before walking its descendants.
 	for i := range book.RenderedSections {
-		walkHTMLElement(book.RenderedSections[i].Root, func(elem *htmlElement) {
-			if elem == nil || elem.Attrs == nil || elem.Attrs["style"] == "" {
-				return
-			}
-			style := parseDeclarationString(elem.Attrs["style"])
-			if _, hasDir := style["direction"]; !hasDir {
-				if _, hasBidi := style["unicode-bidi"]; !hasBidi {
-					return
-				}
-			}
-
-			unicodeBidi := style["unicode-bidi"]
-			if unicodeBidi == "" {
-				unicodeBidi = "normal"
-			}
-
-			// Determine has_block and has_content by iterating all descendants.
-			// Python: for ex in e.iterfind(".//*") — iterates ONLY descendants, not e itself.
-			hasBlock := false
-			hasContent := elemHasDirectText(elem) // Python: has_content = e.text
-			walkDescendantElements(elem, func(desc *htmlElement) {
-				if desc == nil {
-					return
-				}
-				if !hasBlock {
-					switch desc.Tag {
-					case "aside", "div", "figure", "h1", "h2", "h3", "h4", "h5", "h6",
-						"iframe", "li", "ol", "p", "table", "td", "ul":
-						hasBlock = true
-					}
-				}
-				if !hasContent {
-					if elemHasDirectText(desc) {
-						hasContent = true
-					} else if desc.Tag == "audio" || desc.Tag == "img" || desc.Tag == "li" ||
-						desc.Tag == "math" || desc.Tag == "object" || desc.Tag == "svg" || desc.Tag == "video" {
-						hasContent = true
-					}
-					// Python checks ex.tail — in Go's DOM, tail text is represented
-					// as htmlText siblings after the element within its parent's Children.
-					if !hasContent && elemHasTailText(desc, elem) {
-						hasContent = true
-					}
-				}
-			})
-
-			if !hasContent {
-				// No content: just remove the direction/unicode-bidi properties
-				delete(style, "direction")
-				delete(style, "unicode-bidi")
-				setElemStyle(elem, style)
-
-			} else if unicodeBidi == "embed" || unicodeBidi == "normal" || hasBlock {
-				// embed/normal or has block children: convert direction to dir attribute
-				if dir, ok := style["direction"]; ok {
-					elem.Attrs["dir"] = dir
-					delete(style, "direction")
-				}
-				delete(style, "unicode-bidi")
-				setElemStyle(elem, style)
-
-			} else if unicodeBidi == "isolate" || unicodeBidi == "bidi-override" ||
-				unicodeBidi == "isolate-override" {
-				// isolate/bidi-override/isolate-override: wrap content in bdi/bdo element
-				bdx := &htmlElement{}
-				if strings.Contains(unicodeBidi, "override") {
-					bdx.Tag = "bdo"
-				} else {
-					bdx.Tag = "bdi"
-				}
-				if dir, ok := style["direction"]; ok {
-					bdx.Attrs = map[string]string{"dir": dir}
-					delete(style, "direction")
-				}
-
-				if elem.Tag != "img" {
-					// Move element's children to bdx (Python: bdx.text = e.text, move children)
-					bdx.Children = elem.Children
-					elem.Children = []htmlPart{bdx}
-				}
-
-				delete(style, "unicode-bidi")
-				setElemStyle(elem, style)
-
-			} else {
-				log.Printf("Cannot produce EPUB3 equivalent for: unicode-bidi:%s direction:%s",
-					unicodeBidi, style["direction"])
-			}
-		})
+		section := &book.RenderedSections[i]
+		bodyAttrs := map[string]string{}
+		if section.BodyStyle != "" {
+			bodyAttrs["style"] = section.BodyStyle
+		}
+		bodyElem := &htmlElement{Tag: "body", Attrs: bodyAttrs}
+		if section.Root != nil {
+			bodyElem.Children = section.Root.Children
+		}
+		fixupDirectionAndBidiElement(bodyElem)
+		section.BodyStyle = ""
+		section.BodyDirection = ""
+		if bodyElem.Attrs != nil {
+			section.BodyStyle = bodyElem.Attrs["style"]
+			section.BodyDirection = bodyElem.Attrs["dir"]
+		}
+		if section.Root != nil {
+			section.Root.Children = bodyElem.Children
+			walkHTMLElement(section.Root, fixupDirectionAndBidiElement)
+		}
 	}
 
 	// Ported from Python REMOVE_EMPTY_NAMED_CLASSES (yj_to_epub_properties.py:1499-1505):
@@ -2609,8 +2622,15 @@ func elemHasDirectText(elem *htmlElement) bool {
 		return false
 	}
 	for _, child := range elem.Children {
-		if txt, ok := child.(htmlText); ok && txt.Text != "" {
-			return true
+		switch txt := child.(type) {
+		case htmlText:
+			if txt.Text != "" {
+				return true
+			}
+		case *htmlText:
+			if txt != nil && txt.Text != "" {
+				return true
+			}
 		}
 	}
 	return false

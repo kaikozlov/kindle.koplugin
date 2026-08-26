@@ -326,3 +326,33 @@ func TestConvertYJPropertiesNoFontFamily(t *testing.T) {
 		t.Errorf("expected border-top-style=solid, got %q", result["border-top-style"])
 	}
 }
+
+func TestFixupDirectionAndBidiElementBodyWithBlockChild(t *testing.T) {
+	body := &htmlElement{
+		Tag:   "body",
+		Attrs: map[string]string{"style": "direction: rtl; unicode-bidi: isolate"},
+		Children: []htmlPart{
+			&htmlElement{Tag: "p", Children: []htmlPart{htmlText{Text: "مرحبا"}}},
+		},
+	}
+	fixupDirectionAndBidiElement(body)
+	if body.Attrs["dir"] != "rtl" {
+		t.Fatalf("body dir = %q, want rtl", body.Attrs["dir"])
+	}
+	if body.Attrs["style"] != "" {
+		t.Fatalf("body style = %q, want empty", body.Attrs["style"])
+	}
+	if len(body.Children) != 1 {
+		t.Fatalf("body children = %d, want 1", len(body.Children))
+	}
+	if child, ok := body.Children[0].(*htmlElement); !ok || child.Tag != "p" {
+		t.Fatalf("body child = %#v, want p", body.Children[0])
+	}
+}
+
+func TestElemHasDirectTextSupportsPointerText(t *testing.T) {
+	elem := &htmlElement{Children: []htmlPart{&htmlText{Text: "text"}}}
+	if !elemHasDirectText(elem) {
+		t.Fatal("pointer htmlText should count as direct text")
+	}
+}
