@@ -2560,6 +2560,18 @@ func TestAltContentAnnotationOnTable(t *testing.T) {
 	}
 }
 
+func TestMathMLWidthComparisonUsesPDFBackedScaling(t *testing.T) {
+	r := &storylineRenderer{isPDFBacked: true, contentFragments: map[string][]string{}}
+	node := map[string]interface{}{"width": 250.0}
+	annotation := map[string]interface{}{"content": map[string]interface{}{}}
+	svg := &htmlElement{Tag: "svg", Attrs: map[string]string{"style": "width: 2.5px"}}
+	element := &htmlElement{Tag: "div", Children: []htmlPart{svg}}
+	r.processMathMLAnnotation(node, annotation, element)
+	if _, remains := node["width"]; remains {
+		t.Fatalf("PDF-backed MathML width was not consumed after matching scaled SVG width: %#v", node)
+	}
+}
+
 // =============================================================================
 // GAP 6: Word boundary ($696) — already implemented, verify
 // =============================================================================

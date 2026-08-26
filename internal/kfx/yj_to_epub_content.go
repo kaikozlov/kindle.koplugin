@@ -4838,7 +4838,7 @@ func (r *storylineRenderer) processMathMLAnnotation(node map[string]interface{},
 		// $56 → "width". Remove width property from the node if its resolved CSS value
 		// matches the SVG element's current width style attribute.
 		if widthVal, ok := node["width"]; ok {
-			resolvedWidth := propertyValue("width", widthVal, r.resolveResource)
+			resolvedWidth := propertyValueForBook("width", widthVal, r.resolveResource, r.isPDFBacked)
 			if svgStyle, hasStyle := svg.Attrs["style"]; hasStyle && resolvedWidth != "" {
 				styleMap := parseDeclarationString(svgStyle)
 				if svgWidth := styleMap["width"]; svgWidth == resolvedWidth {
