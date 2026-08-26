@@ -44,6 +44,10 @@ func constReturn() int { return 1 }
 
 func identityReturn(data []byte) []byte { return data }
 
+func trueReturn() bool { return true }
+
+func falseReturn() bool { return false }
+
 func notImplemented(input string) error {
 	return fmt.Errorf("not implemented")
 }
@@ -159,6 +163,125 @@ func TestCallGraph(t *testing.T) {
 	}
 	if got := fns["notImplemented"].CalledBy; got != 0 {
 		t.Errorf("notImplemented CalledBy = %d, want 0", got)
+	}
+}
+
+func TestIdentCallsExcludeSelectors(t *testing.T) {
+	// Selector calls must never be delegation evidence: strings.TrimSpace
+	// must not resolve to a project function named TrimSpace, and obj.Get
+	// must not resolve to an unrelated method named Get. Only unqualified
+	// Ident calls (helper()) may be followed transitively.
+	fns := runScan(t, `package p
+
+import "strings"
+
+func TrimSpace(s string) string { return s }
+
+func (t thing) Get() int { return 1 }
+
+type thing struct{ x int }
+
+func wrapper(s string, obj thing) string {
+	return strings.TrimSpace(s) + "\u0000" + string(obj.Get())
+}
+
+func honestWrapper(s string) string {
+	return helper(s)
+}
+
+func helper(s string) string {
+	total := ""
+	for i := 0; i < 10; i++ {
+		total += s
+	}
+	return total
+}
+`)
+	w := fns["wrapper"]
+	if contains(w.IdentCalls, "TrimSpace") {
+		t.Errorf("wrapper IdentCalls must not include selector TrimSpace: %v", w.IdentCalls)
+	}
+	if contains(w.IdentCalls, "Get") {
+		t.Errorf("wrapper IdentCalls must not include selector Get: %v", w.IdentCalls)
+	}
+	if !contains(w.Calls, "TrimSpace") || !contains(w.Calls, "Get") {
+		t.Errorf("wrapper Calls should still report all calls for diagnostics: %v", w.Calls)
+	}
+	hw := fns["honestWrapper"]
+	if !contains(hw.IdentCalls, "helper") {
+		t.Errorf("honestWrapper IdentCalls must include helper: %v", hw.IdentCalls)
+	}
+	if !contains(hw.Calls, "helper") {
+		t.Errorf("honestWrapper Calls must include helper: %v", hw.Calls)
+	}
+}
+
+func contains(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestFuncLitNotCountedAsOuterSubstance(t *testing.T) {
+	// A thin wrapper that defines a large UNUSED closure must stay trivial:
+	// closure statements must not inflate the outer function's nstmt/nlit.
+	fns := runScan(t, `package p
+
+func wrapperWithBigUnusedClosure() error {
+	_ = func() {
+		total := 0
+		for i := 0; i < 100; i++ {
+			total += i
+		}
+		_ = map[string]int{"one": 1, "two": 2, "three": 3}
+	}
+	return nil
+}
+
+func realClosureWork(fn func(int) int, x int) int {
+	return fn(x) + 1
+}
+`)
+	w := fns["wrapperWithBigUnusedClosure"]
+	if w.NStmt > 2 {
+		t.Errorf("outer nstmt = %d, want <= 2 (closure must not count)", w.NStmt)
+	}
+	if w.NLit != 0 {
+		t.Errorf("outer nlit = %d, want 0 (closure literals must not count)", w.NLit)
+	}
+	if !w.ConstOnly {
+		t.Error("wrapper returning only nil must stay const_only")
+	}
+	if w.TrivialShape != "const:nil" {
+		t.Errorf("TrivialShape = %q, want const:nil", w.TrivialShape)
+	}
+}
+
+func TestTrivialShapes(t *testing.T) {
+	fns := runScan(t, fixtureSrc)
+	want := map[string]string{
+		"emptyStub":        "void",
+		"nilReturn":        "const:nil",
+		"blankReturn":      "const:empty-string",
+		"zeroReturn":       "const:int:0",
+		"constReturn":      "const:int:1",
+		"identityReturn":   "arg:data",
+		"trueReturn":       "const:true",
+		"falseReturn":      "const:false",
+	}
+	for name, shape := range want {
+		if got := fns[name].TrivialShape; got != shape {
+			t.Errorf("%s TrivialShape = %q, want %q", name, got, shape)
+		}
+	}
+	// Call-shaped and computed returns are never semantically trivial.
+	for _, name := range []string{"notImplemented", "notSupported", "redirectStub", "assignThenReturn"} {
+		if fns[name].TrivialShape != "" {
+			t.Errorf("%s TrivialShape = %q, want empty (not trivial)", name, fns[name].TrivialShape)
+		}
 	}
 }
 

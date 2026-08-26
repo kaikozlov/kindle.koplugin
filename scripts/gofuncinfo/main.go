@@ -46,7 +46,15 @@ type FuncInfo struct {
 	ConstOnly bool     `json:"const_only"`
 	ErrorOnly bool     `json:"error_only"`
 	NotImpl   bool     `json:"notimpl"`
-	Calls     []string `json:"calls"`
+	// TrivialShape classifies a trivial body semantically for compatibility
+	// matching against the Python reference:
+	//   "void"             — no statements / bare return
+	//   "const:<kind>[:<value>]" — constant return (nil, true, false, 3, "x")
+	//   "arg:<name>"       — identity return of a parameter
+	TrivialShape string   `json:"trivial_shape,omitempty"`
+	NParams    int      `json:"nparams"`
+	Calls     []string `json:"calls"`      // ALL called names incl. selectors — reporting only, NEVER delegation evidence
+	IdentCalls []string `json:"ident_calls"` // unqualified (Ident) callees only — the only calls followed for transitive substance
 	SelfCalls int      `json:"self_calls"`
 	// CalledBy counts CallExpr sites with this function's name anywhere in
 	// the scanned corpus (methods matched by bare name), excluding its own
@@ -182,7 +190,17 @@ func analyzeFunc(file string, fd *ast.FuncDecl, fset *token.FileSet) FuncInfo {
 	stmts := 0
 	nlit := 0
 	calls := map[string]bool{}
-	ast.Inspect(fd.Body, func(n ast.Node) bool {
+	identCalls := map[string]bool{}
+	// Function literals are modeled as separate functions conceptually; their
+	// statements/literals/calls must not count as the outer function's
+	// substance (a thin wrapper that defines an unused closure would otherwise
+	// look substantive — the same hole Python count_stmts closes by skipping
+	// nested defs).
+	var walk func(n ast.Node) bool
+	walk = func(n ast.Node) bool {
+		if _, ok := n.(*ast.FuncLit); ok {
+			return false
+		}
 		if _, ok := n.(ast.Stmt); ok {
 			if _, isBlock := n.(*ast.BlockStmt); !isBlock {
 				stmts++
@@ -194,13 +212,21 @@ func analyzeFunc(file string, fd *ast.FuncDecl, fset *token.FileSet) FuncInfo {
 		if ce, ok := n.(*ast.CallExpr); ok {
 			if name := callName(ce.Fun); name != "" {
 				calls[name] = true
+				// Selector calls (strings.TrimSpace, obj.Get) collapse to a bare
+				//name that cannot prove which function is invoked. They are
+				// recorded for reporting but are NOT safe delegation evidence;
+				// only unqualified Ident calls may be followed transitively.
+				if _, isIdent := ce.Fun.(*ast.Ident); isIdent {
+					identCalls[name] = true
+				}
 				if name == info.Name {
 					info.SelfCalls++
 				}
 			}
 		}
 		return true
-	})
+	}
+	ast.Inspect(fd.Body, walk)
 	info.NStmt = stmts
 	info.NLit = nlit
 	info.Empty = len(fd.Body.List) == 0
@@ -212,11 +238,31 @@ func analyzeFunc(file string, fd *ast.FuncDecl, fset *token.FileSet) FuncInfo {
 	sort.Strings(callNames)
 	info.Calls = callNames
 
+	identNames := make([]string, 0, len(identCalls))
+	for c := range identCalls {
+		identNames = append(identNames, c)
+	}
+	sort.Strings(identNames)
+	info.IdentCalls = identNames
+
 	// Trivial-body analysis over top-level statements.
 	hasNonTrivial := false // a returned value that is neither constant nor error ctor
 	hasErrorCtor := false  // a returned errors.New/fmt.Errorf(...) value
-	allReturns := true     // every top-level statement is a return
+	allReturns := true     // every top-level statement is a return or blank discard
 	for _, stmt := range fd.Body.List {
+		// `_ = ...` blank discards carry no logic; a body of discards +
+		// returns is still trivial (e.g. defining a closure only to ignore it).
+		if as, ok := stmt.(*ast.AssignStmt); ok {
+			blank := len(as.Lhs) > 0
+			for _, l := range as.Lhs {
+				if id, ok := l.(*ast.Ident); !ok || id.Name != "_" {
+					blank = false
+				}
+			}
+			if blank {
+				continue
+			}
+		}
 		rs, ok := stmt.(*ast.ReturnStmt)
 		if !ok {
 			allReturns = false
@@ -243,6 +289,9 @@ func analyzeFunc(file string, fd *ast.FuncDecl, fset *token.FileSet) FuncInfo {
 		info.ConstOnly = !hasNonTrivial && !hasErrorCtor
 		info.ErrorOnly = !hasNonTrivial && hasErrorCtor
 	}
+	info.TrivialShape = trivialShape(fd.Body.List, params)
+	info.NParams = len(params)
+
 
 	// panic("not implemented")
 	ast.Inspect(fd.Body, func(n ast.Node) bool {
@@ -259,6 +308,115 @@ func analyzeFunc(file string, fd *ast.FuncDecl, fset *token.FileSet) FuncInfo {
 	})
 
 	return info
+}
+
+// trivialShape classifies a trivial (all-returns) body semantically.
+// Constants carry their literal VALUE so compatibility can require value
+// equality (Python 0 must not match Go 1, True must not match false).
+// `_ = ...` blank discards are the only legal unused assignment in Go and
+// carry no observable behavior, so they are skipped (an unused closure
+// defined next to `return nil` is still a const:nil function).
+// Returns "" for non-trivial bodies.
+func trivialShape(stmts []ast.Stmt, params map[string]bool) string {
+	if len(stmts) == 0 {
+		return "void"
+	}
+	kind := ""
+	for _, stmt := range stmts {
+		if as, ok := stmt.(*ast.AssignStmt); ok {
+			blank := len(as.Lhs) > 0
+			for _, l := range as.Lhs {
+				if id, ok := l.(*ast.Ident); !ok || id.Name != "_" {
+					blank = false
+				}
+			}
+			if blank {
+				continue
+			}
+		}
+		rs, ok := stmt.(*ast.ReturnStmt)
+		if !ok {
+			return ""
+		}
+		var this string
+		switch {
+		case len(rs.Results) == 0:
+			this = "void"
+		default:
+			if len(rs.Results) != 1 {
+				return ""
+			}
+			this = exprTrivialKind(rs.Results[0], params)
+			if this == "" || strings.HasPrefix(this, "call:") {
+				return "" // any computed/call value => not semantically trivial
+			}
+		}
+		if kind == "" {
+			kind = this
+		} else if kind != this {
+			return ""
+		}
+	}
+	return kind
+}
+
+// exprTrivialKind classifies a single return expression; "call:<name>" marks
+// call-shaped returns (never trivial, but reported for diagnostics).
+func exprTrivialKind(e ast.Expr, params map[string]bool) string {
+	switch v := e.(type) {
+	case *ast.Ident:
+		if v.Name == "nil" {
+			return "const:nil"
+		}
+		if v.Name == "true" {
+			return "const:true"
+		}
+		if v.Name == "false" {
+			return "const:false"
+		}
+		if params[v.Name] {
+			return "arg:" + v.Name
+		}
+		return ""
+	case *ast.BasicLit:
+		if v.Kind == token.STRING {
+			if len(v.Value) <= 2 {
+				return "const:empty-string"
+			}
+			return "const:string:" + v.Value
+		}
+		if v.Kind == token.INT {
+			return "const:int:" + v.Value
+		}
+		if v.Kind == token.FLOAT {
+			return "const:float:" + v.Value
+		}
+		return ""
+	case *ast.CompositeLit:
+		if len(v.Elts) == 0 {
+			return "const:empty-lit"
+		}
+		return ""
+	case *ast.ParenExpr:
+		return exprTrivialKind(v.X, params)
+	case *ast.UnaryExpr:
+		if v.Op == token.SUB {
+			inner := exprTrivialKind(v.X, params)
+			if strings.HasPrefix(inner, "const:int:") {
+				return "const:int:-" + strings.TrimPrefix(inner, "const:int:")
+			}
+			if strings.HasPrefix(inner, "const:float:") {
+				return "const:float:-" + strings.TrimPrefix(inner, "const:float:")
+			}
+		}
+		return ""
+	case *ast.CallExpr:
+		if name := callName(v.Fun); name != "" {
+			return "call:" + name
+		}
+		return ""
+	}
+	return ""
 }
 
 func recvTypeName(e ast.Expr) string {
