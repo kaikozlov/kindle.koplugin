@@ -427,6 +427,7 @@ func ConvertFile(inputPath, outputPath string, cacheDir string) error {
 		TitlePronunciation:      book.TitlePronunciation,
 		AuthorPronunciations:    book.AuthorPronunciations,
 		FixedLayout:             book.FixedLayout,
+		WritingMode:              book.WritingMode,
 		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
@@ -477,6 +478,7 @@ func ConvertFileWithTrace(inputPath string, outputPath string, tracePath string)
 		TitlePronunciation:      book.TitlePronunciation,
 		AuthorPronunciations:    book.AuthorPronunciations,
 		FixedLayout:             book.FixedLayout,
+		WritingMode:              book.WritingMode,
 		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
@@ -615,6 +617,7 @@ func convertFromDRMIONData(contData []byte, outputPath string, originalPath stri
 		TitlePronunciation:      book.TitlePronunciation,
 		AuthorPronunciations:    book.AuthorPronunciations,
 		FixedLayout:             book.FixedLayout,
+		WritingMode:              book.WritingMode,
 		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }
@@ -660,6 +663,7 @@ func convertFromCONTData(contData []byte, outputPath string) error {
 		TitlePronunciation:      book.TitlePronunciation,
 		AuthorPronunciations:    book.AuthorPronunciations,
 		FixedLayout:             book.FixedLayout,
+		WritingMode:              book.WritingMode,
 		PageProgressionDirection: book.PageProgressionDirection,
 	})
 }

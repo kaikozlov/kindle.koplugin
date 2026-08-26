@@ -40,6 +40,7 @@ type Book struct {
 	// Layout flags
 	IllustratedLayout      bool
 	FixedLayout             bool
+	WritingMode              string
 	PageProgressionDirection string
 
 	// Pronunciations for OPF metadata refinements
@@ -395,6 +396,20 @@ func contentOPF(book Book) string {
 	}
 	if book.OverrideKindleFonts {
 		out.WriteString(`    <meta name="Override-Kindle-Fonts" content="true"/>` + "\n")
+	}
+	primaryWritingMode := book.WritingMode
+	if primaryWritingMode == "" {
+		primaryWritingMode = "horizontal-tb"
+	}
+	if primaryWritingMode == "horizontal-tb" {
+		if book.PageProgressionDirection == "rtl" {
+			primaryWritingMode = "horizontal-rl"
+		} else {
+			primaryWritingMode = "horizontal-lr"
+		}
+	}
+	if primaryWritingMode != "horizontal-lr" {
+		out.WriteString(`    <meta name="primary-writing-mode" content="` + xmlEscape(primaryWritingMode) + `"/>` + "\n")
 	}
 	if book.CoverImageHref != "" {
 		// Use truncated manifest ID for cover meta (Python: fix_html_id basename[:64]).

@@ -1656,6 +1656,48 @@ func TestSpinePageProgressionDirection(t *testing.T) {
 	})
 }
 
+func TestOPFPrimaryWritingModeMetadata(t *testing.T) {
+	baseBook := Book{
+		Identifier: "urn:uuid:writing-mode-test",
+		Title:      "Writing Mode Test",
+		Language:   "en",
+		Modified:   "2024-01-01T00:00:00Z",
+		Sections: []Section{
+			{Filename: "sec.xhtml", Title: "S", BodyHTML: "<p>x</p>"},
+		},
+	}
+
+	t.Run("vertical_rl", func(t *testing.T) {
+		book := baseBook
+		book.WritingMode = "vertical-rl"
+		book.PageProgressionDirection = "rtl"
+		opfData := string(readZIP(t, writeBookToTemp(t, book))["OEBPS/content.opf"])
+		if !strings.Contains(opfData, `<meta name="primary-writing-mode" content="vertical-rl"/>`) {
+			t.Fatalf("vertical writing mode metadata missing: %s", opfData)
+		}
+	})
+
+	t.Run("horizontal_rtl", func(t *testing.T) {
+		book := baseBook
+		book.WritingMode = "horizontal-tb"
+		book.PageProgressionDirection = "rtl"
+		opfData := string(readZIP(t, writeBookToTemp(t, book))["OEBPS/content.opf"])
+		if !strings.Contains(opfData, `<meta name="primary-writing-mode" content="horizontal-rl"/>`) {
+			t.Fatalf("horizontal RTL writing mode metadata missing: %s", opfData)
+		}
+	})
+
+	t.Run("horizontal_ltr_omitted", func(t *testing.T) {
+		book := baseBook
+		book.WritingMode = "horizontal-tb"
+		book.PageProgressionDirection = "ltr"
+		opfData := string(readZIP(t, writeBookToTemp(t, book))["OEBPS/content.opf"])
+		if strings.Contains(opfData, `primary-writing-mode`) {
+			t.Fatalf("default horizontal LTR writing mode should be omitted: %s", opfData)
+		}
+	})
+}
+
 // =========================================================================== //
 // VAL-M1-EPUB-008: OPF metadata refinements for alternate-script and file-as
 // Python: epub_output.py:877-894
