@@ -278,6 +278,41 @@ func TestPromotedBodyContainerDoesNotPromoteSemanticContainers(t *testing.T) {
 	}
 }
 
+func TestAppendPageSpreadRenderedSectionsMaterializesLeaf(t *testing.T) {
+	book := &decodedBook{Language: "en"}
+	contentFragments := map[string][]string{"content": {"Page text"}}
+	storylines := map[string]map[string]interface{}{
+		"story-a": {
+			"content_list": []interface{}{map[string]interface{}{
+				"type": "text", "content": map[string]interface{}{"name": "content", "index": 0},
+			}},
+		},
+	}
+	renderer := &storylineRenderer{
+		contentFragments: contentFragments,
+		storylines: storylines,
+		positionAnchors: map[int]map[int][]string{},
+		positionAnchorID: map[int]map[int]string{},
+		emittedAnchorIDs: map[string]bool{},
+		styleFragments: map[string]map[string]interface{}{},
+		styles: newStyleCatalog(),
+	}
+	result := pageSpreadResult{Sections: []pageSpreadSection{{
+		PageTitle: "c0",
+		TemplateData: map[string]interface{}{
+			"id": 100, "type": "container", "story_name": "story-a",
+		},
+	}}}
+
+	appendPageSpreadRenderedSections(book, result, 0, renderer, storylines, contentFragments, nil)
+	if len(book.RenderedSections) != 1 {
+		t.Fatalf("materialized section count = %d, want 1", len(book.RenderedSections))
+	}
+	if book.RenderedSections[0].Filename != "c0.xhtml" || !strings.Contains(book.RenderedSections[0].BodyHTML, "Page text") {
+		t.Fatalf("materialized page-spread leaf = %#v", book.RenderedSections[0])
+	}
+}
+
 func TestRenderContentChildResolvesNamedStoryline(t *testing.T) {
 	renderer := storylineRenderer{
 		contentFragments: map[string][]string{"content": {"Story text"}},

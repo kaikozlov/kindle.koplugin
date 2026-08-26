@@ -373,16 +373,21 @@ func processReadingOrder(
 
 		var rendered renderedStoryline
 		var paragraphs []string
+		var spreadResult *pageSpreadResult
 		var sectionOK bool
 
 		if cfg != nil {
 			// Use full dispatch when book type config is available.
-			rendered, paragraphs, sectionOK = processSectionWithType(sectionID, section, index, bt, *cfg, storylines, contentFragments, renderer)
+			rendered, paragraphs, spreadResult, sectionOK = processSectionWithType(sectionID, section, index, bt, *cfg, storylines, contentFragments, renderer)
 		} else {
 			// Fallback to simple processSection for backward compatibility.
 			rendered, paragraphs, sectionOK = processSection(sectionID, section, index, storylines, contentFragments, renderer)
 		}
 
+		if spreadResult != nil {
+			appendPageSpreadRenderedSections(book, *spreadResult, index, renderer, storylines, contentFragments, navTitles)
+			continue
+		}
 		if !sectionOK {
 			continue
 		}
@@ -415,6 +420,68 @@ func processReadingOrder(
 	}
 }
 
+// appendPageSpreadRenderedSections materializes every leaf book part produced by
+// process_page_spread_page_template. Python creates each leaf with new_book_part(), so
+// a single input section may legitimately expand into multiple XHTML spine entries.
+func appendPageSpreadRenderedSections(book *decodedBook, result pageSpreadResult, sectionIndex int, renderer *storylineRenderer, storylines map[string]map[string]interface{}, contentFragments map[string][]string, navTitles map[string]string) {
+	for leafIndex, leaf := range result.Sections {
+		rendered, paragraphs, ok := renderPageSpreadLeafSection(leaf, renderer, storylines, contentFragments)
+		if !ok {
+			continue
+		}
+		title := navTitles[leaf.PageTitle]
+		if title == "" {
+			title = deriveSectionTitle(paragraphs, sectionIndex+leafIndex+1)
+		}
+		book.RenderedSections = append(book.RenderedSections, renderedSection{
+			Filename:          sectionFilename(leaf.PageTitle),
+			Title:             title,
+			PageTitle:         leaf.PageTitle,
+			Language:          normalizeLanguage(book.Language),
+			BodyClass:         rendered.BodyClass,
+			BodyStyle:         rendered.BodyStyle,
+			BodyStyleInferred: rendered.BodyStyleInferred,
+			Paragraphs:        paragraphs,
+			Properties:        mergeSectionProperties(rendered.Properties, leaf.Properties),
+			Root:              rendered.Root,
+		})
+	}
+}
+
+func renderPageSpreadLeafSection(leaf pageSpreadSection, renderer *storylineRenderer, storylines map[string]map[string]interface{}, contentFragments map[string][]string) (renderedStoryline, []string, bool) {
+	template := cloneMap(leaf.TemplateData)
+	if template == nil {
+		return renderedStoryline{}, nil, false
+	}
+	positionID, _ := asInt(template["id"])
+	styleID, _ := asString(template["style"])
+	bodyStyleValues := filterBodyStyleValues(template)
+
+	var storyline map[string]interface{}
+	var nodes []interface{}
+	if storyName, ok := asString(template["story_name"]); ok && storyName != "" {
+		storyline = cloneMap(storylines[storyName])
+		if storyline == nil {
+			log.Printf("kfx: error: page-spread leaf references missing storyline %q", storyName)
+			return renderedStoryline{}, nil, false
+		}
+		nodes, _ = asSlice(storyline["content_list"])
+	} else if contentList, ok := asSlice(template["content_list"]); ok {
+		storyline = map[string]interface{}{}
+		nodes = contentList
+	} else {
+		// A leaf may itself be the content object. Rendering it as the sole body child
+		// preserves Python's process_content(top-level) behavior for image/text leaves.
+		storyline = map[string]interface{}{}
+		nodes = []interface{}{template}
+		bodyStyleValues = nil
+	}
+	paragraphs := flattenParagraphs(nodes, contentFragments)
+	rendered := renderer.renderStoryline(positionID, styleID, bodyStyleValues, storyline, nodes)
+	rendered.Properties = mergeSectionProperties(rendered.Properties, leaf.Properties)
+	return rendered, paragraphs, len(paragraphs) > 0 || rendered.BodyHTML != ""
+}
+
 // Port of KFX_EPUB_Content.process_section (yj_to_epub_content.py L115-208).
 // seq is the reading-order index (Python enumerate).
 // The function dispatches to different processing paths based on book type and section content:
@@ -442,7 +509,7 @@ func processSection(sectionID string, section sectionFragment, seq int, storylin
 // Port of Python's process_section dispatch logic (yj_to_epub_content.py L136-203).
 // bt is the detected book type; cfg provides page-spread configuration; storylines maps
 // storyline names to their data (needed for page-spread processing).
-func processSectionWithType(sectionID string, section sectionFragment, seq int, bt bookType, cfg pageSpreadConfig, storylines map[string]map[string]interface{}, contentFragments map[string][]string, renderer *storylineRenderer) (renderedStoryline, []string, bool) {
+func processSectionWithType(sectionID string, section sectionFragment, seq int, bt bookType, cfg pageSpreadConfig, storylines map[string]map[string]interface{}, contentFragments map[string][]string, renderer *storylineRenderer) (renderedStoryline, []string, *pageSpreadResult, bool) {
 	// Strip unused section keys (Python L124-136).
 	stripUnusedSectionKeys(section.PageTemplateValues)
 
@@ -451,36 +518,39 @@ func processSectionWithType(sectionID string, section sectionFragment, seq int, 
 
 	switch branch {
 	case branchScribePage:
-		return processSectionScribePage(section, seq, nil)
+		rendered, paragraphs, ok := processSectionScribePage(section, seq, nil)
+		return rendered, paragraphs, nil, ok
 
 	case branchScribeTemplate:
-		return processSectionScribeTemplate(section, nil)
+		rendered, paragraphs, ok := processSectionScribeTemplate(section, nil)
+		return rendered, paragraphs, nil, ok
 
 	case branchComic:
 		// Python L142-154: comic/children → resolve $608, call processPageSpreadPageTemplate
 		result := processSectionComic(section, cfg, storylines)
 		if result.Err != nil {
 			log.Printf("kfx: error: comic section %s failed: %v", sectionID, result.Err)
-			return renderedStoryline{}, nil, false
+			return renderedStoryline{}, nil, nil, false
 		}
-		// Comic branch produces page-spread results, not standard rendered content.
-		// For now, return empty (page-spread sections are handled separately).
-		return renderedStoryline{}, nil, false
+		// A comic can produce multiple XHTML book parts through recursive page-spread
+		// processing. Return the complete result for processReadingOrder to materialize.
+		return renderedStoryline{}, nil, &result, false
 
 	case branchMagazine:
 		// Python L150-184: magazine/print-replica with conditional templates
 		result := processSectionMagazine(section, renderer, cfg, storylines)
 		if result.Err != nil {
 			log.Printf("kfx: error: magazine section %s failed: %v", sectionID, result.Err)
-			return renderedStoryline{}, nil, false
+			return renderedStoryline{}, nil, nil, false
 		}
-		// Magazine branch produces page-spread results for $437 layouts
-		// and inline sections for $325/$323 layouts.
-		return renderedStoryline{}, nil, false
+		// Magazine branches can also produce multiple book parts. Materialize them
+		// through the same page-spread result path.
+		return renderedStoryline{}, nil, &result, false
 
 	default:
 		// Default reflowable path
-		return renderSectionFragments(sectionID, section, storylines, contentFragments, renderer)
+		rendered, paragraphs, ok := renderSectionFragments(sectionID, section, storylines, contentFragments, renderer)
+		return rendered, paragraphs, nil, ok
 	}
 }
 
