@@ -795,8 +795,8 @@ func getFragment(book *decodedBook, ftype string, fid string) map[string]interfa
 		fragmentContainer = map[string]map[string]interface{}{}
 	}
 	data := fragmentContainer[fid]
+	key := ftype + "\x00" + fid
 	if data == nil {
-		key := ftype + "\x00" + fid
 		if book.usedFragmentAccess[key] {
 			if retainUsedFragments {
 				log.Printf("kfx: warning: book fragment used multiple times: %s %s", ftype, fid)
@@ -809,7 +809,12 @@ func getFragment(book *decodedBook, ftype string, fid string) map[string]interfa
 			data = map[string]interface{}{}
 		}
 	} else {
-		book.usedFragmentAccess[ftype+"\x00"+fid] = true
+		// Python get_fragment(..., delete=True) removes the fragment from the
+		// active type container on first use (yj_to_epub.py:320). This is not
+		// just bookkeeping: a second reference must take the used-fragment path
+		// above rather than receiving the already-mutated map again.
+		delete(fragmentContainer, fid)
+		book.usedFragmentAccess[key] = true
 	}
 	dataName := getFragmentNameForType(data, ftype)
 	if dataName != "" && dataName != fid {
