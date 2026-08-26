@@ -9,7 +9,7 @@ Usage: python3 scripts/audit_missing_branches.py [--metric]
 import ast, os, subprocess, re, sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PY_DIR = os.path.join(REPO_ROOT, "REFERENCE/Calibre_KFX_Input/kfxlib")
+PY_DIR = os.path.join(REPO_ROOT, "REFERENCE/KFX_Input/kfxlib")
 
 CORE_FILES = [
     "yj_to_epub_content.py",

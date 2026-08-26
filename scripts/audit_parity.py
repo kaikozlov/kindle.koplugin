@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PY_DIR = os.path.join(BASE, "REFERENCE/Calibre_KFX_Input/kfxlib")
+PY_DIR = os.path.join(BASE, "REFERENCE/KFX_Input/kfxlib")
 GO_DIR = os.path.join(BASE, "internal/kfx")
 PYTAGO_DIR = os.path.join(BASE, "REFERENCE/pytago_test_new/go_output")
 

@@ -53,7 +53,7 @@ def configure_paths():
 
 
 def find_python_file(repo_root, filename):
-    path = os.path.join(repo_root, "REFERENCE", "Calibre_KFX_Input", "kfxlib", filename)
+    path = os.path.join(repo_root, "REFERENCE", "KFX_Input", "kfxlib", filename)
     if not os.path.exists(path):
         # Try with .py extension if not provided
         if not path.endswith(".py"):

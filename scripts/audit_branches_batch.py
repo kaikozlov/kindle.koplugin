@@ -5,7 +5,7 @@ import ast, os, re, sys
 from pathlib import Path
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PY_DIR = os.path.join(REPO_ROOT, "REFERENCE", "Calibre_KFX_Input", "kfxlib")
+PY_DIR = os.path.join(REPO_ROOT, "REFERENCE", "KFX_Input", "kfxlib")
 GO_DIR = os.path.join(REPO_ROOT, "internal", "kfx")
 
 # Reuse the same file list as audit_parity.py

@@ -9,7 +9,7 @@ import sys
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
-    ref_root = os.path.join(repo_root, "REFERENCE", "Calibre_KFX_Input")
+    ref_root = os.path.join(repo_root, "REFERENCE", "KFX_Input")
     sys.path.insert(0, ref_root)
     sys.path.insert(0, os.path.join(ref_root, "kfxlib", "calibre-plugin-modules"))
 

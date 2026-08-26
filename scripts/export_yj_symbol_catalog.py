@@ -3,7 +3,7 @@
 
 Sources:
   - REFERENCE/kfx_symbol_catalog.ion (real names, 842 symbols)
-  - REFERENCE/Calibre_KFX_Input/kfxlib/yj_symbol_catalog.py (Python $N placeholders)
+  - REFERENCE/KFX_Input/kfxlib/yj_symbol_catalog.py (Python $N placeholders)
 
 The golden compares Go's sharedTable() output against the real symbol names
 from the ION catalog. Go resolves SID 10 to "language", SID 145 to "content", etc.
