@@ -867,18 +867,23 @@ func stripBareDivs(root *htmlElement) {
 	if hasDirectText {
 		return
 	}
-	// Check: all children are non-block.
+	// Python's body special case strips the wrapper only when every descendant is
+	// block-level and none carries tail text. Any inline descendant (notably <img>)
+	// keeps the bare div. The old Go condition was accidentally inverted.
 	blockTags := map[string]bool{
 		"aside": true, "div": true, "figure": true,
 		"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
-		"hr": true, "ol": true, "p": true, "table": true, "ul": true,
+		"hr": true, "iframe": true, "ol": true, "p": true, "table": true, "ul": true,
 	}
-	for _, gc := range elem.Children {
-		if gcElem, ok := gc.(*htmlElement); ok && blockTags[gcElem.Tag] {
-			return
+	strip := true
+	walkDescendantElements(elem, func(desc *htmlElement) {
+		if !blockTags[desc.Tag] || elemHasTailText(desc, elem) {
+			strip = false
 		}
+	})
+	if !strip {
+		return
 	}
-	// Safe to strip: unwrap div's children into root.
 	root.Children = elem.Children
 }
 

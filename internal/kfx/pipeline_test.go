@@ -937,6 +937,32 @@ func TestRenderNodeSupportsInlineRenderContainers(t *testing.T) {
 	}
 }
 
+func TestStripBareDivsKeepsInlineDescendants(t *testing.T) {
+	root := &htmlElement{Children: []htmlPart{&htmlElement{
+		Tag: "div", Children: []htmlPart{&htmlElement{Tag: "img", Attrs: map[string]string{"src": "image.jpg"}}},
+	}}}
+	stripBareDivs(root)
+	if len(root.Children) != 1 {
+		t.Fatalf("body child count = %d, want 1", len(root.Children))
+	}
+	if div, ok := root.Children[0].(*htmlElement); !ok || div.Tag != "div" {
+		t.Fatalf("bare div around inline image should be retained: %#v", root.Children)
+	}
+}
+
+func TestStripBareDivsUnwrapsAllBlockDescendants(t *testing.T) {
+	root := &htmlElement{Children: []htmlPart{&htmlElement{
+		Tag: "div", Children: []htmlPart{&htmlElement{Tag: "p", Children: []htmlPart{htmlText{Text: "Text"}}}},
+	}}}
+	stripBareDivs(root)
+	if len(root.Children) != 1 {
+		t.Fatalf("body child count = %d, want 1", len(root.Children))
+	}
+	if p, ok := root.Children[0].(*htmlElement); !ok || p.Tag != "p" {
+		t.Fatalf("all-block bare div should be stripped: %#v", root.Children)
+	}
+}
+
 func TestFixupStylesKeepsFixedLayoutStylesInline(t *testing.T) {
 	book := &decodedBook{
 		Language: "en",
