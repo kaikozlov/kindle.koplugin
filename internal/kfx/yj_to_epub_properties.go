@@ -360,6 +360,17 @@ func pruneUnusedResources(book *decodedBook) {
 				referenced[match[1]] = true
 			}
 		}
+		// SVG <image> elements reference resources via xlink:href (notebook
+		// pages reference their page/template SVG files this way,
+		// yj_to_epub_notebook.py:140-143,191-195).
+		for _, match := range regexp.MustCompile(`xlink:href="([^"]+)"`).FindAllStringSubmatch(section.BodyHTML, -1) {
+			if len(match) > 1 {
+				referencedSVG := strings.TrimPrefix(match[1], "#")
+				if referencedSVG != "" && !strings.HasPrefix(referencedSVG, "data:") {
+					referenced[referencedSVG] = true
+				}
+			}
+		}
 	}
 	// Also check stylesheet for url() references (fonts, etc).
 	for _, match := range regexp.MustCompile(`url\(([^)]+)\)`).FindAllStringSubmatch(book.Stylesheet, -1) {

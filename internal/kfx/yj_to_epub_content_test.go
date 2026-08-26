@@ -314,7 +314,7 @@ func TestProcessReadingOrderDeduplicatesSections(t *testing.T) {
 	}
 
 	sectionOrder := []string{"section-a", "section-b", "section-a"}
-	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, renderer, map[string]string{}, symOriginal, nil)
+	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, renderer, map[string]string{}, symOriginal, nil, nil)
 
 	// Should produce 2 sections, not 3 (deduplicated)
 	if len(book.RenderedSections) != 2 {
@@ -2736,7 +2736,7 @@ func TestProcessReadingOrderUsesBookType(t *testing.T) {
 	sectionOrder := []string{"section-a"}
 
 	// Test with nil config — should fall back to processSection (reflowable)
-	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, renderer, map[string]string{}, symOriginal, nil)
+	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, renderer, map[string]string{}, symOriginal, nil, nil)
 
 	if len(book.RenderedSections) != 1 {
 		t.Fatalf("expected 1 rendered section (reflowable), got %d", len(book.RenderedSections))
@@ -2790,7 +2790,7 @@ func TestProcessReadingOrderWithComicBookType(t *testing.T) {
 	// With comic config, processSectionWithType should dispatch to processSectionComic
 	// which produces page-spread results (returned as false from processSectionWithType since
 	// comic sections are handled separately).
-	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, renderer, map[string]string{}, symOriginal, &cfg)
+	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, renderer, map[string]string{}, symOriginal, &cfg, nil)
 
 	// Comic sections are handled by processSectionComic which produces pageSpreadResult,
 	// not standard rendered sections. processSectionWithType returns (renderedStoryline{}, nil, false)

@@ -306,15 +306,21 @@ func validateOverlayCondition(condition interface{}, layout string) bool {
 // determineSectionBranch determines which processing branch to use for a section,
 // matching Python's process_section dispatch logic (yj_to_epub_content.py L136-186).
 func determineSectionBranch(section sectionFragment, bt bookType) sectionBranch {
-	values := section.PageTemplateValues
+	// Python checks the raw section ($260) fragment dict ("nmdl.canvas_width" in
+	// section, yj_to_epub_content.py:144). In production, parseSectionFragment
+	// stores that dict in RawValue while PageTemplateValues holds the main page
+	// template's filtered body-style values, so both are checked (unit tests
+	// fabricate sections with section-level keys in PageTemplateValues).
 
 	// Branch 1: Scribe notebook page (nmdl.canvas_width)
-	if sectionHasNmdlKey(values, "nmdl.canvas_width") {
+	if sectionHasNmdlKey(section.PageTemplateValues, "nmdl.canvas_width") ||
+		sectionHasNmdlKey(section.RawValue, "nmdl.canvas_width") {
 		return branchScribePage
 	}
 
 	// Branch 2: Scribe notebook template (nmdl.template_type)
-	if sectionHasNmdlKey(values, "nmdl.template_type") {
+	if sectionHasNmdlKey(section.PageTemplateValues, "nmdl.template_type") ||
+		sectionHasNmdlKey(section.RawValue, "nmdl.template_type") {
 		return branchScribeTemplate
 	}
 
@@ -360,6 +366,7 @@ func processReadingOrder(
 	navTitles map[string]string,
 	symFmt symType,
 	cfg *pageSpreadConfig,
+	scribeCtx *ScribeNotebookContext,
 ) {
 	// Port of Python's used_sections set for deduplication (L107).
 	usedSections := map[string]bool{}
@@ -388,9 +395,16 @@ func processReadingOrder(
 		var spreadResult *pageSpreadResult
 		var sectionOK bool
 
-		if cfg != nil {
-			// Use full dispatch when book type config is available.
-			rendered, paragraphs, spreadResult, sectionOK = processSectionWithType(sectionID, section, index, bt, *cfg, storylines, contentFragments, renderer)
+		if cfg != nil || scribeCtx != nil {
+			// Use full dispatch when book type config or Scribe notebook wiring is
+			// available. Python dispatches scribe branches in process_section
+			// regardless of book type (yj_to_epub_content.py:144-148), so a Scribe
+			// context alone is sufficient.
+			dispatchCfg := pageSpreadConfig{}
+			if cfg != nil {
+				dispatchCfg = *cfg
+			}
+			rendered, paragraphs, spreadResult, sectionOK = processSectionWithType(sectionID, section, index, bt, dispatchCfg, storylines, contentFragments, renderer, scribeCtx)
 		} else {
 			// Fallback to simple processSection for backward compatibility.
 			rendered, paragraphs, sectionOK = processSection(sectionID, section, index, storylines, contentFragments, renderer)
@@ -430,6 +444,11 @@ func processReadingOrder(
 			Root:              rendered.Root,
 		})
 	}
+
+	// Scribe notebook book parts are materialized after every section has been
+	// processed: the template section (second reading order) still needs to
+	// patch page book parts created earlier (yj_to_epub_notebook.py:181-201).
+	materializeScribeNotebookSections(book, scribeCtx, navTitles)
 }
 
 // appendPageSpreadRenderedSections materializes every leaf book part produced by
@@ -529,7 +548,7 @@ func processSection(sectionID string, section sectionFragment, seq int, storylin
 // Port of Python's process_section dispatch logic (yj_to_epub_content.py L136-203).
 // bt is the detected book type; cfg provides page-spread configuration; storylines maps
 // storyline names to their data (needed for page-spread processing).
-func processSectionWithType(sectionID string, section sectionFragment, seq int, bt bookType, cfg pageSpreadConfig, storylines map[string]map[string]interface{}, contentFragments map[string][]string, renderer *storylineRenderer) (renderedStoryline, []string, *pageSpreadResult, bool) {
+func processSectionWithType(sectionID string, section sectionFragment, seq int, bt bookType, cfg pageSpreadConfig, storylines map[string]map[string]interface{}, contentFragments map[string][]string, renderer *storylineRenderer, scribeCtx *ScribeNotebookContext) (renderedStoryline, []string, *pageSpreadResult, bool) {
 	// Strip unused section keys (Python L124-136).
 	stripUnusedSectionKeys(section.PageTemplateValues)
 
@@ -538,11 +557,11 @@ func processSectionWithType(sectionID string, section sectionFragment, seq int, 
 
 	switch branch {
 	case branchScribePage:
-		rendered, paragraphs, ok := processSectionScribePage(section, seq, nil)
+		rendered, paragraphs, ok := processSectionScribePage(section, seq, scribeCtx)
 		return rendered, paragraphs, nil, ok
 
 	case branchScribeTemplate:
-		rendered, paragraphs, ok := processSectionScribeTemplate(section, nil)
+		rendered, paragraphs, ok := processSectionScribeTemplate(section, scribeCtx)
 		return rendered, paragraphs, nil, ok
 
 	case branchComic:
@@ -638,33 +657,79 @@ func renderSectionFragments(sectionID string, section sectionFragment, storyline
 }
 
 // processSectionScribePage dispatches to the scribe notebook page section handler.
-// Port of Python's nmdl.canvas_width branch in process_section (L136-137).
+// Port of Python's nmdl.canvas_width branch in process_section (L136-137):
+//
+//	self.process_scribe_notebook_page_section(section, page_templates[0], section_name, seq)
+//
+// The returned section is not standard rendered output: page book parts are
+// materialized by materializeScribeNotebookSections once every section (incl.
+// templates that patch pages) has been processed, so ok is always false here.
 func processSectionScribePage(section sectionFragment, seq int, scribeCtx *ScribeNotebookContext) (renderedStoryline, []string, bool) {
-	templates := section.PageTemplates
-	if len(templates) == 0 {
+	sectionDict, templateDict := resolveScribeSectionInputs(scribeCtx, section, section.PageTemplates)
+	if sectionDict == nil || templateDict == nil {
 		return renderedStoryline{}, nil, false
 	}
-	template := templates[0]
-	result := processScribeNotebookPageSection(scribeCtx, section.PageTemplateValues, template.PageTemplateValues, section.ID, seq)
-	if !result {
-		return renderedStoryline{}, nil, false
-	}
-	return renderedStoryline{}, nil, false // scribe sections don't produce standard rendered output yet
+	processScribeNotebookPageSection(scribeCtx, sectionDict, templateDict, section.ID, seq)
+	return renderedStoryline{}, nil, false
 }
 
 // processSectionScribeTemplate dispatches to the scribe notebook template section handler.
-// Port of Python's nmdl.template_type branch in process_section (L139-140).
+// Port of Python's nmdl.template_type branch in process_section (L139-140):
+//
+//	self.process_scribe_notebook_template_section(section, page_templates[0], section_name)
+//
+// Template book parts are omitted from the spine (yj_to_epub_notebook.py:179);
+// they only contribute the template SVG resource and page patches.
 func processSectionScribeTemplate(section sectionFragment, scribeCtx *ScribeNotebookContext) (renderedStoryline, []string, bool) {
-	templates := section.PageTemplates
-	if len(templates) == 0 {
+	sectionDict, templateDict := resolveScribeSectionInputs(scribeCtx, section, section.PageTemplates)
+	if sectionDict == nil || templateDict == nil {
 		return renderedStoryline{}, nil, false
 	}
-	template := templates[0]
-	result := processScribeNotebookTemplateSection(scribeCtx, section.PageTemplateValues, template.PageTemplateValues, section.ID)
-	if !result {
-		return renderedStoryline{}, nil, false
+	processScribeNotebookTemplateSection(scribeCtx, sectionDict, templateDict, section.ID)
+	return renderedStoryline{}, nil, false
+}
+
+// resolveScribeSectionInputs returns the working section dict and page template
+// dict for the scribe processors. Python passes the live section fragment and
+// the raw page_templates[0] (yj_to_epub_content.py:144-148); the processors pop
+// keys from both for check_empty bookkeeping.
+//
+// In Go the production section dict lives in section.RawValue (the $141 entries
+// of a notebook are IonSymbols, so parseSectionFragment stores no parsed
+// templates); RawValue is cloned because other pipeline stages still read it.
+// Fabricated sections (unit tests) keep section-level keys in PageTemplateValues.
+func resolveScribeSectionInputs(scribeCtx *ScribeNotebookContext, section sectionFragment, templates []pageTemplateFragment) (map[string]interface{}, map[string]interface{}) {
+	var sectionDict map[string]interface{}
+	if sectionHasNmdlKey(section.RawValue, "nmdl.canvas_width") || sectionHasNmdlKey(section.RawValue, "nmdl.template_type") {
+		sectionDict = cloneMap(section.RawValue)
+	} else {
+		sectionDict = section.PageTemplateValues
 	}
-	return renderedStoryline{}, nil, false // scribe sections don't produce standard rendered output yet
+	if sectionDict == nil {
+		return nil, nil
+	}
+
+	// Python page_templates[0]: the raw $141 container when parsed, else the
+	// IonSymbol entry resolved through the $608 structure fragments
+	// (yj_to_epub_notebook.py:225-227 resolves symbols inside
+	// process_notebook_content; the dispatcher resolves the top-level one).
+	if len(templates) > 0 {
+		if raw := cloneMap(templates[0].RawValues); raw != nil {
+			return sectionDict, raw
+		}
+		return sectionDict, templates[0].PageTemplateValues
+	}
+	rawList, ok := asSlice(sectionDict["page_templates"])
+	if !ok || len(rawList) == 0 {
+		return sectionDict, nil
+	}
+	if m, ok := asMap(rawList[0]); ok {
+		return sectionDict, cloneMap(m)
+	}
+	if fid, ok := asString(rawList[0]); ok && scribeCtx != nil && scribeCtx.GetFragment != nil {
+		return sectionDict, cloneMap(scribeCtx.GetFragment("structure", fid))
+	}
+	return sectionDict, nil
 }
 
 // processSectionComic handles the comic/children book type dispatch.

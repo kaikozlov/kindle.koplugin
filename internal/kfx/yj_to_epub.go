@@ -260,7 +260,12 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 			PageProgressionDirection: book.PageProgressionDirection,
 		}
 	}
-	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, &renderer, navTitles, symFmt, readingOrderCfg)
+	// Scribe notebook production wiring: build the notebook context from real
+	// book state (fragments, reading orders, renderer) so notebook sections are
+	// processed and materialized (KFX_EPUB_Notebook, yj_to_epub_notebook.py).
+	// Returns nil for non-scribe books, leaving dispatch untouched.
+	scribeCtx := buildScribeNotebookContext(book, state.Fragments, &renderer, storylines, sectionFragments)
+	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, &renderer, navTitles, symFmt, readingOrderCfg, scribeCtx)
 	if renderer.renderError != nil {
 		return nil, renderer.renderError
 	}
