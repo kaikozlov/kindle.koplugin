@@ -2449,6 +2449,10 @@ func renderHTMLElement(element *htmlElement) string {
 		attrOrder = []string{"id", "class"}
 	case "p":
 		attrOrder = []string{"id", "class"}
+	case "aside":
+		attrOrder = []string{"id", "epub:type", "class"}
+	case "ol":
+		attrOrder = []string{"id", "start", "class"}
 	}
 	for _, key := range attrOrder {
 		value, ok := element.Attrs[key]

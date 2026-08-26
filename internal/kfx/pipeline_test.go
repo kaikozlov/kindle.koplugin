@@ -2198,3 +2198,14 @@ func equalStringSlices(left, right []string) bool {
 	}
 	return true
 }
+
+func TestRenderHTMLElementPreservesPythonAttributeOrder(t *testing.T) {
+	aside := &htmlElement{Tag: "aside", Attrs: map[string]string{"class": "class_s8", "epub:type": "footnote", "id": "aA"}, Children: []htmlPart{htmlText{Text: "Footnote text."}}}
+	if got := renderHTMLPart(aside); got != `<aside id="aA" epub:type="footnote" class="class_s8">Footnote text.</aside>` {
+		t.Fatalf("aside attribute order = %q", got)
+	}
+	ol := &htmlElement{Tag: "ol", Attrs: map[string]string{"class": "class_sB", "start": "3"}, Children: []htmlPart{&htmlElement{Tag: "li", Children: []htmlPart{htmlText{Text: "Three"}}}}}
+	if got := renderHTMLPart(ol); got != `<ol start="3" class="class_sB"><li>Three</li></ol>` {
+		t.Fatalf("ol attribute order = %q", got)
+	}
+}
