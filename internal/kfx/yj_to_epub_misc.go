@@ -1255,6 +1255,36 @@ func adjustPixelValue(value float64) float64 {
 	return value
 }
 
+var svgShapeDimensionNames = map[string]string{
+	"cx":          "cx",
+	"cy":          "cy",
+	"end_x":       "x2",
+	"end_y":       "y2",
+	"height":      "height",
+	"radius_x":    "rx",
+	"radius_y":    "ry",
+	"start_x":     "x1",
+	"start_y":     "y1",
+	"vertex_list": "points",
+	"width":       "width",
+	"x":           "x",
+	"y":           "y",
+}
+
+var svgShapePropertyNames = map[string]string{
+	"color":             "stroke",
+	"fill_color":        "fill",
+	"fill_opacity":      "fill-opacity",
+	"stroke_color":      "stroke",
+	"stroke_dasharray":  "stroke-dasharray",
+	"stroke_dashoffset": "stroke-dashoffset",
+	"stroke_linecap":    "stroke-linecap",
+	"stroke_linejoin":   "stroke-linejoin",
+	"stroke_miterlimit": "stroke-miterlimit",
+	"stroke_width":      "stroke-width",
+	"transform":         "transform",
+}
+
 func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[string]interface{}, contentList *[]interface{}, writingMode string) {
 	shapeType, _ := asString(shape["type"])
 	delete(shape, "type")
@@ -1262,14 +1292,27 @@ func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[strin
 	var elem *htmlElement
 
 	switch shapeType {
-	case "shape":
+	case "shape", "line":
 		pathData := shape["path"]
 		delete(shape, "path")
-		d := processPath(pathData)
-		elem = &htmlElement{
-			Tag:   "path",
-			Attrs: map[string]string{"d": d},
-		}
+		d := processPathWithBundles(pathData, r.pathBundles)
+		elem = &htmlElement{Tag: "path", Attrs: map[string]string{"d": d}}
+		parent.Children = append(parent.Children, elem)
+
+	case "rectangle":
+		elem = &htmlElement{Tag: "rect", Attrs: map[string]string{}}
+		parent.Children = append(parent.Children, elem)
+
+	case "ellipse":
+		elem = &htmlElement{Tag: "ellipse", Attrs: map[string]string{}}
+		parent.Children = append(parent.Children, elem)
+
+	case "polygon":
+		elem = &htmlElement{Tag: "polygon", Attrs: map[string]string{}}
+		parent.Children = append(parent.Children, elem)
+
+	case "polyline":
+		elem = &htmlElement{Tag: "polyline", Attrs: map[string]string{}}
 		parent.Children = append(parent.Children, elem)
 
 	case "container":
@@ -1280,18 +1323,20 @@ func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[strin
 			return
 		}
 
-		// Python yj_to_epub_misc.py L248-268: search content_list for matching source content,
-		// pop it, call process_content(), then rename the element from <div> to <text>.
 		var matchedContent map[string]interface{}
 		matchedIndex := -1
 		if contentList != nil {
 			for i, raw := range *contentList {
 				content, ok := asMap(raw)
 				if !ok {
+					if fid, symbolOK := asString(raw); symbolOK && r.structureFragments != nil {
+						content = r.structureFragments[fid]
+						ok = content != nil
+					}
+				}
+				if !ok || content == nil {
 					continue
 				}
-				// Python L249: if content.get("$155") == source or content.get("$598") == source
-				// $155 = "id", $598 = "kfx_id"
 				if id, _ := asString(content["id"]); id == source {
 					matchedContent = content
 					matchedIndex = i
@@ -1309,20 +1354,15 @@ func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[strin
 			return
 		}
 
-		// Python L253: content_list.pop(i)
 		if contentList != nil && matchedIndex >= 0 {
 			list := *contentList
 			*contentList = append(list[:matchedIndex], list[matchedIndex+1:]...)
 		}
 
-		// Python L254: self.process_content(content, parent, book_part, writing_mode)
-		// This renders the content into the parent element, creating a child element.
 		childPart := r.renderNode(matchedContent, 0)
 		if childPart != nil {
 			parent.Children = append(parent.Children, childPart)
 		}
-
-		// Python L255: elem = parent[-1]
 		if len(parent.Children) == 0 {
 			return
 		}
@@ -1331,45 +1371,46 @@ func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[strin
 		if !ok {
 			return
 		}
-
-		// Python L257-259: if elem.tag != "div": log.error(...); return
 		if childElem.Tag != "div" {
 			fmt.Fprintf(os.Stderr, "kfx: error: unexpected non-text content in KVG container: %s\n", childElem.Tag)
-			// Remove the non-div child so we don't leave unexpected content
-			parent.Children = parent.Children[:len(parent.Children)-1]
 			return
 		}
-
-		// Python L260: elem.tag = qname(SVG_NS_URI, "text")
 		childElem.Tag = "text"
 		elem = childElem
 
 	default:
-		if shapeType != "" {
-			fmt.Fprintf(os.Stderr, "kfx: error: unexpected shape type: %s\n", shapeType)
-		}
+		fmt.Fprintf(os.Stderr, "kfx: error: unexpected shape type: %s\n", shapeType)
 		return
 	}
 
-	svgAttrs := [][2]string{
-		{"fill_color", "fill"},
-		{"fill_opacity", "fill-opacity"},
-		{"stroke_color", "stroke"},
-		{"stroke_dasharray", "stroke-dasharray"},
-		{"stroke_dashoffset", "stroke-dashoffset"},
-		{"stroke_linecap", "stroke-linecap"},
-		{"stroke_linejoin", "stroke-linejoin"},
-		{"stroke_miterlimit", "stroke-miterlimit"},
-		{"stroke_width", "stroke-width"},
-		{"transform", "transform"},
+	shapeDimensions := map[string]interface{}{}
+	if rawDimensions, ok := asMap(shape["shape_dimensions"]); ok {
+		shapeDimensions = rawDimensions
+	}
+	delete(shape, "shape_dimensions")
+	for prop, val := range shapeDimensions {
+		attrName, ok := svgShapeDimensionNames[prop]
+		if !ok {
+			fmt.Fprintf(os.Stderr, "kfx: error: unknown KVG shape_dimensions: %s\n", prop)
+			continue
+		}
+		elem.Attrs[attrName] = propertyValueSVG(prop, val)
 	}
 
-	for _, attr := range svgAttrs {
-		yjPropName := attr[0]
-		svgAttrib := attr[1]
-		if val, ok := shape[yjPropName]; ok {
-			delete(shape, yjPropName)
-			elem.Attrs[svgAttrib] = propertyValueSVG(yjPropName, val)
+	for prop, attrName := range svgShapePropertyNames {
+		val, ok := shape[prop]
+		if !ok {
+			continue
+		}
+		delete(shape, prop)
+		if prop == "transform" {
+			if vals, ok := asSlice(val); ok {
+				elem.Attrs[attrName] = processTransformWithSwap(vals, true, true)
+			} else {
+				elem.Attrs[attrName] = propertyValueSVG(prop, val)
+			}
+		} else {
+			elem.Attrs[attrName] = propertyValueSVG(prop, val)
 		}
 	}
 
@@ -1377,6 +1418,9 @@ func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[strin
 		if _, hasFill := elem.Attrs["fill"]; !hasFill {
 			elem.Attrs["fill"] = "none"
 		}
+	}
+	for key := range shape {
+		fmt.Fprintf(os.Stderr, "kfx: warning: shape has unconsumed key: %s\n", key)
 	}
 }
 

@@ -3976,6 +3976,8 @@ type storylineRenderer struct {
 	conditionEvaluator  conditionEvaluator
 	resolveResource     ResourceResolver
 	storylines          map[string]map[string]interface{}
+	structureFragments  map[string]map[string]interface{}
+	pathBundles         map[string]map[string]interface{}
 	isPDFBacked         bool
 	// textCombineInUse is set to true when any text-combine-upright: all
 	// declaration is encountered during style processing (Python: self.text_combine_in_use).
