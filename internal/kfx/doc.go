@@ -61,7 +61,7 @@
 //
 // Go uses real human-readable symbol names (language, font_family, content, etc.)
 // throughout the conversion pipeline. These come from catalog.ion, which is embedded
-// at compile time and parsed at init time. The catalog contains 842 YJ shared symbol
+// at compile time and parsed at init time. The catalog contains 850 YJ shared symbol
 // names extracted from Amazon's Kindle Previewer.
 //
 // Python uses $N placeholders ($10, $145, etc.) internally and only translates at the
@@ -69,16 +69,17 @@
 // to node["$145"] in Python.
 //
 // Key functions:
-//   - sharedTable()        → ion.SharedSymbolTable with 842 real names + $N fallbacks
+//   - sharedTable()        → ion.SharedSymbolTable with 850 real names + $N fallbacks
 //   - isSharedSymbolName() → checks if a name is a YJ shared symbol
 //   - resolveSharedSymbol() → resolves a SID to its real name
 //
-// To update the catalog: copy REFERENCE/kfx_symbol_catalog.ion → internal/kfx/catalog.ion
+// To update the catalog: probe the current Previewer with scripts/kp3/compare_catalog.py
+// and run_probe.py --symbol-range around the shared-table tail, then update catalog.ion.
 //
 // # Golden-File Parity Tests
 //
-// These tests compare Go's static data tables against the Calibre Python reference.
-// If the Python source changes, the golden files must be regenerated:
+// These tests compare Go's static data tables against checked-in semantic goldens.
+// Regenerate the YJ-symbol golden after a reviewed catalog.ion update:
 //
 //	python3 scripts/export_yj_symbol_catalog.py > internal/kfx/testdata/yj_symbols_golden.json
 //	python3 scripts/export_yj_versions.py > internal/kfx/testdata/yj_versions_golden.json

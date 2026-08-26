@@ -2,8 +2,8 @@ package kfx
 
 import (
 	"bytes"
-	"fmt"
 	_ "embed"
+	"fmt"
 	"sync"
 
 	"github.com/amazon-ion/ion-go/ion"
@@ -17,7 +17,7 @@ import (
 // format), which contains the YJ_symbols shared symbol table definition with
 // human-readable names extracted from Amazon's Kindle Previewer.
 //
-// Source: REFERENCE/kfx_symbol_catalog.ion
+// Source: internal/kfx/catalog.ion, verified against Kindle Previewer by scripts/kp3.
 // ---------------------------------------------------------------------------
 
 //go:embed catalog.ion
@@ -110,7 +110,7 @@ func sharedTable() ion.SharedSymbolTable {
 		panic("kfx: failed to parse embedded YJ symbol catalog: " + err.Error())
 	}
 	// Extend to SID 1000 (991 entries total) to match the original $N range.
-	// SIDs beyond the catalog (852-1000) get $N placeholder names.
+	// SIDs beyond the catalog (860-1000) get $N placeholder names.
 	for len(syms) < 991 {
 		syms = append(syms, fmt.Sprintf("$%d", len(syms)+10))
 	}

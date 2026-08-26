@@ -1,42 +1,55 @@
 #!/usr/bin/env python3
-"""Export YJ symbol catalog to canonical JSON for Go golden tests.
+"""Export the checked-in semantic YJ symbol catalog to canonical JSON.
 
-Sources:
-  - REFERENCE/kfx_symbol_catalog.ion (real names, 842 symbols)
-  - REFERENCE/KFX_Input/kfxlib/yj_symbol_catalog.py (Python $N placeholders)
-
-The golden compares Go's sharedTable() output against the real symbol names
-from the ION catalog. Go resolves SID 10 to "language", SID 145 to "content", etc.
+`internal/kfx/catalog.ion` is the runtime source of truth for the Go converter.
+Its names are recovered from Kindle Previewer, not from KFX Input's anonymous
+`$N` placeholder table. `scripts/kp3/compare_catalog.py` checks the
+property-bearing range against Previewer's live PropertyNameUtil table, while
+`run_probe.py --symbol-range ...` can verify the non-property shared tail via
+DigitalBook.nativeGetSymbolName.
 
 Usage:
-    python3 scripts/export_yj_symbol_catalog.py > internal/kfx/testdata/yj_symbols_golden.json
-
-Regenerate golden:
-    python3 scripts/export_yj_symbol_catalog.py > internal/kfx/testdata/yj_symbols_golden.json
+    python3 scripts/export_yj_symbol_catalog.py \
+        > internal/kfx/testdata/yj_symbols_golden.json
 """
 
+from __future__ import annotations
+
+import argparse
 import json
+from pathlib import Path
 import re
-import sys
-import os
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+ROOT = Path(__file__).resolve().parents[1]
 
-# Read the real symbol catalog (ION text format)
-catalog_path = os.path.join(PROJECT_ROOT, "REFERENCE", "kfx_symbol_catalog.ion")
-with open(catalog_path) as f:
-    text = f.read()
 
-# Extract symbol names from the ION text
-symbols = re.findall(r'"([^"]+)"', text.split('symbols:')[1])
+def parse_catalog(path: Path) -> list[str]:
+    text = path.read_text(encoding="utf-8")
+    try:
+        body = text.split("symbols:", 1)[1]
+    except IndexError as exc:
+        raise SystemExit(f"no symbols list found in {path}") from exc
+    return [
+        bytes(symbol, "utf-8").decode("unicode_escape")
+        for symbol in re.findall(r'"((?:[^"\\]|\\.)*)"', body)
+    ]
 
-data = {
-    "name": "YJ_symbols",
-    "version": 10,
-    "symbol_count": len(symbols),
-    "symbols": symbols,
-}
 
-json.dump(data, sys.stdout, indent=2)
-print()  # trailing newline
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--catalog", type=Path, default=ROOT / "internal" / "kfx" / "catalog.ion",
+        help="semantic YJ shared-symbol catalog to export",
+    )
+    args = parser.parse_args()
+    symbols = parse_catalog(args.catalog)
+    print(json.dumps({
+        "name": "YJ_symbols",
+        "version": 10,
+        "symbol_count": len(symbols),
+        "symbols": symbols,
+    }, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

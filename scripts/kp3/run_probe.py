@@ -161,6 +161,10 @@ def main() -> None:
     parser.add_argument("--previewer", type=Path, default=DEFAULT_PREVIEWER)
     parser.add_argument("--workdir", type=Path, help="retain all producer output here")
     parser.add_argument("--catalog", action="store_true", help="also dump the live KAF property catalog")
+    parser.add_argument(
+        "--symbol-range", metavar="START:END",
+        help="also dump DigitalBook native symbol names for an inclusive ID range",
+    )
     parser.add_argument("--no-sqlite", action="store_true", help="skip raw SQLite summary")
     args = parser.parse_args()
 
@@ -196,6 +200,16 @@ def main() -> None:
         if args.catalog:
             print("\n-- live KAF property catalog --")
             run(kaf_command(fc, jar, classes, "KafPropertyCatalog"))
+
+        if args.symbol_range:
+            try:
+                start, end = (int(part) for part in args.symbol_range.split(":", 1))
+            except (ValueError, TypeError):
+                raise SystemExit("--symbol-range must be START:END")
+            if end < start:
+                raise SystemExit("--symbol-range END must be >= START")
+            print(f"\n-- native DigitalBook symbols {start}..{end} --")
+            run(kaf_command(fc, jar, classes, "KafSymbolCatalog", str(kdf), str(start), str(end)))
 
         if args.workdir:
             print(f"\nworkdir={workdir}")

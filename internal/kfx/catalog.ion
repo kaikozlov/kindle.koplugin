@@ -845,6 +845,14 @@ $ion_shared_symbol_table::
     "start_y",
     "end_x",
     "end_y",
-    "vertex_list"
+    "vertex_list",
+    "page_regions",
+    "bcSequenceNumber",
+    "yj.conversion.flow_order",
+    "yj.conversion.owner",
+    "yj.conversion.layout",
+    "yj.conversion.content_type",
+    "yj.conversion.semantic_tag",
+    "yj.conversion.group"
   ]
 }

@@ -38,6 +38,9 @@ This is intended for controlled, one-feature-at-a-time experiments. It complemen
 # Also dump Amazon's live property ID/name catalog
 ./scripts/kp3/run_probe.py --fixture minimal --catalog --workdir /tmp/kp3-catalog
 
+# Ask DigitalBook/native KAF for the actual symbol names around the shared-table tail
+./scripts/kp3/run_probe.py --fixture minimal --symbol-range 840:875 --workdir /tmp/kp3-symbols
+
 # Compare the historical Go catalog with the live Amazon KAF table
 ./scripts/kp3/compare_catalog.py
 
@@ -54,6 +57,25 @@ The work directory preserves Amazon's conversion log, preprocessed source, wrapp
 `reverse_compare.py` adds a differential reverse path. It packages the Amazon-generated KDF as KPF, asks current KFX Input to serialize the decoded fragment graph into a single unencrypted KFX `CONT` container, then feeds that exact KFX to both current Python KFX Input and the historical Go implementation. This makes controlled Amazon-generated fixtures usable as parity tests even though the Go decoder does not understand KDF directly.
 
 The KFX Input serializer is only a storage bridge in this experiment; both reverse implementations receive the same serialized KFX bytes. A mismatch therefore identifies a KFX->EPUB behavioral difference rather than an Amazon-producer difference.
+
+## Native symbol catalog
+
+`KafPropertyCatalog` exposes the property enum, but that table stops at property ID 853 in Previewer 3.106. `KafSymbolCatalog` instead calls the loaded `DigitalBook` symbol resolver (`nativeGetSymbolName`) and therefore also sees non-property shared symbols and then the book-local symbol table. On the current minimal fixture the shared tail is:
+
+```text
+851 vertex_list
+852 page_regions
+853 bcSequenceNumber
+854 yj.conversion.flow_order
+855 yj.conversion.owner
+856 yj.conversion.layout
+857 yj.conversion.content_type
+858 yj.conversion.semantic_tag
+859 yj.conversion.group
+860 c0                       # first local symbol in this fixture
+```
+
+This independently explains why current KFX Input extended `YJ_SYMBOLS` through `$859`; its public table still uses anonymous `$N?` names for most of these new entries, while Previewer's native runtime supplies the semantic names.
 
 ## Native KAF caution
 

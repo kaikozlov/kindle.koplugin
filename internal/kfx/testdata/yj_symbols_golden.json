@@ -1,7 +1,7 @@
 {
   "name": "YJ_symbols",
   "version": 10,
-  "symbol_count": 842,
+  "symbol_count": 850,
   "symbols": [
     "language",
     "font_family",
@@ -844,6 +844,14 @@
     "start_y",
     "end_x",
     "end_y",
-    "vertex_list"
+    "vertex_list",
+    "page_regions",
+    "bcSequenceNumber",
+    "yj.conversion.flow_order",
+    "yj.conversion.owner",
+    "yj.conversion.layout",
+    "yj.conversion.content_type",
+    "yj.conversion.semantic_tag",
+    "yj.conversion.group"
   ]
 }

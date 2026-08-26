@@ -14,7 +14,7 @@ func TestClassifySymbolSharedNumeric(t *testing.T) {
 	if g := classifySymbolWithResolver("margin_right", r); g != symShared {
 		t.Fatalf("margin_right with localStart=1000 = %v want shared", g)
 	}
-	// $999 is beyond the catalog (842 real names, SID 10-851). It's a $N placeholder
+	// $999 is beyond the catalog (850 real names, SID 10-859). It's a $N placeholder
 	// in the extended table but not recognized by name lookup → unknown.
 	if g := classifySymbolWithResolver("$999", r); g != symUnknown {
 		t.Fatalf("$999 with localStart=1000 = %v want unknown (beyond catalog)", g)
@@ -107,10 +107,10 @@ func TestClassifySymbolDictionary(t *testing.T) {
 		{"G42", symDictionary},
 		{"G42-spm", symDictionary},
 		{"G0", symDictionary},
-		{"yj.dictionary.text", symCommon},    // COMMON exact match has priority
+		{"yj.dictionary.text", symCommon}, // COMMON exact match has priority
 		{"yj.dictionary.other", symDictionary},
-		{"G", symUnknown},        // no digits
-		{"g42", symShort},        // lowercase 'g' matches SHORT pattern [a-z][A-Z0-9]{1,6}
+		{"G", symUnknown},         // no digits
+		{"g42", symShort},         // lowercase 'g' matches SHORT pattern [a-z][A-Z0-9]{1,6}
 		{"G42-extra", symUnknown}, // extra suffix
 	}
 	for _, tt := range tests {
@@ -243,7 +243,7 @@ func TestClassifySymbolShort(t *testing.T) {
 		{"c73_thumbnail", symShort},
 		{"c73-resized-100-200", symShort},
 		// Too few uppercase
-		{"c", symUnknown},    // needs ≥1 uppercase/digit
+		{"c", symUnknown}, // needs ≥1 uppercase/digit
 		// Too many chars (7 chars exceeds limit)
 		{"c1234567", symUnknown},
 	}

@@ -468,28 +468,45 @@ Selected examples:
 | 821 | `TableMetadata` | `table_metadata` |
 | 853 | `BcSequenceNumber` | `bcSequenceNumber` |
 
-The current KFX Input `yj_symbol_catalog.py` contains 843 shared-symbol placeholders covering `$10` through `$852`. The Previewer 3.106 enum has one additional enum-backed property at **853**, `bcSequenceNumber`, and no current kfxlib reference to `$853` was found in this checkout.
+Current KFX Input 2.34.0 (`20260822`) contains **850** shared-symbol placeholders covering `$10` through `$859`. Its public table deliberately leaves the newer suffix anonymous (`$852?` ... `$859`), so the Python source establishes the numeric extent but not the semantic names.
 
-This is a concrete example of Previewer providing format information independently of the current KFX Input catalog.
+Previewer gives us two complementary live tables:
+
+1. `PropertyNameUtil.a()` exposes 854 KAF **properties**, IDs 0..853.
+2. A loaded `DigitalBook` exposes the actual symbol resolver through `nativeGetSymbolName(long)`. That continues beyond the property table and reveals the complete current YJ shared-symbol suffix.
+
+The second probe is decisive. On Previewer 3.106, a controlled generated KDF resolves:
+
+```text
+851  vertex_list
+852  page_regions
+853  bcSequenceNumber
+854  yj.conversion.flow_order
+855  yj.conversion.owner
+856  yj.conversion.layout
+857  yj.conversion.content_type
+858  yj.conversion.semantic_tag
+859  yj.conversion.group
+860  c0                       # first book-local symbol in this fixture
+```
+
+So the current shared table ends at **859**. IDs 854..859 are real shared symbols even though they are not KAF properties, which is why the property-enum probe alone stopped too early. This independently explains KFX Input 2.34's extension through `$859`.
 
 ### Historical Go catalog versus the live Amazon table
 
-The old Go branch contains `internal/kfx/catalog.ion`, whose symbol list covers property IDs 10 through 851. It can now be checked against Amazon directly rather than treated as historical reverse-engineering lore.
+The old Go branch originally contained `internal/kfx/catalog.ion` with 842 semantic names covering IDs 10..851. The live property table proved those **842/842** names exact in both ordering and spelling. No historical entry moved or changed.
 
-The live 854-entry table was dumped from Previewer 3.106 through `PropertyNameUtil.a()` and compared by numeric ID with `internal/kfx/catalog.ion`:
+The direct `DigitalBook.nativeGetSymbolName` probe now supplies the eight appended shared names at 852..859. The checked-in Go catalog has therefore been extended to **850 semantic names, IDs 10..859**:
 
 ```text
-historical Go catalog symbols: 842   (IDs 10..851)
-exact ID/name matches:         842
-mismatches:                      0
-current live additions:          2
-  852  page_regions
-  853  bcSequenceNumber
+old Go semantic names:          842   (10..851)
+old/live exact matches:         842 / 842
+new shared suffix:                8   (852..859)
+current Go semantic names:      850   (10..859)
+first local symbol observed:    860   (fixture-specific `c0`)
 ```
 
-That is an exact **842/842** match in both ordering and spelling. For the vocabulary covered by that branch, the old Go catalog was not merely approximately right; it agrees byte-for-byte at the semantic-name level with the current Amazon KAF table. The observed current drift is append-only across these two newer entries.
-
-This does not prove Amazon can never renumber or revise the table, but it gives us a useful update strategy: compare the live KAF catalog on each Previewer revision and treat new suffix entries as explicit format deltas rather than rediscovering the whole symbol space.
+`PropertyNameUtil` still provides an independent exact check for the property-bearing portion through 853; `KafSymbolCatalog` checks the non-property tail through the loaded `DigitalBook`. This gives us a useful update strategy: on each Previewer revision, compare both the live property catalog and the native symbol resolver, and treat newly appended suffix entries as explicit format deltas rather than rediscovering the whole vocabulary.
 
 ### Property 852 `page_regions`: a real current renderer consumer
 
@@ -1364,26 +1381,19 @@ The structure is consequently quite comprehensible when named:
 
 That is a much cleaner semantic explanation than reading the corresponding raw `$142/$757/$758/...` structures in isolation.
 
-### Current KFX Input is already one symbol behind current Previewer
+### The fixture caught symbol-version drift before the reference was updated
 
-Wrapping this generated KDF in a simple ZIP and asking the current KFX Input decoder to read it produces this warning before any semantic conversion:
+An early run of this experiment was accidentally still using the local KFX Input 2.33 / `20260520` reference snapshot. Wrapping the generated KDF and asking that version to decode it produced:
 
 ```text
 Import symbol table YJ_symbols version 10 max_id 844(+9=853)
 exceeds known table size 843(+9=852)
-```
-
-It later reports:
-
-```text
 Unknown symbols: max_id=853
 ```
 
-This is not a hypothetical version skew. Previewer 3.106's live KAF map contains property 853 (`bcSequenceNumber`), while the current `REFERENCE/KFX_Input/kfxlib/yj_symbol_catalog.py` stops at `$852`.
+That warning was real for 2.33: Previewer 3.106 had already appended property 853 (`bcSequenceNumber`) while that KFX Input table ended at `$852`. During this investigation the reference tree was corrected to exact KFX Input 2.34.0 / `20260822`; 2.34 extends its numeric YJ placeholder list through `$859`.
 
-The synthetic fixture does not itself appear to use property 853 in its semantic fragments, so this mismatch does not imply a visible conversion bug in this fixture. It does establish that **current Amazon producer vocabulary is already ahead of the current KFX Input built-in catalog**.
-
-That is exactly the sort of change a Previewer-derived compatibility audit can surface immediately instead of waiting for a user book to fail.
+The later native `DigitalBook` symbol probe explains the whole change rather than only the first warning: the current shared suffix is 852 `page_regions`, 853 `bcSequenceNumber`, and 854..859 `yj.conversion.*`. Thus this episode remains useful evidence for the method: a Previewer-derived compatibility audit can surface producer vocabulary changes immediately, before an arbitrary user book happens to exercise them.
 
 ## Controlled table fixture: hierarchy, spans, and table policy
 
@@ -1592,7 +1602,7 @@ The harness can additionally dump the current live Amazon property catalog:
 ./scripts/kp3/run_probe.py --fixture minimal --catalog
 ```
 
-`compare_catalog.py` makes the historical-Go/live-Amazon symbol check reproducible; on Previewer 3.106 it reports 842 shared IDs, 842 exact matches, zero mismatches, plus live IDs 852 and 853.
+`compare_catalog.py` makes the property-bearing part of the Go/live-Amazon check reproducible; with the updated catalog it reports exact agreement through property ID 853 and separately identifies IDs 854..859 as catalog symbols beyond `PropertyNameUtil`'s property range. `run_probe.py --symbol-range 840:875` then verifies those six non-property names through `DigitalBook.nativeGetSymbolName`.
 
 This changes the practical corpus problem. A random corpus is still needed for historical, malformed, DRM-adjacent, publisher-specific, and consumer-delivered variants, but it is no longer the only way to learn canonical semantics. For current producer behavior we can manufacture a one-feature specimen, ask Amazon to compile it, and inspect both its raw and typed representations.
 
@@ -1992,7 +2002,7 @@ This would not remove the need for historical compatibility handling, but it wou
 - A standalone harness successfully loads the bundled native KAF implementation and `PropertyNameUtil.a()` returns the native 854-entry property map.
 - The native property map agrees with the enum for the checked IDs and reports ID 853 as `bcSequenceNumber` in Previewer 3.106.
 - Excluding the symbol-catalog declaration itself, current kfxlib uses 604 unique numeric `$NNN` IDs in implementation code, and all 604 are named by Previewer 3.106's native KAF property map.
-- Current KFX Input in this checkout stops its built-in YJ shared-symbol placeholder list at `$852` and has no `$853` use.
+- Current KFX Input 2.34.0 in this checkout extends its built-in YJ shared-symbol placeholder list through `$859`; Previewer's native `DigitalBook` resolver supplies the semantic names for the newly appended IDs 852..859.
 - `stylemap.ion` is loaded by Amazon code and contains a reverse-mapping suppression field called `ignore_for_yj_to_html_mapping`.
 - `yjhtmlmapper` implements both HTML -> YJ and YJ -> HTML/CSS mapping paths.
 - `stylelist.ion` configures explicit style merge/inheritance strategy classes.
@@ -2007,15 +2017,16 @@ This would not remove the need for historical compatibility handling, but it wou
 - A second controlled fixture proved that Amazon's producer uses `<meta name="primary-writing-mode" content="vertical-rl"/>` to establish document-level vertical writing mode; CSS alone did not set KAF `DocumentData.writing_mode`.
 - Amazon's current ruby parser requires explicit `rb` and `rt` children; the HTML5 shorthand with a raw text child is rejected by the producer.
 - The generated ruby representation was recovered exactly: base-text ranges use style events carrying `ruby_name`/`ruby_id`, while pronunciation text lives in a separate `ruby_content` object.
-- Feeding a current Previewer-generated KDF to the current KFX Input decoder immediately warns that YJ max ID 853 exceeds its known table ending at 852.
-- The historical Go symbol catalog matches the live Previewer 3.106 KAF table exactly for all 842 IDs it contains (10..851); Previewer adds `page_regions` at 852 and `bcSequenceNumber` at 853.
+- A Previewer-generated KDF can carry the new YJ suffix; KFX Input 2.34 now declares numeric placeholders through `$859`, while Previewer's native resolver identifies 852 `page_regions`, 853 `bcSequenceNumber`, and 854..859 as `yj.conversion.*` symbols.
+- The historical Go symbol catalog matches Previewer exactly for all original 842 IDs (10..851). It has now been extended from the native resolver to all 850 current shared names (10..859); the controlled minimal KDF begins its local symbol table at 860.
 - Previewer's current renderer directly consumes property 852 `page_regions` as fixed-page rectangles plus optional layout hints and scales them into rendered-page coordinates.
 - A controlled EPUB 3 footnote compiles into a `yj.note` style event linking to an anchor whose target is a footer-classified `footnote` text structure.
-- Bridging Amazon-generated KDF through current KFX Input's serializer into one shared KFX input exposes real historical-Go parity gaps: footnote target semantics are lost, table wrapping is malformed, ruby pronunciation is dropped, and the simple current fixed-layout fixture is not readable by the Go converter.
-- The fixed-layout failure is now localized after decode: Go correctly recognizes `yj_fixed_layout=3` as PDF-backed fixed-layout/comic, but `parseSectionFragment` strips the structural page-template fields, `processSectionWithType` discards the resulting `pageSpreadResult`, and the leaf result type itself does not render XHTML.
+- The first differential runs against Amazon-generated fixtures exposed real historical-Go gaps: footnote target semantics were lost, table wrapping was malformed, ruby pronunciation was dropped, and the simple current fixed-layout fixture initially failed. Those observations were useful regression discoveries, not the final state.
+- The fixed-layout failure was localized after decode and repaired across page-template retention, page-spread materialization, fixed-layout style/viewport/OPF handling, identity/navigation behavior, and related serialization paths.
 - The Go trace implementation previously misreported PDF-backed/CDE state because `captureContentFeatures` populated only `CDEContentType: book.BookID`; trace capture now reports the actual decoded flags and detected book type.
 - Additional controlled link/bidi/list/SVG fixtures show that ordinary internal-link content round-trips, while top-level bidi/list/container cases expose a common over-broad Go body-promotion heuristic that differs from Python's rendered-element-first top-level rules.
-- The ruby pronunciation loss is specifically caused by Go `rubyContentParts` omitting direct IonString `content`; the footnote loss is specifically caused by Go choosing `<p>` before applying the classification that Python applies while the node is still a `<div>`.
+- The ruby pronunciation loss was specifically caused by Go `rubyContentParts` omitting direct IonString `content`; the footnote loss was specifically caused by Go choosing `<p>` before applying the classification that Python applies while the node is still a `<div>`. Both are now fixed and regression-covered.
+- After the current-2.34 XHTML doctype change was also matched, the full nine-fixture controlled matrix (`minimal`, `footnote`, `table`, `fixed-layout`, `vertical-ruby`, `link`, `bidi`, `list`, `svg`) reports **zero EPUB diffs for all nine fixtures** when Python KFX Input 2.34 and Go receive the exact same serialized KFX bytes. This is strong canonical-fixture evidence, not a claim of representative real-book parity.
 
 ### Strong inferences
 
