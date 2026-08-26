@@ -109,6 +109,16 @@ const (
 	navHiddenAttr = ` hidden=""`
 )
 
+// xhtmlDoctype mirrors EPUB_Output.save_book_parts (epub_output.py:731-738).
+// KFX Input serializes every XHTML book part with an explicit doctype: HTML5
+// for EPUB3 and XHTML 1.1 for EPUB2.
+func xhtmlDoctype(book Book) string {
+	if book.GenerateEpub2 {
+		return `<!DOCTYPE html PUBLIC '-//W3C//DTD XHTML 1.1//EN' 'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd'>`
+	}
+	return `<!DOCTYPE html>`
+}
+
 func Write(path string, book Book) error {
 	if book.Title == "" {
 		book.Title = "Unknown"
@@ -270,7 +280,7 @@ func navXHTML(book Book) string {
 		}
 		body.WriteString(`</ol></nav>`)
 	}
-	return xmlDecl +
+	return xmlDecl + xhtmlDoctype(book) + "\n" +
 		`<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">` + "\n" +
 		`<head>` + "\n" +
 		`<title>nav</title>` + "\n" +
@@ -701,6 +711,8 @@ func sectionXHTML(book Book, section Section) string {
 
 	var out strings.Builder
 	out.WriteString(xmlDecl)
+	out.WriteString(xhtmlDoctype(book))
+	out.WriteString("\n")
 	out.WriteString(`<html xmlns="http://www.w3.org/1999/xhtml"`)
 	// Add xmlns:epub when any element uses epub:type, matching Python's behavior where
 	// lxml cleanup_namespaces removes the xmlns:epub declaration from sections that don't

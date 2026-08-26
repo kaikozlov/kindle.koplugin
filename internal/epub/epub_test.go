@@ -1927,6 +1927,28 @@ func TestSectionBodyDirectionIsSerialized(t *testing.T) {
 	}
 }
 
+func TestXHTMLDoctypeMatchesKFXInput(t *testing.T) {
+	section := Section{Filename: "s.xhtml", BodyHTML: "<p>text</p>"}
+	for _, tc := range []struct {
+		name    string
+		book    Book
+		doctype string
+	}{
+		{"epub3", Book{Title: "title", Language: "en"}, `<!DOCTYPE html>`},
+		{"epub2", Book{Title: "title", Language: "en", GenerateEpub2: true}, `<!DOCTYPE html PUBLIC '-//W3C//DTD XHTML 1.1//EN' 'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd'>`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prefix := xmlDecl + tc.doctype + "\n"
+			if got := sectionXHTML(tc.book, section); !strings.HasPrefix(got, prefix) {
+				t.Fatalf("section XHTML missing prefix %q:\n%s", prefix, got)
+			}
+			if got := navXHTML(tc.book); !strings.HasPrefix(got, prefix) {
+				t.Fatalf("nav XHTML missing prefix %q:\n%s", prefix, got)
+			}
+		})
+	}
+}
+
 func TestSectionXHTMLDictionaryNamespace(t *testing.T) {
 	// Python epub_output.py:85,88-92 creates the idx namespace and lxml's
 	// cleanup_namespaces retains it when idx:* dictionary elements are used.
