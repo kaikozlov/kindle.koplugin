@@ -280,163 +280,129 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     symbols = re.findall(r'\$\d+', desc)
     strings = re.findall(r'"([^"]*)"', desc)
 
-    # Strategy 1: Look for the same $NNN symbols in Go
-    # Translate $N to real names since Go uses catalog names, not $N placeholders
+    def word_in(hay, needle):
+        """Word-boundary containment: 'content' must not match 'content_list'."""
+        return re.search(r'\b' + re.escape(needle) + r'\b', hay) is not None
+
+    # Strong evidence (condition-specific) and weak evidence (generic shape
+    # of code that exists in almost any implementation) are kept apart.
+    # Anything that merely shows "the Go body contains a common construct"
+    # is WEAK and must not count as branch coverage. Weak matches are
+    # recorded as a fallback reason and only returned after every strong
+    # strategy has had its chance.
+    weak_reason = None
+
+    # Strategy 1: $NNN symbols — condition-specific: the symbol's real name
+    # (or raw $N) must occur in the counterpart body.
     if symbols:
         for sym in symbols:
-            # First try exact $N match
             if sym in go_content:
                 return "found"
-            # Then try translated real name
             real_name = _SYMBOL_CATALOG.get(sym)
-            if real_name and real_name in go_content:
+            if real_name and word_in(go_content, real_name):
                 return "found"
-        # Don't return "missing" yet — cross-file search may find it
-        # Store symbols for later cross-file check
-        _pending_symbols = symbols
 
-    # Strategy 2: Look for isinstance equivalent — type assertions
-    if "isinstance" in desc:
-        # Map Python types to Go patterns
-        type_map = {
-            "IonStruct": ["asMap(", "map[string]interface{}"],
-            "IonList": ["asSlice("],
-            "IonSExp": ["IonSExp", "isSExp"],
-            "IonSymbol": ["asString(", "IonSymbol"],
-            "IonString": ["asString("],
-            "IonAnnotation": ["IonAnnotation"],
-            "int": ["int(", "float64("],
-            "str": ["string("],
-            "dict": ["map["],
-            "list": ["[]"],
-            "bool": ["bool("],
-        }
-        py_types = branch.get("types", "")
-        for py_type, go_patterns in type_map.items():
-            if py_type in py_types:
-                for pattern in go_patterns:
-                    if pattern in go_content:
-                        return "found"
-        _pending_isinstance = True
-
-    # Strategy 3: Look for string constants
+    # Strategy 3: string constants — strong when distinctive (>= 2 chars,
+    # word-boundary matched so "hero" does not credit via "heroes").
     if strings:
         for s in strings:
-            if s in go_content:
+            if len(s) >= 2 and word_in(go_content, s):
                 return "found"
 
-    # Strategy 4: Look for method/function names
+    # Strategy 4: method/function names — strong: the called operation must
+    # occur as a CALL SITE (name followed by '(') in the counterpart body;
+    # a bare identifier occurrence is keyword-class evidence (weak).
     method_calls = re.findall(r'self\.(\w+)', desc)
     if method_calls:
         for method in method_calls:
-            # Convert snake_case to camelCase
             go_name = snake_to_camel(method)
-            if go_name in go_content:
-                return "found"
-            # Also check exported Go name
             go_exported = "".join(p.capitalize() for p in method.split("_"))
-            if go_exported in go_content:
-                return "found"
+            for cand in (go_name, go_exported):
+                if re.search(r'\b' + re.escape(cand) + r'\s*\(', go_content):
+                    return "found"
 
-    # Strategy 4b: Python "is" type checks → Go type assertions
-    # e.g., "data_type is IonString" → "asString(" or string type check in Go
+    # Strategy 2: isinstance → Go type helpers — WEAK: presence of asMap(/
+    # asString(/etc. shows the body handles that type somewhere, not that
+    # THIS branch conditions on it.
+    if "isinstance" in desc:
+        weak_reason = "isinstance type-dispatch"
+
+    # Strategy 4b: Python "is IonString" type checks — WEAK (same reason
+    # as Strategy 2: type-conversion patterns like string( appear in
+    # virtually every Go function).
     is_type_match = re.search(r'(\w+)\s+is\s+(not\s+)?(ionstring|ionsymbol|ionstruct|ionlist|ionsexp|ionint|ionfloat|ionbool|ionnull|ionannotation|ionblob|ionclob|iontimestamp|iondecimal)', desc)
     if not is_type_match:
         is_type_match = re.search(r'(\w+)\s+is\s+(not\s+)?(ionstring|ionsymbol|ionstruct|ionlist|ionsexp|ionint|ionfloat|ionbool|ionnull|ionannotation|ionblob|ionclob|iontimestamp|iondecimal)', desc.replace("elif if ", "").replace("elif ", ""))
     if is_type_match:
-        type_name = is_type_match.group(3)
-        is_negated = is_type_match.group(2) is not None
-        type_patterns = {
-            "ionstring": ["string(", "asString("],
-            "ionsymbol": ["asString(", "symbol"],
-            "ionstruct": ["asMap(", "map[string]interface{}"],
-            "ionlist": ["asSlice(", "[]interface{}"],
-            "ionsexp": ["asSlice("],
-            "ionint": ["asInt(", "int64("],
-            "ionfloat": ["asFloat(", "float64("],
-            "ionbool": ["asBool(", "bool("],
-            "ionnull": ["== nil"],
-            "ionannotation": ["annotation"],
-            "ionblob": ["[]byte"],
-            "ionclob": ["[]byte"],
-            "iontimestamp": ["time.Time"],
-            "iondecimal": ["Decimal"],
-        }
-        for pattern in type_patterns.get(type_name, []):
-            if pattern in go_content:
-                return "found"
+        weak_reason = weak_reason or "ion type check"
 
-    # Strategy 4c: "is None" / "is not None" → Go nil checks
+    # Strategy 4c: "is None" / "is not None" — WEAK: nil checks and
+    # comma-ok idioms occur in nearly every Go function.
     if "is none" in desc or "is not none" in desc:
-        # Look for nil checks in Go
-        if "== nil" in go_content or "!= nil" in go_content or ", ok" in go_content:
-            return "found"
+        weak_reason = weak_reason or "nil check"
 
-    # Strategy 4d: "for x in y" / "for x, y in enumerate(z)" → Go range loops
+    # Strategy 4d: "for x in y" — WEAK: any Go loop contains `range`.
     if desc.startswith("for ") and " in " in desc:
-        # Go uses "for ... range" patterns
-        if "range " in go_content:
-            return "found"
+        weak_reason = weak_reason or "for-loop shape"
 
-    # Strategy 4e: "else" → Go else blocks
+    # Strategy 4e: "else" — WEAK: any Go else block matches.
     if desc.strip() == "else" or desc.strip() == "else:":
-        if "else {" in go_content or "} else" in go_content:
-            return "found"
+        weak_reason = weak_reason or "else shape"
 
-    # Strategy 4f: Feature flags and constants
-    # Python uses ALL_CAPS constants like COMBINE_NESTED_DIVS
-    # Use original description (not lowered) since constants are case-sensitive
+    # Strategy 4f: Feature flags and constants — strong: ALL_CAPS constant
+    # identity, word-boundary so COMBINE_NESTED_DIVS cannot credit via a
+    # longer name.
     original_desc = branch.get("description", "")
     constants = re.findall(r'[A-Z][A-Z0-9_]{3,}', original_desc)
     if constants:
         for const in constants:
-            if const in go_content:
+            if word_in(go_content, const):
                 return "found"
 
-    # Strategy 4g: "if X is True/False" → Go boolean checks
+    # Strategy 4g: "if X is True/False" — WEAK when the identifier occurs
+    # in the body at all (bare identifier occurrence is keyword-class).
     if " is true" in desc or " is false" in desc:
-        # Extract the variable name from original case
         var_m = re.search(r'(\w+)\s+is\s+(True|False)', original_desc)
         if var_m:
             var_name = var_m.group(1)
-            if var_name in go_content or snake_to_camel(var_name) in go_content:
-                return "found"
+            if word_in(go_content, var_name) or word_in(go_content, snake_to_camel(var_name)):
+                weak_reason = weak_reason or "boolean identifier"
 
-    # Strategy 4h: "except Exception" → Go doesn't use exceptions
+    # Strategy 4h: "except" — WEAK: err/error occurs in almost every Go body.
     if "except" in desc:
-        # Go uses error returns, so exception handling maps to error checks
-        if "err" in go_content or "error" in go_content:
-            return "found"
+        weak_reason = weak_reason or "exception shape"
 
-    # Strategy 4i: "in {...}" set membership → Go map or set checks
+    # Strategy 4i: "in {...}" set membership — WEAK when the identifier
+    # occurs in the body (keyword-class evidence).
     set_m = re.search(r'(\w+)\s+(not\s+)?in\s+\{', desc)
     if set_m:
         var_name = set_m.group(1)
-        if var_name in go_content or snake_to_camel(var_name) in go_content:
-            return "found"
+        if word_in(go_content, var_name) or word_in(go_content, snake_to_camel(var_name)):
+            weak_reason = weak_reason or "set-membership identifier"
 
-    # Strategy 4j1: "with ... " context managers → Go doesn't have these
+    # Strategy 4j1: "with ..." context managers — WEAK: logging context
+    # managers are simply not ported; that is absence, not evidence.
     if desc.strip().startswith("with "):
         if "disable_debug_log" in desc or "log" in desc:
-            return "found"  # Logging context managers not needed in Go
+            weak_reason = weak_reason or "context manager"
 
-    # Strategy 4j: "try:" → Go error handling
+    # Strategy 4j: "try:" — WEAK: err/error occurs in almost every Go body.
     if desc.strip().startswith("try"):
-        if "err" in go_content or "error" in go_content:
-            return "found"
+        weak_reason = weak_reason or "try shape"
 
     # Strategy 4k: Compound variable name substring matching
     # Python uses long compound names like "is_scale_fit_layout" which Go splits differently
     # Extract the core meaningful parts (skip short prefixes like "is_", "has_", "not_")
     compound_parts = re.findall(r'(scale_fit|fit_width|hero_image|mathml|epub2|ordered_list|heritable_sty|ruby_offset|ruby_name|do_merge|log_result|blank|table_metadata|table_selection|generate_epub|heritable_styl)', desc)
-    import sys as _sys
     if compound_parts:
         for part in compound_parts:
             if part in go_content:
-                return "found"
+                weak_reason = weak_reason or "compound identifier"
+                break
 
-    # Strategy 5: Look for variable names and conditions
-    # Extract meaningful words
+    # Strategy 5: bare keyword occurrence — WEAK: any of the first few
+    # identifiers appearing somewhere in the body is not evidence that THIS
+    # condition was ported.
     keywords = re.findall(r'[a-zA-Z_]\w{3,}', desc)
     skip_words = {"self", "true", "false", "none", "not", "and", "or", "the", "has", "hasnt",
                   "with", "else", "elif", "isinstance", "length", "len", "append", "pop", "get",
@@ -444,14 +410,10 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     meaningful = [w for w in keywords if w.lower() not in skip_words]
 
     if meaningful:
-        found_any = False
         for word in meaningful[:5]:
-            # Check both snake_case and camelCase forms
             if word in go_content or snake_to_camel(word) in go_content:
-                found_any = True
+                weak_reason = weak_reason or "keyword occurrence"
                 break
-        if found_any:
-            return "found"
 
     # Strategy 4l: Simple numeric comparisons and truthiness
     # "if i == 0", "if n == 1" are universal patterns that exist in any
@@ -460,44 +422,39 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     if not simple_compare:
         simple_compare = re.match(r'elif if (\w+) (==|!=|>=|<=|>|<) (\d+)$', desc.strip())
     if simple_compare:
-        return "weak"
-    # "if X" / "if not X" — truthiness checks exist in every language
+        weak_reason = weak_reason or "numeric comparison shape"
+    # "if X" / "if not X" — truthiness: WEAK only when the tested identifier
+    # actually occurs in the body (keyword-class evidence). No occurrence →
+    # no evidence at all → uncertain, not weak.
     simple_truth = re.match(r'if (not )?(\w+)$', desc.strip())
     if not simple_truth:
         simple_truth = re.match(r'elif if (not )?(\w+)$', desc.strip())
-    if simple_truth and go_content is not None:
+    if simple_truth:
         var_name = simple_truth.group(2)
         if var_name not in ("true", "false", "none", "self", "not", "and", "or"):
-            if len(var_name) >= 2:
-                if var_name in go_content or snake_to_camel(var_name) in go_content:
-                    return "found"
-            else:
-                if re.search(r'\b' + re.escape(var_name) + r'\b', go_content):
-                    return "found"
+            if word_in(go_content, var_name) or word_in(go_content, snake_to_camel(var_name)):
+                weak_reason = weak_reason or "truthiness identifier"
     # "if len(X) == N" — length checks are universal: weak
     if re.match(r'if len\(\w+\) [!=<>]+ \d+$', desc.strip()):
-        return "weak"
+        weak_reason = weak_reason or "length comparison shape"
 
     # Strategy 4m: Python dead-code branches (if True/False) — Go doesn't need these
     if desc.strip() in ("if true", "if false", "if true:", "if false:"):
-        return "weak"  # Dead code in Python; harmless but not evidence of a port
+        weak_reason = weak_reason or "python dead code"
 
-    # Strategy 4o: Dict/set membership — "if X in Y" / "if X not in Y" / "if None in Y"
-    # Python: if id not in dt → Go: if _, ok := dt[id]; !ok
-    # Python: if None in ids → Go: if ids[""] != nil or if ids[None] != nil
+    # Strategy 4o: Dict/set membership — "if X in Y" / "if X not in Y"
+    # WEAK when the container identifier occurs in the body.
     membership_m = re.match(r'(?:elif )?if (not )?(\w+) (not )?in (\w+)$', desc.strip())
     if membership_m:
-        var_name = membership_m.group(2)
         container = membership_m.group(4)
-        # Check that the container variable exists in the counterpart body
         if go_content is not None and re.search(r'\b' + re.escape(container) + r'\b', go_content):
-            return "found"
+            weak_reason = weak_reason or "container membership identifier"
 
     # Strategy 4p: Compound arithmetic comparisons — "if i + 3 > ln"
     # Universal arithmetic; not evidence of a port.
     compound_compare = re.match(r'if .+\s+(==|!=|>=|<=|>|<)\s+\w+$', desc.strip())
     if compound_compare:
-        return "weak"
+        weak_reason = weak_reason or "compound comparison shape"
 
     # Strategy 4n: Variable-to-variable comparisons (i >= j, a == b)
     # Universal comparison shape; not evidence of a port.
@@ -505,33 +462,21 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     if not var_compare:
         var_compare = re.match(r'elif if (\w+) (==|!=|>=|<=|>|<) (\w+)$', desc.strip())
     if var_compare:
-        return "weak"
+        weak_reason = weak_reason or "variable comparison shape"
 
     # NOTE: the old Strategy 6 searched ALL Go sources for keywords and
     # auto-credited matches. That is how the branch metric was inflated to
     # 100%; it has been removed. Only the matched counterpart's body
-    # (go_content) is searched, plus the membership check below scoped to
-    # that body.
+    # (go_content) is searched.
 
+    # Resolution: strong evidence returned "found" above. Any recorded
+    # generic-shape heuristic downgrades the branch to WEAK (reported, never
+    # counted as coverage). Otherwise the branch is UNCERTAIN — honestly
+    # unverified, not silently credited.
+    if weak_reason:
+        return "weak"
     return "unknown"
 
-
-# Cache for all Go file contents (cross-file search)
-_all_go_cache = None
-
-def _get_all_go_content():
-    """Load and cache all Go file contents for cross-file searching."""
-    global _all_go_cache
-    if _all_go_cache is None:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        go_dir = os.path.join(os.path.dirname(script_dir), "internal", "kfx")
-        parts = []
-        for f in sorted(os.listdir(go_dir)):
-            if f.endswith(".go") and not f.endswith("_test.go"):
-                with open(os.path.join(go_dir, f)) as fh:
-                    parts.append(fh.read())
-        _all_go_cache = "\n".join(parts)
-    return _all_go_cache
 
 def snake_to_camel(name):
     """Convert snake_case to camelCase."""
@@ -608,7 +553,7 @@ def audit_function(py_path, go_path, function_name, verbose=False):
         for check in isinstance_checks:
             branch_for_check = {"types": check["types"], "description": f"isinstance({check['variable']}, {check['types']})"}
             status = check_go_for_branch(go_path, branch_for_check, go_content)
-            mark = "✓" if status == "found" else "✗" if status == "missing" else "?"
+            mark = {"found": "✓", "weak": "~", "missing": "✗"}.get(status, "?")
             print(f"  L{check['line']:>4}: {mark} isinstance({check['variable']}, {check['types']})")
 
     # Summary

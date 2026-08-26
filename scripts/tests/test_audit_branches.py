@@ -63,6 +63,74 @@ class TestCheckGoForBranch(unittest.TestCase):
         # go_content None -> legacy 'no-go-file' status, counted as uncertain
         self.assertIn(self.body_branch("if $145 in value", None), ("no-go-file", "unknown"))
 
+    # --- generic-shape heuristics must be WEAK, never found ---
+
+    def test_weak_reason_resolves_to_weak_not_unknown(self):
+        # isinstance with no condition-specific evidence must classify weak
+        # (reported heuristic), not silently fall through to unknown.
+        result = self.body_branch("isinstance(value, dict)", "x := m[k]")
+        self.assertEqual(result, "weak")
+
+    def test_strong_evidence_beats_weak_reason(self):
+        # A branch carrying BOTH an isinstance and a distinctive string
+        # constant still earns strong credit — weak is a fallback, not a gate.
+        result = self.body_branch('if isinstance(v, dict) and v.get("mode") == "hero_image"',
+                                  'if m["mode"] == "hero_image" {')
+        self.assertEqual(result, "found")
+
+    def test_for_range_is_weak(self):
+        self.assertEqual(self.body_branch("for child in children", "for _, c := range children {"), "weak")
+
+    def test_else_is_weak(self):
+        self.assertEqual(self.body_branch("else", "if x { } else { }"), "weak")
+
+    def test_try_is_weak(self):
+        self.assertEqual(self.body_branch("try", "if err != nil {"), "weak")
+
+    def test_except_is_weak(self):
+        self.assertEqual(self.body_branch("except Exception", "return err"), "weak")
+
+    def test_isinstance_is_weak(self):
+        self.assertEqual(self.body_branch("isinstance(value, IonStruct)", "v := asMap(value)"), "weak")
+
+    def test_type_check_is_weak(self):
+        self.assertEqual(self.body_branch("if data_type is IonString", "s := string(x)"), "weak")
+
+    def test_none_check_is_weak(self):
+        self.assertEqual(self.body_branch("if x is not None", "if v, ok := m[k]; ok {"), "weak")
+
+    def test_keyword_only_is_weak(self):
+        self.assertEqual(self.body_branch("if generate_toc_entries", "generateTocEntries := true"), "weak")
+
+    # --- condition-specific evidence stays strong ---
+
+    def test_symbol_word_boundary(self):
+        # 'content' must NOT credit via 'content_list' (falls through to
+        # keyword-weak because 'value' occurs — never 'found')
+        self.assertEqual(self.body_branch('if $145 in value', 'x := value["content_list"]'), "weak")
+
+    def test_string_word_boundary(self):
+        # 'hero' must NOT credit strongly via 'heroes' (keyword-weak at most)
+        self.assertEqual(self.body_branch('if kind == "hero"', 'name := "heroes"'), "weak")
+
+    def test_single_char_string_constant_is_uncertain_not_strong(self):
+        # Single-char string constants ("-", ".", "/") are substring noise:
+        # len>=2 rule excludes them from strong credit, and with no other
+        # evidence the branch lands in uncertain — never found.
+        result = self.body_branch('if sep == "-"', 'strings.Contains(s, "-")')
+        self.assertNotEqual(result, "found")
+        self.assertEqual(result, "unknown")
+
+    def test_method_name_is_strong(self):
+        self.assertEqual(self.body_branch("if self.do_full_render()", "if r.doFullRender() {"), "found")
+
+    def test_method_name_word_boundary(self):
+        # 'head' must not credit strongly via 'headline' (keyword-weak at most)
+        self.assertEqual(self.body_branch("if self.head()", "x := headline"), "weak")
+
+    def test_constant_is_strong(self):
+        self.assertEqual(self.body_branch("if COMBINE_NESTED_DIVS", "if COMBINE_NESTED_DIVS {"), "found")
+
 
 class TestResolveGoBody(unittest.TestCase):
     def setUp(self):
