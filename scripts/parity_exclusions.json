@@ -1,0 +1,2258 @@
+{
+  "exclusions": [
+    {
+      "py_file": "ion.py",
+      "py_class": "IonAnnotation",
+      "py_name": "__init__",
+      "category": "library-replacement",
+      "reason": "ION value classes are replaced by amazon-ion-go types plus normalizeIon; formatting/equality helpers unused",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion.py",
+      "py_class": "IonBLOB",
+      "py_name": "ascii_data",
+      "category": "library-replacement",
+      "reason": "ION value classes are replaced by amazon-ion-go types plus normalizeIon; formatting/equality helpers unused",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion.py",
+      "py_class": "IonStruct",
+      "py_name": "__init__",
+      "category": "library-replacement",
+      "reason": "ION value classes are replaced by amazon-ion-go types plus normalizeIon; formatting/equality helpers unused",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion.py",
+      "py_class": "IonTimestamp",
+      "py_name": "__repr__",
+      "category": "library-replacement",
+      "reason": "ION value classes are replaced by amazon-ion-go types plus normalizeIon; formatting/equality helpers unused",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion.py",
+      "py_class": "IonTimestampTZ",
+      "py_name": "__init__",
+      "category": "library-replacement",
+      "reason": "ION value classes are replaced by amazon-ion-go types plus normalizeIon; formatting/equality helpers unused",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion.py",
+      "py_class": "IonTimestampTZ",
+      "py_name": "tzname",
+      "category": "library-replacement",
+      "reason": "ION value classes are replaced by amazon-ion-go types plus normalizeIon; formatting/equality helpers unused",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion.py",
+      "py_class": null,
+      "py_name": "ion_data_eq_",
+      "category": "library-replacement",
+      "reason": "ION value classes are replaced by amazon-ion-go types plus normalizeIon; formatting/equality helpers unused",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "SymbolTableCatalog",
+      "py_name": "__init__",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "SymbolTableImport",
+      "py_name": "__init__",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "__init__",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "create",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "import_shared_symbol_table",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "import_symbols",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "add_symbol",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "get_symbol",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "get_id",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "is_shared_symbol",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "is_local_symbol",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "discard_local_symbols",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "create_import",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "set_translation",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "report",
+      "category": "debug-only",
+      "reason": "symbol table report is diagnostic logging only"
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "clear",
+      "category": "library-replacement",
+      "reason": "symbol table management is handled by amazon-ion-go catalog + symbolResolver (newSymbolResolver/sharedCatalog)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "kfx_container.py",
+      "py_class": "KfxContainer",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "container state is a decoded Go Fragment list built by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "kfx_container.py",
+      "py_class": "KfxContainer",
+      "py_name": "deserialize",
+      "category": "library-replacement",
+      "reason": "ION container decoding via amazon-ion-go",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "kfx_container.py",
+      "py_class": "KfxContainer",
+      "py_name": "serialize",
+      "category": "unused-direction",
+      "reason": "converter never re-serializes KFX containers; decode-only by design"
+    },
+    {
+      "py_file": "kfx_container.py",
+      "py_class": "KfxContainer",
+      "py_name": "get_fragments",
+      "category": "alternate-architecture",
+      "reason": "fragment extraction happens inside decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "kfx_container.py",
+      "py_class": "KfxContainerEntity",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "container state is a decoded Go Fragment list built by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "kfx_container.py",
+      "py_class": "KfxContainerEntity",
+      "py_name": "deserialize",
+      "category": "library-replacement",
+      "reason": "ION container decoding via amazon-ion-go",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "kfx_container.py",
+      "py_class": "KfxContainerEntity",
+      "py_name": "serialize",
+      "category": "unused-direction",
+      "reason": "converter never re-serializes KFX containers; decode-only by design"
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "convert_to_single_kfx",
+      "category": "output-mode-out-of-scope",
+      "reason": "Calibre output mode; the KOReader plugin only produces EPUB (cmd/kindle-helper exposes scan/convert only)"
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "convert_to_cbz",
+      "category": "output-mode-out-of-scope",
+      "reason": "Calibre output mode; the KOReader plugin only produces EPUB (cmd/kindle-helper exposes scan/convert only)"
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "convert_to_pdf",
+      "category": "output-mode-out-of-scope",
+      "reason": "Calibre output mode; the KOReader plugin only produces EPUB (cmd/kindle-helper exposes scan/convert only)"
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "convert_to_kpf",
+      "category": "output-mode-out-of-scope",
+      "reason": "Calibre output mode; the KOReader plugin only produces EPUB (cmd/kindle-helper exposes scan/convert only)"
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "convert_to_zip_unpack",
+      "category": "output-mode-out-of-scope",
+      "reason": "Calibre output mode; the KOReader plugin only produces EPUB (cmd/kindle-helper exposes scan/convert only)"
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "convert_to_json_content",
+      "category": "output-mode-out-of-scope",
+      "reason": "Calibre output mode; the KOReader plugin only produces EPUB (cmd/kindle-helper exposes scan/convert only)"
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "get_metadata",
+      "category": "alternate-architecture",
+      "reason": "metadata is extracted into decodedBook fields by decodeKFX and by the scan path",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "decode_book",
+      "category": "alternate-architecture",
+      "reason": "book decoding entry point is decodeKFX (single-file, DRM handled in ConvertFile)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "load_symbol_catalog",
+      "category": "alternate-architecture",
+      "reason": "YJ symbol catalog is embedded at compile time (catalog.ion) and loaded via sharedCatalog",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "final_actions",
+      "category": "debug-only",
+      "reason": "symtab report + unicode-cache/temp-file bookkeeping; the Go CLI has no such caches"
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "locate_files_from_dir",
+      "category": "input-mode-out-of-scope",
+      "reason": "KOReader passes the exact decrypted KFX path; Calibre directory-scan location is not ported",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "ConvertFile"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "check_located_file",
+      "category": "input-mode-out-of-scope",
+      "reason": "single-file input makes located-file checking unnecessary in the Go flow",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "ConvertFile"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "locate_book_datafiles",
+      "category": "input-mode-out-of-scope",
+      "reason": "single-file input; the KFX-zip bundle is read directly by ConvertFile",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "ConvertFile"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "get_container",
+      "category": "input-mode-out-of-scope",
+      "reason": "container selection for multi-container books is not needed for single-file conversion",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "ConvertFile"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "expand_compressed_container",
+      "category": "input-mode-out-of-scope",
+      "reason": "compressed-container expansion unused in single-file flow",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "ConvertFile"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_book.py",
+      "py_class": "YJ_Book",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "YJ_Book state maps to decodedBook constructed by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_container.py",
+      "py_class": "YJContainer",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "container state is a FragmentList built by RebuildFragments",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_structure.go",
+          "go_func": "RebuildFragments"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_container.py",
+      "py_class": "YJFragmentList",
+      "py_name": "yj_rebuild_index",
+      "category": "alternate-architecture",
+      "reason": "Go FragmentList is a slice; there is no side index to rebuild",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_structure.go",
+          "go_func": "RebuildFragments"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_container.py",
+      "py_class": "YJFragment",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "fragment records are Go Fragment structs built by RebuildFragments",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_structure.go",
+          "go_func": "RebuildFragments"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_container.py",
+      "py_class": "YJFragmentKey",
+      "py_name": "__new__",
+      "category": "alternate-architecture",
+      "reason": "fragment keys are the FragmentKey struct; constructed inline where fragments are built",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_structure.go",
+          "go_func": "RebuildFragments"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_container.py",
+      "py_class": "YJFragmentList",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "FragmentList is a slice; built by RebuildFragments",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_structure.go",
+          "go_func": "RebuildFragments"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_metadata.py",
+      "py_class": "YJ_Metadata",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "fragment catalog is built during decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_metadata.py",
+      "py_class": "BookMetadata",
+      "py_name": "get_yj_metadata_from_book",
+      "category": "alternate-architecture",
+      "reason": "metadata is read via typed getters (getMetadataValue/getFeatureValue) at consumption sites",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_metadata.go",
+          "go_func": "getMetadataValue"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_metadata.py",
+      "py_class": "BookMetadata",
+      "py_name": "set_yj_metadata_to_book",
+      "category": "alternate-architecture",
+      "reason": "book mutation entry points implemented directly: cover section and dimension updates",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_metadata.go",
+          "go_func": "updateCoverSectionAndStoryline"
+        },
+        {
+          "go_file": "internal/kfx/yj_metadata.go",
+          "go_func": "processContentDimensions"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_metadata.py",
+      "py_class": "BookMetadata",
+      "py_name": "set_cover_image_data",
+      "category": "alternate-architecture",
+      "reason": "cover selection/fix-up implemented by getCoverImageData + fixCoverImageData",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_metadata.go",
+          "go_func": "getCoverImageData"
+        },
+        {
+          "go_file": "internal/kfx/yj_metadata.go",
+          "go_func": "fixCoverImageData"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_metadata.py",
+      "py_class": "BookMetadata",
+      "py_name": "get_features",
+      "category": "alternate-architecture",
+      "reason": "feature reads go through getFeatureValue",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_metadata.go",
+          "go_func": "getFeatureValue"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_metadata.py",
+      "py_class": "BookMetadata",
+      "py_name": "has_illustrated_layout_conditional_page_template",
+      "category": "alternate-architecture",
+      "reason": "illustrated-layout detection is isIllustratedLayout",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_metadata.go",
+          "go_func": "isIllustratedLayout"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_metadata.py",
+      "py_class": "BookMetadata",
+      "py_name": "update_image_resource_and_media",
+      "category": "alternate-architecture",
+      "reason": "resource rebuilding happens in buildResources (fonts/images/raw blobs)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub_resources.go",
+          "go_func": "buildResources"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_position_location.py",
+      "py_class": null,
+      "py_name": "collect_section_position_info",
+      "category": "alternate-architecture",
+      "reason": "position collection implemented by BookPosLoc.CollectPositionMapInfo",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_position_location.go",
+          "go_func": "CollectPositionMapInfo"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_position_location.py",
+      "py_class": null,
+      "py_name": "extract_position_data",
+      "category": "alternate-architecture",
+      "reason": "location extraction implemented by BookPosLoc.CollectLocationMapInfo",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_position_location.go",
+          "go_func": "CollectLocationMapInfo"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_position_location.py",
+      "py_class": "PosData",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "position data is the ContentChunk struct built by NewContentChunk",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_position_location.go",
+          "go_func": "NewContentChunk"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_position_location.py",
+      "py_class": "PosData",
+      "py_name": "advance",
+      "category": "alternate-architecture",
+      "reason": "offset advancement is inlined in the CollectPositionMapInfo/CollectLocationMapInfo loops",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_position_location.go",
+          "go_func": "CollectPositionMapInfo"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_structure.py",
+      "py_class": "BookStructure",
+      "py_name": "check_consistency",
+      "category": "debug-only",
+      "reason": "diagnostic consistency validation (log-only in Python, does not change output); structural checks live in CheckFragmentUsage",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_structure.go",
+          "go_func": "CheckFragmentUsage"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_structure.py",
+      "py_class": "BookStructure",
+      "py_name": "create_local_symbol",
+      "category": "library-replacement",
+      "reason": "local symbol creation/import rewriting is handled by amazon-ion-go symbol handling in newSymbolResolver",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_structure.py",
+      "py_class": "BookStructure",
+      "py_name": "replace_symbol_table_import",
+      "category": "library-replacement",
+      "reason": "local symbol creation/import rewriting is handled by amazon-ion-go symbol handling in newSymbolResolver",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub.py",
+      "py_class": "KFX_EPUB",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "conversion state is built by decodeKFX and passed through ConvertFile",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "ConvertFile"
+        },
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub.py",
+      "py_class": "KFX_EPUB",
+      "py_name": "check_fragment_name",
+      "category": "debug-only",
+      "reason": "fragment-name validation is diagnostics; Go validates structure in CheckFragmentUsage"
+    },
+    {
+      "py_file": "yj_to_epub_content.py",
+      "py_class": "KFX_EPUB_Content",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "Python mixin state is Go conversion state (decodedBook + convert helpers) built by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_properties.py",
+      "py_class": "KFX_EPUB_Properties",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "Python mixin state is Go conversion state (decodedBook + convert helpers) built by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_misc.py",
+      "py_class": "KFX_EPUB_Misc",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "Python mixin state is Go conversion state (decodedBook + convert helpers) built by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_navigation.py",
+      "py_class": "KFX_EPUB_Navigation",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "Python mixin state is Go conversion state (decodedBook + convert helpers) built by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_resources.py",
+      "py_class": "KFX_EPUB_Resources",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "Python mixin state is Go conversion state (decodedBook + convert helpers) built by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_metadata.py",
+      "py_class": "KFX_EPUB_Metadata",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "Python mixin state is Go conversion state (decodedBook + convert helpers) built by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_illustrated_layout.py",
+      "py_class": "KFX_EPUB_Illustrated_Layout",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "Python mixin state is Go conversion state (decodedBook + convert helpers) built by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_notebook.py",
+      "py_class": "KFX_EPUB_Notebook",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "Python mixin state is Go conversion state (decodedBook + convert helpers) built by decodeKFX",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "decodeKFX"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_properties.py",
+      "py_class": "Prop",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "Prop objects are entries in map[string]string style maps; access helpers are styleGet/styleItems",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub_properties.go",
+          "go_func": "styleGet"
+        },
+        {
+          "go_file": "internal/kfx/yj_to_epub_properties.go",
+          "go_func": "styleItems"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_properties.py",
+      "py_class": null,
+      "py_name": "scan_content",
+      "category": "alternate-architecture",
+      "reason": "nested scan helper of update_default_font_and_language; font/language counting lives in updateDefaultFontAndLanguage",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub_properties.go",
+          "go_func": "updateDefaultFontAndLanguage"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_properties.py",
+      "py_class": "KFX_EPUB_Properties",
+      "py_name": "add_composite_and_equivalent_styles",
+      "category": "alternate-architecture",
+      "reason": "composite/equivalent style logic is performed inside simplifyStylesElementFull (COMPOSITE_SIDE_STYLES collapse, ALTERNATE_EQUIVALENT_PROPERTIES)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub_properties.go",
+          "go_func": "simplifyStylesElementFull"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_properties.py",
+      "py_class": "Style",
+      "py_name": "get_properties",
+      "category": "alternate-architecture",
+      "reason": "style property access is provided by the style map helpers (styleGet/styleItems)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub_properties.go",
+          "go_func": "styleGet"
+        },
+        {
+          "go_file": "internal/kfx/yj_to_epub_properties.go",
+          "go_func": "styleItems"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_properties.py",
+      "py_class": "Style",
+      "py_name": "update",
+      "category": "alternate-architecture",
+      "reason": "style merging is styleUpdate over plain maps (small by nature); access via styleGet",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub_properties.go",
+          "go_func": "styleGet"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_properties.py",
+      "py_class": "Style",
+      "py_name": "partition",
+      "category": "alternate-architecture",
+      "reason": "heritable/non-heritable split is stylePartition/stylePartitionDetailed",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub_properties.go",
+          "go_func": "stylePartitionDetailed"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_misc.py",
+      "py_class": "KFX_EPUB_Misc",
+      "py_name": "set_condition_operators",
+      "category": "alternate-architecture",
+      "reason": "condition operators are package-level dispatch tables consumed by conditionEvaluator.evaluate",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub_misc.go",
+          "go_func": "evaluate"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_image_book.py",
+      "py_class": null,
+      "py_name": "add_pages_nums_to_toc",
+      "category": "alternate-architecture",
+      "reason": "page numbering for the TOC happens during outline construction in buildOutlineObjects",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_image_book.go",
+          "go_func": "buildOutlineObjects"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_image_book.py",
+      "py_class": null,
+      "py_name": "add_pdf_outline",
+      "category": "alternate-architecture",
+      "reason": "PDF outline objects are built by buildOutlineObjects during buildPDF",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_image_book.go",
+          "go_func": "buildOutlineObjects"
+        },
+        {
+          "go_file": "internal/kfx/yj_to_image_book.go",
+          "go_func": "buildPDF"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_resources.py",
+      "py_class": "Obj",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "resource objects are built by buildResources",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub_resources.go",
+          "go_func": "buildResources"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_to_epub_resources.py",
+      "py_class": "KFX_EPUB_Resources",
+      "py_name": "process_fonts",
+      "category": "alternate-architecture",
+      "reason": "font handling (naming, media type, inclusion) is buildResources + fontStemFromLocation/fontMediaType",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub_resources.go",
+          "go_func": "buildResources"
+        },
+        {
+          "go_file": "internal/kfx/yj_to_epub_resources.go",
+          "go_func": "fontStemFromLocation"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_symbol_catalog.py",
+      "py_class": "IonSharedSymbolTable",
+      "py_name": "__init__",
+      "category": "library-replacement",
+      "reason": "shared symbol tables are amazon-ion-go catalog entries (sharedCatalog over embedded catalog.ion)",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "EPUB output state is the epub.Book struct assembled in ConvertFile and written by Write",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "Write"
+        },
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "ConvertFile"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "set_book_type",
+      "category": "alternate-architecture",
+      "reason": "book type is the BookType field set when ConvertFile assembles epub.Book",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "ConvertFile"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "set_primary_writing_mode",
+      "category": "alternate-architecture",
+      "reason": "writing mode is the WritingMode field set when ConvertFile assembles epub.Book",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_to_epub.go",
+          "go_func": "ConvertFile"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "manifest_resource",
+      "category": "alternate-architecture",
+      "reason": "manifest entries are generated by contentOPF/makeManifestID from Book resources",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        },
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "makeManifestID"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "generate_epub",
+      "category": "alternate-architecture",
+      "reason": "EPUB writing is epub.Write (mimetype, container.xml, OEBPS, zip)",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "Write"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "link_css_file",
+      "category": "alternate-architecture",
+      "reason": "stylesheet link is emitted by sectionXHTML",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "sectionXHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "identify_cover",
+      "category": "alternate-architecture",
+      "reason": "cover identification is getCoverImageData on the fragment catalog",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_metadata.go",
+          "go_func": "getCoverImageData"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "is_book_part_filename",
+      "category": "alternate-architecture",
+      "reason": "book-part detection is sectionBaseTitle in internal/epub",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "sectionBaseTitle"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "create_opf",
+      "category": "alternate-architecture",
+      "reason": "OPF document is contentOPF",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "container_xml",
+      "category": "alternate-architecture",
+      "reason": "META-INF/container.xml is written by Write",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "Write"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "create_ncx",
+      "category": "alternate-architecture",
+      "reason": "NCX is tocNCX",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "tocNCX"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "get_next_playorder",
+      "category": "alternate-architecture",
+      "reason": "playOrder ids are assigned sequentially in navPointListHTML",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "navPointListHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "create_navmap",
+      "category": "alternate-architecture",
+      "reason": "navMap is appendNCXPoints",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "appendNCXPoints"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "create_epub3_nav",
+      "category": "alternate-architecture",
+      "reason": "EPUB3 nav document is navXHTML",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "navXHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "create_nav_list",
+      "category": "alternate-architecture",
+      "reason": "nav page-list/landmarks are navPointListHTML + ncxPageMetadata",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "navPointListHTML"
+        },
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "ncxPageMetadata"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "zip_epub",
+      "category": "alternate-architecture",
+      "reason": "zip packaging is Write/writeDeflated/writeStored",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "Write"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "fixup_ns_prefixes",
+      "category": "alternate-architecture",
+      "reason": "XHTML is template-generated with explicit namespaces in sectionXHTML",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "sectionXHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "new_book_part",
+      "category": "alternate-architecture",
+      "reason": "book parts map 1:1 to epub.Section written by Write",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "Write"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "EPUB_Output",
+      "py_name": "link_css_file",
+      "category": "alternate-architecture",
+      "reason": "stylesheet link is emitted by sectionXHTML",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "sectionXHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "OPF properties are fields on epub.Book consumed by contentOPF",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "ManifestEntry",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "manifest entries are generated inline by contentOPF/makeManifestID",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        },
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "makeManifestID"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "TocEntry",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "TOC entries are epub.NavPoint values built by navigationFromSections/fallbackNavigation",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "navigationFromSections"
+        },
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "fallbackNavigation"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "GuideEntry",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "guide entries are epub.GuideEntry values consumed by contentOPF/navXHTML",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "PageMapEntry",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "page-map entries are the Book.PageList consumed by tocNCX (ncxPageMetadata)",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "tocNCX"
+        },
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "ncxPageMetadata"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OutputFile",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "output files are the resource map written by Write",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "Write"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "BookPart",
+      "py_name": "__init__",
+      "category": "alternate-architecture",
+      "reason": "book parts are epub.Section values written by Write",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "Write"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "BookPart",
+      "py_name": "body",
+      "category": "alternate-architecture",
+      "reason": "part bodies are Section contents rendered by sectionXHTML",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "sectionXHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": null,
+      "py_name": "prefix",
+      "category": "alternate-architecture",
+      "reason": "namespace prefixing is not needed: XHTML is template-generated with literal namespaces",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "sectionXHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": null,
+      "py_name": "fixup",
+      "category": "alternate-architecture",
+      "reason": "HTML fix-up is not needed: XHTML is template-generated",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "sectionXHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": null,
+      "py_name": "nsprefix",
+      "category": "alternate-architecture",
+      "reason": "namespace prefixing is not needed: XHTML is template-generated",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "sectionXHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": null,
+      "py_name": "set_nsmap",
+      "category": "alternate-architecture",
+      "reason": "namespace maps are not needed: XHTML is template-generated",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "sectionXHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": null,
+      "py_name": "namespace",
+      "category": "alternate-architecture",
+      "reason": "namespace handling is not needed: XHTML is template-generated",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "sectionXHTML"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_multiple_values_",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_multiple_values_",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_value",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_null_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_null_value",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_bool_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_bool_value",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_int_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_negint_value",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_float_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_float_value",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_decimal_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_decimal_value",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_timestamp_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_timestamp_value",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_symbol_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_string_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_clob_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_blob_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_list_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_list_value",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_sexp_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_struct_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_struct_value",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "serialize_annotation_value",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": "IonBinary",
+      "py_name": "deserialize_annotation_value",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "descriptor",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "deserialize_unsignedint",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "serialize_signedint",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "deserialize_signedint",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "serialize_vluint",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "deserialize_vluint",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "serialize_vlsint",
+      "reason": "KFX\u2192EPUB conversion is decode-only; the ION encoder direction is never exercised by the KOReader flow",
+      "category": "unused-direction"
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "deserialize_vlsint",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "lpad0",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "ltrim0",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "ltrim0x",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_binary.py",
+      "py_class": null,
+      "py_name": "combine_decimal_digits",
+      "reason": "ION binary decoding is provided by amazon-ion-go (decodeIonValue/decodeIonMap with the embedded shared YJ catalog)",
+      "category": "library-replacement",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonValue"
+        },
+        {
+          "go_file": "internal/kfx/ion_binary.go",
+          "go_func": "decodeIonMap"
+        }
+      ]
+    },
+    {
+      "py_file": "yj_structure.py",
+      "py_class": null,
+      "py_name": "walk",
+      "category": "debug-only",
+      "reason": "nested validation walker inside check_fragment_usage (collects eid/frag refs, logs annotation errors); Go performs these checks inside CheckFragmentUsage",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/yj_structure.go",
+          "go_func": "CheckFragmentUsage"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "SymbolTableCatalog",
+      "py_name": "add_shared_symbol_table",
+      "category": "library-replacement",
+      "reason": "shared-table registration is handled by the embedded catalog (parseYJSymbols) and amazon-ion-go",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "SymbolTableCatalog",
+      "py_name": "get_shared_symbol_table",
+      "category": "library-replacement",
+      "reason": "shared-table lookup is handled by sharedTable/parseYJSymbols over the embedded catalog",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "ion_symbol_table.py",
+      "py_class": "LocalSymbolTable",
+      "py_name": "create_local_symbol",
+      "category": "library-replacement",
+      "reason": "local symbol creation is handled by amazon-ion-go symbol handling in newSymbolResolver",
+      "evidence": [
+        {
+          "go_file": "internal/kfx/ion_symbol_table.go",
+          "go_func": "newSymbolResolver"
+        },
+        {
+          "go_file": "internal/kfx/yj_symbol_catalog.go",
+          "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_fxl",
+      "py_line": 126,
+      "category": "alternate-architecture",
+      "reason": "getter (def at L126); reads the rendition:layout-pre-paginated property; fixed-layout state is Book.FixedLayout consumed by contentOPF when it emits rendition:layout metadata",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_fxl",
+      "py_line": 130,
+      "category": "alternate-architecture",
+      "reason": "setter (def at L130); adds/discards rendition:layout-pre-paginated from the property set; Go sets Book.FixedLayout once when ConvertFile assembles the book \u2014 there is no runtime property-set mutation to port",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_nav",
+      "py_line": 137,
+      "category": "alternate-architecture",
+      "reason": "getter (def at L137); reads the nav property; the nav manifest property is assigned directly by contentOPF during manifest generation",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_nav",
+      "py_line": 141,
+      "category": "alternate-architecture",
+      "reason": "setter (def at L141); adds/discards the nav property; the nav manifest property is assigned directly by contentOPF during manifest generation \u2014 no runtime property-set mutation to port",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_cover_image",
+      "py_line": 148,
+      "category": "alternate-architecture",
+      "reason": "getter (def at L148); reads the cover-image property; the cover-image manifest property is assigned directly by contentOPF during manifest generation",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_cover_image",
+      "py_line": 152,
+      "category": "alternate-architecture",
+      "reason": "setter (def at L152); adds/discards the cover-image property; the cover-image manifest property is assigned directly by contentOPF \u2014 no runtime property-set mutation to port",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    }
+  ]
+}
