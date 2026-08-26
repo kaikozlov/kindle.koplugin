@@ -4094,7 +4094,8 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 }
 
 // propertyValueNumeric handles int/float KFX property values (colors, px values, raw numbers).
-const alphaMask = 0xff000000
+// Keep this explicitly 32-bit so the armv5/armv7 targets do not overflow int.
+const alphaMask uint32 = 0xff000000
 
 func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool, isPDFBacked bool) string {
 	// Color property
@@ -4104,7 +4105,7 @@ func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool
 		// Python: if yj_property_name == "fill_color" and int(yj_value) & ALPHA_MASK == 0:
 		//             value = int(yj_value) | ALPHA_MASK
 		if propName == "fill_color" {
-			i := int(v)
+			i := uint32(int64(v))
 			if i&alphaMask == 0 {
 				v = float64(i | alphaMask)
 			}
