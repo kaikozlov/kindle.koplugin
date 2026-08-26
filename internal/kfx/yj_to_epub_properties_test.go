@@ -356,3 +356,10 @@ func TestElemHasDirectTextSupportsPointerText(t *testing.T) {
 		t.Fatal("pointer htmlText should count as direct text")
 	}
 }
+
+func TestPropertyValueVertexList(t *testing.T) {
+	got := propertyValue("vertex_list", []interface{}{1, 2, 3, 4}, nil)
+	if got != "1,2 3,4" {
+		t.Fatalf("vertex_list property value = %q", got)
+	}
+}

@@ -449,3 +449,21 @@ func processAudioPluginImages(player map[string]interface{}, rp *resourceProcess
 		}
 	}
 }
+
+func TestProcessVertexList(t *testing.T) {
+	got := processVertexList([]interface{}{1, 2, 3.5, 4.5})
+	if got != "1,2 3.5,4.5" {
+		t.Fatalf("processVertexList = %q", got)
+	}
+}
+
+func TestProcessTransformOrigin(t *testing.T) {
+	vals := map[string]interface{}{"left": 12, "top": 34}
+	got := processTransformOrigin(vals)
+	if got != "12 34" {
+		t.Fatalf("processTransformOrigin = %q", got)
+	}
+	if len(vals) != 0 {
+		t.Fatalf("processTransformOrigin did not consume input: %#v", vals)
+	}
+}

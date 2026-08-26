@@ -1552,6 +1552,29 @@ func processPolygon(path []interface{}) string {
 	return fmt.Sprintf("polygon(%s)", strings.Join(d, ", "))
 }
 
+func processVertexList(vertices []interface{}) string {
+	if len(vertices) == 0 || len(vertices)&1 != 0 {
+		fmt.Fprintf(os.Stderr, "kfx: error: vertex_list contains %d vertices: %v\n", len(vertices), vertices)
+	}
+
+	points := make([]string, 0, len(vertices)/2)
+	for i := 0; i+1 < len(vertices); i += 2 {
+		points = append(points, fmt.Sprintf("%v,%v", vertices[i], vertices[i+1]))
+	}
+	return strings.Join(points, " ")
+}
+
+func processTransformOrigin(vals map[string]interface{}) string {
+	left := vals["left"]
+	delete(vals, "left")
+	top := vals["top"]
+	delete(vals, "top")
+	if len(vals) != 0 {
+		fmt.Fprintf(os.Stderr, "kfx: warning: transform_origin has unconsumed keys: %v\n", vals)
+	}
+	return fmt.Sprintf("%v %v", left, top)
+}
+
 func processTransform(vals []interface{}, svg bool) string {
 	var px, sep string
 	if svg {

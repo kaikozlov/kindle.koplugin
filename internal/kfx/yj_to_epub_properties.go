@@ -4143,6 +4143,9 @@ func propertyValueList(propName string, v []interface{}, info propInfo, infoOK b
 		sort.Strings(vals)
 		return strings.Join(vals, " ")
 
+	case "vertex_list":
+		return processVertexList(v)
+
 	case "transform": // transform
 		// Python yj_to_epub_properties.py L1345: value = self.process_transform(yj_value, svg)
 		// In propertyValue (non-SVG) context, svg=False so process_transform uses "px" and "," separator.
