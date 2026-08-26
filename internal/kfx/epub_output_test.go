@@ -1,6 +1,7 @@
 package kfx
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/kaikozlov/kindle-koplugin/internal/epub"
