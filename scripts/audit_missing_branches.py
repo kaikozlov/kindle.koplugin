@@ -71,7 +71,7 @@ def audit_function(py_name, func_name):
     text = out.getvalue()
 
     def num(label):
-        m = re.search(label + r':\s*(\d+)', text)
+        m = re.search(label + r'[^:]*:\s*(\d+)', text)
         return int(m.group(1)) if m else 0
 
     return (num(r'✓ Found in Go'), num(r'~ Weak'), num(r'✗ Missing in Go'), num(r'\? Uncertain'))
