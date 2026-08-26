@@ -2,6 +2,7 @@ package kfx
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"image/jpeg"
 	"log"
@@ -101,15 +102,43 @@ func isCoverImageSection(bodyHTML string) bool {
 	return strings.HasPrefix(stripped, "<img") && !strings.Contains(stripped, "<p>") && !strings.Contains(stripped, "<h")
 }
 
-func normalizeBookIdentifier(identifier string) string {
-	trimmed := strings.TrimSpace(identifier)
-	if trimmed == "" {
-		return trimmed
+func finalizeBookMetadata(book *decodedBook) {
+	if book == nil {
+		return
 	}
-	if strings.HasPrefix(strings.ToLower(trimmed), "urn:asin:") {
-		return trimmed
+	// Python EPUB_Output.generate_epub (epub_output.py:416-427): ASIN wins,
+	// otherwise book_id is used verbatim, otherwise a fresh UUID is generated.
+	// The input filename/content_id is not an EPUB identifier fallback.
+	switch {
+	case strings.TrimSpace(book.ASIN) != "":
+		book.Identifier = "urn:asin:" + strings.TrimSpace(book.ASIN)
+	case strings.TrimSpace(book.BookID) != "":
+		book.Identifier = strings.TrimSpace(book.BookID)
+	default:
+		book.Identifier = "urn:uuid:" + randomUUIDString()
 	}
-	return "urn:asin:" + trimmed
+	if len(book.Authors) == 0 {
+		book.Authors = []string{"Unknown"}
+	}
+	if strings.TrimSpace(book.Title) == "" {
+		book.Title = "Unknown"
+	}
+	if book.IsSample && !strings.HasSuffix(book.Title, " - Sample") {
+		book.Title += " - Sample"
+	}
+}
+
+func randomUUIDString() string {
+	var data [16]byte
+	if _, err := rand.Read(data[:]); err != nil {
+		// crypto/rand failure is extraordinarily rare. Keep a syntactically valid
+		// UUID rather than falling back to a filename, which Python never does.
+		return "00000000-0000-4000-8000-000000000000"
+	}
+	data[6] = (data[6] & 0x0f) | 0x40
+	data[8] = (data[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		data[0:4], data[4:6], data[6:8], data[8:10], data[10:16])
 }
 
 func normalizeLanguage(language string) string {

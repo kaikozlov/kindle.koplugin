@@ -878,3 +878,39 @@ func TestCheckEpubVersion_PlainReflowableReturnsTrue(t *testing.T) {
 		t.Error("expected true (EPUB2 OK) for plain reflowable book")
 	}
 }
+func TestFinalizeBookMetadataUsesPythonIdentityPrecedence(t *testing.T) {
+	tests := []struct {
+		name string
+		book *decodedBook
+		wantID string
+	}{
+		{"asin", &decodedBook{ASIN: "B012345678", BookID: "book-id"}, "urn:asin:B012345678"},
+		{"book_id", &decodedBook{BookID: "book-id"}, "book-id"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			finalizeBookMetadata(tc.book)
+			if tc.book.Identifier != tc.wantID {
+				t.Fatalf("identifier = %q, want %q", tc.book.Identifier, tc.wantID)
+			}
+			if len(tc.book.Authors) != 1 || tc.book.Authors[0] != "Unknown" {
+				t.Fatalf("authors = %#v, want Unknown fallback", tc.book.Authors)
+			}
+			if tc.book.Title != "Unknown" {
+				t.Fatalf("title = %q, want Unknown fallback", tc.book.Title)
+			}
+		})
+	}
+}
+
+func TestFinalizeBookMetadataUUIDAndSampleFallback(t *testing.T) {
+	book := &decodedBook{Title: "Sample title", IsSample: true}
+	finalizeBookMetadata(book)
+	if !strings.HasPrefix(book.Identifier, "urn:uuid:") {
+		t.Fatalf("identifier = %q, want urn:uuid fallback", book.Identifier)
+	}
+	if book.Title != "Sample title - Sample" {
+		t.Fatalf("sample title = %q", book.Title)
+	}
+}
+

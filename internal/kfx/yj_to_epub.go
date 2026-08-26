@@ -363,7 +363,7 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	pruneUnusedResources(book)
 	book.Stylesheet = pruneUnusedStylesheetRules(book.Stylesheet, collectReferencedClasses(book))
 	book.Stylesheet = finalizeStylesheet(book.Stylesheet)
-	book.Identifier = normalizeBookIdentifier(book.Identifier)
+	finalizeBookMetadata(book)
 	book.Language = normalizeLanguage(book.Language)
 
 	// Python epub_output.py L447: self.check_epub_version()
