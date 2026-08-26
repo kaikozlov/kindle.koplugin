@@ -931,7 +931,7 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 	}
 
 	for i := range book.RenderedSections {
-		isFXL := strings.Contains(book.RenderedSections[i].Properties, "rendition:layout-pre-paginated")
+		isFXL := book.RenderedSections[i].IsFixedLayout
 		if style := strings.TrimSpace(book.RenderedSections[i].BodyStyle); style != "" {
 			if className := styleClassNames[style]; className != "" {
 				classStyle := classStyles[className]

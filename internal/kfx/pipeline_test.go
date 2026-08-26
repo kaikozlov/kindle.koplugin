@@ -967,9 +967,9 @@ func TestFixupStylesKeepsFixedLayoutStylesInline(t *testing.T) {
 	book := &decodedBook{
 		Language: "en",
 		RenderedSections: []renderedSection{{
-			Filename:   "c0.xhtml",
-			Properties: "rendition:layout-pre-paginated",
-			BodyStyle:  "font-size: 0.16px",
+			Filename:      "c0.xhtml",
+			IsFixedLayout: true,
+			BodyStyle:     "font-size: 0.16px",
 			Root: &htmlElement{Children: []htmlPart{&htmlElement{
 				Tag: "img", Attrs: map[string]string{"style": "height: 48px; width: 48px"},
 			}}},

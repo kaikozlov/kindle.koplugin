@@ -179,6 +179,7 @@ type renderedSection struct {
 	BodyClass         string
 	BodyStyle         string
 	BodyStyleInferred bool   // true if body style was inferred from children (not from content rendering)
+	IsFixedLayout     bool
 	ViewportWidth     int
 	ViewportHeight    int
 	ResetStylesheet   string

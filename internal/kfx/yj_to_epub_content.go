@@ -457,6 +457,7 @@ func appendPageSpreadRenderedSections(book *decodedBook, result pageSpreadResult
 			BodyClass:         rendered.BodyClass,
 			BodyStyle:         rendered.BodyStyle,
 			BodyStyleInferred: rendered.BodyStyleInferred,
+			IsFixedLayout:     leaf.IsFixedLayout,
 			ViewportWidth:     leaf.ViewportWidth,
 			ViewportHeight:    leaf.ViewportHeight,
 			ResetStylesheet:   resetStylesheet,
@@ -972,6 +973,7 @@ type pageSpreadSection struct {
 	ParentPositionID  int    // set when parent_template_id is provided
 	PositionOffset    int    // offset for position processing (always 0 per Python)
 	TemplateData      map[string]interface{} // remaining template data
+	IsFixedLayout     bool
 	ViewportWidth     int
 	ViewportHeight    int
 	UseResetCSS       bool
@@ -1496,7 +1498,6 @@ func processPageSpreadLeaf(
 	useResetCSS := false
 	isFixedScaleFit := isSection && cfg.FixedLayout && asStringDefault(pageTemplate["layout"]) == "scale_fit"
 	if isFixedScaleFit {
-		properties = mergeSectionProperties(properties, "rendition:layout-pre-paginated")
 		viewportWidth = pageSpreadPixelDimension(pageTemplate["fixed_width"], cfg, isSection)
 		viewportHeight = pageSpreadPixelDimension(pageTemplate["fixed_height"], cfg, isSection)
 		useResetCSS = viewportWidth > 0 && viewportHeight > 0
@@ -1506,6 +1507,7 @@ func processPageSpreadLeaf(
 		Properties:       properties,
 		PositionOffset:   0,
 		TemplateData:     pageTemplate,
+		IsFixedLayout:    isFixedScaleFit,
 		ViewportWidth:    viewportWidth,
 		ViewportHeight:   viewportHeight,
 		UseResetCSS:      useResetCSS,
