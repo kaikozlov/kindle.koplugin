@@ -1655,7 +1655,7 @@ func pageSpreadPixelDimension(value interface{}, cfg pageSpreadConfig, isSection
 		return 0
 	}
 	if cfg.IsPdfBacked && !(cfg.IsPDFBackedFixedLayout && isSection) {
-		numeric = math.RoundToEven(numeric) / 100
+		numeric = adjustPixelValueForBook(numeric, true)
 	}
 	return int(math.Ceil(numeric))
 }

@@ -819,6 +819,21 @@ func makePDFSpreadConfig() pageSpreadConfig {
 	}
 }
 
+func TestPageSpreadPixelDimensionUsesPythonPDFRounding(t *testing.T) {
+	cfg := makePDFSpreadConfig()
+	// Python pixel_value -> adjust_pixel_value uses round(value/100, 2), then
+	// the fixed-layout viewport path effectively rounds up to an integer.
+	// 200.5/100 -> 2.005 -> round(..., 2) == 2.0, so the result is 2 rather
+	// than the 3 produced by rounding the original value before division.
+	if got := pageSpreadPixelDimension(200.5, cfg, false); got != 2 {
+		t.Fatalf("PDF-backed page-spread dimension = %d, want 2", got)
+	}
+	cfg.IsPDFBackedFixedLayout = true
+	if got := pageSpreadPixelDimension(200.5, cfg, true); got != 201 {
+		t.Fatalf("PDF-backed fixed-layout section should skip scaling: got %d, want 201", got)
+	}
+}
+
 // makeLeafTemplateData creates a leaf content template with $159="container", $156="overflow"
 // and some content fields.
 func makeLeafTemplateData() map[string]interface{} {
