@@ -172,11 +172,11 @@ func TestStrokeColors(t *testing.T) {
 		name string
 		hex  int
 	}{
-		0: {"black", 0x000000},
-		1: {"gray", 0x3f3f3f},
-		2: {"red", 0xff0000},
-		3: {"orange", 0xff8800},
-		4: {"yellow", 0xffff00},
+		0:  {"black", 0x000000},
+		1:  {"gray", 0x3f3f3f},
+		2:  {"red", 0xff0000},
+		3:  {"orange", 0xff8800},
+		4:  {"yellow", 0xffff00},
 		// kfxlib 20260822: green is 0x00ff88 (was 0x00ff00 in the 20250519
 		// snapshot the test originally encoded).
 		5:  {"green", 0x00ff88},
@@ -290,9 +290,9 @@ func TestAdjustColorForDensityGraySymmetry(t *testing.T) {
 func TestDecodeStrokeValuesValidSignature(t *testing.T) {
 	// signature + num_vals=1 + instruction byte (nibble=4=increment=0, padding=0)
 	data := []byte{
-		0x01, 0x01, // signature
-		0x01, 0x00, 0x00, 0x00, // num_vals = 1
-		0x40, // nibbles: 4 (increment=0), 0 (padding)
+		0x01, 0x01,                   // signature
+		0x01, 0x00, 0x00, 0x00,       // num_vals = 1
+		0x40,                         // nibbles: 4 (increment=0), 0 (padding)
 	}
 	vals, err := decodeStrokeValues(data, 1, "test")
 	if err != nil {
@@ -324,9 +324,9 @@ func TestDecodeStrokeValuesInvalidSignature(t *testing.T) {
 
 func TestDecodeStrokeValuesNumValsMismatch(t *testing.T) {
 	data := []byte{
-		0x01, 0x01, // signature
-		0x02, 0x00, 0x00, 0x00, // num_vals = 2 (but we pass num_points=1)
-		0x44, // 2 nibbles for 2 vals
+		0x01, 0x01,                   // signature
+		0x02, 0x00, 0x00, 0x00,       // num_vals = 2 (but we pass num_points=1)
+		0x44,                         // 2 nibbles for 2 vals
 	}
 	_, err := decodeStrokeValues(data, 1, "test")
 	if err == nil {
@@ -341,9 +341,9 @@ func TestDecodeStrokeValuesNumValsMismatch(t *testing.T) {
 func TestDecodeStrokeValuesNibbleExtraction(t *testing.T) {
 	// 2 points, 2 instruction nibbles from 1 byte (no padding needed)
 	data := []byte{
-		0x01, 0x01, // signature
-		0x02, 0x00, 0x00, 0x00, // num_vals = 2
-		0x44, // nibbles: 4, 4 — both produce increment=0
+		0x01, 0x01,                   // signature
+		0x02, 0x00, 0x00, 0x00,       // num_vals = 2
+		0x44,                         // nibbles: 4, 4 — both produce increment=0
 	}
 	vals, err := decodeStrokeValues(data, 2, "test")
 	if err != nil {
@@ -408,8 +408,8 @@ func TestDecodeStrokeValuesMultiByteIncrement(t *testing.T) {
 	data := []byte{
 		0x01, 0x01,
 		0x01, 0x00, 0x00, 0x00, // num_vals=1
-		0x20,       // high nibble=0x02 (n=2,bit2=0), low=0 (padding)
-		0x05, 0x00, // uint16 LE = 5
+		0x20,             // high nibble=0x02 (n=2,bit2=0), low=0 (padding)
+		0x05, 0x00,       // uint16 LE = 5
 	}
 	vals, err := decodeStrokeValues(data, 1, "test_multibyte")
 	if err != nil {
@@ -447,12 +447,12 @@ func TestDecodeStrokeValuesMultiByteIncrement(t *testing.T) {
 
 func TestDecodeStrokeValuesDeltaDecoding(t *testing.T) {
 	data := []byte{
-		0x01, 0x01, // signature
-		0x05, 0x00, 0x00, 0x00, // num_vals=5
-		0x17, // byte 0: nibbles 1, 7
-		0xd4, // byte 1: nibbles d, 4
-		0x60, // byte 2: nibbles 6, 0 (padding)
-		0x05, // extra byte for instr 0x01: increment=5
+		0x01, 0x01,                   // signature
+		0x05, 0x00, 0x00, 0x00,       // num_vals=5
+		0x17,                         // byte 0: nibbles 1, 7
+		0xd4,                         // byte 1: nibbles d, 4
+		0x60,                         // byte 2: nibbles 6, 0 (padding)
+		0x05,                         // extra byte for instr 0x01: increment=5
 	}
 
 	vals, err := decodeStrokeValues(data, 5, "test_delta")
@@ -522,8 +522,8 @@ func TestProcessScribeNotebookPageSection_ExtractsCanvasDimensions(t *testing.T)
 	// Verify canvas dimensions are extracted and validated.
 	ctx := &ScribeNotebookContext{}
 	section := map[string]interface{}{
-		"nmdl.canvas_width":   15624,
-		"nmdl.canvas_height":  20832,
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
 		"nmdl.normalized_ppi": 2520,
 	}
 
@@ -547,8 +547,8 @@ func TestProcessScribeNotebookPageSection_CreatesBookPart(t *testing.T) {
 	// Verify a book part is created with correct properties.
 	ctx := &ScribeNotebookContext{}
 	section := map[string]interface{}{
-		"nmdl.canvas_width":   15624,
-		"nmdl.canvas_height":  20832,
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
 		"nmdl.normalized_ppi": 2520,
 	}
 
@@ -574,8 +574,8 @@ func TestProcessScribeNotebookPageSection_ViewportMeta(t *testing.T) {
 	// Verify viewport meta element is created in head.
 	ctx := &ScribeNotebookContext{}
 	section := map[string]interface{}{
-		"nmdl.canvas_width":   15624,
-		"nmdl.canvas_height":  20832,
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
 		"nmdl.normalized_ppi": 2520,
 	}
 
@@ -604,9 +604,9 @@ func TestProcessScribeNotebookPageSection_InlinePlacementType(t *testing.T) {
 	// Verify inline_placement_type handling.
 	ctx := &ScribeNotebookContext{}
 	section := map[string]interface{}{
-		"nmdl.canvas_width":          15624,
-		"nmdl.canvas_height":         20832,
-		"nmdl.normalized_ppi":        2520,
+		"nmdl.canvas_width":        15624,
+		"nmdl.canvas_height":       20832,
+		"nmdl.normalized_ppi":      2520,
 		"nmdl.inline_placement_type": "yj.after", // valid placement type ($670 = "yj.after")
 	}
 
@@ -624,10 +624,10 @@ func TestProcessScribeNotebookPageSection_TemplateID(t *testing.T) {
 	// Verify nmdl.template_id handling.
 	ctx := &ScribeNotebookContext{}
 	section := map[string]interface{}{
-		"nmdl.canvas_width":   15624,
-		"nmdl.canvas_height":  20832,
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
 		"nmdl.normalized_ppi": 2520,
-		"nmdl.template_id":    "template_123",
+		"nmdl.template_id":   "template_123",
 	}
 
 	if err := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0); err != nil {
@@ -650,8 +650,8 @@ func TestProcessScribeNotebookPageSection_SVGElementCreated(t *testing.T) {
 	// Verify SVG page element is created with correct viewBox.
 	ctx := &ScribeNotebookContext{}
 	section := map[string]interface{}{
-		"nmdl.canvas_width":   15624,
-		"nmdl.canvas_height":  20832,
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
 		"nmdl.normalized_ppi": 2520,
 	}
 
@@ -670,8 +670,8 @@ func TestProcessScribeNotebookPageSection_UnexpectedPPI(t *testing.T) {
 	// Verify unexpected PPI logs error but still succeeds.
 	ctx := &ScribeNotebookContext{}
 	section := map[string]interface{}{
-		"nmdl.canvas_width":   15624,
-		"nmdl.canvas_height":  20832,
+		"nmdl.canvas_width":  15624,
+		"nmdl.canvas_height": 20832,
 		"nmdl.normalized_ppi": 999, // unexpected value
 	}
 
@@ -694,8 +694,8 @@ func TestProcessScribeNotebookPageSection_DesaturatesNotebookContent(t *testing.
 		},
 	}
 	section := map[string]interface{}{
-		"nmdl.canvas_width":   15624,
-		"nmdl.canvas_height":  20832,
+		"nmdl.canvas_width": 15624,
+		"nmdl.canvas_height": 20832,
 		"nmdl.normalized_ppi": 2520,
 	}
 	if err := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "desaturate", 0); err != nil {
@@ -890,9 +890,9 @@ func TestDecodeStrokeValuesThreeByteIncrement(t *testing.T) {
 	data := []byte{
 		0x01, 0x01,
 		0x01, 0x00, 0x00, 0x00, // num_vals=1
-		0x30,       // high nibble=0x03, low=0 (padding)
-		0x01,       // low byte
-		0x00, 0x01, // uint16 LE = 256
+		0x30,             // high nibble=0x03, low=0 (padding)
+		0x01,             // low byte
+		0x00, 0x01,       // uint16 LE = 256
 		// increment = 1 + (256 << 8) = 1 + 65536 = 65537
 	}
 	vals, err := decodeStrokeValues(data, 1, "test_3byte")
@@ -911,9 +911,9 @@ func TestDecodeStrokeValuesNegativeThreeByteIncrement(t *testing.T) {
 	data := []byte{
 		0x01, 0x01,
 		0x01, 0x00, 0x00, 0x00, // num_vals=1
-		0xb0,       // high nibble=0x0b, low=0 (padding)
-		0x01,       // low byte
-		0x00, 0x01, // uint16 LE = 256
+		0xb0,             // high nibble=0x0b, low=0 (padding)
+		0x01,             // low byte
+		0x00, 0x01,       // uint16 LE = 256
 	}
 	vals, err := decodeStrokeValues(data, 1, "test_neg3byte")
 	// n=3 triggers a warning log but still decodes correctly
@@ -1090,9 +1090,9 @@ func TestProcessNotebookContent_RecursesDollar176(t *testing.T) {
 	parent := &svgElement{Tag: "svg"}
 
 	content := map[string]interface{}{
-		"type":       "container",
+		"type": "container",
 		"story_name": "story_name",
-		"storyline":  "story_ref",
+		"storyline": "story_ref",
 	}
 
 	processNotebookContent(nc, content, parent)
@@ -1118,9 +1118,9 @@ func TestProcessNotebookContent_DispatchesStrokeWhenNoLayout(t *testing.T) {
 	parent := &svgElement{Tag: "svg"}
 
 	content := map[string]interface{}{
-		"type":                 "container",
-		"nmdl.type":            "nmdl.stroke_group",
-		"nmdl.chunked":         true,
+		"type":      "container",
+		"nmdl.type": "nmdl.stroke_group",
+		"nmdl.chunked": true,
 		"nmdl.chunk_threshold": 50,
 	}
 
@@ -1222,7 +1222,7 @@ func TestBrushTypeClassification(t *testing.T) {
 		{1, HIGHLIGHTER},
 		{5, PENCIL},
 		{6, FOUNTAIN_PEN},
-		{7, MARKER}, // default when no thickness info
+		{7, MARKER},  // default when no thickness info
 		{9, SHADER},
 		{99, UNKNOWN + "99"}, // unknown type
 	}
@@ -1290,10 +1290,10 @@ func TestScribeNotebookStroke_DarkenBrushes(t *testing.T) {
 			"nmdl.random_seed": 42, "nmdl.stroke_bounds": []interface{}{0, 0, 1000, 1000},
 			"nmdl.thickness": float64(50),
 			"nmdl.stroke_points": map[string]interface{}{
-				"nmdl.num_points":              2,
-				"nmdl.position_x":              append([]byte(nil), posData...),
-				"nmdl.position_y":              append([]byte(nil), posData...),
-				"nmdl.density_adjust_factor":   append([]byte(nil), all100...),
+				"nmdl.num_points": 2,
+				"nmdl.position_x": append([]byte(nil), posData...),
+				"nmdl.position_y": append([]byte(nil), posData...),
+				"nmdl.density_adjust_factor": append([]byte(nil), all100...),
 				"nmdl.thickness_adjust_factor": append([]byte(nil), all100...),
 			},
 		}
@@ -1302,34 +1302,20 @@ func TestScribeNotebookStroke_DarkenBrushes(t *testing.T) {
 	t.Run("highlighter", func(t *testing.T) {
 		parent := &svgElement{Tag: "svg"}
 		scribeNotebookStroke(&notebookContext{contentContext: "test"}, makeStroke(1, 0), parent, "highlight")
-		if len(parent.Children) != 1 {
-			t.Fatalf("highlighter created %d top-level elements, want 1", len(parent.Children))
-		}
+		if len(parent.Children) != 1 { t.Fatalf("highlighter created %d top-level elements, want 1", len(parent.Children)) }
 		group := parent.Children[0]
-		if group.Attrib["id"] != "highlight" || group.Attrib["style"] != "mix-blend-mode: darken;" {
-			t.Fatalf("highlighter group attrs = %#v", group.Attrib)
-		}
-		if _, ok := group.Attrib["opacity"]; ok {
-			t.Fatalf("highlighter must remain fully opaque: %#v", group.Attrib)
-		}
-		if group.Attrib["stroke"] != "#bcbcbc" {
-			t.Fatalf("black highlighter stroke = %q, want #bcbcbc", group.Attrib["stroke"])
-		}
+		if group.Attrib["id"] != "highlight" || group.Attrib["style"] != "mix-blend-mode: darken;" { t.Fatalf("highlighter group attrs = %#v", group.Attrib) }
+		if _, ok := group.Attrib["opacity"]; ok { t.Fatalf("highlighter must remain fully opaque: %#v", group.Attrib) }
+		if group.Attrib["stroke"] != "#bcbcbc" { t.Fatalf("black highlighter stroke = %q, want #bcbcbc", group.Attrib["stroke"]) }
 	})
 
 	t.Run("shader", func(t *testing.T) {
 		parent := &svgElement{Tag: "svg"}
 		scribeNotebookStroke(&notebookContext{contentContext: "test"}, makeStroke(9, 2), parent, "shader")
-		if len(parent.Children) != 1 {
-			t.Fatalf("shader created %d top-level elements, want 1", len(parent.Children))
-		}
+		if len(parent.Children) != 1 { t.Fatalf("shader created %d top-level elements, want 1", len(parent.Children)) }
 		group := parent.Children[0]
-		if group.Attrib["id"] != "shader" || group.Attrib["style"] != "mix-blend-mode: darken;" {
-			t.Fatalf("shader group attrs = %#v", group.Attrib)
-		}
-		if group.Attrib["opacity"] != "0.38" {
-			t.Fatalf("shader opacity = %q, want 0.38", group.Attrib["opacity"])
-		}
+		if group.Attrib["id"] != "shader" || group.Attrib["style"] != "mix-blend-mode: darken;" { t.Fatalf("shader group attrs = %#v", group.Attrib) }
+		if group.Attrib["opacity"] != "0.38" { t.Fatalf("shader opacity = %q, want 0.38", group.Attrib["opacity"]) }
 	})
 }
 
@@ -1543,29 +1529,29 @@ func TestScribeNotebookAnnotation_HWR(t *testing.T) {
 		"story_name": "hwr_story",
 		"content_list": []interface{}{
 			map[string]interface{}{
-				"type":    "text",
-				"top":     float64(100),
-				"left":    float64(50),
+				"type": "text",
+				"top":  float64(100),
+				"left":  float64(50),
 				"height":  float64(20),
-				"width":   float64(80),
+				"width":  float64(80),
 				"content": "Hello World",
 				"style_events": []interface{}{
 					map[string]interface{}{
-						"model":  "word",
+						"model": "word",
 						"offset": 0,
 						"length": 5,
-						"top":    float64(100),
-						"left":   float64(50),
-						"height": float64(20),
+						"top":  float64(100),
+						"left":  float64(50),
+						"height":  float64(20),
 						"width":  float64(40),
 					},
 					map[string]interface{}{
-						"model":  "word",
+						"model": "word",
 						"offset": 6,
 						"length": 5,
-						"top":    float64(100),
-						"left":   float64(90),
-						"height": float64(20),
+						"top":  float64(100),
+						"left":  float64(90),
+						"height":  float64(20),
 						"width":  float64(40),
 					},
 				},
@@ -1778,7 +1764,7 @@ func TestProcessNotebookContentFixedKVGMalformedPixelStructFails(t *testing.T) {
 	nc := &notebookContext{contentContext: "test"}
 	processNotebookContent(nc, map[string]interface{}{
 		"type": "kvg", "position": "fixed",
-		"top":  map[string]interface{}{"value": 0}, // missing mandatory unit
+		"top": map[string]interface{}{"value": 0}, // missing mandatory unit
 		"left": 0, "fixed_height": 100, "fixed_width": 100, "height": 100, "width": 100,
 	}, &svgElement{Tag: "svg"})
 	if nc.err == nil || !strings.Contains(nc.err.Error(), "unit") {
@@ -1839,9 +1825,9 @@ func TestScribeNotebookStroke_VariableDensity(t *testing.T) {
 
 	// Create position_x/y data with valid signature
 	posData := []byte{
-		0x01, 0x01, // signature
+		0x01, 0x01,             // signature
 		0x02, 0x00, 0x00, 0x00, // num_vals=2
-		0x45, // nibbles: 4 (inc=0), 5 (inc=1)
+		0x45,                   // nibbles: 4 (inc=0), 5 (inc=1)
 	}
 
 	// Make dafData return values != 100 to trigger variable density
@@ -1859,17 +1845,17 @@ func TestScribeNotebookStroke_VariableDensity(t *testing.T) {
 	tafData := []byte{0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x14, 0x64} // [100, 100]
 
 	content := map[string]interface{}{
-		"nmdl.type":          "nmdl.stroke",
-		"nmdl.brush_type":    0, // ORIGINAL_PEN
-		"nmdl.color":         0, // black
-		"nmdl.random_seed":   42,
+		"nmdl.type":        "nmdl.stroke",
+		"nmdl.brush_type":  0, // ORIGINAL_PEN
+		"nmdl.color":       0, // black
+		"nmdl.random_seed": 42,
 		"nmdl.stroke_bounds": []interface{}{int(0), int(0), int(1000), int(1000)},
-		"nmdl.thickness":     float64(50),
+		"nmdl.thickness":    float64(50),
 		"nmdl.stroke_points": map[string]interface{}{
-			"nmdl.num_points":              2,
-			"nmdl.position_x":              posData,
-			"nmdl.position_y":              posData,
-			"nmdl.density_adjust_factor":   dafData2, // non-100 values → variable density
+			"nmdl.num_points":            2,
+			"nmdl.position_x":            posData,
+			"nmdl.position_y":            posData,
+			"nmdl.density_adjust_factor": dafData2, // non-100 values → variable density
 			"nmdl.thickness_adjust_factor": tafData,
 		},
 	}
@@ -2000,12 +1986,12 @@ func TestThicknessMatching(t *testing.T) {
 		thickness float64
 		expected  string
 	}{
-		{FOUNTAIN_PEN, 23.625, "fine"},  // exact match
-		{FOUNTAIN_PEN, 47.25, "medium"}, // exact match
-		{PEN, 40.0, "thin"},             // closest to 39.375
-		{PENCIL, 100.0, "thick"},        // closest to 110.25 or 94.5?
-		{HIGHLIGHTER, 300.0, "thin"},    // closest to 315
-		{UNKNOWN, 50.0, "50.000"},       // no choices → format string
+		{FOUNTAIN_PEN, 23.625, "fine"},    // exact match
+		{FOUNTAIN_PEN, 47.25, "medium"},   // exact match
+		{PEN, 40.0, "thin"},               // closest to 39.375
+		{PENCIL, 100.0, "thick"},          // closest to 110.25 or 94.5?
+		{HIGHLIGHTER, 300.0, "thin"},      // closest to 315
+		{UNKNOWN, 50.0, "50.000"},         // no choices → format string
 	}
 
 	for _, tc := range tests {
@@ -2074,12 +2060,12 @@ func TestScribeNotebookStroke_NormalStroke(t *testing.T) {
 	}
 
 	content := map[string]interface{}{
-		"nmdl.type":          "nmdl.stroke",
-		"nmdl.brush_type":    0, // ORIGINAL_PEN
-		"nmdl.color":         2, // red
-		"nmdl.random_seed":   42,
+		"nmdl.type":        "nmdl.stroke",
+		"nmdl.brush_type":  0, // ORIGINAL_PEN
+		"nmdl.color":       2, // red
+		"nmdl.random_seed": 42,
 		"nmdl.stroke_bounds": []interface{}{int(0), int(0), int(1000), int(1000)},
-		"nmdl.thickness":     float64(50),
+		"nmdl.thickness":    float64(50),
 		"nmdl.stroke_points": map[string]interface{}{
 			"nmdl.num_points":              2,
 			"nmdl.position_x":              posData,
@@ -2172,8 +2158,8 @@ func TestDecodeStrokeValues_LargeValue(t *testing.T) {
 	data := []byte{
 		0x01, 0x01,
 		0x01, 0x00, 0x00, 0x00,
-		0x20,       // n=2, bit2=0 → read 2 bytes
-		0x00, 0x10, // uint16 LE = 0x1000 = 4096
+		0x20,             // n=2, bit2=0 → read 2 bytes
+		0x00, 0x10,       // uint16 LE = 0x1000 = 4096
 	}
 	vals, err := decodeStrokeValues(data, 1, "test_large")
 	if err != nil {
