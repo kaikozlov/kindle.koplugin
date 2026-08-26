@@ -292,11 +292,11 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
-| `is_known_generator` (L1094) | 5 | `IsKnownGenerator` (yj_versions.go:L825) | 5 | dead [dead] |
-| `is_known_feature` (L1107) | 2 | `IsKnownFeature` (yj_versions.go:L851) | 12 | dead [dead] |
-| `kindle_feature_version` (L1112) | 3 | `KindleFeatureVersion` (yj_versions.go:L877) | 19 | dead [dead] |
-| `is_known_metadata` (L1118) | 7 | `IsKnownMetadata` (yj_versions.go:L905) | 12 | dead [dead] |
-| `is_known_aux_metadata` (L1129) | 2 | `IsKnownAuxMetadata` (yj_versions.go:L928) | 6 | dead [dead] |
+| `is_known_generator` (L1094) | 5 | `IsKnownGenerator` (yj_versions.go:L826) | 5 | dead [dead] |
+| `is_known_feature` (L1107) | 2 | `IsKnownFeature` (yj_versions.go:L852) | 12 | dead [dead] |
+| `kindle_feature_version` (L1112) | 3 | `KindleFeatureVersion` (yj_versions.go:L878) | 19 | dead [dead] |
+| `is_known_metadata` (L1118) | 7 | `IsKnownMetadata` (yj_versions.go:L906) | 12 | dead [dead] |
+| `is_known_aux_metadata` (L1129) | 2 | `IsKnownAuxMetadata` (yj_versions.go:L929) | 6 | dead [dead] |
 | `is_known_kcb_data` (L1134) | 2 | — | 0 | missing |
 
 ### epub_output.py
