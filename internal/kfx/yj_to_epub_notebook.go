@@ -387,6 +387,9 @@ type notebookContext struct {
 	// Port of Python's self.content_context.
 	contentContext string
 
+	// pathBundles supplies $692 path-bundle data for notebook KVG shapes.
+	pathBundles map[string]map[string]interface{}
+
 	// debug enables debug logging.
 	debug bool
 }
@@ -541,6 +544,66 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 		} else if layout != "vertical" {
 			log.Printf("kfx: error: %s has unknown $270 layout: %v", nc.contentContext, layout)
 		}
+	} else if contentType == "kvg" {
+		shapeElem := newSVGElement(parent, "g", nil)
+
+		position := contentMap["position"]
+		delete(contentMap, "position")
+		if position == "fixed" {
+			top := notebookPixelValue(contentMap["top"])
+			delete(contentMap, "top")
+			left := notebookPixelValue(contentMap["left"])
+			delete(contentMap, "left")
+			if top != 0 || left != 0 {
+				shapeElem.setAttrib("transform", fmt.Sprintf("translate(%d %d)", left, top))
+			}
+
+			fixedHeight := notebookPixelValue(contentMap["fixed_height"])
+			delete(contentMap, "fixed_height")
+			fixedWidth := notebookPixelValue(contentMap["fixed_width"])
+			delete(contentMap, "fixed_width")
+			height := notebookPixelValue(contentMap["height"])
+			delete(contentMap, "height")
+			width := notebookPixelValue(contentMap["width"])
+			delete(contentMap, "width")
+			if fixedHeight != height || fixedWidth != width {
+				log.Printf("kfx: error: fixed position: height %d != %d or width %d != %d", fixedHeight, height, fixedWidth, width)
+			}
+		} else {
+			log.Printf("kfx: error: Unknown kvg position: %v", position)
+		}
+
+		if rawTransform, ok := contentMap["transform"]; ok {
+			delete(contentMap, "transform")
+			inner := newSVGElement(shapeElem, "g", nil)
+			if vals, ok := asSlice(rawTransform); ok {
+				inner.setAttrib("transform", processTransformWithSwap(vals, true, true))
+			} else {
+				log.Printf("kfx: error: Unexpected transform: %v", rawTransform)
+			}
+			if rawOrigin, ok := contentMap["transform_origin"]; ok {
+				delete(contentMap, "transform_origin")
+				if origin, ok := asMap(rawOrigin); ok {
+					inner.setAttrib("transform-origin", processTransformOrigin(origin))
+				} else {
+					log.Printf("kfx: error: Unexpected transform_origin: %v", rawOrigin)
+				}
+			}
+			shapeElem = inner
+		}
+
+		if rawShapes, ok := contentMap["shape_list"]; ok {
+			delete(contentMap, "shape_list")
+			if shapes, ok := asSlice(rawShapes); ok {
+				for _, rawShape := range shapes {
+					if shape, ok := asMap(rawShape); ok {
+						processNotebookKVGShape(nc, shapeElem, shape)
+					} else {
+						log.Printf("kfx: error: Unexpected KVG shape data: %v", rawShape)
+					}
+				}
+			}
+		}
 	} else {
 		log.Printf("kfx: error: %s has unknown content type: %v", nc.contentContext, contentType)
 	}
@@ -550,6 +613,89 @@ func processNotebookContent(nc *notebookContext, content interface{}, parent *sv
 
 	ctx.pop()
 	nc.contentContext = ctx.base
+}
+
+func notebookPixelValue(value interface{}) int {
+	if structured, ok := asMap(value); ok {
+		unit, _ := asString(structured["unit"])
+		if unit != "" && unit != "px" {
+			log.Printf("kfx: error: Expected px value, found %s", unit)
+		}
+		value = structured["value"]
+	}
+	if number, ok := asFloat64(value); ok {
+		return int(number)
+	}
+	if value != nil {
+		log.Printf("kfx: error: Expected int for px value, found %T", value)
+	}
+	return 0
+}
+
+func processNotebookKVGShape(nc *notebookContext, parent *svgElement, shape map[string]interface{}) {
+	shapeType, _ := asString(shape["type"])
+	delete(shape, "type")
+
+	var elem *svgElement
+	switch shapeType {
+	case "shape", "line":
+		path := shape["path"]
+		delete(shape, "path")
+		elem = newSVGElement(parent, "path", map[string]string{"d": processPathWithBundles(path, nc.pathBundles)})
+	case "rectangle":
+		elem = newSVGElement(parent, "rect", nil)
+	case "ellipse":
+		elem = newSVGElement(parent, "ellipse", nil)
+	case "polygon":
+		elem = newSVGElement(parent, "polygon", nil)
+	case "polyline":
+		elem = newSVGElement(parent, "polyline", nil)
+	case "container":
+		source, _ := asString(shape["source"])
+		delete(shape, "source")
+		log.Printf("kfx: error: Missing KVG container content ID: %s", source)
+		return
+	default:
+		log.Printf("kfx: error: Unexpected shape type: %s", shapeType)
+		return
+	}
+
+	shapeDimensions := map[string]interface{}{}
+	if rawDimensions, ok := asMap(shape["shape_dimensions"]); ok {
+		shapeDimensions = rawDimensions
+	}
+	delete(shape, "shape_dimensions")
+	for prop, value := range shapeDimensions {
+		attrName, ok := svgShapeDimensionNames[prop]
+		if !ok {
+			log.Printf("kfx: error: Unknown KVG shape_dimensions: %s", prop)
+			continue
+		}
+		elem.setAttrib(attrName, propertyValueSVG(prop, value))
+	}
+
+	for prop, attrName := range svgShapePropertyNames {
+		value, ok := shape[prop]
+		if !ok {
+			continue
+		}
+		delete(shape, prop)
+		if prop == "transform" {
+			if vals, ok := asSlice(value); ok {
+				elem.setAttrib(attrName, processTransformWithSwap(vals, true, true))
+			} else {
+				elem.setAttrib(attrName, propertyValueSVG(prop, value))
+			}
+		} else {
+			elem.setAttrib(attrName, propertyValueSVG(prop, value))
+		}
+	}
+	if _, hasStroke := elem.Attrib["stroke"]; hasStroke {
+		if _, hasFill := elem.Attrib["fill"]; !hasFill {
+			elem.setAttrib("fill", "none")
+		}
+	}
+	checkEmptyNotebook(shape, "shape")
 }
 
 // ---------------------------------------------------------------------------

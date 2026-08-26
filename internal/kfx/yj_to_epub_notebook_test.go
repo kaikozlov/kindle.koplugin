@@ -1995,3 +1995,89 @@ func TestGetLocationIDStringFallsBackToKfxID(t *testing.T) {
 		t.Fatal("kfx_id was not consumed")
 	}
 }
+
+func TestProcessNotebookContentKVGFixedShape(t *testing.T) {
+	nc := &notebookContext{contentContext: "test"}
+	root := &svgElement{Tag: "svg"}
+	content := map[string]interface{}{
+		"type":         "kvg",
+		"id":           77,
+		"position":     "fixed",
+		"top":          10,
+		"left":         20,
+		"fixed_height": 100,
+		"fixed_width":  200,
+		"height":       100,
+		"width":        200,
+		"transform":    []interface{}{0, 1, -1, 0, 0, 0},
+		"transform_origin": map[string]interface{}{
+			"left": 50,
+			"top":  60,
+		},
+		"shape_list": []interface{}{
+			map[string]interface{}{
+				"type": "rectangle",
+				"shape_dimensions": map[string]interface{}{
+					"x": 1, "y": 2, "width": 30, "height": 40,
+				},
+				"stroke_color": 0xff112233,
+			},
+		},
+	}
+	gotLog := captureStderr(func() { processNotebookContent(nc, content, root) })
+	if gotLog != "" {
+		t.Fatalf("valid notebook KVG logged errors: %s", gotLog)
+	}
+	if len(root.Children) != 1 {
+		t.Fatalf("root children = %d", len(root.Children))
+	}
+	outer := root.Children[0]
+	if outer.Tag != "g" || outer.Attrib["transform"] != "translate(20 10)" {
+		t.Fatalf("outer KVG group = %#v", outer)
+	}
+	if len(outer.Children) != 1 {
+		t.Fatalf("outer children = %d", len(outer.Children))
+	}
+	inner := outer.Children[0]
+	if inner.Attrib["transform"] != "rotate(90)" || inner.Attrib["transform-origin"] != "50 60" {
+		t.Fatalf("inner transform attrs = %#v", inner.Attrib)
+	}
+	if len(inner.Children) != 1 || inner.Children[0].Tag != "rect" {
+		t.Fatalf("inner KVG children = %#v", inner.Children)
+	}
+	rect := inner.Children[0]
+	if rect.Attrib["x"] != "1" || rect.Attrib["y"] != "2" || rect.Attrib["width"] != "30" || rect.Attrib["height"] != "40" {
+		t.Fatalf("rect dimensions = %#v", rect.Attrib)
+	}
+	if rect.Attrib["stroke"] != "#112233" || rect.Attrib["fill"] != "none" {
+		t.Fatalf("rect paint = %#v", rect.Attrib)
+	}
+}
+
+func TestProcessNotebookContentKVGPathBundle(t *testing.T) {
+	nc := &notebookContext{
+		contentContext: "test",
+		pathBundles: map[string]map[string]interface{}{
+			"b": {"path_list": []interface{}{[]interface{}{0, 1, 2, 4}}},
+		},
+	}
+	root := &svgElement{Tag: "svg"}
+	content := map[string]interface{}{
+		"type": "kvg", "position": "fixed",
+		"top": 0, "left": 0, "fixed_height": 10, "fixed_width": 10, "height": 10, "width": 10,
+		"shape_list": []interface{}{map[string]interface{}{
+			"type": "line", "path": map[string]interface{}{"name": "b", "index": 0},
+		}},
+	}
+	processNotebookContent(nc, content, root)
+	path := root.Children[0].Children[0]
+	if path.Tag != "path" || path.Attrib["d"] != "M 1 2 Z" {
+		t.Fatalf("notebook path bundle = %#v", path)
+	}
+}
+
+func TestNotebookPixelValueHandlesKFXLengthStruct(t *testing.T) {
+	if got := notebookPixelValue(map[string]interface{}{"value": 12.9, "unit": "px"}); got != 12 {
+		t.Fatalf("notebook pixel value = %d", got)
+	}
+}
