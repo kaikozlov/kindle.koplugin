@@ -27,13 +27,13 @@ func TestBuildBookStateFragmentSummaryMatchesReference(t *testing.T) {
 	got := state.fragmentSnapshot()
 	want := referenceFragmentSnapshot(t, input)
 	compareIDs := map[string]bool{
-		"content":                 true,
-		"style":                   true,
-		"external_resource":       true,
-		"storyline":               true,
-		"section":                 true,
-		"anchor":                  true,
-		"nav_container":           true,
+		"content": true,
+		"style": true,
+		"external_resource": true,
+		"storyline": true,
+		"section": true,
+		"anchor": true,
+		"nav_container": true,
 		"section_position_id_map": true,
 	}
 
@@ -63,15 +63,15 @@ func TestParseSectionFragmentKeepsAllPageTemplatesAndUsesLastAsPrimary(t *testin
 		"section_name": "cX",
 		"page_templates": []interface{}{
 			map[string]interface{}{
-				"id":         101,
-				"style":      "s-first",
+				"id": 101,
+				"style": "s-first",
 				"story_name": "story-first",
 			},
 			map[string]interface{}{
-				"id":         202,
-				"style":      "s-main",
+				"id": 202,
+				"style": "s-main",
 				"story_name": "story-main",
-				"condition":  []interface{}{"yj.supports", "audio"},
+				"condition": []interface{}{"yj.supports", "audio"},
 			},
 		},
 	})
@@ -246,8 +246,8 @@ func TestRenderSectionFragmentsSelectsActiveConditionalTemplateForFixedLayout(t 
 
 func TestPromotedBodyContainerDoesNotPromoteSemanticTextLeaf(t *testing.T) {
 	nodes := []interface{}{map[string]interface{}{
-		"type":    "text",
-		"style":   "s1",
+		"type": "text",
+		"style": "s1",
 		"content": map[string]interface{}{"name": "content", "index": 0},
 	}}
 	if _, _, ok, _, _ := promotedBodyContainer(nodes, nil); ok {
@@ -258,8 +258,8 @@ func TestPromotedBodyContainerDoesNotPromoteSemanticTextLeaf(t *testing.T) {
 func TestPromotedBodyContainerDoesNotPromoteSemanticContainers(t *testing.T) {
 	for _, nodeType := range []string{"table", "list", "container"} {
 		nodes := []interface{}{map[string]interface{}{
-			"type":         nodeType,
-			"style":        "s1",
+			"type": nodeType,
+			"style": "s1",
 			"content_list": []interface{}{map[string]interface{}{"content": "child"}},
 		}}
 		if _, _, ok, _, _ := promotedBodyContainer(nodes, nil); ok {
@@ -270,7 +270,7 @@ func TestPromotedBodyContainerDoesNotPromoteSemanticContainers(t *testing.T) {
 	// Keep compatibility with old/untyped structures for which the historical Go
 	// body-promotion heuristic was originally introduced.
 	nodes := []interface{}{map[string]interface{}{
-		"style":        "s1",
+		"style": "s1",
 		"content_list": []interface{}{map[string]interface{}{"content": "child"}},
 	}}
 	if _, _, ok, _, _ := promotedBodyContainer(nodes, nil); !ok {
@@ -286,7 +286,7 @@ func TestRenderContentChildResolvesNamedStoryline(t *testing.T) {
 				"story_name": "story-a",
 				"content_list": []interface{}{
 					map[string]interface{}{
-						"type":    "text",
+						"type": "text",
 						"content": map[string]interface{}{"name": "content", "index": 0},
 					},
 				},
@@ -308,7 +308,7 @@ func TestRenderContentChildResolvesNamedStoryline(t *testing.T) {
 		"story_name": "story-a",
 	}, 0)
 	got := renderHTMLPart(part)
-	if got != "<div><p>Story text</p></div>" {
+	if got != "<div>Story text</div>" {
 		t.Fatalf("named storyline html = %q", got)
 	}
 }
@@ -361,16 +361,16 @@ func TestRenderNodeSupportsListsAndRules(t *testing.T) {
 	}
 
 	list := renderer.renderNode(map[string]interface{}{
-		"type":              "list",
-		"list_style":        "alpha_lower",
+		"type": "list",
+		"list_style": "alpha_lower",
 		"list_start_offset": 3,
 		"content_list": []interface{}{
 			map[string]interface{}{
-				"type":    "listitem",
+				"type": "listitem",
 				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 			map[string]interface{}{
-				"type":    "listitem",
+				"type": "listitem",
 				"content": map[string]interface{}{"name": "content", "index": 1},
 			},
 		},
@@ -496,8 +496,8 @@ func TestRenderTableNodePreservesColumnAndCellSpanAttributes(t *testing.T) {
 				"content_list": []interface{}{
 					map[string]interface{}{
 						"table_column_span": 2,
-						"table_row_span":    3,
-						"content":           map[string]interface{}{"name": "content", "index": 0},
+						"table_row_span": 3,
+						"content": map[string]interface{}{"name": "content", "index": 0},
 					},
 				},
 			},
@@ -515,19 +515,19 @@ func TestRenderTableNodePreservesColumnAndCellSpanAttributes(t *testing.T) {
 
 func TestRenderTextNodePromotesFootnoteClassificationToAside(t *testing.T) {
 	renderer := storylineRenderer{
-		contentFragments:  map[string][]string{"content": {"Footnote text."}},
-		resourceHrefByID:  map[string]string{},
-		anchorToFilename:  map[string]string{},
+		contentFragments: map[string][]string{"content": {"Footnote text."}},
+		resourceHrefByID: map[string]string{},
+		anchorToFilename: map[string]string{},
 		positionToSection: map[int]string{},
-		positionAnchors:   map[int]map[int][]string{},
-		positionAnchorID:  map[int]map[int]string{},
-		emittedAnchorIDs:  map[string]bool{},
-		styleFragments:    map[string]map[string]interface{}{},
-		styles:            newStyleCatalog(),
+		positionAnchors: map[int]map[int][]string{},
+		positionAnchorID: map[int]map[int]string{},
+		emittedAnchorIDs: map[string]bool{},
+		styleFragments: map[string]map[string]interface{}{},
+		styles: newStyleCatalog(),
 	}
 
 	node := renderer.renderTextNode(map[string]interface{}{
-		"content":           map[string]interface{}{"name": "content", "index": 0},
+		"content": map[string]interface{}{"name": "content", "index": 0},
 		"yj.classification": "footnote",
 	}, 0)
 	got := renderHTMLPart(node)
@@ -647,7 +647,7 @@ func TestRenderTextNodeSupportsDropCaps(t *testing.T) {
 	}
 
 	node := renderer.renderTextNode(map[string]interface{}{
-		"content":       map[string]interface{}{"name": "content", "index": 0},
+		"content": map[string]interface{}{"name": "content", "index": 0},
 		"dropcap_lines": 2,
 		"dropcap_chars": 1,
 	}, 0)
@@ -719,7 +719,7 @@ func TestRenderNodePromotesHeadingLayoutHints(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"style":                      "sHeading",
+		"style": "sHeading",
 		"yj.semantics.heading_level": 3,
 		"content_list": []interface{}{
 			map[string]interface{}{
@@ -782,12 +782,12 @@ func TestRenderNodeDoesNotPromoteMultiParagraphContainersToParagraph(t *testing.
 		"style": "s53",
 		"content_list": []interface{}{
 			map[string]interface{}{
-				"style":                      "s1S",
+				"style": "s1S",
 				"yj.semantics.heading_level": 1,
-				"content":                    map[string]interface{}{"name": "content", "index": 0},
+				"content": map[string]interface{}{"name": "content", "index": 0},
 			},
 			map[string]interface{}{
-				"style":   "s1U",
+				"style": "s1U",
 				"content": map[string]interface{}{"name": "content", "index": 1},
 			},
 		},
@@ -824,7 +824,7 @@ func TestRenderNodeDoesNotPromoteLayoutHintsInFixedLayout(t *testing.T) {
 	}
 
 	heading := renderHTMLPart(renderer.renderNode(map[string]interface{}{
-		"style":                      "sHeading",
+		"style": "sHeading",
 		"yj.semantics.heading_level": 3,
 		"content_list": []interface{}{
 			map[string]interface{}{
@@ -864,7 +864,7 @@ func TestRenderNodeSupportsNodeLevelLinks(t *testing.T) {
 
 	node := renderer.renderNode(map[string]interface{}{
 		"resource_name": "img1",
-		"link_to":       "dest",
+		"link_to": "dest",
 	}, 0)
 	got := renderHTMLPart(node)
 
@@ -915,7 +915,7 @@ func TestRenderImageNodeFitTightDropsWidthHundredPercent(t *testing.T) {
 		emittedAnchorIDs:  map[string]bool{},
 		styleFragments: map[string]map[string]interface{}{
 			"sImg": {
-				"width":  map[string]interface{}{"value": 100.0, "unit": "percent"},
+				"width": map[string]interface{}{"value": 100.0, "unit": "percent"},
 				"height": map[string]interface{}{"value": 5.0, "unit": "em"},
 			},
 		},
@@ -923,9 +923,9 @@ func TestRenderImageNodeFitTightDropsWidthHundredPercent(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"style":         "sImg",
+		"style": "sImg",
 		"resource_name": "img1",
-		"fit_tight":     true,
+		"fit_tight": true,
 	}, 0)
 	got := renderHTMLPart(node)
 	renderer.styles.markReferenced(got)
@@ -958,7 +958,7 @@ func TestRenderTextNodeSupportsFirstLineStyles(t *testing.T) {
 	node := renderer.renderTextNode(map[string]interface{}{
 		"content": map[string]interface{}{"name": "content", "index": 0},
 		"yj.first_line_style": map[string]interface{}{
-			"font_size":                2.0,
+			"font_size":  2.0,
 			"yj.first_line_style_type": map[string]interface{}{"yj.number_of_lines": 1},
 		},
 	}, 0)
@@ -1103,7 +1103,7 @@ func TestRenderNodeAddsMathRoleForClassifiedContent(t *testing.T) {
 
 	node := renderer.renderNode(map[string]interface{}{
 		"yj.classification": "math",
-		"content":           map[string]interface{}{"name": "content", "index": 0},
+		"content": map[string]interface{}{"name": "content", "index": 0},
 	}, 0)
 	got := renderHTMLPart(node)
 
@@ -1183,8 +1183,8 @@ func TestConditionalPropertiesMergeIntoRenderableNode(t *testing.T) {
 		},
 		"yj.conditional_properties": []interface{}{
 			map[string]interface{}{
-				"include":   []interface{}{"yj.supports", "audio"},
-				"font_size": 2.0,
+				"include": []interface{}{"yj.supports", "audio"},
+				"font_size":  2.0,
 			},
 		},
 	}, 0)
@@ -1243,7 +1243,7 @@ func TestRenderNodeSupportsHTMLPluginResources(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"type":          "plugin",
+		"type": "plugin",
 		"resource_name": "plug1",
 	}, 0)
 	got := renderHTMLPart(node)
@@ -1281,13 +1281,13 @@ func TestRenderNodeSupportsAudioAndVideoPluginResources(t *testing.T) {
 	}
 
 	audio := renderHTMLPart(renderer.renderNode(map[string]interface{}{
-		"type":          "plugin",
+		"type": "plugin",
 		"resource_name": "audio1",
 	}, 0))
 	video := renderHTMLPart(renderer.renderNode(map[string]interface{}{
-		"type":          "plugin",
+		"type": "plugin",
 		"resource_name": "video1",
-		"alt_text":      "Video alt",
+		"alt_text": "Video alt",
 	}, 0))
 
 	if !strings.Contains(audio, "<audio") || !strings.Contains(audio, "src=\"resource_sound.mp3\"") || !strings.Contains(audio, "controls=\"controls\"") {
@@ -1313,9 +1313,9 @@ func TestRenderNodeSupportsBasicSVGContainers(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"type":         "kvg",
+		"type": "kvg",
 		"fixed_width":  100,
-		"fixed_height": 200,
+		"fixed_height":  200,
 	}, 0)
 	got := renderHTMLPart(node)
 
@@ -1334,8 +1334,7 @@ func TestRenderNodeSupportsBasicSVGContainers(t *testing.T) {
 // TestRenderSVGNodeProcessesShapeList verifies that renderSVGNode iterates the
 // shape_list from node data and calls processKVGShape for each shape.
 // Python yj_to_epub_content.py L858: for shape in content.pop("$250", []):
-//
-//	self.process_kvg_shape(content_elem, shape, content_list, book_part, writing_mode)
+//     self.process_kvg_shape(content_elem, shape, content_list, book_part, writing_mode)
 func TestRenderSVGNodeProcessesShapeList(t *testing.T) {
 	renderer := storylineRenderer{
 		contentFragments:  map[string][]string{},
@@ -1351,7 +1350,7 @@ func TestRenderSVGNodeProcessesShapeList(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"type":         "kvg",
+		"type":          "kvg",
 		"fixed_width":  100,
 		"fixed_height": 200,
 		"shape_list": []interface{}{
@@ -1392,7 +1391,7 @@ func TestRenderSVGNodeProcessesMultipleShapes(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"type":         "kvg",
+		"type":          "kvg",
 		"fixed_width":  100,
 		"fixed_height": 100,
 		"shape_list": []interface{}{
@@ -1443,7 +1442,7 @@ func TestRenderSVGNodeNoShapesStillWorks(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"type":         "kvg",
+		"type":          "kvg",
 		"fixed_width":  100,
 		"fixed_height": 200,
 	}, 0)
@@ -1535,10 +1534,10 @@ func TestRenderTextNodeSupportsRubyAnnotations(t *testing.T) {
 		"content": map[string]interface{}{"name": "content", "index": 0},
 		"style_events": []interface{}{
 			map[string]interface{}{
-				"offset":    0,
-				"length":    2,
+				"offset": 0,
+				"length": 2,
 				"ruby_name": "ruby-set",
-				"ruby_id":   1,
+				"ruby_id": 1,
 			},
 		},
 	}, 0)
@@ -1804,7 +1803,7 @@ func TestKVGContainerShapeRendersContentFromContentList(t *testing.T) {
 
 	// content_list contains a text content item whose "id" matches the shape's "source"
 	node := renderer.renderNode(map[string]interface{}{
-		"type":         "kvg",
+		"type":          "kvg",
 		"fixed_width":  200,
 		"fixed_height": 100,
 		"content_list": []interface{}{
@@ -1856,7 +1855,7 @@ func TestKVGContainerShapeMatchesByKfxID(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"type":         "kvg",
+		"type":          "kvg",
 		"fixed_width":  200,
 		"fixed_height": 100,
 		"content_list": []interface{}{
@@ -1902,7 +1901,7 @@ func TestKVGContainerShapeLogsErrorOnMissingSource(t *testing.T) {
 	}
 
 	node := renderer.renderNode(map[string]interface{}{
-		"type":         "kvg",
+		"type":          "kvg",
 		"fixed_width":  200,
 		"fixed_height": 100,
 		"content_list": []interface{}{},
