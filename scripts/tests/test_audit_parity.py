@@ -220,35 +220,35 @@ class Thing:
 
     def test_valid_entry_passes(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems = ap.validate_exclusions([self.good_entry()], self.pyfuncs, go_index)
+        problems, valid_entries, _ = ap.validate_exclusions([self.good_entry()], self.pyfuncs, go_index)
         self.assertEqual(problems, [])
 
     def test_unknown_category_rejected(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems = ap.validate_exclusions(
+        problems, _, _ = ap.validate_exclusions(
             [self.good_entry(category="because-i-said-so")], self.pyfuncs, go_index)
         self.assertTrue(any("category" in p for p in problems))
 
     def test_short_reason_rejected(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems = ap.validate_exclusions(
+        problems, _, _ = ap.validate_exclusions(
             [self.good_entry(reason="skip")], self.pyfuncs, go_index)
         self.assertTrue(any("reason" in p for p in problems))
 
     def test_missing_evidence_rejected_for_architecture_categories(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems = ap.validate_exclusions(
+        problems, _, _ = ap.validate_exclusions(
             [self.good_entry(evidence=[])], self.pyfuncs, go_index)
         self.assertTrue(any("requires evidence" in p for p in problems))
 
     def test_trivial_evidence_rejected(self):
         go_index = index(mkgo("realImpl", file="real.go", const_only=True))
-        problems = ap.validate_exclusions([self.good_entry()], self.pyfuncs, go_index)
+        problems, valid_entries, _ = ap.validate_exclusions([self.good_entry()], self.pyfuncs, go_index)
         self.assertTrue(any("itself trivial" in p for p in problems))
 
     def test_nonexistent_evidence_rejected(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems = ap.validate_exclusions(
+        problems, _, _ = ap.validate_exclusions(
             [self.good_entry(evidence=[{"go_file": "real.go",
                                         "go_func": "nope"}])],
             self.pyfuncs, go_index)
@@ -256,7 +256,7 @@ class Thing:
 
     def test_stale_exclusion_rejected(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems = ap.validate_exclusions(
+        problems, _, _ = ap.validate_exclusions(
             [self.good_entry(py_name="does_not_exist")], self.pyfuncs, go_index)
         self.assertTrue(any("no audited Python function" in p for p in problems))
 
@@ -264,7 +264,7 @@ class Thing:
         e = self.good_entry(py_name="out_of_scope", category="output-mode-out-of-scope",
                             reason="Calibre output mode unused by KOReader",
                             evidence=[])
-        problems = ap.validate_exclusions([e], self.pyfuncs, index())
+        problems, _, _ = ap.validate_exclusions([e], self.pyfuncs, index())
         self.assertEqual(problems, [])
 
 

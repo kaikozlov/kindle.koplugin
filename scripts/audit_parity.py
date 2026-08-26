@@ -428,41 +428,62 @@ def load_exclusions(path: str) -> list[dict]:
 
 
 def validate_exclusions(entries: list[dict], pyfuncs_by_file: dict[str, list[PyFunc]],
-                         go_index: dict) -> list[str]:
-    """Return a list of validation problems (empty list = OK)."""
+                         go_index: dict) -> tuple[list[str], list[dict], set]:
+    """Validate exclusion entries.
+
+    Returns (problems, valid_entries, valid_keys). Only valid entries may be
+    applied — an invalid entry (unknown category, lazy reason, unresolvable
+    or trivial evidence, stale target) is IGNORED for classification and
+    reported as a problem, so a manifest of junk exclusions can never green
+    the metric.
+    """
     problems = []
+    valid = set()
+    valid_entries = []
     for i, e in enumerate(entries):
         where = f"exclusions[{i}]"
+        entry_problems = []
         if e.get("category") not in EXCLUSION_CATEGORIES:
-            problems.append(f"{where}: unknown category {e.get('category')!r}; "
-                            f"allowed: {sorted(EXCLUSION_CATEGORIES)}")
+            entry_problems.append(
+                f"{where}: unknown category {e.get('category')!r}; "
+                f"allowed: {sorted(EXCLUSION_CATEGORIES)}")
         reason = (e.get("reason") or "").strip()
         if len(reason) < 10:
-            problems.append(f"{where}: reason too short to be reviewable "
-                            f"({len(reason)} chars, need >= 10)")
+            entry_problems.append(f"{where}: reason too short to be reviewable "
+                                  f"({len(reason)} chars, need >= 10)")
         py_file = e.get("py_file")
         if py_file not in pyfuncs_by_file:
-            problems.append(f"{where}: py_file {py_file!r} is not an audited file")
+            entry_problems.append(f"{where}: py_file {py_file!r} is not an audited file")
+            problems.extend(entry_problems)
             continue
         matches = [pf for pf in pyfuncs_by_file[py_file]
                    if pf.name == e.get("py_name")
                    and (e.get("py_class") in (None, "", pf.class_name))]
         if not matches:
-            problems.append(f"{where}: no audited Python function matches "
-                            f"{py_file}:{e.get('py_class')}.{e.get('py_name')}")
+            entry_problems.append(f"{where}: no audited Python function matches "
+                                  f"{py_file}:{e.get('py_class')}.{e.get('py_name')}")
+            problems.extend(entry_problems)
+            continue
         if e.get("category") in EVIDENCE_REQUIRED:
             ev = e.get("evidence") or []
             if not ev:
-                problems.append(f"{where}: category {e['category']} requires evidence")
+                entry_problems.append(f"{where}: category {e['category']} requires evidence")
             for ev_i, target in enumerate(ev):
                 fn = find_go_evidence(go_index, target)
                 if fn is None:
-                    problems.append(f"{where}.evidence[{ev_i}]: no Go function "
-                                    f"{target.get('go_func')!r} in {target.get('go_file')!r}")
+                    entry_problems.append(f"{where}.evidence[{ev_i}]: no Go function "
+                                          f"{target.get('go_func')!r} in {target.get('go_file')!r}")
                 elif go_trivial(fn) or fn["nstmt"] < 3:
-                    problems.append(f"{where}.evidence[{ev_i}]: {target.get('go_func')!r} "
-                                    f"is itself trivial ({fn['file']}), not valid evidence")
-    return problems
+                    entry_problems.append(f"{where}.evidence[{ev_i}]: {target.get('go_func')!r} "
+                                          f"is itself trivial ({fn['file']}), not valid evidence")
+        problems.extend(entry_problems)
+        if not entry_problems:
+            valid_entries.append(e)
+            for pf in matches:
+                valid.add((py_file, pf.class_name, pf.name))
+                if not e.get("py_class"):
+                    valid.add((py_file, None, pf.name))
+    return problems, valid_entries, valid
 
 
 def find_go_evidence(go_index: dict, target: dict) -> Optional[dict]:
@@ -574,11 +595,12 @@ def audit_all(exclusions_path: str = None, gofuncinfo_path: str = None) -> list[
         if os.path.exists(py_path):
             pyfuncs_by_file[py_name] = extract_python_functions(py_path)
 
-    problems = validate_exclusions(exclusions, pyfuncs_by_file, go_index)
+    problems, valid_exclusions, _valid_keys = validate_exclusions(
+        exclusions, pyfuncs_by_file, go_index)
 
     results = []
     for py_name in FILES_TO_AUDIT:
-        result = audit_file(py_name, go_index=go_index, exclusions=exclusions)
+        result = audit_file(py_name, go_index=go_index, exclusions=valid_exclusions)
         if result:
             results.append(result)
     return results, exclusions, problems
