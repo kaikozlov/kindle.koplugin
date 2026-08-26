@@ -490,3 +490,87 @@ func TestProcessTransform_MatrixSwap(t *testing.T) {
 		t.Fatalf("swapped SVG rotation = %q", got)
 	}
 }
+
+func TestProcessKVGShapeSupportsAllPrimitiveShapes(t *testing.T) {
+	r := storylineRenderer{pathBundles: map[string]map[string]interface{}{}}
+	parent := &htmlElement{Tag: "svg", Attrs: map[string]string{}}
+	shapes := []map[string]interface{}{
+		{"type": "line", "path": []interface{}{0, 1, 2, 1, 3, 4}},
+		{"type": "rectangle", "shape_dimensions": map[string]interface{}{"x": 5, "y": 6, "width": 7, "height": 8}},
+		{"type": "ellipse", "shape_dimensions": map[string]interface{}{"cx": 9, "cy": 10, "radius_x": 11, "radius_y": 12}},
+		{"type": "polygon", "shape_dimensions": map[string]interface{}{"vertex_list": []interface{}{1, 2, 3, 4}}},
+		{"type": "polyline", "shape_dimensions": map[string]interface{}{"vertex_list": []interface{}{5, 6, 7, 8}}},
+	}
+	for _, shape := range shapes {
+		r.processKVGShape(parent, shape, nil, "")
+	}
+	got := renderHTMLPart(parent)
+	for _, want := range []string{
+		`<path d="M 1 2 L 3 4"/>`,
+		`<rect height="8" width="7" x="5" y="6"/>`,
+		`<ellipse cx="9" cy="10" rx="11" ry="12"/>`,
+		`<polygon points="1,2 3,4"/>`,
+		`<polyline points="5,6 7,8"/>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("KVG primitive output missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestProcessKVGShapeUsesPathBundles(t *testing.T) {
+	r := storylineRenderer{pathBundles: map[string]map[string]interface{}{
+		"bundle": {"path_list": []interface{}{[]interface{}{0, 10, 20, 4}}},
+	}}
+	parent := &htmlElement{Tag: "svg", Attrs: map[string]string{}}
+	shape := map[string]interface{}{
+		"type": "shape",
+		"path": map[string]interface{}{"name": "bundle", "index": 0},
+	}
+	r.processKVGShape(parent, shape, nil, "")
+	if got := renderHTMLPart(parent); !strings.Contains(got, `d="M 10 20 Z"`) {
+		t.Fatalf("KVG path bundle not resolved: %s", got)
+	}
+}
+
+func TestProcessKVGShapeMapsPropertiesAndSwapsTransformMatrix(t *testing.T) {
+	r := storylineRenderer{}
+	parent := &htmlElement{Tag: "svg", Attrs: map[string]string{}}
+	shape := map[string]interface{}{
+		"type":         "rectangle",
+		"stroke_color": 0xff112233,
+		"stroke_width": 2,
+		"transform":    []interface{}{0, 1, -1, 0, 0, 0},
+	}
+	r.processKVGShape(parent, shape, nil, "")
+	got := renderHTMLPart(parent)
+	if !strings.Contains(got, `stroke="#112233"`) || !strings.Contains(got, `fill="none"`) {
+		t.Fatalf("KVG stroke/fill properties wrong: %s", got)
+	}
+	if !strings.Contains(got, `transform="rotate(90)"`) {
+		t.Fatalf("KVG transform matrix was not swapped: %s", got)
+	}
+}
+
+func TestProcessKVGShapeResolvesSymbolContentFromStructureFragments(t *testing.T) {
+	r := storylineRenderer{
+		structureFragments: map[string]map[string]interface{}{
+			"s1": {"type": "container", "id": "source-1", "content_list": []interface{}{"Hello"}},
+		},
+		positionAnchors:  map[int]map[int][]string{},
+		positionAnchorID: map[int]map[int]string{},
+		styleFragments:   map[string]map[string]interface{}{},
+		styles:           newStyleCatalog(),
+	}
+	parent := &htmlElement{Tag: "svg", Attrs: map[string]string{}}
+	contentList := []interface{}{"s1"}
+	shape := map[string]interface{}{"type": "container", "source": "source-1"}
+	r.processKVGShape(parent, shape, &contentList, "")
+	got := renderHTMLPart(parent)
+	if len(contentList) != 0 {
+		t.Fatalf("matched symbol content was not consumed: %#v", contentList)
+	}
+	if !strings.Contains(got, `<text>`) || !strings.Contains(got, `Hello`) {
+		t.Fatalf("symbol-backed KVG text was not rendered: %s", got)
+	}
+}
