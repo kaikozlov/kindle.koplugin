@@ -177,7 +177,9 @@ func TestStrokeColors(t *testing.T) {
 		2:  {"red", 0xff0000},
 		3:  {"orange", 0xff8800},
 		4:  {"yellow", 0xffff00},
-		5:  {"green", 0x00ff00},
+		// kfxlib 20260822: green is 0x00ff88 (was 0x00ff00 in the 20250519
+		// snapshot the test originally encoded).
+		5:  {"green", 0x00ff88},
 		7:  {"aqua", 0x00ffff},
 		8:  {"purple", 0x8800ff},
 		9:  {"pink", 0xff00ff},

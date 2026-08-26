@@ -336,20 +336,120 @@ func TestScribeNotebookPipelineMissingTemplateFragment(t *testing.T) {
 }
 
 // TestScribeResourceFilenameSanitization covers the resource_location_filename
-// port (yj_to_epub_resources.py:244-285): sanitization, double-slash collapse,
-// leading-slash prefixing, and case-insensitive uniquification.
+// port (yj_to_epub_resources.py:249-285, kfxlib 20260822): sanitization,
+// single-pass double-slash collapse, leading-slash prefixing, suffix-before-
+// extension uniquification, and the (location, suffix) cache.
 func TestScribeResourceFilenameSanitization(t *testing.T) {
 	used := map[string]struct{}{}
-	if got := scribeResourceFilename("page-1.svg", used); got != "page-1.svg" {
+	cache := map[string]string{}
+	if got := scribeResourceFilename("page-1.svg", used, cache); got != "page-1.svg" {
 		t.Errorf("plain name: got %q, want page-1.svg", got)
 	}
-	if got := scribeResourceFilename("/res/page 2+.svg", used); got != "_res/page_2_.svg" {
+	// scribeResourceFilename only READS oebps names; registration happens in
+	// manifest_resource → add_oebps_file. Simulate that here.
+	used["page-1.svg"] = struct{}{}
+	if got := scribeResourceFilename("/res/page 2+.svg", used, cache); got != "_res/page_2_.svg" {
 		t.Errorf("sanitized name: got %q", got)
 	}
-	// Duplicate (case-insensitive) gets a numeric suffix like Python; the
-	// candidate keeps its original casing (only the check is case-insensitive).
-	if got := scribeResourceFilename("PAGE-1.SVG", used); got != "PAGE-1.SVG-0.SVG" {
-		t.Errorf("duplicate name: got %q", got)
+	// Python L281: the -N uniquification suffix goes between root and
+	// extension (foo.svg → foo-0.svg, NOT foo.svg-0.svg); the candidate keeps
+	// its original casing (only the collision check is case-insensitive).
+	if got := scribeResourceFilename("PAGE-1.SVG", used, cache); got != "PAGE-1-0.SVG" {
+		t.Errorf("duplicate name: got %q, want PAGE-1-0.SVG", got)
+	}
+	// A repeat of the original spelling hits the cache and returns the SAME
+	// filename (Python caches (location, suffix) on first use), even though the
+	// case-variant collision above took the -0 name.
+	if got := scribeResourceFilename("page-1.svg", used, cache); got != "page-1.svg" {
+		t.Errorf("cached repeat: got %q, want page-1.svg", got)
+	}
+}
+
+// TestScribeResourceFilenameCacheRepeats verifies the location_filenames
+// cache with EXACT upstream semantics: lookup uses the ORIGINAL location
+// (yj_to_epub_resources.py:251-252) while the store uses the location AFTER
+// leading-slash normalization (L254-255 rebind, L284 store). For a leading-
+// "/" input a repeat therefore MISSES the cache and re-uniquifies — a real
+// upstream asymmetry that is unreachable for notebook SVGs (names are
+// "%s.svg" % section_name and never start with "/"). This test pins the
+// source behavior rather than "fixing" it.
+func TestScribeResourceFilenameCacheRepeats(t *testing.T) {
+	used := map[string]struct{}{}
+	cache := map[string]string{}
+
+	// Plain (non-slash) locations: repeated requests hit the cache and return
+	// the same name — even after the name has been registered in oebps
+	// (Python consults the cache before the uniquify loop).
+	first := scribeResourceFilename("note.svg", used, cache)
+	if first != "note.svg" {
+		t.Fatalf("first call: got %q, want note.svg", first)
+	}
+	used[strings.ToLower("note.svg")] = struct{}{} // add_oebps_file
+	if second := scribeResourceFilename("note.svg", used, cache); second != "note.svg" {
+		t.Errorf("cached repeat re-uniquified: got %q, want note.svg", second)
+	}
+
+	// Leading-slash locations: the store key is the NORMALIZED location, so
+	// repeating the original spelling misses the cache. With the first result
+	// registered in oebps, the repeat re-uniquifies to ...-0.svg — exactly what
+	// Python produces (see test header for the line-level walkthrough).
+	slashFirst := scribeResourceFilename("/tpl/lined.svg", used, cache)
+	if slashFirst != "_tpl/lined.svg" {
+		t.Fatalf("leading-slash first call: got %q, want _tpl/lined.svg", slashFirst)
+	}
+	used[strings.ToLower("_tpl/lined.svg")] = struct{}{}
+	slashSecond := scribeResourceFilename("/tpl/lined.svg", used, cache)
+	if slashSecond != "_tpl/lined-0.svg" {
+		t.Errorf("leading-slash repeat: got %q, want _tpl/lined-0.svg (upstream asymmetry)", slashSecond)
+	}
+}
+
+// TestScribeResourceFilenameTripleSlash pins Python's SINGLE-PASS
+// ".replace('//', '/x/')" semantics: for 'a///b.svg' the residual '//' after
+// the first replacement intentionally survives one pass, so the path becomes
+// a/x// and the filename a/x//b.svg (verified against Python 3:
+// 'a///b.svg'.replace('//', '/x/') == 'a/x//b.svg').
+func TestScribeResourceFilenameTripleSlash(t *testing.T) {
+	used := map[string]struct{}{}
+	cache := map[string]string{}
+	if got := scribeResourceFilename("a///b.svg", used, cache); got != "a/x//b.svg" {
+		t.Errorf("triple slash: got %q, want a/x//b.svg", got)
+	}
+	if got := scribeResourceFilename("a//b//c.svg", used, cache); got != "a/x/b/x/c.svg" {
+		t.Errorf("multiple double slashes: got %q, want a/x/b/x/c.svg", got)
+	}
+}
+
+// TestSerializeSVGDocumentEscaping verifies XML escaping in
+// serializeSVGDocument: lxml escapes &, <, > and " in attribute values and
+// & < > in text nodes (quotes preserved). Raw output would be invalid XML for
+// HWR text such as `A&B <x>`.
+func TestSerializeSVGDocumentEscaping(t *testing.T) {
+	root := &svgElement{
+		Tag: "svg",
+		Attrib: map[string]string{
+			"xmlns":   "http://www.w3.org/2000/svg",
+			"viewBox": "0 0 100 100",
+		},
+	}
+	group := newSVGElement(root, "g", map[string]string{"id": `A&B <x> "q"`})
+	desc := newSVGElement(group, "desc", nil)
+	desc.Text = `A&B <x> "q"`
+
+	got := string(serializeSVGDocument(root))
+	for _, want := range []string{
+		`id="A&amp;B &lt;x&gt; &quot;q&quot;"`,
+		`A&amp;B &lt;x&gt; "q"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("serialized SVG missing %q:\n%s", want, got)
+		}
+	}
+	// No raw specials may leak through unescaped.
+	for _, bad := range []string{`id="A&B`, `>A&B`, `<x> "q"</desc>`} {
+		if strings.Contains(got, bad) {
+			t.Errorf("serialized SVG contains unescaped %q:\n%s", bad, got)
+		}
 	}
 }
 

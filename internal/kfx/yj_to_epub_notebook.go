@@ -127,7 +127,7 @@ var STROKE_COLORS = map[int]StrokeColorEntry{
 	2:  {"red", 0xff0000},
 	3:  {"orange", 0xff8800},
 	4:  {"yellow", 0xffff00},
-	5:  {"green", 0x00ff00},
+	5:  {"green", 0x00ff88},
 	7:  {"aqua", 0x00ffff},
 	8:  {"purple", 0x8800ff},
 	9:  {"pink", 0xff00ff},
@@ -341,11 +341,11 @@ func decodeStrokeValues(data []byte, numPoints int, name string) ([]int, error) 
 
 // svgElement represents an SVG element with tag, attributes, children, and text.
 type svgElement struct {
-	Tag        string
-	Attrib     map[string]string
-	Children   []*svgElement
-	Text       string
-	Parent     *svgElement
+	Tag      string
+	Attrib   map[string]string
+	Children []*svgElement
+	Text     string
+	Parent   *svgElement
 }
 
 // newSVGElement creates a new SVG element as a child of parent.
@@ -415,8 +415,8 @@ func (nc *notebookContext) popContext() {
 
 // contextStack manages a stack of context strings for push/pop operations.
 type contextStack struct {
-	base   string
-	stack  []string
+	base  string
+	stack []string
 }
 
 func (cs *contextStack) current() string {
@@ -806,7 +806,7 @@ func scribeNotebookStrokeGroup(nc *notebookContext, content map[string]interface
 type strokePoint struct {
 	X int
 	Y int
-	T int // thickness at this point (quantized)
+	T int     // thickness at this point (quantized)
 	D float64 // density adjust factor (0-1)
 }
 
@@ -1335,11 +1335,11 @@ func writePNGImage(groupElem *svgElement, img image.Image, bounds [4]int, boundW
 	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
 
 	newSVGElement(groupElem, "image", map[string]string{
-		"x":                   fmt.Sprintf("%d", bounds[0]),
-		"y":                   fmt.Sprintf("%d", bounds[1]),
-		"width":               fmt.Sprintf("%d", boundWidth),
-		"height":              fmt.Sprintf("%d", boundHeight),
-		"xlink:href":          fmt.Sprintf("data:image/png;base64,%s", encoded),
+		"x":          fmt.Sprintf("%d", bounds[0]),
+		"y":          fmt.Sprintf("%d", bounds[1]),
+		"width":      fmt.Sprintf("%d", boundWidth),
+		"height":     fmt.Sprintf("%d", boundHeight),
+		"xlink:href": fmt.Sprintf("data:image/png;base64,%s", encoded),
 	})
 }
 
@@ -1461,11 +1461,11 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 
 		// Add text element
 		textElem := newSVGElement(elem, "text", map[string]string{
-			"x":        fmt.Sprintf("%d", int(left)),
-			"y":        fmt.Sprintf("%d", int(top)),
-			"stroke":   "none",
-			"fill":     "red",
-			"opacity":  fmt.Sprintf("%0.2f", ANNOTATION_TEXT_OPACITY),
+			"x":       fmt.Sprintf("%d", int(left)),
+			"y":       fmt.Sprintf("%d", int(top)),
+			"stroke":  "none",
+			"fill":    "red",
+			"opacity": fmt.Sprintf("%0.2f", ANNOTATION_TEXT_OPACITY),
 		})
 
 		// Process style events ($142)
@@ -1524,10 +1524,10 @@ func scribeAnnotationContent(nc *notebookContext, content interface{}, elem *svg
 
 					if word != "" {
 						tspanElem := newSVGElement(textElem, "tspan", map[string]string{
-							"x":               fmt.Sprintf("%d", int(wordLeft)),
-							"y":               fmt.Sprintf("%d", int(wordTop+(wordHeight/2))),
-							"textLength":      fmt.Sprintf("%d", int(wordWidth)),
-							"font-size":       fmt.Sprintf("%d", int((wordWidth*2)/float64(len(word)))),
+							"x":                 fmt.Sprintf("%d", int(wordLeft)),
+							"y":                 fmt.Sprintf("%d", int(wordTop+(wordHeight/2))),
+							"textLength":        fmt.Sprintf("%d", int(wordWidth)),
+							"font-size":         fmt.Sprintf("%d", int((wordWidth*2)/float64(len(word)))),
 							"dominant-baseline": "middle",
 						})
 						tspanElem.Text = word
@@ -1729,13 +1729,15 @@ func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[st
 		canvasHeight = toInt(v)
 	}
 
-	// Python L82-91: Validate canvas dimensions
+	// Python L82-91: Validate canvas dimensions. Upstream changed the
+	// unexpected-dimension report from log.warning to log.info
+	// (yj_to_epub_notebook.py:91, kfxlib 20260520→060822).
 	if !((canvasWidth == 15624 && canvasHeight == 20832) ||
 		(canvasWidth == 13726 && canvasHeight == 7350) ||
 		canvasWidth == 3906 || canvasWidth == 13734 ||
 		canvasWidth == 3066 || canvasWidth == 6132 || canvasWidth == 12264 ||
 		canvasHeight > 15000) {
-		log.Printf("kfx: warning: Unexpected nmdl.canvas width=%d height=%d", canvasWidth, canvasHeight)
+		log.Printf("kfx: info: nmdl.canvas width=%d height=%d", canvasWidth, canvasHeight)
 	}
 
 	// Python L93-95: nmdl_normalized_ppi validation
@@ -1812,7 +1814,7 @@ func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[st
 			"id": "desaturate", "color-interpolation-filters": "sRGB",
 		})
 		newSVGElement(desaturateFilter, "feColorMatrix", map[string]string{
-			"type": "matrix",
+			"type":   "matrix",
 			"values": "0.5 0.25 0.25 0 0 0.25 0.5 0.25 0 0 0.25 0.25 0.5 0 0 0 0 0 1 0",
 		})
 		notebookContentParent = newSVGElement(pageSvgElem, "g", map[string]string{
@@ -2045,11 +2047,11 @@ func processScribeNotebookTemplateSection(ctx *ScribeNotebookContext, section ma
 						templateImage := &svgElement{
 							Tag: "image",
 							Attrib: map[string]string{
-								"x":           "0",
-								"y":           "0",
-								"width":       "100%",
-								"height":      "100%",
-								"xlink:href":  urlRelPath(templateSvgFilename, bookPart.Filename),
+								"x":          "0",
+								"y":          "0",
+								"width":      "100%",
+								"height":     "100%",
+								"xlink:href": urlRelPath(templateSvgFilename, bookPart.Filename),
 							},
 						}
 
@@ -2144,8 +2146,11 @@ func serializeSVGElement(buf *bytes.Buffer, elem *svgElement, indent int) {
 	for _, k := range keys {
 		buf.WriteByte(' ')
 		buf.WriteString(k)
-		buf.WriteString("=\"")
-		buf.WriteString(elem.Attrib[k])
+		buf.WriteString(`="`)
+		// lxml (etree.tostring) escapes &, <, > and " in double-quoted attribute
+		// values. Raw output would produce invalid XML for HWR text such as
+		// `A&B <x>` or quoted values flowing into attributes.
+		buf.WriteString(escapeHTML(elem.Attrib[k]))
 		buf.WriteByte('"')
 	}
 
@@ -2157,7 +2162,8 @@ func serializeSVGElement(buf *bytes.Buffer, elem *svgElement, indent int) {
 	buf.WriteByte('>')
 
 	if elem.Text != "" {
-		buf.WriteString(elem.Text)
+		// lxml escapes & and < in text nodes but preserves double quotes.
+		buf.WriteString(escapeSVGText(elem.Text))
 	}
 
 	if len(elem.Children) > 0 {
@@ -2179,4 +2185,10 @@ func checkEmptyNotebookSafe(content map[string]interface{}, context string) {
 		return
 	}
 	checkEmptyNotebook(content, context)
+}
+
+// escapeSVGText escapes SVG text content the way lxml serializes text nodes:
+// & and < are escaped (plus > defensively) but double quotes are preserved.
+func escapeSVGText(text string) string {
+	return strings.ReplaceAll(escapeHTML(text), "&quot;", `"`)
 }

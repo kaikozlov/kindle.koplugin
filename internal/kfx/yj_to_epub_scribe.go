@@ -33,42 +33,58 @@ import (
 //     template parts excluded per yj_to_epub_notebook.py:179)
 
 // scribeResourceFilename sanitizes a notebook SVG resource location and
-// uniquifies it against the names already in use.
-// Port of KFX_EPUB.resource_location_filename (yj_to_epub_resources.py:244-285)
-// restricted to the notebook call shape:
-// resource_location_filename("%s.svg" % name, "", self.IMAGE_FILEPATH, is_symbol=False).
+// uniquifies it against the names already registered as OEBPS output files.
+// Port of KFX_EPUB.resource_location_filename (yj_to_epub_resources.py:249-285,
+// kfxlib 20260822) restricted to the notebook call shape:
+// resource_location_filename("%s.svg" % name, "", self.IMAGE_FILEPATH, is_symbol=False)
 // with IMAGE_FILEPATH = "/%s" and PLACE_FILES_IN_SUBDIRS = False (epub_output.py:249,238).
+// Like Python, this only READS oebps names (oebpsSeen is grown by manifest_resource
+// → add_oebps_file); locationCache mirrors self.location_filenames
+// ((location, suffix) → filename; suffix is always "" for notebook SVGs).
 // Deviation: Go EPUB filenames omit the leading "/" (resources are written as
 // OEBPS/<filename>), so "/page-1.svg" becomes "page-1.svg".
-func scribeResourceFilename(location string, used map[string]struct{}) string {
+func scribeResourceFilename(location string, oebpsSeen map[string]struct{}, locationCache map[string]string) string {
 	if location == "" {
 		return ""
 	}
+	// Exact port of the upstream cache: LOOKUP happens with the ORIGINAL
+	// location (yj_to_epub_resources.py:251-252) but the STORE happens with the
+	// location AFTER leading-slash normalization (L254-255 rebinds `location`,
+	// L284 stores the rebound key). For a leading-"/" input this means a repeat
+	// misses the cache and re-uniquifies — a genuine upstream asymmetry that is
+	// unreachable for notebook SVGs (names are "%s.svg" % section_name and
+	// never start with "/"). We mirror the source exactly rather than "fixing"
+	// it; TestScribeResourceFilenameCacheRepeats pins this behavior.
+	if cached, ok := locationCache[location]; ok {
+		return cached
+	}
 
-	// Python L249-250: if location.startswith("/"): location = "_" + location[1:]
+	// Python L254-255: if location.startswith("/"): location = "_" + location[1:]
 	if strings.HasPrefix(location, "/") {
 		location = "_" + location[1:]
 	}
 
-	// Python L252-253: sanitize and collapse double slashes.
+	// Python L257-258: sanitize and collapse double slashes. sanitizeLocation
+	// already performs the single-pass ".replace('//', '/x/')", which is
+	// Python's complete behavior here (one non-overlapping left-to-right pass;
+	// a residual '//' from 'a///b' intentionally survives). No second pass.
 	safeLocation := sanitizeLocation(location)
-	safeLocation = strings.ReplaceAll(safeLocation, "//", "/x/")
 
-	// Python L255-256: path, sep, name = safe_location.rpartition("/")
+	// Python L260-261: path, sep, name = safe_location.rpartition("/")
 	path, name := "", safeLocation
 	if idx := strings.LastIndex(safeLocation, "/"); idx >= 0 {
 		path = safeLocation[:idx+1]
 		name = safeLocation[idx+1:]
 	}
 
-	// Python L258-260: root, sep, ext = name.rpartition(".")
+	// Python L263-264: root, sep, ext = name.rpartition(".")
 	root, ext := name, ""
 	if idx := strings.LastIndex(name, "."); idx >= 0 {
 		root = name[:idx]
 		ext = name[idx:]
 	}
 
-	// Python L262-269: is_symbol is False for notebook SVGs, so no unique-part
+	// Python L267-269: is_symbol is False for notebook SVGs, so no unique-part
 	// prefixing is applied.
 
 	// Python L271-273: strip "resource/" and IMAGE_FILEPATH directory prefixes.
@@ -81,16 +97,20 @@ func scribeResourceFilename(location string, used map[string]struct{}) string {
 	// (suffix is always "" for notebook SVGs).
 	safeFilename := path + root + ext
 
-	// Python L277-283: uniquify against existing oebps files (case-insensitive);
-	// unique_count starts at 0 on the first retry.
+	// Python L277-282: uniquify against existing oebps files (case-insensitive).
+	// The "-N" suffix goes between root and extension, and unique_count starts
+	// at 0 on the first retry: foo.svg → foo-0.svg.
 	for n := 0; ; n++ {
 		candidate := safeFilename
 		if n > 0 {
-			candidate = fmt.Sprintf("%s-%d%s", safeFilename, n-1, ext)
+			candidate = fmt.Sprintf("%s%s-%d%s", path, root, n-1, ext)
 		}
 		key := strings.ToLower(candidate)
-		if _, dup := used[key]; !dup {
-			used[key] = struct{}{}
+		if _, dup := oebpsSeen[key]; !dup {
+			// Python L284: self.location_filenames[(location, suffix)] = safe_filename
+			// — stored under the MUTATED (post-normalization) location, exactly
+			// as upstream does. See the cache note above.
+			locationCache[location] = candidate
 			return candidate
 		}
 	}
@@ -160,26 +180,29 @@ func buildScribeNotebookContext(
 		}
 	}
 
-	// Manifest resources: Python self.manifest_resource (epub_output.py:353-376)
-	// deduplicates against manifest_files, while resource_location_filename
-	// uniquifies against oebps_files — two distinct registries in Python, kept
-	// distinct here as well.
+	// Manifest resources: Python self.manifest_resource (epub_output.py:353-374,
+	// kfxlib 20260822) deduplicates against manifest_files with a CASE-SENSITIVE
+	// comparison (L356) and registers data via add_oebps_file, while
+	// resource_location_filename uniquifies against oebps_files
+	// case-insensitively — distinct registries kept distinct here.
+	// self.location_filenames (yj_to_epub_resources.py:251-252,284) caches
+	// (location, suffix) → filename so repeated requests reuse the same name.
 	oebpsSeen := map[string]struct{}{}
 	for _, res := range book.Resources {
 		oebpsSeen[strings.ToLower(res.Filename)] = struct{}{}
 	}
 	manifestSeen := map[string]struct{}{}
+	locationCache := map[string]string{}
 	manifestResource := func(filename string, data []byte) {
 		filename = strings.TrimPrefix(filename, "/")
-		key := strings.ToLower(filename)
-		if _, dup := manifestSeen[key]; dup {
-			// Python manifest_resource L359-362: report and skip duplicates.
+		if _, dup := manifestSeen[filename]; dup {
+			// Python manifest_resource L356-360: report and skip duplicates.
 			log.Printf("kfx: error: Duplicate file name in manifest: %s", filename)
 			return
 		}
-		manifestSeen[key] = struct{}{}
+		manifestSeen[filename] = struct{}{}
 		// Python manifest_resource → add_oebps_file(filename, data, mimetype).
-		oebpsSeen[key] = struct{}{}
+		oebpsSeen[strings.ToLower(filename)] = struct{}{}
 		book.Resources = append(book.Resources, epub.Resource{
 			Filename:  filename,
 			MediaType: scribeResourceMediaType(filename),
@@ -191,7 +214,24 @@ func buildScribeNotebookContext(
 		_ = subdir
 		_ = filepathTemplate
 		_ = isSymbol
-		return scribeResourceFilename(name, oebpsSeen)
+		return scribeResourceFilename(name, oebpsSeen, locationCache)
+	}
+
+	// Book part filenames: Python new_book_part uniquifies collisions
+	// (epub_output.py:508-510): while the filename already exists among book
+	// parts, log an error and replace every "." with "_." until unique.
+	bookPartFilenames := map[string]struct{}{}
+	newBookPart := func(filename string) *ScribeBookPart {
+		filename = strings.TrimPrefix(filename, "/")
+		for {
+			if _, dup := bookPartFilenames[filename]; !dup {
+				break
+			}
+			log.Printf("kfx: error: BookPart filename %s is not unique", filename)
+			filename = strings.ReplaceAll(filename, ".", "_.")
+		}
+		bookPartFilenames[filename] = struct{}{}
+		return NewScribeBookPart(filename)
 	}
 
 	var resolveResource ResourceResolver
@@ -202,7 +242,7 @@ func buildScribeNotebookContext(
 	ctx := &ScribeNotebookContext{
 		NmdlTemplateID:           asStringDefault(frags.DocumentData["nmdl.template_id"]),
 		WritingMode:              book.WritingMode,
-		NewBookPart:              func(filename string) *ScribeBookPart { return NewScribeBookPart(filename) },
+		NewBookPart:              newBookPart,
 		ManifestResource:         manifestResource,
 		ResourceLocationFilename: resourceLocationFilename,
 		ProcessContentProperties: func(section map[string]interface{}) map[string]string {
