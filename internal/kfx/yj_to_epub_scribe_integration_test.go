@@ -141,6 +141,15 @@ func newScribeNotebookState(t *testing.T) *bookState {
 	// before renderBookState in the production pipeline.
 	applyKFXEPUBInitMetadataAfterOrganize(book, &fragments)
 
+	// Upstream sets is_scribe_notebook ONLY from the KPF/KDF SQLite schema
+	// (kpf_container.py:148-163). nmdl.template_id alone must NOT flip it
+	// (TestNmdlTemplateIDDoesNotMakeNotebook pins that), so the synthetic
+	// fixture sets the flag explicitly like a KDF-detected notebook would.
+	book.IsScribeNotebook = true
+	// finalizeScribeNotebookMetadata runs at the END of process_metadata after
+	// all title sources; mirror that ordering for the fallback title test.
+	finalizeScribeNotebookMetadata(book)
+
 	return &bookState{
 		Path:             "scribe-test",
 		Book:             book,
@@ -311,9 +320,9 @@ func TestScribeNotebookPipelineMultiplePages(t *testing.T) {
 
 // TestScribeNotebookPipelineMissingTemplateFragment verifies the explicit
 // behavior when a template section references a nonexistent $608 fragment:
-// the template part produces no SVG resource and pages keep only the white
-// rect + page image (Python: get_fragment error + "Failed to locate the SVG
-// image within Scribe notebook template", yj_to_epub_notebook.py:201).
+// get_fragment logs and returns an empty struct, so no template SVG is
+// produced. Python only sets book_part.omit=True after finding that SVG, so
+// the otherwise-empty template book part remains in the spine.
 func TestScribeNotebookPipelineMissingTemplateFragment(t *testing.T) {
 	state := newScribeNotebookState(t)
 	delete(state.Fragments.RubyContents, "pt-tpl")
@@ -323,8 +332,8 @@ func TestScribeNotebookPipelineMissingTemplateFragment(t *testing.T) {
 		t.Fatalf("renderBookState failed: %v", err)
 	}
 
-	if len(book.Sections) != 1 {
-		t.Fatalf("expected 1 spine section, got %d", len(book.Sections))
+	if len(book.Sections) != 2 {
+		t.Fatalf("expected page + non-omitted empty template sections, got %d", len(book.Sections))
 	}
 	body := book.Sections[0].BodyHTML
 	if strings.Contains(body, "lined.svg") {
@@ -662,4 +671,130 @@ func extractOPFAttribute(opfData, _, _ string) string {
 		return rest[:quote]
 	}
 	return ""
+}
+
+// TestScribeNotebookPipelineMalformedPageSection proves the MANDATORY-pop
+// failure semantics through the full renderBookState path: Python's
+// section.pop("nmdl.canvas_height") / pop("nmdl.normalized_ppi") raise
+// KeyError and abort the conversion (yj_to_epub_notebook.py:80-81, 93). Go
+// records the error on the Scribe context and renderBookState returns it —
+// no fabricated 0-height / 0-PPI output.
+func TestScribeNotebookPipelineMalformedPageSection(t *testing.T) {
+	cases := []struct {
+		name      string
+		removeKey string
+		wantMsg   string
+	}{
+		{"missing canvas height", "nmdl.canvas_height", "nmdl.canvas_height"},
+		{"missing normalized ppi", "nmdl.normalized_ppi", "nmdl.normalized_ppi"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			state := newScribeNotebookState(t)
+			raw := cloneMap(state.Fragments.SectionFragments["page-1"].RawValue)
+			delete(raw, tc.removeKey)
+			state.Fragments.SectionFragments["page-1"] = parseSectionFragment("page-1", raw)
+
+			_, err := renderBookState(state, nil)
+			if err == nil {
+				t.Fatalf("renderBookState must fail when the page section is %s", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Errorf("error %q does not mention %q", err.Error(), tc.wantMsg)
+			}
+		})
+	}
+}
+
+// TestScribeNotebookPipelineMissingTemplateTypeNotDispatched pins the exact
+// Python dispatch semantics: process_section guards the template handler with
+// `elif "nmdl.template_type" in section:` (yj_to_epub_content.py:148-149), so
+// a section WITHOUT the key never reaches the handler's mandatory
+// pop("nmdl.template_type") (yj_to_epub_notebook.py:167). It falls through to
+// the reflowable branch — where a symbol-only $141 template yields no
+// storyline and the section is silently skipped — and the conversion does NOT
+// abort. (The unguarded mandatory pops are canvas_height/PPI, covered above:
+// dispatch checks only nmdl.canvas_width.)
+func TestScribeNotebookPipelineMissingTemplateTypeNotDispatched(t *testing.T) {
+	state := newScribeNotebookState(t)
+	raw := cloneMap(state.Fragments.SectionFragments["tpl-lined"].RawValue)
+	delete(raw, "nmdl.template_type")
+	state.Fragments.SectionFragments["tpl-lined"] = parseSectionFragment("tpl-lined", raw)
+
+	book, err := renderBookState(state, nil)
+	if err != nil {
+		t.Fatalf("missing nmdl.template_type must not abort (Python dispatches reflowable): %v", err)
+	}
+	if len(book.Sections) != 1 {
+		t.Fatalf("expected only the page section to materialize, got %d", len(book.Sections))
+	}
+	if book.Sections[0].Filename != "page-1.xhtml" {
+		t.Errorf("unexpected section %q", book.Sections[0].Filename)
+	}
+}
+
+// TestProcessScribeNotebookTemplateSectionMissingType exercises the handler's
+// mandatory pop directly (unreachable via dispatch, where the key's presence
+// is the dispatch predicate): a missing nmdl.template_type is an error, not a
+// fabricated empty template type.
+func TestProcessScribeNotebookTemplateSectionMissingType(t *testing.T) {
+	ctx := &ScribeNotebookContext{}
+	err := processScribeNotebookTemplateSection(ctx, map[string]interface{}{}, map[string]interface{}{}, "tpl-x")
+	if err == nil {
+		t.Fatal("handler must fail on missing nmdl.template_type (mandatory pop)")
+	}
+	if !strings.Contains(err.Error(), "nmdl.template_type") {
+		t.Errorf("error %q does not mention nmdl.template_type", err.Error())
+	}
+}
+
+// TestScribeNotebookPipelineMissingPageTemplates proves a scribe-dispatched
+// section with no $141 page_templates list at all is fatal: Python fails
+// indexing page_templates[0] (yj_to_epub_content.py:137,145).
+func TestScribeNotebookPipelineMissingPageTemplates(t *testing.T) {
+	state := newScribeNotebookState(t)
+	raw := cloneMap(state.Fragments.SectionFragments["page-1"].RawValue)
+	delete(raw, "page_templates")
+	state.Fragments.SectionFragments["page-1"] = parseSectionFragment("page-1", raw)
+
+	_, err := renderBookState(state, nil)
+	if err == nil {
+		t.Fatal("renderBookState must fail when a scribe page section has no page_templates")
+	}
+	if !strings.Contains(err.Error(), "page template") {
+		t.Errorf("error %q does not mention the page template", err.Error())
+	}
+}
+
+// TestProcessContentPropertiesConsuming pins the exact Python semantics of
+// process_content_properties (yj_to_epub_properties.py:1082-1088): every
+// YJ_PROPERTY_NAMES key is POPPED from the live dict. The Scribe page handler
+// relies on that mutation for its final check_empty(section) bookkeeping
+// (yj_to_epub_notebook.py:150-165), so leftover style/position keys would be
+// reported as unconsumed upstream.
+func TestProcessContentPropertiesConsuming(t *testing.T) {
+	section := map[string]interface{}{
+		"position": "fixed",
+		"top":      float64(100),
+		"left":     float64(200),
+		// Non-property keys must survive untouched.
+		"nmdl.template_id": "tpl",
+		"section_name":     "page-1",
+	}
+
+	css := processContentPropertiesConsuming(section, nil)
+
+	for _, consumed := range []string{"position", "top", "left"} {
+		if _, ok := section[consumed]; ok {
+			t.Errorf("YJ property %q was not popped from the section", consumed)
+		}
+	}
+	for _, kept := range []string{"nmdl.template_id", "section_name"} {
+		if _, ok := section[kept]; !ok {
+			t.Errorf("non-property key %q must not be consumed", kept)
+		}
+	}
+	if css["position"] == "" || css["top"] == "" || css["left"] == "" {
+		t.Errorf("converted properties incomplete: %#v", css)
+	}
 }

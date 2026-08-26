@@ -168,7 +168,11 @@ func buildScribeNotebookContext(
 	if book == nil {
 		return nil
 	}
-	if !book.IsScribeNotebook && !bookHasScribeSections(sectionFragments) {
+	// Upstream gates notebook processing solely on book.is_scribe_notebook
+	// (kpf_container.py:148-163 sets it from the KDF schema; nothing else).
+	// nmdl.* section keys dispatch individual sections but do NOT make the
+	// book a notebook — a plain CONT book must keep its normal pipeline.
+	if !book.IsScribeNotebook {
 		return nil
 	}
 
@@ -246,7 +250,7 @@ func buildScribeNotebookContext(
 		ManifestResource:         manifestResource,
 		ResourceLocationFilename: resourceLocationFilename,
 		ProcessContentProperties: func(section map[string]interface{}) map[string]string {
-			return processContentProperties(section, resolveResource)
+			return processContentPropertiesConsuming(section, resolveResource)
 		},
 		AddStyle:            addSVGStyle,
 		SectionTextFilepath: "%s.xhtml",
@@ -303,20 +307,6 @@ func buildScribeNotebookContext(
 	}
 
 	return ctx
-}
-
-// bookHasScribeSections reports whether any section fragment carries notebook
-// keys (Python yj_to_epub_content.py:144,147 checks these on the section).
-func bookHasScribeSections(sectionFragments map[string]sectionFragment) bool {
-	for _, section := range sectionFragments {
-		if sectionHasNmdlKey(section.PageTemplateValues, "nmdl.canvas_width") ||
-			sectionHasNmdlKey(section.RawValue, "nmdl.canvas_width") ||
-			sectionHasNmdlKey(section.PageTemplateValues, "nmdl.template_type") ||
-			sectionHasNmdlKey(section.RawValue, "nmdl.template_type") {
-			return true
-		}
-	}
-	return false
 }
 
 // renderScribeTemplateSVG renders a notebook template page template through the
@@ -459,12 +449,12 @@ func materializeScribeNotebookSections(book *decodedBook, scribeCtx *ScribeNoteb
 			ViewportWidth:  part.ViewportWidth,
 			ViewportHeight: part.ViewportHeight,
 			// Python: book_part.is_fxl = True adds rendition:layout-pre-paginated to
-		// the part's opf_properties (epub_output.py:126-134), and the body SVG adds
-		// "svg" (L705-706). The writer splits these at write time (svg → <item
-		// properties>, rendition:layout-pre-paginated → <itemref properties>),
-		// mirroring epub_output.py:1061-1065 with MANIFEST/SPINE property sets.
-		Properties:     "svg rendition:layout-pre-paginated",
-			Root:           root,
+			// the part's opf_properties (epub_output.py:126-134), and the body SVG adds
+			// "svg" (L705-706). The writer splits these at write time (svg → <item
+			// properties>, rendition:layout-pre-paginated → <itemref properties>),
+			// mirroring epub_output.py:1061-1065 with MANIFEST/SPINE property sets.
+			Properties: "svg rendition:layout-pre-paginated",
+			Root:       root,
 		})
 	}
 }

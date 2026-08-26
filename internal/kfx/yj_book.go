@@ -403,13 +403,13 @@ func organizeFragments(bookPath string, sources []*containerSource) (*bookState,
 				case "section":
 					section := parseSectionFragment(fragmentID, value)
 					// Python organize_fragments_by_type (yj_to_epub.py:196-228) retains
-					// every $260 fragment keyed by id, including Scribe notebook sections
-					// whose $141 page_templates are IonSymbol $608 references — those parse
-					// to no templates (empty Storyline) but carry the raw dict in RawValue,
-					// which the scribe dispatch consumes. Keep those; still drop fragments
-					// with no identity at all (Python would raise on the None id collision
-					// check, and downstream lookups key on the section name).
-					if section.ID != "" && (section.Storyline != "" || sectionHasScribeRawValue(section.RawValue)) {
+					// EVERY $260 fragment keyed by id — there is no storyline/Scribe filter.
+					// Sections whose $141 page_templates are IonSymbol $608 references (or
+					// inline content) simply parse to no templates; their raw dict in
+					// RawValue is consumed by the later dispatch. Only an unidentified
+					// fragment (empty id) is dropped: Python would surface it via the
+					// null-id collision check, and Go's downstream lookups key on the id.
+					if section.ID != "" {
 						fragments.SectionFragments[section.ID] = section
 					}
 				case "font":

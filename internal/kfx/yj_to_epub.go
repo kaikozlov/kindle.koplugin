@@ -265,9 +265,8 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	// processed and materialized (KFX_EPUB_Notebook, yj_to_epub_notebook.py).
 	// Returns nil for non-scribe books, leaving dispatch untouched.
 	scribeCtx := buildScribeNotebookContext(book, state.Fragments, &renderer, storylines, sectionFragments)
-	processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, &renderer, navTitles, symFmt, readingOrderCfg, scribeCtx)
-	if renderer.renderError != nil {
-		return nil, renderer.renderError
+	if err := processReadingOrder(book, sectionOrder, sectionFragments, storylines, contentFragments, &renderer, navTitles, symFmt, readingOrderCfg, scribeCtx); err != nil {
+		return nil, err
 	}
 	// Python finalization reports defined-vs-used dictionary rules after all
 	// content is processed (yj_to_epub.py:174-184).

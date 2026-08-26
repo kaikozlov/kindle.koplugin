@@ -4360,6 +4360,21 @@ func processContentProperties(content map[string]interface{}, resolveResource Re
 	return css
 }
 
+// processContentPropertiesConsuming mirrors Python process_content_properties:
+// every YJ property is popped from the live content dict before conversion.
+// Scribe page handling relies on that destructive mutation before check_empty.
+func processContentPropertiesConsuming(content map[string]interface{}, resolveResource ResourceResolver) map[string]string {
+	contentProperties := map[string]interface{}{}
+	for key, value := range content {
+		if yjPropertyNames[key] {
+			contentProperties[key] = value
+			delete(content, key)
+		}
+	}
+	css, _ := convertYJProperties(contentProperties, resolveResource)
+	return css
+}
+
 // processContentPropertiesWithCombineFlag is like processContentProperties but also
 // returns whether text-combine-upright: all was encountered, matching Python's
 // self.text_combine_in_use flag (yj_to_epub_properties.py L1127).

@@ -135,12 +135,18 @@ type decodedBook struct {
 	HTMLCover bool
 
 	// IsScribeNotebook is true when the book is a Kindle Scribe notebook.
-	// Python (yj_book.py L38): self.is_scribe_notebook = False (set True by kpf_container.py L150/163
-	// when ACTION_FRAGMENTS_SCHEMA or DELTA_FRAGMENTS_SCHEMA is found).
-	// Go detects this from nmdl.template_id in document_data (yj_to_epub_metadata.py L87)
-	// or from nmdl.* section keys during content processing.
-	// Used by navigation to suppress warnings for missing reading order nav data
-	// (yj_to_epub_navigation.py L107).
+	// Python (yj_book.py L38): self.is_scribe_notebook = False, set True ONLY in
+	// kpf_container.py L148-163 when the KDF SQLite schema contains
+	// local_action_fragments or local_delta_fragments. It is NEVER inferred
+	// from nmdl.template_id or nmdl.* section keys — those carry notebook data
+	// without proving notebook status.
+	// REACHABILITY: Go's production input path (Classify → CONT/KFX-zip) has no
+	// KPF/KDF SQLite ingestion, so IsScribeNotebook is never set in production
+	// today; the notebook renderer is exercised via synthetic tests that set
+	// the flag explicitly. Real Scribe support requires adding KPF/KDF input
+	// (out of current scope). Used by navigation to suppress warnings for
+	// missing reading order nav data (yj_to_epub_navigation.py L107) and by
+	// finalizeScribeNotebookMetadata (fixed_layout/type/fallback title).
 	IsScribeNotebook bool
 
 	// IsKpfPrepub is true when the book was loaded from a KPF container (Kindle Previewer export)

@@ -380,7 +380,7 @@ func processReadingOrder(
 	symFmt symType,
 	cfg *pageSpreadConfig,
 	scribeCtx *ScribeNotebookContext,
-) {
+) error {
 	// Port of Python's used_sections set for deduplication (L107).
 	usedSections := map[string]bool{}
 
@@ -461,7 +461,14 @@ func processReadingOrder(
 	// Scribe notebook book parts are materialized after every section has been
 	// processed: the template section (second reading order) still needs to
 	// patch page book parts created earlier (yj_to_epub_notebook.py:181-201).
+	// A fatal notebook error (mandatory-pop KeyError equivalents, unresolved
+	// page templates) aborts before materialization — Python fails the whole
+	// conversion on those inputs.
+	if scribeCtx != nil && scribeCtx.Err != nil {
+		return scribeCtx.Err
+	}
 	materializeScribeNotebookSections(book, scribeCtx, navTitles)
+	return nil
 }
 
 // appendPageSpreadRenderedSections materializes every leaf book part produced by
@@ -684,11 +691,14 @@ func processSectionScribePage(section sectionFragment, seq int, scribeCtx *Scrib
 	}
 	if templateDict == nil {
 		// Python would fail on page_templates[0] of a malformed section
-		// (yj_to_epub_content.py:144-145 IndexError); make it explicit here.
-		log.Printf("kfx: error: scribe page section %s has no resolvable page template", section.ID)
+		// (yj_to_epub_content.py:144-145 IndexError); record it so the
+		// conversion fails instead of silently dropping the page.
+		setScribeNotebookError(scribeCtx, &UnsupportedError{Message: fmt.Sprintf("scribe page section %s has no resolvable page template", section.ID)})
 		return renderedStoryline{}, nil, false
 	}
-	processScribeNotebookPageSection(scribeCtx, sectionDict, templateDict, section.ID, seq)
+	if err := processScribeNotebookPageSection(scribeCtx, sectionDict, templateDict, section.ID, seq); err != nil {
+		setScribeNotebookError(scribeCtx, err)
+	}
 	return renderedStoryline{}, nil, false
 }
 
@@ -705,10 +715,12 @@ func processSectionScribeTemplate(section sectionFragment, scribeCtx *ScribeNote
 		return renderedStoryline{}, nil, false
 	}
 	if templateDict == nil {
-		log.Printf("kfx: error: scribe template section %s has no resolvable page template", section.ID)
+		setScribeNotebookError(scribeCtx, &UnsupportedError{Message: fmt.Sprintf("scribe template section %s has no resolvable page template", section.ID)})
 		return renderedStoryline{}, nil, false
 	}
-	processScribeNotebookTemplateSection(scribeCtx, sectionDict, templateDict, section.ID)
+	if err := processScribeNotebookTemplateSection(scribeCtx, sectionDict, templateDict, section.ID); err != nil {
+		setScribeNotebookError(scribeCtx, err)
+	}
 	return renderedStoryline{}, nil, false
 }
 
@@ -759,7 +771,15 @@ func resolveScribeSectionInputs(scribeCtx *ScribeNotebookContext, section sectio
 	}
 	if fid, ok := asString(rawList[0]); ok && scribeCtx != nil && scribeCtx.GetFragment != nil {
 		delete(sectionDict, "page_templates")
-		return sectionDict, cloneMap(scribeCtx.GetFragment("structure", fid))
+		fragment := cloneMap(scribeCtx.GetFragment("structure", fid))
+		if fragment == nil {
+			// Python get_fragment logs a missing-fragment error and returns an
+			// empty IonStruct; it does not turn a missing $608 target into an
+			// IndexError. Preserve that distinction from an actually empty
+			// page_templates list, which is fatal via page_templates[0].
+			fragment = map[string]interface{}{}
+		}
+		return sectionDict, fragment
 	}
 	return sectionDict, nil
 }
@@ -8523,7 +8543,7 @@ func materializeRenderedSections(rendered []renderedSection) []epub.Section {
 			Properties:      section.Properties,
 			// Python book_part.is_fxl → <itemref> layout rewrite when the book
 			// itself is fixed-layout (epub_output.py:1031-1037).
-			IsFixedLayout:   section.IsFixedLayout,
+			IsFixedLayout: section.IsFixedLayout,
 		})
 	}
 	return sections

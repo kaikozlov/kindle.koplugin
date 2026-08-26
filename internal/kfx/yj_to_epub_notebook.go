@@ -1670,6 +1670,32 @@ type ScribeNotebookContext struct {
 	// When nil (no renderer wired), template sections cannot locate an SVG and
 	// log the same error Python logs at yj_to_epub_notebook.py:201.
 	RenderTemplateContent func(pageTemplate map[string]interface{}) *svgElement
+
+	// Err carries the first fatal notebook-processing error (first-error-wins).
+	// Python aborts the conversion on exceptions such as the mandatory
+	// section.pop() KeyErrors (yj_to_epub_notebook.py:80-81, 93, 167); Go
+	// records the error here and renderBookState returns it instead of
+	// emitting a fabricated (0×0 / empty-typed) section.
+	Err error
+}
+
+// setScribeNotebookError records the first fatal notebook error on the
+// context (first-error-wins; later errors are logged but do not replace the
+// first). Called by the section dispatchers so processReadingOrder/renderBookState
+// can propagate the failure to the caller.
+func setScribeNotebookError(ctx *ScribeNotebookContext, err error) {
+	if err == nil {
+		return
+	}
+	if ctx == nil {
+		log.Printf("kfx: error: scribe notebook failure without context: %v", err)
+		return
+	}
+	if ctx.Err == nil {
+		ctx.Err = err
+	} else {
+		log.Printf("kfx: error: additional scribe notebook failure: %v", err)
+	}
 }
 
 // ScribeBookPart represents a book part created during scribe notebook processing.
@@ -1711,23 +1737,29 @@ func NewScribeBookPart(filename string) *ScribeBookPart {
 // Port of KFX_EPUB_Notebook.process_scribe_notebook_page_section (yj_to_epub_notebook.py:78-156).
 //
 // Returns true if the section was successfully processed, false otherwise.
-func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string, seq int) bool {
+func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string, seq int) error {
 	_ = seq
 
 	if ctx == nil {
-		return false
+		return &UnsupportedError{Message: "scribe notebook context is not configured"}
 	}
 
-	// Python L79-80: nmdl_canvas_width = section.pop("nmdl.canvas_width")
-	var canvasWidth, canvasHeight int
-	if v, ok := section["nmdl.canvas_width"]; ok {
-		delete(section, "nmdl.canvas_width")
-		canvasWidth = toInt(v)
+	// Python L80-81: nmdl_canvas_width = section.pop("nmdl.canvas_width");
+	// nmdl_canvas_height = section.pop("nmdl.canvas_height") — MANDATORY pops
+	// (KeyError upstream aborts the conversion). Mirror that explicitly
+	// instead of fabricating 0x0 output.
+	widthRaw, hasWidth := section["nmdl.canvas_width"]
+	if !hasWidth {
+		return &UnsupportedError{Message: fmt.Sprintf("scribe page section %s is missing nmdl.canvas_width", sectionName)}
 	}
-	if v, ok := section["nmdl.canvas_height"]; ok {
-		delete(section, "nmdl.canvas_height")
-		canvasHeight = toInt(v)
+	delete(section, "nmdl.canvas_width")
+	heightRaw, hasHeight := section["nmdl.canvas_height"]
+	if !hasHeight {
+		return &UnsupportedError{Message: fmt.Sprintf("scribe page section %s is missing nmdl.canvas_height", sectionName)}
 	}
+	delete(section, "nmdl.canvas_height")
+	canvasWidth := toInt(widthRaw)
+	canvasHeight := toInt(heightRaw)
 
 	// Python L82-91: Validate canvas dimensions. Upstream changed the
 	// unexpected-dimension report from log.warning to log.info
@@ -1740,13 +1772,15 @@ func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[st
 		log.Printf("kfx: info: nmdl.canvas width=%d height=%d", canvasWidth, canvasHeight)
 	}
 
-	// Python L93-95: nmdl_normalized_ppi validation
-	if v, ok := section["nmdl.normalized_ppi"]; ok {
-		delete(section, "nmdl.normalized_ppi")
-		ppi := toInt(v)
-		if ppi != 2520 {
-			log.Printf("kfx: error: Unexpected nmdl.normalized_ppi %d", ppi)
-		}
+	// Python L93: nmdl_normalized_ppi = section.pop("nmdl.normalized_ppi") —
+	// MANDATORY pop (KeyError upstream when absent).
+	ppiRaw, hasPPI := section["nmdl.normalized_ppi"]
+	if !hasPPI {
+		return &UnsupportedError{Message: fmt.Sprintf("scribe page section %s is missing nmdl.normalized_ppi", sectionName)}
+	}
+	delete(section, "nmdl.normalized_ppi")
+	if ppi := toInt(ppiRaw); ppi != 2520 {
+		log.Printf("kfx: error: Unexpected nmdl.normalized_ppi %d", ppi)
 	}
 
 	// Python L97-98: book_part = self.new_book_part(filename=self.SECTION_TEXT_FILEPATH % section_name)
@@ -1876,7 +1910,7 @@ func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[st
 	// Store the book part in context
 	ctx.BookParts = append(ctx.BookParts, bookPart)
 
-	return true
+	return nil
 }
 
 // scribePageSectionPlacement handles inline_placement_type and style positioning
@@ -1965,17 +1999,19 @@ func readingOrderContains(ro map[string]interface{}, templateID string) bool {
 // Port of KFX_EPUB_Notebook.process_scribe_notebook_template_section (yj_to_epub_notebook.py:158-218).
 //
 // Returns true if the section was successfully processed, false otherwise.
-func processScribeNotebookTemplateSection(ctx *ScribeNotebookContext, section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string) bool {
+func processScribeNotebookTemplateSection(ctx *ScribeNotebookContext, section map[string]interface{}, pageTemplate map[string]interface{}, sectionName string) error {
 	if ctx == nil {
-		return false
+		return &UnsupportedError{Message: "scribe notebook context is not configured"}
 	}
 
-	// Python L159-160: nmdl_template_type = section.pop("nmdl.template_type")
-	var nmdlTemplateType string
-	if v, ok := section["nmdl.template_type"]; ok {
-		delete(section, "nmdl.template_type")
-		nmdlTemplateType, _ = v.(string)
+	// Python L167: nmdl_template_type = section.pop("nmdl.template_type") —
+	// MANDATORY pop (KeyError upstream when absent).
+	templateTypeRaw, hasType := section["nmdl.template_type"]
+	if !hasType {
+		return &UnsupportedError{Message: fmt.Sprintf("scribe template section %s is missing nmdl.template_type", sectionName)}
 	}
+	delete(section, "nmdl.template_type")
+	nmdlTemplateType, _ := templateTypeRaw.(string)
 	log.Printf("kfx: info: Notebook template: %s", nmdlTemplateType)
 
 	// Python L162-163: book_part = self.new_book_part(filename=...)
@@ -2077,7 +2113,7 @@ func processScribeNotebookTemplateSection(ctx *ScribeNotebookContext, section ma
 	// Store the book part
 	ctx.BookParts = append(ctx.BookParts, bookPart)
 
-	return true
+	return nil
 }
 
 // findSVGElement finds the first <svg> child element.

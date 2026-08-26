@@ -259,15 +259,14 @@ func applyDocumentData(book *decodedBook, value map[string]interface{}) {
 	// yj.dictionary.text, yj.conversion.source_attr_width.
 	// Go does not need to pop these — we only extract known properties below.
 
-	// --- Port of Python nmdl_template_id. Python L87. ---
+	// --- Port of Python nmdl_template_id. Python L91. ---
 	// Python: self.nmdl_template_id = document_data.pop("nmdl.template_id", None)
-	// Scribe notebook handling is in yj_to_epub_notebook.go.
-	// Detection: if nmdl.template_id is present in document_data, the book is a scribe notebook.
-	// Python sets is_scribe_notebook=True in kpf_container.py L150/163 when action/delta fragments
-	// are found. Go detects from document_data nmdl keys instead.
-	if _, hasNmdlTID := value["nmdl.template_id"]; hasNmdlTID {
-		book.IsScribeNotebook = true
-	}
+	// — pure data; it does NOT imply notebook status. Upstream sets
+	// book.is_scribe_notebook only in kpf_container.py:148-163, when the KDF
+	// SQLite schema contains local_action_fragments or local_delta_fragments.
+	// Go does not infer notebook status here (a plain CONT book may carry
+	// nmdl.template_id without being a notebook); buildScribeNotebookContext
+	// reads the value directly from DocumentData.
 
 	// --- Port of Python max_id validation. Python L91-98. ---
 	// Python checks: if self.book_symbol_format != SYM_TYPE.SHORT → error.

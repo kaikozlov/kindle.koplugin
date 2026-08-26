@@ -611,16 +611,18 @@ func TestApplyMetadataItem_TitleGuard(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestApplyDocumentData_ScribeNotebookDetection(t *testing.T) {
-	// When nmdl.template_id is present in document_data, the book should be
-	// detected as a scribe notebook. Python detects from ACTION/DELTA fragment
-	// schemas; Go detects from nmdl.template_id presence.
+	// nmdl.template_id is pure DATA (Python yj_to_epub_metadata.py:91 pops
+	// and stores it). Upstream sets is_scribe_notebook ONLY from the KPF/KDF
+	// SQLite schema (kpf_container.py:148-163), so a document_data key alone
+	// must NOT mark the book as a notebook — otherwise ordinary CONT books
+	// carrying the key would false-positive into the notebook pipeline.
 	book := &decodedBook{}
 	value := map[string]interface{}{
 		"nmdl.template_id": "my_template",
 	}
 	applyDocumentData(book, value)
-	if !book.IsScribeNotebook {
-		t.Error("expected IsScribeNotebook=true when nmdl.template_id is present in document_data")
+	if book.IsScribeNotebook {
+		t.Error("nmdl.template_id alone must not set IsScribeNotebook (non-upstream heuristic)")
 	}
 }
 

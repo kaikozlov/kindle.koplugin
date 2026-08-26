@@ -512,10 +512,9 @@ func TestDecodeStrokeValuesExtraData(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestProcessScribeNotebookPageSection_NilContext(t *testing.T) {
-	// Nil context should return false
-	result := processScribeNotebookPageSection(nil, nil, nil, "", 0)
-	if result != false {
-		t.Error("processScribeNotebookPageSection should return false with nil context")
+	// Nil context is a configuration error (Python would have a live self).
+	if err := processScribeNotebookPageSection(nil, nil, nil, "", 0); err == nil {
+		t.Error("processScribeNotebookPageSection should return an error with nil context")
 	}
 }
 
@@ -528,9 +527,8 @@ func TestProcessScribeNotebookPageSection_ExtractsCanvasDimensions(t *testing.T)
 		"nmdl.normalized_ppi": 2520,
 	}
 
-	result := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
-	if !result {
-		t.Error("processScribeNotebookPageSection should return true with valid section data")
+	if err := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0); err != nil {
+		t.Errorf("processScribeNotebookPageSection should succeed with valid section data: %v", err)
 	}
 
 	// Canvas dimensions should be popped from section
@@ -554,9 +552,8 @@ func TestProcessScribeNotebookPageSection_CreatesBookPart(t *testing.T) {
 		"nmdl.normalized_ppi": 2520,
 	}
 
-	result := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
-	if !result {
-		t.Fatal("processScribeNotebookPageSection should return true")
+	if err := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0); err != nil {
+		t.Fatalf("processScribeNotebookPageSection failed: %v", err)
 	}
 
 	// Should have created a book part
@@ -582,7 +579,9 @@ func TestProcessScribeNotebookPageSection_ViewportMeta(t *testing.T) {
 		"nmdl.normalized_ppi": 2520,
 	}
 
-	processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+	if err := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0); err != nil {
+		t.Fatalf("processScribeNotebookPageSection failed: %v", err)
+	}
 
 	bp := ctx.BookParts[0]
 	// Head should have a viewport meta child
@@ -611,7 +610,9 @@ func TestProcessScribeNotebookPageSection_InlinePlacementType(t *testing.T) {
 		"nmdl.inline_placement_type": "yj.after", // valid placement type ($670 = "yj.after")
 	}
 
-	processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+	if err := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0); err != nil {
+		t.Fatalf("processScribeNotebookPageSection failed: %v", err)
+	}
 
 	// inline_placement_type should be popped from section
 	if _, ok := section["nmdl.inline_placement_type"]; ok {
@@ -629,7 +630,9 @@ func TestProcessScribeNotebookPageSection_TemplateID(t *testing.T) {
 		"nmdl.template_id":   "template_123",
 	}
 
-	processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+	if err := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0); err != nil {
+		t.Fatalf("processScribeNotebookPageSection failed: %v", err)
+	}
 
 	// template_id should be popped from section
 	if _, ok := section["nmdl.template_id"]; ok {
@@ -652,7 +655,9 @@ func TestProcessScribeNotebookPageSection_SVGElementCreated(t *testing.T) {
 		"nmdl.normalized_ppi": 2520,
 	}
 
-	processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
+	if err := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0); err != nil {
+		t.Fatalf("processScribeNotebookPageSection failed: %v", err)
+	}
 
 	bp := ctx.BookParts[0]
 	// Body should have an SVG element (either inline or as container with image)
@@ -670,9 +675,8 @@ func TestProcessScribeNotebookPageSection_UnexpectedPPI(t *testing.T) {
 		"nmdl.normalized_ppi": 999, // unexpected value
 	}
 
-	result := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0)
-	if !result {
-		t.Error("should still return true despite unexpected PPI")
+	if err := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "test_section", 0); err != nil {
+		t.Errorf("should still succeed despite unexpected PPI: %v", err)
 	}
 }
 
@@ -694,8 +698,8 @@ func TestProcessScribeNotebookPageSection_DesaturatesNotebookContent(t *testing.
 		"nmdl.canvas_height": 20832,
 		"nmdl.normalized_ppi": 2520,
 	}
-	if !processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "desaturate", 0) {
-		t.Fatal("processScribeNotebookPageSection returned false")
+	if err := processScribeNotebookPageSection(ctx, section, map[string]interface{}{}, "desaturate", 0); err != nil {
+		t.Fatalf("processScribeNotebookPageSection failed: %v", err)
 	}
 	got := string(svgData)
 	for _, want := range []string{
@@ -713,9 +717,8 @@ func TestProcessScribeNotebookPageSection_DesaturatesNotebookContent(t *testing.
 
 func TestProcessScribeNotebookTemplateSection_NilContext(t *testing.T) {
 	// Nil context should return false
-	result := processScribeNotebookTemplateSection(nil, nil, nil, "")
-	if result != false {
-		t.Error("processScribeNotebookTemplateSection should return false with nil context")
+	if err := processScribeNotebookTemplateSection(nil, nil, nil, ""); err == nil {
+		t.Error("processScribeNotebookTemplateSection should return an error with nil context")
 	}
 }
 
@@ -726,9 +729,8 @@ func TestProcessScribeNotebookTemplateSection_ExtractsTemplateType(t *testing.T)
 		"nmdl.template_type": "lined",
 	}
 
-	result := processScribeNotebookTemplateSection(ctx, section, map[string]interface{}{}, "template_section")
-	if !result {
-		t.Error("processScribeNotebookTemplateSection should return true with valid section data")
+	if err := processScribeNotebookTemplateSection(ctx, section, map[string]interface{}{}, "template_section"); err != nil {
+		t.Errorf("processScribeNotebookTemplateSection should succeed with valid section data: %v", err)
 	}
 
 	// template_type should be popped from section
@@ -744,7 +746,9 @@ func TestProcessScribeNotebookTemplateSection_CreatesBookPart(t *testing.T) {
 		"nmdl.template_type": "lined",
 	}
 
-	processScribeNotebookTemplateSection(ctx, section, map[string]interface{}{}, "template_section")
+	if err := processScribeNotebookTemplateSection(ctx, section, map[string]interface{}{}, "template_section"); err != nil {
+		t.Fatalf("processScribeNotebookTemplateSection failed: %v", err)
+	}
 
 	// Should have created a book part
 	if len(ctx.BookParts) != 1 {
@@ -764,7 +768,9 @@ func TestProcessScribeNotebookTemplateSection_SVGSerialization(t *testing.T) {
 		"nmdl.template_type": "grid",
 	}
 
-	processScribeNotebookTemplateSection(ctx, section, map[string]interface{}{}, "template_section")
+	if err := processScribeNotebookTemplateSection(ctx, section, map[string]interface{}{}, "template_section"); err != nil {
+		t.Fatalf("processScribeNotebookTemplateSection failed: %v", err)
+	}
 
 	// With no SVG child, the book part should still be created
 	if len(ctx.BookParts) != 1 {
