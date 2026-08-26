@@ -8302,6 +8302,7 @@ func materializeRenderedSections(rendered []renderedSection) []epub.Section {
 			BodyLanguage:  section.BodyLanguage,
 			BodyDirection: section.BodyDirection,
 			BodyClass:     section.BodyClass,
+			BodyStyle:     section.BodyStyle,
 			Paragraphs:  append([]string(nil), section.Paragraphs...),
 			BodyHTML:    bodyHTML,
 			Properties:  section.Properties,

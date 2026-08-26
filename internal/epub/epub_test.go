@@ -1868,6 +1868,14 @@ func TestFontFaceOrdering(t *testing.T) {
 	}
 }
 
+func TestSectionBodyStyleIsSerialized(t *testing.T) {
+	book := Book{Identifier: "id", Title: "title", Language: "en", Sections: []Section{{Filename: "s.xhtml", BodyStyle: "font-size: 0.16px", BodyHTML: "<p>text</p>"}}}
+	xhtml := sectionXHTML(book, book.Sections[0])
+	if !strings.Contains(xhtml, `<body style="font-size: 0.16px">`) {
+		t.Fatalf("section XHTML missing inline body style: %s", xhtml)
+	}
+}
+
 func TestSectionBodyDirectionIsSerialized(t *testing.T) {
 	book := Book{Identifier: "id", Title: "title", Language: "en", Sections: []Section{{Filename: "s.xhtml", BodyDirection: "rtl", BodyHTML: "<p>text</p>"}}}
 	xhtml := sectionXHTML(book, book.Sections[0])

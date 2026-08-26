@@ -59,6 +59,7 @@ type Section struct {
 	BodyLanguage  string // xml:lang for <body> element
 	BodyDirection string // dir for <body> element
 	BodyClass    string
+	BodyStyle    string // inline body style retained by fixed-layout book parts
 	Paragraphs  []string
 	BodyHTML    string
 	Properties  string
@@ -594,6 +595,9 @@ func sectionXHTML(book Book, section Section) string {
 	}
 	if section.BodyClass != "" {
 		out.WriteString(` class="` + xmlEscape(section.BodyClass) + `"`)
+	}
+	if section.BodyStyle != "" {
+		out.WriteString(` style="` + xmlEscape(section.BodyStyle) + `"`)
 	}
 	out.WriteString(`>`)
 	// Match lxml's compact serialization:
