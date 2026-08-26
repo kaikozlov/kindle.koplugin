@@ -574,3 +574,46 @@ func TestProcessKVGShapeResolvesSymbolContentFromStructureFragments(t *testing.T
 		t.Fatalf("symbol-backed KVG text was not rendered: %s", got)
 	}
 }
+
+func TestAdjustPixelValueForPDFBackedMatchesPythonRound(t *testing.T) {
+	tests := []struct {
+		in   float64
+		want float64
+	}{
+		{16, 0.16},
+		{122.5, 1.23},
+		{123.5, 1.24},
+		{249.5, 2.5},
+		{250.5, 2.5},
+	}
+	for _, tc := range tests {
+		if got := adjustPixelValueForBook(tc.in, true); got != tc.want {
+			t.Fatalf("adjustPixelValueForBook(%v, true) = %v, want %v", tc.in, got, tc.want)
+		}
+		if got := adjustPixelValueForBook(tc.in, false); got != tc.in {
+			t.Fatalf("non-PDF value changed: %v -> %v", tc.in, got)
+		}
+	}
+}
+
+func TestProcessKVGShapeScalesPDFBackedCoordinates(t *testing.T) {
+	r := storylineRenderer{isPDFBacked: true}
+	parent := &htmlElement{Tag: "svg", Attrs: map[string]string{}}
+	shape := map[string]interface{}{
+		"type": "shape",
+		"path": []interface{}{0, 122.5, 250.5, 4},
+		"transform": []interface{}{1, 0, 0, 1, 122.5, 250.5},
+		"stroke_width": map[string]interface{}{"value": 250.0, "unit": "px"},
+	}
+	r.processKVGShape(parent, shape, nil, "")
+	got := renderHTMLPart(parent)
+	for _, want := range []string{
+		`d="M 1.23 2.5 Z"`,
+		`transform="translate(1.23 2.5)"`,
+		`stroke-width="2.5px"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("PDF-backed KVG output missing %q: %s", want, got)
+		}
+	}
+}

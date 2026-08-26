@@ -3916,6 +3916,10 @@ var colorYJProperties = map[string]bool{
 type ResourceResolver func(symbol string) string
 
 func propertyValue(propName string, yjValue interface{}, resolveResource ResourceResolver) string {
+	return propertyValueForBook(propName, yjValue, resolveResource, false)
+}
+
+func propertyValueForBook(propName string, yjValue interface{}, resolveResource ResourceResolver, isPDFBacked bool) string {
 	if yjValue == nil {
 		return ""
 	}
@@ -3926,7 +3930,7 @@ func propertyValue(propName string, yjValue interface{}, resolveResource Resourc
 
 	// IonStruct — length, color, shadow, transform-origin, etc.
 	case map[string]interface{}:
-		return propertyValueStruct(propName, v, info, infoOK, resolveResource)
+		return propertyValueStruct(propName, v, info, infoOK, resolveResource, isPDFBacked)
 
 	// string — could be a raw string, an enum symbol, font-family, language, etc.
 	case string:
@@ -3968,16 +3972,16 @@ func propertyValue(propName string, yjValue interface{}, resolveResource Resourc
 
 	// int / *float64 / float64 — numeric or color values
 	case int:
-		return propertyValueNumeric(propName, float64(v), info, infoOK)
+		return propertyValueNumeric(propName, float64(v), info, infoOK, isPDFBacked)
 	case int64:
-		return propertyValueNumeric(propName, float64(v), info, infoOK)
+		return propertyValueNumeric(propName, float64(v), info, infoOK, isPDFBacked)
 	case float64:
-		return propertyValueNumeric(propName, v, info, infoOK)
+		return propertyValueNumeric(propName, v, info, infoOK, isPDFBacked)
 	case *float64:
 		if v == nil {
 			return ""
 		}
-		return propertyValueNumeric(propName, *v, info, infoOK)
+		return propertyValueNumeric(propName, *v, info, infoOK, isPDFBacked)
 
 	// bool — mapped via propInfo.values
 	case bool:
@@ -3994,14 +3998,14 @@ func propertyValue(propName string, yjValue interface{}, resolveResource Resourc
 
 	// IonList — layout hints, collisions, transforms, shadows
 	case []interface{}:
-		return propertyValueList(propName, v, info, infoOK, resolveResource)
+		return propertyValueList(propName, v, info, infoOK, resolveResource, isPDFBacked)
 	}
 
 	return fmt.Sprintf("%v", yjValue)
 }
 
 // propertyValueStruct handles struct-type KFX property values (lengths, colors, shadows, etc.).
-func propertyValueStruct(propName string, v map[string]interface{}, info propInfo, infoOK bool, resolveResource ResourceResolver) string {
+func propertyValueStruct(propName string, v map[string]interface{}, info propInfo, infoOK bool, resolveResource ResourceResolver, isPDFBacked bool) string {
 	// Length: {$307: magnitude, $306: unit}
 	if mag, ok := asFloat64(v["value"]); ok {
 		unitSym, _ := asString(v["unit"])
@@ -4020,6 +4024,9 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 				unit = "px"
 			}
 		}
+		if unit == "px" {
+			mag = adjustPixelValueForBook(mag, isPDFBacked)
+		}
 		return formatCSSQuantity(mag) + unit
 	}
 
@@ -4036,7 +4043,7 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 			parts := []string{}
 			for _, sub := range []string{"horizontal_offset", "vertical_offset", "blur", "spread", "color"} {
 				if subVal, ok := v[sub]; ok {
-					parts = append(parts, propertyValue(sub, subVal, resolveResource))
+					parts = append(parts, propertyValueForBook(sub, subVal, resolveResource, isPDFBacked))
 				}
 			}
 			if _, inset := v["inset"]; inset {
@@ -4052,7 +4059,7 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 			parts := []string{}
 			for _, sub := range []string{"left", "top"} {
 				if subVal, ok := v[sub]; ok {
-					parts = append(parts, propertyValue(sub, subVal, resolveResource))
+					parts = append(parts, propertyValueForBook(sub, subVal, resolveResource, isPDFBacked))
 				} else {
 					parts = append(parts, "50%")
 				}
@@ -4063,7 +4070,7 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 		parts := []string{}
 		for _, sub := range []string{"top", "right", "bottom", "left"} {
 			if subVal, ok := v[sub]; ok {
-				parts = append(parts, propertyValue(sub, subVal, resolveResource))
+				parts = append(parts, propertyValueForBook(sub, subVal, resolveResource, isPDFBacked))
 			}
 		}
 		return strings.Join(parts, " ")
@@ -4089,7 +4096,7 @@ func propertyValueStruct(propName string, v map[string]interface{}, info propInf
 // propertyValueNumeric handles int/float KFX property values (colors, px values, raw numbers).
 const alphaMask = 0xff000000
 
-func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool) string {
+func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool, isPDFBacked bool) string {
 	// Color property
 	if colorYJProperties[propName] {
 		// Ported from Python property_value (yj_to_epub_properties.py L1290-1291):
@@ -4117,11 +4124,11 @@ func propertyValueNumeric(propName string, v float64, info propInfo, infoOK bool
 		return valueStr(v)
 	}
 
-	return valueStr(v) + "px"
+	return valueStr(adjustPixelValueForBook(v, isPDFBacked)) + "px"
 }
 
 // propertyValueList handles list-type KFX property values.
-func propertyValueList(propName string, v []interface{}, info propInfo, infoOK bool, resolveResource ResourceResolver) string {
+func propertyValueList(propName string, v []interface{}, info propInfo, infoOK bool, resolveResource ResourceResolver, isPDFBacked bool) string {
 	switch propName {
 	case "layout_hints": // layout hints
 		// Ported from Python property_value (yj_to_epub_properties.py L1354-1363):
@@ -4160,7 +4167,7 @@ func propertyValueList(propName string, v []interface{}, info propInfo, infoOK b
 	case "transform": // transform
 		// Python yj_to_epub_properties.py L1345: value = self.process_transform(yj_value, svg)
 		// In propertyValue (non-SVG) context, svg=False so process_transform uses "px" and "," separator.
-		return processTransform(v, false)
+		return processTransformForBook(v, false, isPDFBacked)
 
 	case "yj.border_path": // shape-outside (-amzn-shape-outside)
 		// Python yj_to_epub_properties.py L1331-1332: value = self.process_polygon(yj_value)
@@ -4169,14 +4176,14 @@ func propertyValueList(propName string, v []interface{}, info propInfo, infoOK b
 	case "text_shadows": // text-shadow list
 		vals := make([]string, 0, len(v))
 		for _, item := range v {
-			vals = append(vals, propertyValue(propName, item, resolveResource))
+			vals = append(vals, propertyValueForBook(propName, item, resolveResource, isPDFBacked))
 		}
 		return strings.Join(vals, ", ")
 
 	case "stroke_dasharray": // stroke-dasharray
 		vals := make([]string, 0, len(v))
 		for _, item := range v {
-			vals = append(vals, propertyValue(propName, item, resolveResource))
+			vals = append(vals, propertyValueForBook(propName, item, resolveResource, isPDFBacked))
 		}
 		return strings.Join(vals, " ")
 	}
@@ -4198,11 +4205,15 @@ var collisions = map[string]string{
 // -----------------------------------------------------------------------
 
 func convertYJProperties(yjProperties map[string]interface{}, resolveResource ResourceResolver) (map[string]string, bool) {
+	return convertYJPropertiesForBook(yjProperties, resolveResource, false)
+}
+
+func convertYJPropertiesForBook(yjProperties map[string]interface{}, resolveResource ResourceResolver, isPDFBacked bool) (map[string]string, bool) {
 	declarations := map[string]string{}
 	textCombineInUse := false
 
 	for yjPropName, yjValue := range yjProperties {
-		value := propertyValue(yjPropName, yjValue, resolveResource)
+		value := propertyValueForBook(yjPropName, yjValue, resolveResource, isPDFBacked)
 		if value == "" || value == "?" {
 			continue
 		}
@@ -4379,13 +4390,17 @@ func processContentPropertiesConsuming(content map[string]interface{}, resolveRe
 // returns whether text-combine-upright: all was encountered, matching Python's
 // self.text_combine_in_use flag (yj_to_epub_properties.py L1127).
 func processContentPropertiesWithCombineFlag(content map[string]interface{}, resolveResource ResourceResolver) (map[string]string, bool) {
+	return processContentPropertiesWithCombineFlagForBook(content, resolveResource, false)
+}
+
+func processContentPropertiesWithCombineFlagForBook(content map[string]interface{}, resolveResource ResourceResolver, isPDFBacked bool) (map[string]string, bool) {
 	contentProperties := map[string]interface{}{}
 	for k := range content {
 		if yjPropertyNames[k] {
 			contentProperties[k] = content[k]
 		}
 	}
-	return convertYJProperties(contentProperties, resolveResource)
+	return convertYJPropertiesForBook(contentProperties, resolveResource, isPDFBacked)
 }
 
 // -----------------------------------------------------------------------

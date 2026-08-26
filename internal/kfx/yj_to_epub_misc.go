@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -1252,7 +1253,24 @@ func urlRelPath(target, refFrom string) string {
 
 
 func adjustPixelValue(value float64) float64 {
-	return value
+	return adjustPixelValueForBook(value, false)
+}
+
+func adjustPixelValueForBook(value float64, isPDFBacked bool) float64 {
+	if !isPDFBacked {
+		return value
+	}
+	// Python uses round(value / 100, 2). Rounding the original value before
+	// dividing is not equivalent for binary floats (for example 122.5 ->
+	// 1.23 in Python, not 1.22). Go's fixed-point FormatFloat uses the same
+	// nearest-even rounding of the represented float, so round-trip the
+	// two-decimal result to preserve Python's behavior.
+	rounded := strconv.FormatFloat(value/100, 'f', 2, 64)
+	result, err := strconv.ParseFloat(rounded, 64)
+	if err != nil {
+		return value / 100
+	}
+	return result
 }
 
 var svgShapeDimensionNames = map[string]string{
@@ -1295,7 +1313,7 @@ func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[strin
 	case "shape", "line":
 		pathData := shape["path"]
 		delete(shape, "path")
-		d := processPathWithBundles(pathData, r.pathBundles)
+		d := processPathWithBundlesForBook(pathData, r.pathBundles, r.isPDFBacked)
 		elem = &htmlElement{Tag: "path", Attrs: map[string]string{"d": d}}
 		parent.Children = append(parent.Children, elem)
 
@@ -1394,7 +1412,7 @@ func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[strin
 			fmt.Fprintf(os.Stderr, "kfx: error: unknown KVG shape_dimensions: %s\n", prop)
 			continue
 		}
-		elem.Attrs[attrName] = propertyValueSVG(prop, val)
+		elem.Attrs[attrName] = propertyValueSVGForBook(prop, val, r.isPDFBacked)
 	}
 
 	for prop, attrName := range svgShapePropertyNames {
@@ -1405,12 +1423,12 @@ func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[strin
 		delete(shape, prop)
 		if prop == "transform" {
 			if vals, ok := asSlice(val); ok {
-				elem.Attrs[attrName] = processTransformWithSwap(vals, true, true)
+				elem.Attrs[attrName] = processTransformWithSwapForBook(vals, true, true, r.isPDFBacked)
 			} else {
-				elem.Attrs[attrName] = propertyValueSVG(prop, val)
+				elem.Attrs[attrName] = propertyValueSVGForBook(prop, val, r.isPDFBacked)
 			}
 		} else {
-			elem.Attrs[attrName] = propertyValueSVG(prop, val)
+			elem.Attrs[attrName] = propertyValueSVGForBook(prop, val, r.isPDFBacked)
 		}
 	}
 
@@ -1425,6 +1443,10 @@ func (r *storylineRenderer) processKVGShape(parent *htmlElement, shape map[strin
 }
 
 func propertyValueSVG(propName string, yjValue interface{}) string {
+	return propertyValueSVGForBook(propName, yjValue, false)
+}
+
+func propertyValueSVGForBook(propName string, yjValue interface{}, isPDFBacked bool) string {
 	switch v := yjValue.(type) {
 	case float64:
 		if colorYJProperties[propName] {
@@ -1435,18 +1457,18 @@ func propertyValueSVG(propName string, yjValue interface{}) string {
 		if v == nil {
 			return ""
 		}
-		return propertyValueSVG(propName, *v)
+		return propertyValueSVGForBook(propName, *v, isPDFBacked)
 	case int:
-		return propertyValueSVG(propName, float64(v))
+		return propertyValueSVGForBook(propName, float64(v), isPDFBacked)
 	case int64:
-		return propertyValueSVG(propName, float64(v))
+		return propertyValueSVGForBook(propName, float64(v), isPDFBacked)
 	case []interface{}:
 		if propName == "transform" {
-			return processTransform(v, true)
+			return processTransformForBook(v, true, isPDFBacked)
 		}
-		return propertyValue(propName, yjValue, nil)
+		return propertyValueForBook(propName, yjValue, nil, isPDFBacked)
 	default:
-		return propertyValue(propName, yjValue, nil)
+		return propertyValueForBook(propName, yjValue, nil, isPDFBacked)
 	}
 }
 
@@ -1477,6 +1499,10 @@ func processPath(path interface{}) string {
 // The pathBundles parameter is map[bundleName]bundleData where bundleData
 // contains a "path_list" key with the list of path instruction arrays.
 func processPathWithBundles(path interface{}, pathBundles map[string]map[string]interface{}) string {
+	return processPathWithBundlesForBook(path, pathBundles, false)
+}
+
+func processPathWithBundlesForBook(path interface{}, pathBundles map[string]map[string]interface{}, isPDFBacked bool) string {
 	// Python L289: if ion_type(path) is IonStruct → bundle reference
 	if m, ok := asMap(path); ok {
 		bundleName, _ := asString(m["name"])
@@ -1502,7 +1528,7 @@ func processPathWithBundles(path interface{}, pathBundles map[string]map[string]
 			return ""
 		}
 
-		return processPathWithBundles(pathList[pathIndex], pathBundles)
+		return processPathWithBundlesForBook(pathList[pathIndex], pathBundles, isPDFBacked)
 	}
 
 	p, ok := asSlice(path)
@@ -1525,7 +1551,7 @@ func processPathWithBundles(path interface{}, pathBundles map[string]map[string]
 			remaining = remaining[1:]
 			vf, ok := asFloat64(v)
 			if ok {
-				v = adjustPixelValue(vf)
+				v = adjustPixelValueForBook(vf, isPDFBacked)
 			}
 			d = append(d, valueStr(v))
 		}
@@ -1620,10 +1646,18 @@ func processTransformOrigin(vals map[string]interface{}) string {
 }
 
 func processTransform(vals []interface{}, svg bool) string {
-	return processTransformWithSwap(vals, svg, false)
+	return processTransformForBook(vals, svg, false)
+}
+
+func processTransformForBook(vals []interface{}, svg bool, isPDFBacked bool) string {
+	return processTransformWithSwapForBook(vals, svg, false, isPDFBacked)
 }
 
 func processTransformWithSwap(vals []interface{}, svg bool, transformMatrixSwap bool) string {
+	return processTransformWithSwapForBook(vals, svg, transformMatrixSwap, false)
+}
+
+func processTransformWithSwapForBook(vals []interface{}, svg bool, transformMatrixSwap bool, isPDFBacked bool) string {
 	var px, sep, deg string
 	if svg {
 		px = ""
@@ -1653,8 +1687,8 @@ func processTransformWithSwap(vals []interface{}, svg bool, transformMatrixSwap 
 		v[1], v[2] = v[2], v[1]
 	}
 
-	v[4] = adjustPixelValue(v[4])
-	v[5] = adjustPixelValue(v[5])
+	v[4] = adjustPixelValueForBook(v[4], isPDFBacked)
+	v[5] = adjustPixelValueForBook(v[5], isPDFBacked)
 
 	var translate string
 	if v[4] == 0 && v[5] == 0 {
