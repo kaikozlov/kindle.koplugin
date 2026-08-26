@@ -425,9 +425,6 @@ func processReadingOrder(
 			BodyClass:         rendered.BodyClass,
 			BodyStyle:         rendered.BodyStyle,
 			BodyStyleInferred: rendered.BodyStyleInferred,
-			ViewportWidth:     leaf.ViewportWidth,
-			ViewportHeight:    leaf.ViewportHeight,
-			ResetStylesheet:   func() string { if leaf.UseResetCSS { return kfxResetCSS }; return "" }(),
 			Paragraphs:        paragraphs,
 			Properties:        rendered.Properties,
 			Root:              rendered.Root,
@@ -448,6 +445,10 @@ func appendPageSpreadRenderedSections(book *decodedBook, result pageSpreadResult
 		if title == "" {
 			title = deriveSectionTitle(paragraphs, sectionIndex+leafIndex+1)
 		}
+		resetStylesheet := ""
+		if leaf.UseResetCSS {
+			resetStylesheet = kfxResetCSS
+		}
 		book.RenderedSections = append(book.RenderedSections, renderedSection{
 			Filename:          sectionFilename(leaf.PageTitle),
 			Title:             title,
@@ -456,6 +457,9 @@ func appendPageSpreadRenderedSections(book *decodedBook, result pageSpreadResult
 			BodyClass:         rendered.BodyClass,
 			BodyStyle:         rendered.BodyStyle,
 			BodyStyleInferred: rendered.BodyStyleInferred,
+			ViewportWidth:     leaf.ViewportWidth,
+			ViewportHeight:    leaf.ViewportHeight,
+			ResetStylesheet:   resetStylesheet,
 			Paragraphs:        paragraphs,
 			Properties:        mergeSectionProperties(rendered.Properties, leaf.Properties),
 			Root:              rendered.Root,
