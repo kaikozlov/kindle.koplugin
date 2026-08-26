@@ -86,6 +86,9 @@ def produce_kdf(fc: Path, jar: Path, epub: Path, out_dir: Path, temp_dir: Path) 
         "-Djava.awt.headless=true",
         f"-Djava.library.path={fc / 'lib'}",
         "-Dklibname=shared",
+        # Keep producer JVM fatal-error reports out of the repository working tree
+        # (the producer stack can also segfault on unusual inputs).
+        "-XX:ErrorFile=/tmp/kp3-jvm-err-pid%p.log",
         "-cp", str(fc / "lib" / "*"),
         "com.amazon.adapter.common.app.EpubAdapterApp",
         str(epub), str(out_dir), str(temp_dir),
@@ -172,6 +175,10 @@ def main() -> None:
         "--positions", action="store_true",
         help="also dump the native BookPositionInfo view (pid/location/eid/kfxid/sections)",
     )
+    parser.add_argument(
+        "--locmap-out", type=Path, metavar="PATH",
+        help="with --positions: serialize the native location map to PATH (Ion binary, $550)",
+    )
     parser.add_argument("--no-sqlite", action="store_true", help="skip raw SQLite summary")
     args = parser.parse_args()
 
@@ -220,7 +227,12 @@ def main() -> None:
 
         if args.positions:
             print("\n-- native BookPositionInfo --")
-            run(kaf_command(fc, jar, classes, "KafPositionProbe", str(kdf)))
+            pos_args = [str(kdf)]
+            if args.locmap_out:
+                # relative --locmap-out paths resolve against the caller's cwd
+                pos_args.append(str(args.locmap_out if args.locmap_out.is_absolute()
+                                    else Path.cwd() / args.locmap_out))
+            run(kaf_command(fc, jar, classes, "KafPositionProbe", *pos_args))
 
         if args.workdir:
             print(f"\nworkdir={workdir}")

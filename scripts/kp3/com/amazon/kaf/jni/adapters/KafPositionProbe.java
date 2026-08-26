@@ -53,19 +53,33 @@ public final class KafPositionProbe {
             System.err.println("usage: KafPositionProbe <book.kdf> [--unsafe-anchors] [location-map-out]");
             System.exit(2);
         }
+        List<String> positional = new ArrayList<>();
         boolean unsafeAnchors = false;
         for (String arg : args) {
             if ("--unsafe-anchors".equals(arg)) unsafeAnchors = true;
+            else positional.add(arg);
         }
+        if (positional.isEmpty()) {
+            System.err.println("usage: KafPositionProbe <book.kdf> [--unsafe-anchors] [location-map-out]");
+            System.exit(2);
+        }
+        String kdfPath = positional.get(0);
+        String locMapOut = positional.size() > 1 ? positional.get(1) : null;
+
+        // Read-only stages below catch per-item Throwables so one bad value does
+        // not hide the rest, but every catch is counted and the process exits 3 at
+        // the end if anything failed. Native aborts (SIGSEGV) cannot be caught;
+        // those are documented per call site and leave the JVM to die loudly.
+        int failures = 0;
 
         c.a();
         BookFactory factory = new BookFactory();
         factory.b();
-        DigitalBook book = (DigitalBook) factory.a(args[0]);
+        DigitalBook book = (DigitalBook) factory.a(kdfPath);
         BookContent content = (BookContent) book.d();
 
         o bpi = book.h();
-        OUT.println("book=" + quote(args[0]));
+        OUT.println("book=" + quote(kdfPath));
 
         // -- Stage 1: global map sizes --------------------------------------
         stage("max");
@@ -88,6 +102,7 @@ public final class KafPositionProbe {
                 handle = bpi.b(pid);
             } catch (Throwable t) {
                 OUT.println("  pid=" + pid + " positionforID ERR " + t.getClass().getSimpleName());
+                failures++;
                 break;
             }
             if (handle == null) continue;
@@ -99,6 +114,10 @@ public final class KafPositionProbe {
             try { globalPid = bpi.b(pos); } catch (Throwable t) { globalPid = -2; }
             OUT.println("pid=" + pid + " eid=" + eid + " globalPid=" + globalPid);
             describeOffset(pos);
+        }
+        if (maxPositionId > 200000) {
+            OUT.println("cap=200000 applied: maxPositionId=" + maxPositionId
+                    + " positions beyond the cap were not probed");
         }
         OUT.println("valid_pids=" + validPids.size());
 
@@ -122,6 +141,7 @@ public final class KafPositionProbe {
                 OUT.println();
             } catch (Throwable t) {
                 OUT.println("pid=" + pid + " location ERR " + t.getClass().getSimpleName() + " " + t.getMessage());
+                failures++;
             }
         }
 
@@ -143,6 +163,7 @@ public final class KafPositionProbe {
                 }
             } catch (Throwable t) {
                 OUT.println("loc=" + loc + " ERR " + t.getClass().getSimpleName());
+                failures++;
             }
         }
 
@@ -156,6 +177,7 @@ public final class KafPositionProbe {
             }
         } catch (Throwable t) {
             OUT.println("eid collection ERR " + t);
+            failures++;
         }
         OUT.println("graph_eids=" + eids.size());
         for (long eid : eids) {
@@ -167,6 +189,7 @@ public final class KafPositionProbe {
                 OUT.println("eid=" + eid + " name=" + quote(name) + " kfxid=" + quote(kfxid) + " back=" + back);
             } catch (Throwable t) {
                 OUT.println("eid=" + eid + " kfxid ERR " + t.getClass().getSimpleName());
+                failures++;
             }
         }
 
@@ -181,6 +204,7 @@ public final class KafPositionProbe {
                 OUT.println("pid=" + pid + " sectionId=" + sectionId + " section=" + quote(sectionName));
             } catch (Throwable t) {
                 OUT.println("pid=" + pid + " section ERR " + t.getClass().getSimpleName());
+                failures++;
             }
         }
 
@@ -198,23 +222,26 @@ public final class KafPositionProbe {
                     OUT.println("eid=" + eid + " anchor=" + (anchor == null ? "null" : anchor.getClass().getSimpleName()));
                 } catch (Throwable t) {
                     OUT.println("eid=" + eid + " anchor ERR " + t.getClass().getSimpleName());
+                    failures++;
                 }
             }
         }
 
         // -- Stage 8: serialize the native location map ------------------------
-        if (args.length >= 2) {
+        if (locMapOut != null) {
             stage("serialize-location-map");
             try {
-                bpi.b(args[1]);
-                OUT.println("serialized to " + quote(args[1]));
+                bpi.b(locMapOut);
+                OUT.println("serialized to " + quote(locMapOut));
             } catch (Throwable t) {
                 OUT.println("serialize ERR " + t);
+                failures++;
             }
         }
 
         OUT.flush();
-        System.exit(0);
+        OUT.println("failures=" + failures);
+        System.exit(failures == 0 ? 0 : 3);
     }
 
     private static void collectEids(List<s> items, Set<Long> eids, int depth) {
