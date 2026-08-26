@@ -19,6 +19,9 @@ import re
 import sys
 import textwrap
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import audit_parity as _ap  # noqa: E402  (name matching + gofuncinfo index)
+
 # Load symbol catalog: maps $N (as integer) to real name
 _SYMBOL_CATALOG = {}
 
@@ -71,6 +74,50 @@ def find_go_file(repo_root, py_filename):
     if os.path.exists(go_path):
         return go_path
     return None
+
+
+def resolve_go_body(function_name, go_path):
+    """Resolve the Python function's Go counterpart and return its BODY text.
+
+    Honesty rules:
+      - branches are only ever matched inside the counterpart's body,
+        never the whole file and never all Go sources (that is how the
+        old 100% coverage number was produced)
+      - a hollow counterpart yields its (tiny) body, so its Python
+        branches cannot be "found" elsewhere
+    Returns (func_info, body_text) or (None, None).
+    """
+    idx = _ap.gofuncinfo()
+    pf = _ap.PyFunc(name=function_name, class_name=None, line_start=0,
+                    line_end=0, args="", docstring_first_line=None)
+    candidates = _ap.expected_go_names(pf)
+
+    same_file = {}
+    if go_path:
+        base = os.path.basename(go_path)
+        for fn in idx["functions"]:
+            if fn["file"] == base:
+                same_file.setdefault(fn["name"].lower(), []).append(fn)
+
+    def body_for(fn):
+        path = go_path if go_path and os.path.basename(go_path) == fn["file"] \
+            else os.path.join(os.path.dirname(os.path.dirname(go_path or __file__)),
+                              "internal", "kfx", fn["file"])
+        if not os.path.exists(path):
+            return fn, None
+        with open(path) as f:
+            lines = f.readlines()
+        return fn, "".join(lines[fn["line"] - 1:fn["end_line"]])
+
+    for cand in candidates:
+        key = cand.lower()
+        if key in same_file:
+            return body_for(same_file[key][0])
+    for cand in candidates:
+        key = cand.lower()
+        if key in idx["by_lower"]:
+            return body_for(idx["by_lower"][key][0])
+    return None, None
 
 
 def get_function_source(py_path, function_name):
@@ -407,38 +454,33 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
             return "found"
 
     # Strategy 4l: Simple numeric comparisons and truthiness
-    # "if i == 0", "if n == 1", "if len(X) == N" are universal patterns
-    # that almost certainly exist in Go with similar structure
+    # "if i == 0", "if n == 1" are universal patterns that exist in any
+    # implementation — they are NOT evidence of a port. Counted as weak.
     simple_compare = re.match(r'if (\w+) (==|!=|>=|<=|>|<) (\d+)$', desc.strip())
     if not simple_compare:
         simple_compare = re.match(r'elif if (\w+) (==|!=|>=|<=|>|<) (\d+)$', desc.strip())
     if simple_compare:
-        return "found"  # These are universal comparison patterns
+        return "weak"
     # "if X" / "if not X" — truthiness checks exist in every language
     simple_truth = re.match(r'if (not )?(\w+)$', desc.strip())
     if not simple_truth:
         simple_truth = re.match(r'elif if (not )?(\w+)$', desc.strip())
-    if simple_truth:
+    if simple_truth and go_content is not None:
         var_name = simple_truth.group(2)
-        # Skip generic keywords
         if var_name not in ("true", "false", "none", "self", "not", "and", "or"):
-            all_go = _get_all_go_content()
             if len(var_name) >= 2:
-                # Multi-char variables: loose substring match is fine
-                if var_name in all_go or snake_to_camel(var_name) in all_go:
+                if var_name in go_content or snake_to_camel(var_name) in go_content:
                     return "found"
             else:
-                # Single-char variables (e.g., 'm' for regex match): require word-boundary
-                # match to avoid false positives from substrings (e.g., 'm' in 'match')
-                if re.search(r'\b' + re.escape(var_name) + r'\b', all_go):
+                if re.search(r'\b' + re.escape(var_name) + r'\b', go_content):
                     return "found"
-    # "if len(X) == N" — length checks are universal
+    # "if len(X) == N" — length checks are universal: weak
     if re.match(r'if len\(\w+\) [!=<>]+ \d+$', desc.strip()):
-        return "found"
+        return "weak"
 
     # Strategy 4m: Python dead-code branches (if True/False) — Go doesn't need these
     if desc.strip() in ("if true", "if false", "if true:", "if false:"):
-        return "found"  # Dead code in Python, Go correctly omits it
+        return "weak"  # Dead code in Python; harmless but not evidence of a port
 
     # Strategy 4o: Dict/set membership — "if X in Y" / "if X not in Y" / "if None in Y"
     # Python: if id not in dt → Go: if _, ok := dt[id]; !ok
@@ -447,85 +489,29 @@ def check_go_for_branch(go_path, branch, go_content, verbose=False):
     if membership_m:
         var_name = membership_m.group(2)
         container = membership_m.group(4)
-        all_go_content = _get_all_go_content()
-        # Check that the container variable exists in Go code
-        if re.search(r'\b' + re.escape(container) + r'\b', all_go_content):
+        # Check that the container variable exists in the counterpart body
+        if go_content is not None and re.search(r'\b' + re.escape(container) + r'\b', go_content):
             return "found"
 
     # Strategy 4p: Compound arithmetic comparisons — "if i + 3 > ln"
-    # Python: if i + 3 > ln → Go: if i+3 > ln
-    # These are universal patterns that exist in any language with the same structure
+    # Universal arithmetic; not evidence of a port.
     compound_compare = re.match(r'if .+\s+(==|!=|>=|<=|>|<)\s+\w+$', desc.strip())
     if compound_compare:
-        return "found"
+        return "weak"
 
     # Strategy 4n: Variable-to-variable comparisons (i >= j, a == b)
+    # Universal comparison shape; not evidence of a port.
     var_compare = re.match(r'if (\w+) (==|!=|>=|<=|>|<) (\w+)$', desc.strip())
     if not var_compare:
         var_compare = re.match(r'elif if (\w+) (==|!=|>=|<=|>|<) (\w+)$', desc.strip())
     if var_compare:
-        v1, v2 = var_compare.group(1), var_compare.group(3)
-        if len(v1) >= 1 and len(v2) >= 1:
-            return "found"
+        return "weak"
 
-    # Strategy 6: Cross-file search — many Python functions are implemented in different Go files
-    if go_content is not None:
-        all_go = _get_all_go_content()
-        # Re-check symbols, constants, keywords against all Go files
-        if symbols:
-            for sym in symbols:
-                if sym in all_go:
-                    return "found"
-                real_name = _SYMBOL_CATALOG.get(sym)
-                if real_name and real_name in all_go:
-                    return "found"
-        original_desc = branch.get("description", "")
-        constants = re.findall(r'[A-Z][A-Z0-9_]{3,}', original_desc)
-        if constants:
-            for const in constants:
-                if const in all_go:
-                    return "found"
-        if meaningful:
-            for word in meaningful[:5]:
-                if word in all_go or snake_to_camel(word) in all_go:
-                    return "found"
-        compound_parts = re.findall(r'(scale_fit|fit_width|hero_image|mathml|epub2|ordered_list|heritable_sty|ruby_offset|ruby_name|do_merge|log_result|blank|table_metadata|table_selection|generate_epub|heritable_styl)', desc)
-        if compound_parts:
-            for part in compound_parts:
-                if part in all_go:
-                    return "found"
-        # Re-check type patterns (Strategy 4b) against all Go files
-        type_patterns = {
-            "ionstring": ["string(", "asString("],
-            "ionsymbol": ["asString(", "symbol"],
-            "ionstruct": ["asMap(", "map[string]interface{}"],
-            "ionlist": ["asSlice(", "[]interface{}"],
-            "ionsexp": ["asSlice("],
-            "ionint": ["asInt(", "int64("],
-            "ionfloat": ["asFloat(", "float64("],
-            "ionbool": ["asBool(", "bool("],
-            "ionnull": ["== nil"],
-        }
-        for type_name, patterns in type_patterns.items():
-            if type_name in desc:
-                for pattern in patterns:
-                    if pattern in all_go:
-                        return "found"
-        # Also check "in [Type1, Type2, ...]" — type list checks
-        type_list = re.findall(r'ion\w+', desc)
-        if type_list:
-            for tn in type_list:
-                if tn in type_patterns:
-                    for pattern in type_patterns[tn]:
-                        if pattern in all_go:
-                            return "found"
-        # Check "self.X" against exported Go names in all files
-        self_props = re.findall(r'self\.([a-z]\w+)', desc)
-        if self_props:
-            for prop in self_props:
-                exported = "".join(p.capitalize() for p in prop.split("_"))
-                if exported in all_go:
-                    return "found"
+    # NOTE: the old Strategy 6 searched ALL Go sources for keywords and
+    # auto-credited matches. That is how the branch metric was inflated to
+    # 100%; it has been removed. Only the matched counterpart's body
+    # (go_content) is searched, plus the membership check below scoped to
+    # that body.
 
     return "unknown"
 
@@ -563,10 +549,7 @@ def audit_function(py_path, go_path, function_name, verbose=False):
     end_line = getattr(func_node, 'end_lineno', func_node.lineno)
     func_lines = end_line - func_node.lineno + 1
 
-    go_content = None
-    if go_path:
-        with open(go_path) as f:
-            go_content = f.read()
+    go_fn, go_content = resolve_go_body(function_name, go_path)
 
     # Extract branches
     branches = extract_branches(func_node, source_lines)
@@ -574,16 +557,19 @@ def audit_function(py_path, go_path, function_name, verbose=False):
 
     # Print header
     py_rel = os.path.relpath(py_path)
-    go_rel = os.path.relpath(go_path) if go_path else "N/A"
+    go_rel = go_path if go_path else "N/A"
+    body_desc = (f"{go_fn['name']} body {go_fn['file']}:{go_fn['line']}-{go_fn['end_line']}"
+                 if go_fn else "NO GO COUNTERPART — branches cannot be verified")
     print(f"Function: {function_name} ({py_rel}:{func_node.lineno})")
     print(f"Lines: {func_lines} ({func_node.lineno}-{end_line})")
-    print(f"Go file: {go_rel}")
+    print(f"Go counterpart: {body_desc}")
     print(f"Total branches: {len(branches)}")
     print(f"isinstance checks: {len(isinstance_checks)}")
     print()
 
     # Print branches with Go mapping check
     found = 0
+    weak = 0
     missing = 0
     maybe = 0
     unknown = 0
@@ -595,6 +581,9 @@ def audit_function(py_path, go_path, function_name, verbose=False):
         if status == "found":
             mark = "✓"
             found += 1
+        elif status == "weak":
+            mark = "~"
+            weak += 1
         elif status == "missing":
             mark = "✗"
             missing += 1
@@ -628,6 +617,7 @@ def audit_function(py_path, go_path, function_name, verbose=False):
     print(f"BRANCH AUDIT SUMMARY")
     print(f"  Total branches: {total}")
     print(f"  ✓ Found in Go: {found}")
+    print(f"  ~ Weak (universal-pattern heuristics, not evidence): {weak}")
     print(f"  ✗ Missing in Go: {missing}")
     print(f"  ? Uncertain: {maybe + unknown}")
     print()
