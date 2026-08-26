@@ -1672,8 +1672,7 @@ func TestOPFFixedLayoutMetadata(t *testing.T) {
 		`<meta name="orientation-lock" content="portrait"/>`,
 	} {
 		if !strings.Contains(opf, want) {
-			t.Fatalf("fixed-layout OPF missing %q:
-%s", want, opf)
+			t.Fatalf("fixed-layout OPF missing %q:\n%s", want, opf)
 		}
 	}
 }
