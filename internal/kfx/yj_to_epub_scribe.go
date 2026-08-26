@@ -81,11 +81,12 @@ func scribeResourceFilename(location string, used map[string]struct{}) string {
 	// (suffix is always "" for notebook SVGs).
 	safeFilename := path + root + ext
 
-	// Python L277-283: uniquify against existing oebps files (case-insensitive).
+	// Python L277-283: uniquify against existing oebps files (case-insensitive);
+	// unique_count starts at 0 on the first retry.
 	for n := 0; ; n++ {
 		candidate := safeFilename
 		if n > 0 {
-			candidate = fmt.Sprintf("%s-%d%s", safeFilename, n, ext)
+			candidate = fmt.Sprintf("%s-%d%s", safeFilename, n-1, ext)
 		}
 		key := strings.ToLower(candidate)
 		if _, dup := used[key]; !dup {

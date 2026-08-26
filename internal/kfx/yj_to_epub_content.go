@@ -666,7 +666,13 @@ func renderSectionFragments(sectionID string, section sectionFragment, storyline
 // templates that patch pages) has been processed, so ok is always false here.
 func processSectionScribePage(section sectionFragment, seq int, scribeCtx *ScribeNotebookContext) (renderedStoryline, []string, bool) {
 	sectionDict, templateDict := resolveScribeSectionInputs(scribeCtx, section, section.PageTemplates)
-	if sectionDict == nil || templateDict == nil {
+	if sectionDict == nil {
+		return renderedStoryline{}, nil, false
+	}
+	if templateDict == nil {
+		// Python would fail on page_templates[0] of a malformed section
+		// (yj_to_epub_content.py:144-145 IndexError); make it explicit here.
+		log.Printf("kfx: error: scribe page section %s has no resolvable page template", section.ID)
 		return renderedStoryline{}, nil, false
 	}
 	processScribeNotebookPageSection(scribeCtx, sectionDict, templateDict, section.ID, seq)
@@ -682,7 +688,11 @@ func processSectionScribePage(section sectionFragment, seq int, scribeCtx *Scrib
 // they only contribute the template SVG resource and page patches.
 func processSectionScribeTemplate(section sectionFragment, scribeCtx *ScribeNotebookContext) (renderedStoryline, []string, bool) {
 	sectionDict, templateDict := resolveScribeSectionInputs(scribeCtx, section, section.PageTemplates)
-	if sectionDict == nil || templateDict == nil {
+	if sectionDict == nil {
+		return renderedStoryline{}, nil, false
+	}
+	if templateDict == nil {
+		log.Printf("kfx: error: scribe template section %s has no resolvable page template", section.ID)
 		return renderedStoryline{}, nil, false
 	}
 	processScribeNotebookTemplateSection(scribeCtx, sectionDict, templateDict, section.ID)
@@ -708,12 +718,19 @@ func resolveScribeSectionInputs(scribeCtx *ScribeNotebookContext, section sectio
 	if sectionDict == nil {
 		return nil, nil
 	}
+	// Python process_section pops the section name ($174), the page templates
+	// list ($141) and unused section keys before dispatching to the scribe
+	// branch (yj_to_epub_content.py:116-139), leaving an empty dict for the
+	// final check_empty (L204).
+	delete(sectionDict, "section_name")
+	stripUnusedSectionKeys(sectionDict)
 
 	// Python page_templates[0]: the raw $141 container when parsed, else the
 	// IonSymbol entry resolved through the $608 structure fragments
 	// (yj_to_epub_notebook.py:225-227 resolves symbols inside
 	// process_notebook_content; the dispatcher resolves the top-level one).
 	if len(templates) > 0 {
+		delete(sectionDict, "page_templates")
 		if raw := cloneMap(templates[0].RawValues); raw != nil {
 			return sectionDict, raw
 		}
@@ -724,9 +741,11 @@ func resolveScribeSectionInputs(scribeCtx *ScribeNotebookContext, section sectio
 		return sectionDict, nil
 	}
 	if m, ok := asMap(rawList[0]); ok {
+		delete(sectionDict, "page_templates")
 		return sectionDict, cloneMap(m)
 	}
 	if fid, ok := asString(rawList[0]); ok && scribeCtx != nil && scribeCtx.GetFragment != nil {
+		delete(sectionDict, "page_templates")
 		return sectionDict, cloneMap(scribeCtx.GetFragment("structure", fid))
 	}
 	return sectionDict, nil

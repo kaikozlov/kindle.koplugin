@@ -254,3 +254,99 @@ func resourceNames(resources []epub.Resource) []string {
 	}
 	return names
 }
+
+// TestScribeNotebookPipelineMultiplePages verifies that page sections
+// materialize in reading-order sequence (Python's book_parts are appended by
+// new_book_part as process_reading_order walks the reading order,
+// yj_to_epub_notebook.py:97-99) and that a page whose template fragment is
+// missing still materializes (get_fragment logs an error and returns an empty
+// fragment; the page keeps referencing only its own SVG).
+func TestScribeNotebookPipelineMultiplePages(t *testing.T) {
+	state := newScribeNotebookState(t)
+
+	// A second page with no resolvable template reference.
+	state.Fragments.SectionFragments["page-2"] = parseSectionFragment("page-2", map[string]interface{}{
+		"section_name":        "page-2",
+		"nmdl.canvas_width":   3906,
+		"nmdl.canvas_height":  5208,
+		"nmdl.normalized_ppi": 2520,
+		"page_templates":      []interface{}{"pt-page"},
+	})
+	state.Fragments.SectionOrder = []string{"page-2", "page-1", "tpl-lined"}
+
+	book, err := renderBookState(state, nil)
+	if err != nil {
+		t.Fatalf("renderBookState failed: %v", err)
+	}
+
+	if len(book.Sections) != 2 {
+		t.Fatalf("expected 2 spine sections, got %d", len(book.Sections))
+	}
+	if book.Sections[0].Filename != "page-2.xhtml" || book.Sections[1].Filename != "page-1.xhtml" {
+		t.Errorf("reading order not preserved: %s, %s",
+			book.Sections[0].Filename, book.Sections[1].Filename)
+	}
+	if book.Sections[0].ViewportWidth != 3906 || book.Sections[0].ViewportHeight != 5208 {
+		t.Errorf("page-2 viewport = %dx%d, want 3906x5208",
+			book.Sections[0].ViewportWidth, book.Sections[0].ViewportHeight)
+	}
+
+	var sawPage2SVG, sawPage1SVG bool
+	for _, res := range book.Resources {
+		if res.Filename == "page-2.svg" {
+			sawPage2SVG = true
+		}
+		if res.Filename == "page-1.svg" {
+			sawPage1SVG = true
+		}
+	}
+	if !sawPage1SVG || !sawPage2SVG {
+		t.Errorf("missing per-page SVG resources (page-1=%v page-2=%v)", sawPage1SVG, sawPage2SVG)
+	}
+}
+
+// TestScribeNotebookPipelineMissingTemplateFragment verifies the explicit
+// behavior when a template section references a nonexistent $608 fragment:
+// the template part produces no SVG resource and pages keep only the white
+// rect + page image (Python: get_fragment error + "Failed to locate the SVG
+// image within Scribe notebook template", yj_to_epub_notebook.py:201).
+func TestScribeNotebookPipelineMissingTemplateFragment(t *testing.T) {
+	state := newScribeNotebookState(t)
+	delete(state.Fragments.RubyContents, "pt-tpl")
+
+	book, err := renderBookState(state, nil)
+	if err != nil {
+		t.Fatalf("renderBookState failed: %v", err)
+	}
+
+	if len(book.Sections) != 1 {
+		t.Fatalf("expected 1 spine section, got %d", len(book.Sections))
+	}
+	body := book.Sections[0].BodyHTML
+	if strings.Contains(body, "lined.svg") {
+		t.Errorf("page body must not reference a missing template SVG:\n%s", body)
+	}
+	for _, res := range book.Resources {
+		if res.Filename == "lined.svg" {
+			t.Errorf("lined.svg must not be produced from a missing template fragment")
+		}
+	}
+}
+
+// TestScribeResourceFilenameSanitization covers the resource_location_filename
+// port (yj_to_epub_resources.py:244-285): sanitization, double-slash collapse,
+// leading-slash prefixing, and case-insensitive uniquification.
+func TestScribeResourceFilenameSanitization(t *testing.T) {
+	used := map[string]struct{}{}
+	if got := scribeResourceFilename("page-1.svg", used); got != "page-1.svg" {
+		t.Errorf("plain name: got %q, want page-1.svg", got)
+	}
+	if got := scribeResourceFilename("/res/page 2+.svg", used); got != "_res/page_2_.svg" {
+		t.Errorf("sanitized name: got %q", got)
+	}
+	// Duplicate (case-insensitive) gets a numeric suffix like Python; the
+	// candidate keeps its original casing (only the check is case-insensitive).
+	if got := scribeResourceFilename("PAGE-1.SVG", used); got != "PAGE-1.SVG-0.SVG" {
+		t.Errorf("duplicate name: got %q", got)
+	}
+}
