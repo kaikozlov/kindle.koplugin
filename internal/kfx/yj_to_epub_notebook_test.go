@@ -1219,32 +1219,65 @@ func TestBrushTypeClassificationWithThickness(t *testing.T) {
 }
 
 func TestBrushTypeOpacity(t *testing.T) {
-	// Verify that HIGHLIGHTER and SHADER get correct opacity.
-	// This is tested indirectly through the stroke processing.
+	// Python yj_to_epub_notebook.py:344-379: only SHADER reduces opacity.
+	// HIGHLIGHTER remains fully opaque and uses mix-blend-mode: darken instead.
 	tests := []struct {
 		brushType int
 		opacity   float64
 	}{
-		{0, 1.0}, // ORIGINAL_PEN
-		{1, 0.2}, // HIGHLIGHTER
-		{5, 1.0}, // PENCIL
-		{6, 1.0}, // FOUNTAIN_PEN
-		{9, 0.2}, // SHADER
+		{0, 1.0},
+		{1, 1.0},
+		{5, 1.0},
+		{6, 1.0},
+		{9, 0.375},
 	}
 	for _, tc := range tests {
-		brushName := classifyBrushType(tc.brushType)
 		opacity := 1.0
-		if tc.brushType == 1 {
-			opacity = 0.2
-		}
 		if tc.brushType == 9 {
-			opacity = 0.2
+			opacity = 0.375
 		}
-		_ = brushName
 		if opacity != tc.opacity {
-			t.Errorf("brush type %d (%s) opacity = %v, want %v", tc.brushType, brushName, opacity, tc.opacity)
+			t.Errorf("brush type %d opacity = %v, want %v", tc.brushType, opacity, tc.opacity)
 		}
 	}
+}
+
+func TestScribeNotebookStroke_DarkenBrushes(t *testing.T) {
+	makeStroke := func(brushType, colorIndex int) map[string]interface{} {
+		posData := []byte{0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x15, 0x0a, 0x54}
+		all100 := []byte{0x01, 0x01, 0x02, 0x00, 0x00, 0x00, 0x14, 0x64}
+		return map[string]interface{}{
+			"nmdl.type": "nmdl.stroke", "nmdl.brush_type": brushType, "nmdl.color": colorIndex,
+			"nmdl.random_seed": 42, "nmdl.stroke_bounds": []interface{}{0, 0, 1000, 1000},
+			"nmdl.thickness": float64(50),
+			"nmdl.stroke_points": map[string]interface{}{
+				"nmdl.num_points": 2,
+				"nmdl.position_x": append([]byte(nil), posData...),
+				"nmdl.position_y": append([]byte(nil), posData...),
+				"nmdl.density_adjust_factor": append([]byte(nil), all100...),
+				"nmdl.thickness_adjust_factor": append([]byte(nil), all100...),
+			},
+		}
+	}
+
+	t.Run("highlighter", func(t *testing.T) {
+		parent := &svgElement{Tag: "svg"}
+		scribeNotebookStroke(&notebookContext{contentContext: "test"}, makeStroke(1, 0), parent, "highlight")
+		if len(parent.Children) != 1 { t.Fatalf("highlighter created %d top-level elements, want 1", len(parent.Children)) }
+		group := parent.Children[0]
+		if group.Attrib["id"] != "highlight" || group.Attrib["style"] != "mix-blend-mode: darken;" { t.Fatalf("highlighter group attrs = %#v", group.Attrib) }
+		if _, ok := group.Attrib["opacity"]; ok { t.Fatalf("highlighter must remain fully opaque: %#v", group.Attrib) }
+		if group.Attrib["stroke"] != "#bcbcbc" { t.Fatalf("black highlighter stroke = %q, want #bcbcbc", group.Attrib["stroke"]) }
+	})
+
+	t.Run("shader", func(t *testing.T) {
+		parent := &svgElement{Tag: "svg"}
+		scribeNotebookStroke(&notebookContext{contentContext: "test"}, makeStroke(9, 2), parent, "shader")
+		if len(parent.Children) != 1 { t.Fatalf("shader created %d top-level elements, want 1", len(parent.Children)) }
+		group := parent.Children[0]
+		if group.Attrib["id"] != "shader" || group.Attrib["style"] != "mix-blend-mode: darken;" { t.Fatalf("shader group attrs = %#v", group.Attrib) }
+		if group.Attrib["opacity"] != "0.38" { t.Fatalf("shader opacity = %q, want 0.38", group.Attrib["opacity"]) }
+	})
 }
 
 // ===========================================================================

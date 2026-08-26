@@ -790,9 +790,11 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 	}
 
 	// Determine brush type — must come after variableThickness computation.
-	// Python (yj_to_epub_notebook.py:330-350): brush_type 7 → MARKER if variable_thickness else PEN.
+	// Python yj_to_epub_notebook.py:344-379 keeps highlighters fully opaque but
+	// applies darken blending (and lightens black to #bcbcbc), while shaders use
+	// the same darken blend at 0.375 opacity.
 	opacity := 1.0
-	additiveOpacity := false
+	darken := false
 	var brushName string
 
 	if nmdlBrushType != nil {
@@ -800,10 +802,13 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 		brushName = classifyBrushTypeWithThickness(brushTypeInt, variableThickness)
 		switch brushTypeInt {
 		case 1: // HIGHLIGHTER
-			opacity = 0.2
+			darken = true
+			if strokeColor == 0 {
+				strokeColor = 0xbcbcbc
+			}
 		case 9: // SHADER
-			opacity = 0.2
-			additiveOpacity = true
+			darken = true
+			opacity = 0.375
 		}
 	}
 
@@ -876,33 +881,15 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 
 	opacityStr := fmt.Sprintf("%1.2f", opacity)
 
-	// Handle opacity group for non-additive translucent strokes
-	actualParent := parent
-	if opacity < 1.0 && !additiveOpacity {
-		// Walk up to find the SVG root element (tag == "svg")
-		svgRoot := parent
-		for svgRoot.Parent != nil {
-			svgRoot = svgRoot.Parent
-		}
+	// Python yj_to_epub_notebook.py:421-429 always creates the stroke group
+	// directly under the supplied parent, then decorates that group.
+	groupElem := newSVGElement(parent, "g", nil)
 
-		// Look for existing opacity group
-		var opacityGroup *svgElement
-		for _, child := range svgRoot.Children {
-			if child.Tag == "g" && child.Attrib != nil && child.Attrib["opacity"] == opacityStr {
-				opacityGroup = child
-				break
-			}
-		}
-		if opacityGroup == nil {
-			opacityGroup = newSVGElement(svgRoot, "g", map[string]string{"opacity": opacityStr})
-		}
-		actualParent = opacityGroup
-	}
-
-	groupElem := newSVGElement(actualParent, "g", nil)
-
-	if opacity < 1.0 && additiveOpacity {
+	if opacity < 1.0 {
 		groupElem.setAttrib("opacity", opacityStr)
+	}
+	if darken {
+		groupElem.setAttrib("style", "mix-blend-mode: darken;")
 	}
 
 	if locationID != "" {
