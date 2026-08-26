@@ -3984,6 +3984,7 @@ type storylineRenderer struct {
 	// rule table before content rendering (yj_to_epub.py:78-80).
 	dictionaryRules     map[int]string
 	usedDictionaryRules map[int]struct{}
+	renderError         error
 	// textCombineInUse is set to true when any text-combine-upright: all
 	// declaration is encountered during style processing (Python: self.text_combine_in_use).
 	// Port of Python yj_to_epub_properties.py L1127 and yj_to_epub_content.py L103.
@@ -4444,6 +4445,9 @@ func (r *storylineRenderer) setDynamicStyle(element *htmlElement, baseName strin
 }
 
 func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
+	if r.renderError != nil {
+		return nil
+	}
 	node, ok := asMap(raw)
 	if !ok {
 		// IonString entries in $146 lists create text nodes.
@@ -4452,6 +4456,29 @@ func (r *storylineRenderer) renderNode(raw interface{}, depth int) htmlPart {
 			return &htmlElement{Tag: "span", Children: []htmlPart{htmlText{Text: cleanTextForLXML(text)}}}
 		}
 		return nil
+	}
+	if hasDictionaryEntryData(node) {
+		// Python handles dictionary metadata only in the $270/container branch
+		// (yj_to_epub_content.py:507-588), before add_content. Strip it from a
+		// working copy, render the ordinary container, then apply the equivalent
+		// idx:* wrapper/first-child markup without disturbing normal content.
+		working := cloneMap(node)
+		spec, err := r.consumeDictionaryEntry(working)
+		if err != nil {
+			r.setRenderError(err)
+			return nil
+		}
+		rendered := r.renderNode(working, depth)
+		if r.renderError != nil {
+			return nil
+		}
+		contentElement := dictionaryContentElement(rendered)
+		if contentElement == nil {
+			r.setRenderError(&UnsupportedError{Message: "dictionary entry did not render an element"})
+			return nil
+		}
+		decorateDictionaryEntry(contentElement, spec)
+		return rendered
 	}
 	node, ok = r.prepareRenderableNode(node)
 	if !ok {
@@ -7421,6 +7448,12 @@ func promotedBodyContainer(nodes []interface{}, styleFragments map[string]map[st
 	}
 	node, ok := asMap(nodes[0])
 	if !ok {
+		return "", nil, false, false, 0
+	}
+	// Python changes dictionary containers from div to IDX_ENTRY before the
+	// top-level div/aside/figure-to-body promotion (yj_to_epub_content.py:542-545,
+	// 1381-1383), so a dictionary entry must remain a body child in Go too.
+	if hasDictionaryEntryData(node) {
 		return "", nil, false, false, 0
 	}
 	styleID, _ := asString(node["style"])

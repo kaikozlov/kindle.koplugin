@@ -658,6 +658,11 @@ func sectionXHTML(book Book, section Section) string {
 	if strings.Contains(section.BodyHTML, `epub:type="`) || section.Properties == "epub" {
 		out.WriteString(` xmlns:epub="http://www.idpf.org/2007/ops"`)
 	}
+	// Python XHTML_NAMESPACES includes idx and cleanup_namespaces retains it
+	// when dictionary markup is present (epub_output.py:85,88-92,698).
+	if strings.Contains(section.BodyHTML, `<idx:`) {
+		out.WriteString(` xmlns:idx="https://kindlegen.s3.amazonaws.com/AmazonKindlePublishingGuidelines.pdf"`)
+	}
 	if pageLanguage != "" {
 		out.WriteString(` xml:lang="` + xmlEscape(pageLanguage) + `"`)
 	}

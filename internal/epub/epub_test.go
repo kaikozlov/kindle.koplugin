@@ -1926,3 +1926,16 @@ func TestSectionBodyDirectionIsSerialized(t *testing.T) {
 		t.Fatalf("section XHTML missing body direction: %s", xhtml)
 	}
 }
+
+func TestSectionXHTMLDictionaryNamespace(t *testing.T) {
+	// Python epub_output.py:85,88-92 creates the idx namespace and lxml's
+	// cleanup_namespaces retains it when idx:* dictionary elements are used.
+	got := sectionXHTML(Book{Title: "Dictionary"}, Section{
+		Filename: "entry.xhtml",
+		BodyHTML: `<idx:entry scriptable="yes"><idx:orth value="cat"/></idx:entry>`,
+	})
+	if !strings.Contains(got, `xmlns:idx="https://kindlegen.s3.amazonaws.com/AmazonKindlePublishingGuidelines.pdf"`) {
+		t.Fatalf("dictionary XHTML missing idx namespace:\n%s", got)
+	}
+}
+
