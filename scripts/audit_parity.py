@@ -324,7 +324,8 @@ def gofuncinfo(path=None) -> dict:
             data = json.load(f)
     else:
         proc = subprocess.run(
-            ["go", "run", os.path.relpath(GOFUNCINFO_TOOL, BASE), "internal", "cmd"],
+            ["go", "run", "./" + os.path.relpath(GOFUNCINFO_TOOL, BASE).replace(os.sep, "/"),
+             "internal", "cmd"],
             capture_output=True, text=True, cwd=BASE,
         )
         if proc.returncode != 0:
