@@ -7,8 +7,8 @@ This is a narrow, deep follow-up to open question 3 in
 remains authoritative for the broader investigation).
 
 Question: does shared symbol / KAF property **853 `bcSequenceNumber`** have any
-reader, writer, serializer, or storage reference anywhere in the Kindle Previewer
-3.106 bundle, and is it ever *used* (as opposed to declared) in actual Ion data?
+reader, writer, serializer, or storage behavior in Kindle Previewer 3.106, and is it ever
+*emitted* (as opposed to merely declared) in the generated Ion/KDF data we can produce?
 
 Artifacts covered:
 
@@ -22,22 +22,29 @@ Artifacts covered:
 
 ## Executive answer
 
-**853 is vocabulary, not behavior — in this bundle.** Every occurrence in every
-Amazon binary and the entire Java converter is declaration/registration only:
+**853 is a real native KFX container-info field; the current controlled KDF corpus does not exercise its producer.**
+The initial string-xref audit was insufficient: Previewer's native code often accesses YJ/KFX
+properties by numeric ID rather than by name (as the known `page_regions` consumer does). A
+follow-up exact-immediate audit found an explicit container-info parser branch for property 853.
 
 | Artifact | Occurrences of the string | Nature |
 | --- | ---: | --- |
 | EpubToKFXConverter-4.0.jar | 1 class file | KAF property enum constant (declaration only) |
 | libshared.dylib | 1 per arch slice | shared-symbol-table registration + `PropertyNameUtil` map builder |
-| KindleImageProcessor | 1 | shared-symbol-table registration call |
-| Kindle Previewer 3 (main) | 1 | shared-symbol-table registration call |
+| KindleImageProcessor | 1 string | shared-symbol-table registration; exact `0x355` immediates audited separately |
+| Kindle Previewer 3 (main) | 1 string | shared-symbol registration **plus numeric property-853 reader** |
 | KFX Input 2.34.0 | 0 by name; `$853?` placeholder | numeric table extent only |
 
-No producer path emits it (304/304 generated books declare the shared table through
-853 but use no symbol above 790), no consumer reads it, and the live KAF runtime
-accepts it as a generic property but has no type/default semantics beyond its name.
-The `nativeSave` path of the standalone KAF harness crashes even without
-modification, so serialization persistence is honestly untested, not negative.
+In the 304 generated KDF instances swept in this investigation, every book declared the shared
+table through 853 but none used 853 in a **KDF fragment payload** (highest observed payload SID: 790).
+That negative result is now known to be orthogonal to the likely wire location: `bcSequenceNumber` belongs to
+KFX container-info, not the KDF application fragment graph. The native Previewer reader **does** recognize 853
+in the same container-info parser that consumes
+`bcContId`, compression/DRM/chunk metadata, document-symbol offsets, and format-capability offsets.
+It coerces the incoming numeric value to an integer and stores it in a dedicated 32-bit field.
+The live generic KAF property API also accepts/read-backs 853 in memory. `nativeSave` crashes even
+on an unmodified save-only control in the standalone harness, so KAF-save persistence remains
+untested, not negative.
 
 ## Evidence
 
@@ -74,7 +81,7 @@ reads, writes, serializes, or stores property 853.**
 All other JARs under `Contents/` (commons-*, jericho, jna, jsoup, antlr, etc.)
 contain zero occurrences, raw or compressed.
 
-### 2. libshared.dylib: exactly two references, both registration
+### 2. libshared.dylib: string references are registration; numeric behavior lives elsewhere
 
 `bcSequenceNumber` appears once per arch slice in `__TEXT,__cstring`
 (x86_64 `0x633a5d`, arm64 `0x617579`), embedded in the shared-symbol name block
@@ -99,8 +106,9 @@ references:
   ... "vertex_list" ... "page_regions" ... "bcSequenceNumber", 0 ...
   ```
 
-Both xrefs are declaration/registration. There is no third reference; nothing in
-the 23k-function native code reads or writes the property.
+Both **string** xrefs are declaration/registration. This does **not** imply that property 853 has
+no native behavior: shared properties are commonly accessed by numeric ID. The follow-up numeric
+immediate audit below is therefore the authoritative behavioral check.
 
 **Naming family (contextual).** The same initializer reveals the neighbors
 853 lives among — a contiguous `bc*` block:
@@ -117,53 +125,84 @@ capabilities offset/length). `bcSequenceNumber` is appended at the end of this
 family. That is naming evidence for "book-container storage bookkeeping," not
 proof of semantics — see *Inference* below.
 
-### 3. Main binary and KindleImageProcessor: one registration call each
+### 3. Native numeric-ID audit: Previewer explicitly parses `bcSequenceNumber`
 
-These binaries use no classic absolute pointers (chained fixups), so an x86-64
-RIP-relative `lea` scan was run over `__text` targeting each string's vaddr:
+A follow-up disassembly audit searched the x86-64 native binaries for exact immediate `0x355`
+(decimal 853), then classified every hit by function context. This was necessary because a
+string-only xref audit misses property accessors that pass or compare numeric IDs.
 
-| Binary | String vaddr | Code refs | Site |
-| --- | ---: | ---: | --- |
-| Kindle Previewer 3 | `0x10278b0c6` | 1 | lea at `0x1013fa5b0` |
-| KindleImageProcessor | `0x102525460` | 1 | lea at `0x10058c8c0` |
-
-Both sites disassemble to the identical pattern (raw bytes, e.g. main binary
-`... ff 50 18 | 48 8b 75 d0 | 48 8b 06 | 48 8d 15 <disp=string>` → `lea rdi,[rbp-0x14]` →
-`xor ecx,ecx` → `call [rax+0x18]`):
+The decisive hit is in the Previewer main binary at `FUN_10144b490`
+(`0x10144b490..0x10144b66e`; compare at `0x10144b51d`). Ghidra reconstructs the routine as a
+property-ID visitor over one container-info object. Its switch is not ambiguous: the handled IDs
+map exactly to the KFX `bc*` container header family:
 
 ```text
-call [rax+0x18]        ; previous registration
-mov rsi,[rbp-0x10]
-mov rax,[rsi]
-lea rdx,[rip+...]      ; "bcSequenceNumber"
-lea rdi,[rbp-0x14]
-xor ecx,ecx            ; third arg 0
-call [rax+0x18]        ; register(name, 0) — same slot as libshared's initializer
+409  bcContId                -> object +0x10
+410  bcComprType             -> object +0x18
+411  bcDRMScheme             -> object +0x1c
+412  bcChunkSize             -> object +0x20
+413  bcIndexTabOffset        -> object +0x24
+414  bcIndexTabLength        -> object +0x28
+415  bcDocSymbolOffset       -> object +0x2c
+416  bcDocSymbolLength       -> object +0x30
+594  bcFCapabilitiesOffset   -> object +0x34
+595  bcFCapabilitiesLength   -> object +0x38
+853  bcSequenceNumber        -> object +0x3c
 ```
 
-Same vtable slot +0x18, same three-argument shape as the final entries of
-libshared's initializer. Both binaries embed the YJ reader symbol table and
-register the name once; neither contains any other reference.
+For 853 the decompiled branch is:
 
-The Previewer GUI's renderer *does* actively consume **852** `page_regions`
-(established previously); by contrast 853 has no analogous consumer anywhere.
+```c
+else if (param_3 == 0x355) {
+    if ((*(byte *)(param_4 + 1) & 1) == 0)
+        *(uint32_t *)(param_1 + 0x3c) = *(uint32_t *)(param_4 + 8);
+    else
+        *(int32_t *)(param_1 + 0x3c) = (int)*(float *)(param_4 + 8);
+}
+```
+
+So **`bcSequenceNumber` is not declaration-only**. Previewer's native container reader recognizes
+it as a numeric container-info field and stores a 32-bit integer representation in a dedicated
+slot. What that integer sequences (container generations, chunks, revisions, etc.) is still not
+established by this path alone.
+
+Other exact `0x355` sites were classified separately:
+
+- `FUN_100dc5a64`: `< 0x355` threshold in symbol/index handling — table-boundary behavior, not a
+  field-specific read.
+- `FUN_100ea0fee` (`yj::InputParagraphAdapter` context): `< 0x356` range check with exclusions —
+  again shared/property-range behavior rather than `bcSequenceNumber` semantics.
+- `0x1011912be`: OpenSSL `crypto/pkcs7/pk7_doit.c` diagnostic/line context — unrelated.
+- `0x1019dcce9`: FDRM assertion/diagnostic context (`fdrm_descriptors_imp.cpp`) — unrelated.
+- `FUN_100ad6ed0`: codec/table-construction arithmetic — unrelated to YJ properties.
+- `FUN_101495da0`: passes `0x355` into a YJSDK construction path; this is consistent with current
+  shared-table extent and does not by itself identify field 853 semantics.
+
+`KindleImageProcessor` also contains exact `0x355` immediates. The obvious sites at
+`0x100051db6` and `0x1000b03f2` are ImageMagick `bmp.c` / `pcd.c` diagnostics (source-line
+constants), `0x10035d829` is image-codec arithmetic, and `0x1005fe530` mirrors the YJSDK/table-extent
+construction path. No second field-specific `bcSequenceNumber` parser was identified there.
+
+The original string-reference result remains useful but narrower: `bcSequenceNumber` has one
+registration string reference in the Previewer main binary and one in KindleImageProcessor. The
+numeric-ID audit is what exposes the real reader behavior.
 
 ### 4. KFX Input 2.34.0 and the Go plugin
 
-- Python (`REFERENCE/KFX_Input`): `$853?` appears exactly once, as an anonymous
-  placeholder in `kfxlib/yj_symbol_catalog.py`'s shared-table tail
-  (`$852? $853? $854? ... $859`). No `bcSequenceNumber` string exists anywhere
-  in the reference tree; no semantic code path mentions `$853` or `$853?`.
+- Python (`REFERENCE/KFX_Input`): `$853?` appears only as an anonymous placeholder in the shared-table tail.
+  `kfx_container.py` explicitly pops the older `bc*` container-info fields (409..416, 594/595) but
+  does **not** consume `$853?`; if a delivered KFX container actually carries it today, it will remain
+  in `container_info` and be reported as extra data. No `bcSequenceNumber` semantic handler exists.
 - Go plugin: `internal/kfx/catalog.ion` / goldens carry the real name
   `853 -> "bcSequenceNumber"` (sourced earlier from the live native resolver),
   and `yj_symbol_catalog_test.go` pins it. No Go code reads or writes the
   property.
 
-### 5. Declaration vs use in 304 generated KDFs
+### 5. KDF declaration sweep: useful catalog evidence, not a container-info producer test
 
-Every Amazon-generated `book.kdf` under `/tmp` from all fixture runs
-(304 books across the 12 semantic families, including comic/CMX/region variants
-and two full `KFXGenApp` pipeline outputs) was decoded with KFX Input 2.34 and
+Every generated `book.kdf` instance swept under `/tmp` from the controlled fixture runs
+(304 instances across repeated runs of the semantic families, including comic/CMX/region variants
+and full `KFXGenApp` pipeline outputs) was decoded with KFX Input 2.34 and
 its fragment graphs walked for raw shared-SID usage (`$N` / `$N?` forms,
 keys and values).
 
@@ -185,7 +224,13 @@ Previewer stamping the current shared-table extent — the earlier KFX Input 2.3
 warning (`exceeds known table size ... =853`) was a pure table-extent mismatch,
 **not** evidence of 853 usage.
 
-### 6. Live KAF runtime: accepted as a generic property, no semantics
+After the §3 reader classification, this KDF scan is explicitly **not a producer test for
+`bcSequenceNumber`**. The native field belongs to KFX container-info, while the sweep above walked
+KDF application-fragment Ion. The controlled Previewer pipeline available here stops at KDF rather
+than a delivered CONT/KFX container. Testing emission therefore requires a delivery-container writer
+or a retail KFX/CONT sample, not more KDF fragment sweeps.
+
+### 6. Live KAF runtime: generic set/get works; native container reader supplies the schema clue
 
 Isolated one-shot JNI subprocesses (bundled JRE 11 + `libshared.dylib`,
 `System.exit(0)` before teardown per the known lifetime hazards):
@@ -210,10 +255,10 @@ read back: kInt 12345
 property count after=5
 ```
 
-So KAF's generic property layer (`Container_setNativeProperty` /
-`getNativeProperty`) accepts and stores the property on a Structure with no
-validation error — consistent with a generic property store that has no
-schema constraint for 853.
+So KAF's generic property layer (`Container_setNativeProperty` / `getNativeProperty`) accepts and
+stores the property on a Structure with no validation error. This generic set/get experiment does
+not establish where the property is valid semantically; the native container-info parser in §3 is
+the stronger evidence for its actual format family.
 
 One soft observation: `PropertyName.h()` (default value) reports type `kElemType`
 with int value 853, i.e. the property's own symbol — a placeholder rather than a
@@ -240,50 +285,47 @@ For anyone resuming that mutation: binary-Ion field SID 853 encodes as varuint
 
 ## Confirmed facts
 
-1. The string occurs in the JAR only in the KAF property enum; all other Java
-   `853` literals are unrelated static arrays (8 files, individually verified).
-2. libshared references it from exactly two places: the property-name map JNI
-   builder and the shared-symbol-table registration initializer.
-3. Main binary and KindleImageProcessor each contain exactly one code reference,
-   the same registration call shape as libshared's initializer.
-4. No reader, writer, serializer, or storage consumer of 853 exists in any
-   inspected Java or native code of the Previewer 3.106 bundle.
-5. KFX Input 2.34 knows 853 only as `$853?`; the Go plugin catalog carries the
-   real name; neither uses it semantically.
-6. All 304 generated books declare the shared table through 853 and use nothing
-   above 790; declaration extent ≠ payload use.
-7. The live runtime resolves 853 ↔ `bcSequenceNumber` bidirectionally, and KAF's
-   generic property layer accepts an int value on a Structure in memory.
-8. `nativeSave` crashes identically with no modification (control), so
-   persistence through KAF save is untestable in this harness — unknown, not
-   negative.
+1. Java converter code declares property 853 in the KAF enum but has no Java reader/writer for it;
+   the other Java literal-853 hits are unrelated tables.
+2. `libshared.dylib`'s **string** references are property-table registration, not field consumption.
+3. Previewer's main native binary has an explicit numeric property visitor that handles the exact
+   `bc*` container-info family and stores **853 `bcSequenceNumber`** as a 32-bit integer at object
+   offset `+0x3c`.
+4. Other exact native `0x355` sites are table-boundary/YJSDK-extent behavior or unrelated third-party
+   library constants; no second field-specific reader was identified in KindleImageProcessor.
+5. KFX Input 2.34 knows 853 only as `$853?` and does not pop/interpret it from `container_info`; Go
+   carries the real name but no behavior.
+6. All 304 generated KDF instances in the local sweep declared the shared table through 853, while
+   none used 853 in KDF fragment payload data (highest observed payload SID 790). Because 853 is a KFX
+   container-info field, this does **not** test the delivery-container writer.
+7. The live runtime resolves 853 ↔ `bcSequenceNumber` bidirectionally, and KAF's generic property
+   layer accepts an integer value in memory.
+8. `nativeSave` crashes identically with no modification (control), so persistence through that
+   standalone save harness is unknown.
 
 ## Inference (clearly separated)
 
-- **Family**: `bcSequenceNumber` sits at the tail of the `bc*` block whose other
-  members are all KFX *container* storage fields. Moderate-confidence inference:
-  it names a new book-container bookkeeping field (the name suggests a sequence
-  number of some kind) appended to the container-info/entity vocabulary.
-- **Producer**: whatever writes it is not in this bundle — consistent with the
-  established pattern that the consumer-visible `bc*` fields are written by
-  KFX container packaging rather than the EPUB→YJ converter. Candidate writers
-  would be Amazon packaging/delivery tooling or a newer converter version; no
-  evidence exists in 3.106.
-- **Consumer**: a Kindle-device reader or newer YJReaderSDK plausibly reads it;
-  Previewer's reader registers the name but never reads it. Speculative.
-- Any meaning beyond "book-container-associated sequence-number-like field" is
-  **unsupported** by current evidence and should not be encoded into names,
-  defaults, or behavior in KFX Input or the Go port beyond the raw name.
+- **Format family is now high confidence:** the native parser handles 853 in the same routine and
+  object layout as `bcContId`, compression/DRM/chunk metadata, index/document-symbol offsets, and
+  format-capability offsets. `bcSequenceNumber` is therefore a KFX **container-info** field, not an
+  EPUB/YJ content property in any meaningful application-level sense.
+- **Exact semantics remain open:** the name and 32-bit storage strongly indicate a sequence number,
+  but the reader path alone does not establish what is sequenced or how the value changes.
+- **Producer remains unknown:** the controlled Previewer outputs stop at KDF and therefore do not exercise the
+  delivery-container writer where this field belongs. A packaging/delivery serializer is the primary place to inspect next;
+  current evidence does not establish whether Previewer 3.106 can emit it.
+- **Reader behavior is proven only for Previewer's native container parser.** Device readers may use
+  the field too, but that is not established by this bundle.
 
 ## Practical guidance
 
 - Keep Go's `853 -> bcSequenceNumber` name (correct, Amazon-provided).
-- Keep KFX Input-style tolerance for unknown shared SIDs past the known table
-  (`$N?` placeholders, skip on decode) — that is exactly the right posture for a
-  declared-but-unused symbol.
-- If a real-world book ever presents SID 853 in a payload, its fragment family
-  (expected: container info/entity, by naming family) would settle the producer
-  question immediately; capture it as a fixture.
+- Treat 853 as a **container-info integer field** in documentation/model naming. Do not invent its
+  sequencing semantics until a producer sample or downstream use is recovered.
+- KFX Input currently leaves `$853?` as extra `container_info`; if a real retail sample carries it,
+  capture the value and container version before deciding whether to silently accept/store it.
+- A real-world delivered KFX/CONT container carrying 853 would settle the producer/version question immediately;
+  preserve its container version and `container_info` as a fixture.
 - On the next Previewer bump, re-run the two cheap checks first: the
   `PropertyNameUtil` table extent and the `DigitalBook.nativeGetSymbolName`
   tail (`scripts/kp3/run_probe.py --catalog` / `--symbol-range`) — a new entry
