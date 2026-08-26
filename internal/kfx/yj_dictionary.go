@@ -241,7 +241,7 @@ func (r *storylineRenderer) consumeDictionaryEntry(content map[string]interface{
 		return nil, err
 	}
 	delete(content, "yj.dictionary.unnormalized_term")
-	if len(unnormalizedTerms) != len(dictionaryTerms) {
+	if len(unnormalizedTerms) > 0 && len(unnormalizedTerms) != len(dictionaryTerms) {
 		log.Printf("kfx: warning: Unexpected number of unnormalized dictionary terms (%d vs %d): %v vs %v", len(unnormalizedTerms), len(dictionaryTerms), unnormalizedTerms, dictionaryTerms)
 	}
 
