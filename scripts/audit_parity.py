@@ -666,6 +666,12 @@ def classify(py: PyFunc, go_fn: Optional[dict], excluded_entry: Optional[dict],
     if excluded_entry is not None:
         return "excluded"
     if override_entry is not None:
+        # An explicit identity mapping proves WHICH Go function corresponds to
+        # the Python function; it does not prove that the Go function is wired
+        # into production. A zero-call target is therefore still a structural
+        # gap, not implementation credit. (Tests are excluded from called_by.)
+        if go_fn is None or go_fn.get("called_by", 0) == 0:
+            return "mapped_dead"
         return "mapped"
     if go_fn is None:
         return "missing"
@@ -1065,14 +1071,16 @@ def audit_all(exclusions_path: str = None, gofuncinfo_path: str = None,
 
 
 STATUS_ORDER = ["stub_silent", "stub_admitted", "thin", "missing", "unresolved_match",
-                "excluded", "mapped", "implemented_trivial", "implemented_delegation",
-                "implemented"]
+                "mapped_dead", "excluded", "mapped", "implemented_trivial",
+                "implemented_delegation", "implemented"]
 STATUS_ICONS = {
     "implemented": "✓", "implemented_trivial": "○", "implemented_delegation": "→",
-    "mapped": "⇢", "stub_silent": "✗", "stub_admitted": "✗", "thin": "≈",
-    "missing": "∅", "unresolved_match": "?", "excluded": "⊘",
+    "mapped": "⇢", "mapped_dead": "†", "stub_silent": "✗",
+    "stub_admitted": "✗", "thin": "≈", "missing": "∅",
+    "unresolved_match": "?", "excluded": "⊘",
 }
-GAP_STATUSES = {"stub_silent", "stub_admitted", "thin", "missing", "unresolved_match"}
+GAP_STATUSES = {"stub_silent", "stub_admitted", "thin", "missing",
+                "unresolved_match", "mapped_dead"}
 
 
 def print_report(result, verbose=False):
@@ -1093,7 +1101,7 @@ def print_report(result, verbose=False):
         by_status.setdefault(e["status"], []).append(e)
 
     for status in ["stub_silent", "stub_admitted", "thin", "missing", "unresolved_match",
-                   "excluded", "mapped", "implemented_trivial"]:
+                   "mapped_dead", "excluded", "mapped", "implemented_trivial"]:
         for e in by_status.get(status, []):
             if status in ("implemented_trivial",) and not verbose:
                 continue
@@ -1111,10 +1119,11 @@ def print_report(result, verbose=False):
             print(f"  {mark} {cls}{e['py_name']}  {loc}")
             if e.get("unresolved_reason"):
                 print(f"      ? {e['unresolved_reason']}")
-            if status == "mapped" and e.get("override_entry"):
+            if status in ("mapped", "mapped_dead") and e.get("override_entry"):
                 oe = e["override_entry"]
                 m = oe.get("mapping") or {}
-                print(f"      ⇢ mapped to {m.get('go_file')}::{m.get('go_func')}: {oe.get('reason')}")
+                verb = "mapped (dead target)" if status == "mapped_dead" else "mapped"
+                print(f"      ⇢ {verb} to {m.get('go_file')}::{m.get('go_func')}: {oe.get('reason')}")
             if status == "excluded" and e["excluded_entry"]:
                 ee = e["excluded_entry"]
                 print(f"      ⊘ excluded [{ee.get('category')}]: {ee.get('reason')}")

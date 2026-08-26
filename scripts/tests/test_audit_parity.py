@@ -733,6 +733,18 @@ def elsewhere_helper(x):
         self.assertEqual(e["status"], "mapped")
         self.assertEqual(e["go_file"], "other.go")
 
+    def test_override_to_dead_target_is_gap_not_credit(self):
+        idx = self.idx_with(mkgo("processWidget", file="dead.go", nstmt=40, called_by=0))
+        result = self.audit(idx, overrides=[{
+            "py_file": self.py_file, "py_class": None, "py_name": "process_widget",
+            "mapping": {"go_file": "dead.go", "go_func": "processWidget"},
+            "reason": "reviewed identity mapping but target is not wired into production",
+        }])
+        e = next(e for e in result["entries"] if e["py_name"] == "process_widget")
+        self.assertEqual(e["status"], "mapped_dead")
+        self.assertTrue(e["go_dead"])
+        self.assertIn("mapped_dead", ap.GAP_STATUSES)
+
     def test_override_with_trivial_target_rejected(self):
         idx = self.idx_with(mkgo("processWidget", file="stub.go", nstmt=1,
                                  const_only=True, trivial_shape="const:nil"))
