@@ -819,18 +819,58 @@ func makePDFSpreadConfig() pageSpreadConfig {
 	}
 }
 
-func TestPageSpreadPixelDimensionUsesPythonPDFRounding(t *testing.T) {
+func TestPageSpreadPixelDimensionUsesPythonPixelValueSemantics(t *testing.T) {
 	cfg := makePDFSpreadConfig()
-	// Python pixel_value -> adjust_pixel_value uses round(value/100, 2), then
-	// the fixed-layout viewport path effectively rounds up to an integer.
-	// 200.5/100 -> 2.005 -> round(..., 2) == 2.0, so the result is 2 rather
-	// than the 3 produced by rounding the original value before division.
-	if got := pageSpreadPixelDimension(200.5, cfg, false); got != 2 {
-		t.Fatalf("PDF-backed page-spread dimension = %d, want 2", got)
+	// Python pixel_value truncates IonFloat to int before adjust_pixel_value.
+	// 100.999 therefore becomes 100 -> 1.0 -> ceil 1, not 1.01 -> ceil 2.
+	if got := pageSpreadPixelDimension(100.999, cfg, false); got != 1 {
+		t.Fatalf("PDF-backed page-spread dimension = %d, want 1", got)
 	}
 	cfg.IsPDFBackedFixedLayout = true
-	if got := pageSpreadPixelDimension(200.5, cfg, true); got != 201 {
-		t.Fatalf("PDF-backed fixed-layout section should skip scaling: got %d, want 201", got)
+	// adjust=False still performs pixel_value's float->int truncation.
+	if got := pageSpreadPixelDimension(200.5, cfg, true); got != 200 {
+		t.Fatalf("PDF-backed fixed-layout section should skip scaling after truncation: got %d, want 200", got)
+	}
+}
+
+func TestRenderSVGNodeUsesPythonPDFBackedPixelValue(t *testing.T) {
+	r := &storylineRenderer{isPDFBacked: true}
+	part := r.renderSVGNode(map[string]interface{}{
+		"type":         "kvg",
+		"fixed_width":  250.9,
+		"fixed_height": map[string]interface{}{"unit": "px", "value": 122.9},
+	})
+	if r.renderError != nil {
+		t.Fatal(r.renderError)
+	}
+	got := renderHTMLPart(part)
+	// Python truncates to 250/122, scales to 2.5/1.22, then %d truncates
+	// those final values to 2/1 when constructing the viewBox string.
+	if !strings.Contains(got, `viewBox="0 0 2 1"`) {
+		t.Fatalf("PDF-backed KVG viewBox not scaled with pixel_value semantics: %s", got)
+	}
+}
+
+func TestRenderSVGNodeAcceptsZeroDimensionsLikePython(t *testing.T) {
+	r := &storylineRenderer{}
+	part := r.renderSVGNode(map[string]interface{}{
+		"type": "kvg", "fixed_width": 0, "fixed_height": 0,
+	})
+	if r.renderError != nil {
+		t.Fatal(r.renderError)
+	}
+	if got := renderHTMLPart(part); !strings.Contains(got, `viewBox="0 0 0 0"`) {
+		t.Fatalf("zero KVG dimensions should still produce a viewBox: %s", got)
+	}
+}
+
+func TestRenderSVGNodeMissingHeightAbortsLikePythonPop(t *testing.T) {
+	r := &storylineRenderer{}
+	if part := r.renderSVGNode(map[string]interface{}{"type": "kvg", "fixed_width": 100}); part != nil {
+		t.Fatalf("malformed KVG rendered instead of aborting: %s", renderHTMLPart(part))
+	}
+	if r.renderError == nil {
+		t.Fatal("missing fixed_height did not abort KVG rendering")
 	}
 }
 

@@ -2239,7 +2239,6 @@ func TestRenderSVGNodeValidatesKVGEnvelope(t *testing.T) {
 	gotLog := captureStderr(func() {
 		renderer.renderSVGNode(map[string]interface{}{
 			"type":             "kvg",
-			"fixed_width":      100,
 			"kvg_content_type": "container",
 			"content_list":     []interface{}{"unused"},
 			"shape_list":       []interface{}{42},

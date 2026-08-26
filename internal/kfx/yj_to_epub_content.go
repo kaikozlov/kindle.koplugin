@@ -1649,13 +1649,38 @@ func processPageSpreadLeaf(
 	return result
 }
 
+// contentPixelValueForBook mirrors KFX_EPUB_Properties.pixel_value
+// (yj_to_epub_properties.py:2180-2202) for renderer-owned dimensions. Python
+// unwraps px structs, truncates IonFloat/IonDecimal to int, then optionally
+// applies PDF-backed hundredths-of-a-pixel scaling.
+func contentPixelValueForBook(value interface{}, isPDFBacked bool, adjust bool) (float64, bool) {
+	if value == nil {
+		return 0, false
+	}
+	if length, ok := asMap(value); ok {
+		unit, unitOK := asString(length["unit"])
+		if !unitOK || unit != "px" {
+			log.Printf("kfx: error: Expected px value, found %v", length["unit"])
+		}
+		value = length["value"]
+	}
+	integer, ok := asInt(value)
+	if !ok {
+		log.Printf("kfx: error: Expected int for px value, found %T", value)
+		return 0, false
+	}
+	numeric := float64(integer)
+	if adjust {
+		numeric = adjustPixelValueForBook(numeric, isPDFBacked)
+	}
+	return numeric, true
+}
+
 func pageSpreadPixelDimension(value interface{}, cfg pageSpreadConfig, isSection bool) int {
-	numeric, ok := asFloat64(value)
+	adjust := !(cfg.IsPDFBackedFixedLayout && isSection)
+	numeric, ok := contentPixelValueForBook(value, cfg.IsPdfBacked, adjust)
 	if !ok || numeric <= 0 {
 		return 0
-	}
-	if cfg.IsPdfBacked && !(cfg.IsPDFBackedFixedLayout && isSection) {
-		numeric = adjustPixelValueForBook(numeric, true)
 	}
 	return int(math.Ceil(numeric))
 }
@@ -5240,16 +5265,31 @@ func (r *storylineRenderer) renderPluginNode(node map[string]interface{}) htmlPa
 }
 
 func (r *storylineRenderer) renderSVGNode(node map[string]interface{}) htmlPart {
-	width, hasWidth := asInt(node["fixed_width"])
-	height, hasHeight := asInt(node["fixed_height"])
+	// Python yj_to_epub_content.py:911-918 reuses pixel_value here. PDF-backed
+	// KVG dimensions are stored in hundredths of a CSS pixel, and Python tests
+	// against None rather than positivity when deciding whether to emit viewBox.
+	var width, height float64
+	var hasWidth, hasHeight bool
+	if rawWidth, exists := node["fixed_width"]; exists {
+		rawHeight, heightExists := node["fixed_height"]
+		if !heightExists {
+			// Python content.pop("$67") has no default and aborts on this shape.
+			r.setRenderError(&UnsupportedError{Message: "SVG fixed_width is present but fixed_height is missing"})
+			return nil
+		}
+		height, hasHeight = contentPixelValueForBook(rawHeight, r.isPDFBacked, true)
+		width, hasWidth = contentPixelValueForBook(rawWidth, r.isPDFBacked, true)
+		delete(node, "fixed_height")
+		delete(node, "fixed_width")
+	}
 	attrs := map[string]string{
 		"version":             "1.1",
 		"preserveAspectRatio": "xMidYMid meet",
 	}
-	if hasWidth && hasHeight && width > 0 && height > 0 {
-		attrs["viewBox"] = fmt.Sprintf("0 0 %d %d", width, height)
+	if hasWidth && hasHeight {
+		attrs["viewBox"] = fmt.Sprintf("0 0 %d %d", int(width), int(height))
 	} else {
-		// Python yj_to_epub_content.py:862-869 logs this whenever the KVG
+		// Python yj_to_epub_content.py:916-918 logs this whenever the KVG
 		// content cannot produce both fixed dimensions.
 		log.Printf("kfx: error: SVG is missing viewBox")
 	}
