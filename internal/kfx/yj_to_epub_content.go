@@ -3753,11 +3753,60 @@ func (r *storylineRenderer) processContent(content map[string]interface{}, paren
 }
 
 func (r *storylineRenderer) processContentProps(content map[string]interface{}, resolveResource ResourceResolver) map[string]string {
+	if r.isPDFBacked {
+		content = adjustPDFBackedPixelProperties(content)
+	}
 	css, combineInUse := processContentPropertiesWithCombineFlag(content, r.resolveResource)
 	if combineInUse {
 		r.textCombineInUse = true
 	}
 	return css
+}
+
+// adjustPDFBackedPixelProperties mirrors KFX_EPUB_Properties.adjust_pixel_value as
+// reached from property_value (yj_to_epub_properties.py:1175-1324, 2204-2210).
+// PDF-backed KFX stores pixel-like style magnitudes in hundredths of a CSS pixel.
+// Numeric properties explicitly exempted by Python remain raw numbers, while direct
+// pixel-valued numbers and length structs using the px unit are divided by 100.
+func adjustPDFBackedPixelProperties(content map[string]interface{}) map[string]interface{} {
+	if len(content) == 0 {
+		return content
+	}
+	rawNumber := map[string]bool{
+		"column_count": true, "font_weight": true,
+		"table_column_span": true, "table_row_span": true,
+		"yj.max_crop": true, "yj.min_aspect_ratio": true, "yj.max_aspect_ratio": true,
+		"yj.semantics.heading_level": true,
+		"yj.user_margin_bottom_percentage": true, "yj.user_margin_left_percentage": true,
+		"yj.user_margin_right_percentage": true, "yj.user_margin_top_percentage": true,
+		"fill_opacity": true, "dropcap_chars": true, "dropcap_lines": true, "line_height": true,
+	}
+	adjusted := cloneMap(content)
+	for name, value := range adjusted {
+		if !yjPropertyNames[name] || colorYJProperties[name] || rawNumber[name] {
+			continue
+		}
+		if numeric, ok := asFloat64(value); ok {
+			if numeric != 0 {
+				adjusted[name] = math.Round(numeric) / 100
+			}
+			continue
+		}
+		if length, ok := asMap(value); ok {
+			unit, _ := asString(length["unit"])
+			if unit != "px" {
+				continue
+			}
+			magnitude, ok := asFloat64(length["value"])
+			if !ok || magnitude == 0 {
+				continue
+			}
+			lengthCopy := cloneMap(length)
+			lengthCopy["value"] = math.Round(magnitude) / 100
+			adjusted[name] = lengthCopy
+		}
+	}
+	return adjusted
 }
 
 // ---------------------------------------------------------------------------

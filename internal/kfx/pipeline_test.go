@@ -901,6 +901,24 @@ func TestRenderNodeSupportsInlineRenderContainers(t *testing.T) {
 	}
 }
 
+func TestProcessContentPropsScalesPDFBackedPixelValues(t *testing.T) {
+	renderer := storylineRenderer{isPDFBacked: true}
+	css := renderer.processContentProps(map[string]interface{}{
+		"font_size":   16,
+		"margin_top": map[string]interface{}{"value": 250.0, "unit": "px"},
+		"line_height": 1.2,
+	}, nil)
+	if css["font-size"] != "0.16px" {
+		t.Fatalf("PDF-backed font-size = %q, want 0.16px", css["font-size"])
+	}
+	if css["margin-top"] != "2.5px" {
+		t.Fatalf("PDF-backed px length = %q, want 2.5px", css["margin-top"])
+	}
+	if css["line-height"] != "1.2" {
+		t.Fatalf("raw numeric line-height should not be scaled: %q", css["line-height"])
+	}
+}
+
 func TestRenderImageNodeUsesResourceDimensionsForPDFBackedBooks(t *testing.T) {
 	renderer := storylineRenderer{
 		isPDFBacked:       true,
