@@ -169,6 +169,7 @@ func unapplyDictionaryRule(word, rule string) string {
 	}
 	return string(runes)
 }
+
 type dictionaryEntrySpec struct {
 	orthography string
 	inflections []string
@@ -275,7 +276,10 @@ func (r *storylineRenderer) consumeDictionaryEntry(content map[string]interface{
 			if !ok {
 				return nil, &UnsupportedError{Message: fmt.Sprintf("dictionary structured rule is %T, want struct", rawRule)}
 			}
-			working := cloneMap(ruleMap)
+			// Python pops yj.dictionary.word and yj.dictionary.rules directly from
+			// each IonStruct in dictionary_rules. Preserve that destructive nested
+			// behavior rather than consuming a detached clone.
+			working := ruleMap
 			word, ok := asString(working["yj.dictionary.word"])
 			if !ok {
 				return nil, &UnsupportedError{Message: "dictionary structured rule is missing yj.dictionary.word"}
@@ -337,7 +341,7 @@ func decorateDictionaryEntry(element *htmlElement, spec *dictionaryEntrySpec) *h
 	orth := &htmlElement{Tag: "idx:orth", Attrs: map[string]string{"value": spec.orthography}}
 	for _, inflection := range spec.inflections {
 		orth.Children = append(orth.Children, &htmlElement{
-			Tag: "idx:infl",
+			Tag:      "idx:infl",
 			Children: []htmlPart{&htmlElement{Tag: "idx:iform", Attrs: map[string]string{"value": inflection}}},
 		})
 	}
@@ -390,4 +394,3 @@ func (r *storylineRenderer) reportDictionaryRuleUsage() {
 		log.Printf("kfx: warning: Undefined dictionary rules: %v", undefined)
 	}
 }
-

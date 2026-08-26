@@ -31,7 +31,6 @@ func TestProcessDictionaryRulesFromAuxiliaryMetadata(t *testing.T) {
 	}
 }
 
-
 func TestProcessDictionaryRulesPreservesAuxiliaryOrder(t *testing.T) {
 	// Python yj_to_epub.py:201-219 + yj_to_epub_misc.py:495-503: the
 	// categorized $597 dict preserves fragment insertion order and a later
@@ -155,13 +154,14 @@ func TestDictionaryEntryStructuredRules(t *testing.T) {
 		usedDictionaryRules: map[int]struct{}{},
 		styles:              newStyleCatalog(),
 	}
+	rule := map[string]interface{}{
+		"yj.dictionary.word":  "walk",
+		"yj.dictionary.rules": []interface{}{7},
+	}
 	working := map[string]interface{}{
-		"type":               "container",
-		"yj.dictionary.term": []interface{}{"walk", "walks"},
-		"yj.dictionary.rules": []interface{}{map[string]interface{}{
-			"yj.dictionary.word":  "walk",
-			"yj.dictionary.rules": []interface{}{7},
-		}},
+		"type":                "container",
+		"yj.dictionary.term":  []interface{}{"walk", "walks"},
+		"yj.dictionary.rules": []interface{}{rule},
 	}
 	spec, err := r.consumeDictionaryEntry(working)
 	if err != nil {
@@ -175,6 +175,9 @@ func TestDictionaryEntryStructuredRules(t *testing.T) {
 	}
 	if _, remains := working["yj.dictionary.rules"]; remains {
 		t.Fatal("dictionary rules were not consumed from working content")
+	}
+	if len(rule) != 0 {
+		t.Fatalf("structured dictionary rule was not destructively consumed: %#v", rule)
 	}
 }
 
@@ -198,16 +201,15 @@ func TestDictionaryEntryMissingTermFailsConversion(t *testing.T) {
 	}
 }
 
-
 func TestDictionaryRulesReachRenderBookState(t *testing.T) {
 	// Production-path proof for Python yj_to_epub.py:79 ->
 	// yj_to_epub_content.py:542-588: renderBookState must parse $597 rules and
 	// make them available to the normal reading-order renderer.
 	state := &bookState{
-		Book: &decodedBook{Title: "Dictionary", Language: "en", IsDictionary: true},
+		Book:             &decodedBook{Title: "Dictionary", Language: "en", IsDictionary: true},
 		BookSymbolFormat: symOriginal,
 		Fragments: fragmentCatalog{
-			ContentFragments:  map[string][]string{},
+			ContentFragments: map[string][]string{},
 			Storylines: map[string]map[string]interface{}{
 				"story-1": {
 					"story_name": "story-1",
@@ -219,22 +221,22 @@ func TestDictionaryRulesReachRenderBookState(t *testing.T) {
 					}},
 				},
 			},
-			StyleFragments:   map[string]map[string]interface{}{},
-			RubyGroups:       map[string]map[string]interface{}{},
-			RubyContents:     map[string]map[string]interface{}{},
+			StyleFragments: map[string]map[string]interface{}{},
+			RubyGroups:     map[string]map[string]interface{}{},
+			RubyContents:   map[string]map[string]interface{}{},
 			SectionFragments: map[string]sectionFragment{
 				"section-1": {ID: "section-1", Storyline: "story-1", PageTemplateValues: map[string]interface{}{}},
 			},
-			AnchorFragments:       map[string]anchorFragment{},
-			NavContainers:         map[string]map[string]interface{}{},
-			ResourceFragments:     map[string]resourceFragment{},
-			ResourceRawData:       map[string]map[string]interface{}{},
-			FormatCapabilities:    map[string]map[string]interface{}{},
-			Generators:            map[string]map[string]interface{}{},
-			PathBundles:           map[string]map[string]interface{}{},
+			AnchorFragments:    map[string]anchorFragment{},
+			NavContainers:      map[string]map[string]interface{}{},
+			ResourceFragments:  map[string]resourceFragment{},
+			ResourceRawData:    map[string]map[string]interface{}{},
+			FormatCapabilities: map[string]map[string]interface{}{},
+			Generators:         map[string]map[string]interface{}{},
+			PathBundles:        map[string]map[string]interface{}{},
 			AuxiliaryData: map[string]map[string]interface{}{
 				"dictionary_rules": {"metadata": []interface{}{map[string]interface{}{
-					"key": "yj.dictionary.inflection_rules",
+					"key":   "yj.dictionary.inflection_rules",
 					"value": []byte(`[{id:3,rule:"0-s"}]`),
 				}}},
 			},
