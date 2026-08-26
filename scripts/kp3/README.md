@@ -56,7 +56,7 @@ This is intended for controlled, one-feature-at-a-time experiments. It complemen
 # table (requires book.unwrapped.kdf, which run_probe.py writes by default).
 # Matches numeric and named fragment ids; --spm adds per-section -spm fragments,
 # --no-truncate prints full values.
-python3 scripts/kp3/dump_kdf_maps.py /tmp/kp3-positions/minimal/book.unwrapped.kdf --spm
+python3 scripts/kp3/dump_kdf_maps.py /tmp/kp3-positions/book.unwrapped.kdf --spm
 
 # Compare the historical Go catalog with the live Amazon KAF table
 ./scripts/kp3/compare_catalog.py

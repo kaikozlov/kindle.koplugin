@@ -84,8 +84,10 @@ eidbucket_22  $610:: {$602: 22, $181: [{$185:'i3', $174:'c0'}]}
 - `$610` `$602` is a hash bucket number (e.g. `i3`→22, `i5`→24, `i7`→26, `i8`→27,
   `i9`→28, `iB`→37, `iD`→39; stable across books, so eid-string-hash bucketing). **[F]** (hash
   function itself not recovered **[Q]**)
-- `max_id` fragment = highest shared symbol id in use (854 in these fixtures, i.e.
-  shared tail `yj.conversion.*`). **[F]**
+- KDF `max_id` is a **symbol-table extent/count**, not "highest symbol used by content". In the
+  ordinary fixtures its raw value is 854; KFX Input subtracts the 9 Ion system symbols and imports
+  that many YJ shared-table entries, so the last declared shared SID is 853. It must not be read as
+  evidence that fragment payloads use SID 854. **[F]**
 - A second `auxiliary_data` set (`$597`, `$258 metadata`, `$492 key`, `$307 value`,
   `$351 default`) carries book-level flags, e.g. `IS_TARGET_SECTION`, and is unrelated
   to positions. **[F]**
@@ -156,19 +158,19 @@ one position. The native `Position` offsets observed for every PID are exactly
 ## Location cadence — three distinct behaviors
 
 This is the investigation's central result. On the `long-text` fixture
-(1746 total PIDs, `max_id` 856):
+(1746 total PIDs):
 
 1. **Native fallback (canonical_YJ KDF, no locmap stage): locations every 128 PIDs.**
    `maxLocation=14`; location N starts at global PID `128·(N−1)`: 0, 128, 256, …,
    1664. Measured via location→Position→global PID round-trip. **[F]**
-2. **Full KFXGenApp pipeline (CREATELOCMAP with `-generateLocMap`, CPL/CM/IMGOP=1):
+2. **Full KFXGenApp pipeline (default location-map generation enabled; CPL/CM/IMGOP=1):
    a Mobi-derived location map replaces the fallback.** Final KDF has
    `maxLocation=13` with irregular boundaries 0, 99, 242, 381, 521, 664, 807, 950,
    1093, 1236, 1373, 1515, 1658 — and a `location_map` `$550` fragment whose
    entries land exactly on those PIDs (e.g. i7@89 → 10+89=99, i9@108 → 134+108=242).
    The boundaries follow Mobi location rules, not a fixed PID stride. **[F]**
-   (Full-pipeline KDF produced by a parallel run from the FC cwd so `bin/kindlegen`
-   resolves; boundaries re-verified first-party with the probe on that KDF.)
+   (The reproduced command did **not** pass `-disableLocMapGeneration`; it was run from the FC cwd so
+   relative `bin/kindlegen` resolves. Boundaries were then re-verified with the native probe on the final KDF.)
 3. **Python KFX Input / Go port when no `$550` exists: 110 PIDs per location**
    (`KFX_POSITIONS_PER_LOCATION = 110`, `generate_approximate_locations`). On the
    same fixture that yields 16 locations at 0, 110, 220, … — matching neither
@@ -200,22 +202,20 @@ audited 2026-04-22, 394/394 parity at the time):
 - Go uses the same algorithms with real symbol names (`position_map`,
   `section_position_id_map`, …) instead of `$N`. **[F]**
 
-**No parity bug was found.** Python and Go agree with each other, and their fragment
-*reading* semantics agree with Amazon's producer. The only true divergences from
-Amazon are (a) the 110/location approximation when `$550` is absent — present in
-Python by design, faithfully ported — and (b) the synthesized `$264/$265` on the
-prepub bridge path. Neither affects KFX→EPUB output correctness for reading
-positions that come from real fragments. Per task policy, no production code was
-changed.
+**No Python↔Go parity bug was found.** Python and Go agree with each other, and their fragment
+*reading* semantics agree with the controlled Amazon producer. The notable semantic difference from
+current Amazon behavior is the 110-PID approximation when `$550` is absent — present in Python by
+design and faithfully ported — plus the bridge's synthesis of `$264/$265` from prepub maps. The
+controlled reverse EPUBs still compare exactly, but the 110 fallback can matter to any feature that
+cares about Kindle-location translation itself. Per task policy, no production code was changed.
 
 ## Anchors and ruby/images — summary
 
-- Anchor objects exist natively for text eids (safe existence check succeeded on
-  earlier stages) but position reads via `Anchor` crash the runtime; fragment-level
-  anchor data (`$266 anchor` fragments carrying `$183 position {id, $143 offset}`
-  as consumed by Python's `anchor_eid_offset`, `yj_position_location.py` L579-586)
-  is the reliable source.
-  **[F]**/**[I]** (native anchor-position equality not proven **[Q]**)
+- Native anchor access is **not safe enough to use as an oracle in the default probe**. An early
+  existence-only experiment returned Anchor objects, but repeated/default-stage `getNativeAnchor`
+  calls abort the JVM. Fragment-level anchor data (`$266 anchor` fragments carrying `$183 position
+  {id, $143 offset}`, as consumed by Python's `anchor_eid_offset`) is therefore the reproducible
+  source used here. **[F]** (native Anchor-object equality/ownership semantics remain **[Q]**)
 - Ruby: `rt` text excluded from positions; base text chars counted one each. **[F]**
 - Images (fixed-layout page, reflowable figure): exactly one position each. **[F]**
 - Footnote aside text **is** position-counted. **[F]**
