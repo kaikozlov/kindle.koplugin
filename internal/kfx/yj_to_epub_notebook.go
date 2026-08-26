@@ -1104,7 +1104,8 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 	dafVals := nmdlStrokeValues["nmdl.density_adjust_factor"]
 
 	points := make([]strokePoint, 0, nmdlNumPoints)
-	lastX, lastY := -1, -1 // sentinel for "no previous point"
+	var lastX, lastY int
+	hasLastPoint := false
 
 	for i := 0; i < nmdlNumPoints; i++ {
 		x := bounds[0]
@@ -1143,11 +1144,14 @@ func scribeNotebookStrokeIndividual(nc *notebookContext, content map[string]inte
 		t := int(math.RoundToEven(nmdlThickness * float64(taf) / 100.0))
 		d := float64(daf) / 100.0
 
-		if x != lastX || y != lastY {
+		// Python initializes last_x/last_y to None, so the first point is always
+		// retained even if its coordinates happen to be (-1, -1).
+		if !hasLastPoint || x != lastX || y != lastY {
 			points = append(points, strokePoint{X: x, Y: y, T: t, D: d})
 		}
 
 		lastX, lastY = x, y
+		hasLastPoint = true
 	}
 
 	opacityStr := fmt.Sprintf("%1.2f", opacity)
@@ -1317,6 +1321,18 @@ func pythonFloorAverage(a, b float64) float64 {
 	return math.Floor((a + b) / 2)
 }
 
+func pythonFloorDivInt(a, b int) int {
+	if b == 0 {
+		panic("division by zero")
+	}
+	q := a / b
+	r := a % b
+	if r != 0 && ((r < 0) != (b < 0)) {
+		q--
+	}
+	return q
+}
+
 // ---------------------------------------------------------------------------
 // generateDensityPNG produces a density PNG as base64 for variable-density strokes.
 // Port of Python's variable_density branch (yj_to_epub_notebook.py:402-480).
@@ -1353,8 +1369,11 @@ func generateDensityPNG(nc *notebookContext, groupElem *svgElement, points []str
 	hasLast := false
 
 	for _, pt := range points {
-		x0 := (pt.X - bounds[0]) / PNG_SCALE_FACTOR
-		y0 := (pt.Y - bounds[1]) / PNG_SCALE_FACTOR
+		// Python uses // for these integer coordinates. Go integer division
+		// truncates toward zero, so use floor division for negative out-of-bounds
+		// points as Python does.
+		x0 := pythonFloorDivInt(pt.X-bounds[0], PNG_SCALE_FACTOR)
+		y0 := pythonFloorDivInt(pt.Y-bounds[1], PNG_SCALE_FACTOR)
 		r0 := float64(pt.T) / float64(PNG_SCALE_FACTOR*2)
 
 		if hasLast {
