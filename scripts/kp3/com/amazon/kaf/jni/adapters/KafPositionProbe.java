@@ -70,7 +70,12 @@ public final class KafPositionProbe {
         OUT.println("maxPositionId=" + maxPositionId);
         OUT.println("maxLocation=" + maxLocation);
 
-        // -- Stage 2: every position id -> Position (offset/eid semantics) --
+        // -- Stage 2: every position id -> Position (offset/eid semantics) --------
+        // NOTE: Position.a() / Position_getNativePositionId returns the position
+        // object's own ID field (element/EID-like), NOT the global position id.
+        // Global PID conversion is BookPositionInfo_getNativePositionId (b(Y)),
+        // native vtable +0x20 (convertToPositionID); the inverse used here,
+        // getNativePositionforID (b(long)), is vtable +0x18 (convertToPosition).
         stage("positions");
         List<Long> validPids = new ArrayList<>();
         for (long pid = 0; pid <= Math.min(maxPositionId, 200000); pid++) {
@@ -82,11 +87,13 @@ public final class KafPositionProbe {
                 break;
             }
             if (handle == null) continue;
-            Position pos = (Position) handle;
             validPids.add(pid);
-            long reportedPid;
-            try { reportedPid = pos.a(); } catch (Throwable t) { reportedPid = -2; }
-            OUT.println("pid=" + pid + " reported=" + reportedPid);
+            Position pos = (Position) handle;
+            long eid;
+            try { eid = pos.a(); } catch (Throwable t) { eid = -2; }
+            long globalPid;
+            try { globalPid = bpi.b(pos); } catch (Throwable t) { globalPid = -2; }
+            OUT.println("pid=" + pid + " eid=" + eid + " globalPid=" + globalPid);
             describeOffset(pos);
         }
         OUT.println("valid_pids=" + validPids.size());
@@ -103,8 +110,8 @@ public final class KafPositionProbe {
                 if (back != null) {
                     Position p2 = (Position) back;
                     long pid2;
-                    try { pid2 = p2.a(); } catch (Throwable t) { pid2 = -2; }
-                    OUT.print(" back.eid=" + pid2);
+                    try { pid2 = bpi.b(p2); } catch (Throwable t) { pid2 = -2; }
+                    OUT.print(" back.globalPid=" + pid2);
                 } else {
                     OUT.print(" back=null");
                 }
@@ -114,7 +121,7 @@ public final class KafPositionProbe {
             }
         }
 
-        // -- Stage 4: location -> position directly for all locations ---------
+        // -- Stage 4: location -> Position (object eid+offset) and global PID -------
         stage("locations");
         for (long loc = 1; loc <= maxLocation; loc++) {
             try {
@@ -123,9 +130,11 @@ public final class KafPositionProbe {
                     OUT.println("loc=" + loc + " position=null");
                 } else {
                     Position pos = (Position) handle;
-                    long pid;
-                    try { pid = pos.a(); } catch (Throwable t) { pid = -2; }
-                    OUT.print("loc=" + loc + " pid=" + pid);
+                    long eid;
+                    try { eid = pos.a(); } catch (Throwable t) { eid = -2; }
+                    long globalPid;
+                    try { globalPid = bpi.b(pos); } catch (Throwable t) { globalPid = -2; }
+                    OUT.println("loc=" + loc + " eid=" + eid + " globalPid=" + globalPid);
                     describeOffset(pos);
                 }
             } catch (Throwable t) {
@@ -171,15 +180,16 @@ public final class KafPositionProbe {
             }
         }
 
-        // -- Stage 7: anchor lookup by eid ------------------------------------
+        // -- Stage 7: anchor lookup by eid (existence only) ---------------------
+        // NOTE: Anchor.a()/Anchor.g() (id / get-position) segfault the bundled
+        // native runtime on these fixtures, so this stage only reports whether
+        // an anchor object exists for each eid. Anchor->position mapping must
+        // come from fragment-level data (anchors carry $511/$143) instead.
         stage("anchors");
         for (long eid : eids) {
             try {
                 h anchor = bpi.c(eid);
-                if (anchor != null) {
-                    OUT.println("eid=" + eid + " anchor=" + anchor.getClass().getName() +
-                            " toString=" + quote(String.valueOf(anchor)));
-                }
+                OUT.println("eid=" + eid + " anchor=" + (anchor == null ? "null" : anchor.getClass().getSimpleName()));
             } catch (Throwable t) {
                 OUT.println("eid=" + eid + " anchor ERR " + t.getClass().getSimpleName());
             }

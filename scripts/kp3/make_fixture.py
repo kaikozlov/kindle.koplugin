@@ -28,6 +28,7 @@ FIXTURE_NAMES = [
     "dropcap",
     "image-figure",
     "first-line",
+    "long-text",
 ]
 
 
@@ -81,6 +82,19 @@ def fixture(name: str) -> tuple[str, str, str, dict[str, bytes]]:
             '<tr><td colspan="2">D</td></tr>'
             '</tbody></table>'
         )
+    elif name == "long-text":
+        metadata = ""
+        language = "en"
+        # Deterministic 1400-character body yielding 1746 total KFX positions.
+        # Used to measure location cadence: canonical native fallback boundaries
+        # are 128 global PIDs apart (14 locations); Python/Go's approximate map
+        # uses 110 positions/location (16 locations); the full KFXGenApp pipeline
+        # replaces the fallback with a Mobi-derived map (13 irregular locations).
+        words = [f"w{iii:03d}" for iii in range(350)]
+        paragraphs = []
+        for start in range(0, 350, 25):
+            paragraphs.append("<p>" + " ".join(words[start:start + 25]) + "</p>")
+        body = "<h1>Long text</h1>" + "".join(paragraphs)
     elif name == "fixed-layout":
         metadata = (
             '<meta property="rendition:layout">pre-paginated</meta>'
