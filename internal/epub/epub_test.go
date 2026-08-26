@@ -1656,6 +1656,28 @@ func TestSpinePageProgressionDirection(t *testing.T) {
 	})
 }
 
+func TestOPFFixedLayoutMetadata(t *testing.T) {
+	book := Book{
+		Identifier: "id", Title: "title", Language: "en", Modified: "2026-01-01T00:00:00Z",
+		FixedLayout: true, OriginalWidth: 450, OriginalHeight: 600, BookType: "comic", OrientationLock: "none",
+	}
+	opf := contentOPF(book)
+	for _, want := range []string{
+		`prefix="marc: http://id.loc.gov/vocabulary/ rendition: http://www.idpf.org/vocab/rendition/#"`,
+		`<meta property="rendition:layout">pre-paginated</meta>`,
+		`<meta name="fixed-layout" content="true"/>`,
+		`<meta name="original-resolution" content="450x600"/>`,
+		`<meta name="book-type" content="comic"/>`,
+		`<meta property="rendition:orientation">portrait</meta>`,
+		`<meta name="orientation-lock" content="portrait"/>`,
+	} {
+		if !strings.Contains(opf, want) {
+			t.Fatalf("fixed-layout OPF missing %q:
+%s", want, opf)
+		}
+	}
+}
+
 func TestOPFPrimaryWritingModeMetadata(t *testing.T) {
 	baseBook := Book{
 		Identifier: "urn:uuid:writing-mode-test",

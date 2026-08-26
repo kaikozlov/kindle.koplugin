@@ -449,6 +449,17 @@ func compareFixedLayoutViewports(book *decodedBook) {
 	// Python L617: for book_part in self.book_parts:
 	for i := range book.RenderedSections {
 		section := &book.RenderedSections[i]
+		if section.ViewportWidth > 0 && section.ViewportHeight > 0 {
+			width, height := section.ViewportWidth, section.ViewportHeight
+			viewportCount[viewportKey{width: width, height: height}]++
+			if i == 0 && book.CoverImageHref != "" {
+				coverWidth, coverHeight = width, height
+			}
+			if width < 100 || height < 100 {
+				log.Printf("kfx: warning: Fixed-layout viewport %s is too small: width=%d, height=%d", section.Filename, width, height)
+			}
+			continue
+		}
 		if section.Root == nil {
 			continue
 		}

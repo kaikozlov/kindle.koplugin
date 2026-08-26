@@ -40,6 +40,10 @@ type Book struct {
 	// Layout flags
 	IllustratedLayout      bool
 	FixedLayout             bool
+	OriginalWidth           int
+	OriginalHeight          int
+	BookType                string
+	OrientationLock         string
 	WritingMode              string
 	PageProgressionDirection string
 
@@ -364,7 +368,11 @@ func contentOPF(book Book) string {
 		out.WriteString(`<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf" version="` + epubVersion + `" unique-identifier="bookid">` + "\n")
 	} else {
 		out.WriteString(xmlDecl)
-		out.WriteString(`<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="` + epubVersion + `" unique-identifier="bookid" prefix="marc: http://id.loc.gov/vocabulary/">` + "\n")
+		prefixes := "marc: http://id.loc.gov/vocabulary/"
+		if book.FixedLayout || (book.OrientationLock != "" && book.OrientationLock != "none") {
+			prefixes += " rendition: http://www.idpf.org/vocab/rendition/#"
+		}
+		out.WriteString(`<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="` + epubVersion + `" unique-identifier="bookid" prefix="` + prefixes + `">` + "\n")
 	}
 	out.WriteString(`  <metadata>` + "\n")
 	out.WriteString(`    <dc:identifier id="bookid">` + xmlEscape(book.Identifier) + `</dc:identifier>` + "\n")
@@ -403,6 +411,35 @@ func contentOPF(book Book) string {
 	}
 	if !generateEpub2 {
 		out.WriteString(`    <meta property="dcterms:modified">` + xmlEscape(book.Modified) + `</meta>` + "\n")
+	}
+	orientationLock := book.OrientationLock
+	if orientationLock == "" {
+		orientationLock = "none"
+	}
+	if book.FixedLayout {
+		if !generateEpub2 {
+			out.WriteString(`    <meta property="rendition:layout">pre-paginated</meta>` + "\n")
+		}
+		out.WriteString(`    <meta name="fixed-layout" content="true"/>` + "\n")
+		if book.OriginalWidth > 0 && book.OriginalHeight > 0 {
+			if orientationLock == "none" {
+				if book.OriginalWidth > book.OriginalHeight {
+					orientationLock = "landscape"
+				} else {
+					orientationLock = "portrait"
+				}
+			}
+			out.WriteString(fmt.Sprintf(`    <meta name="original-resolution" content="%dx%d"/>`+"\n", book.OriginalWidth, book.OriginalHeight))
+		}
+	}
+	if book.BookType == "children" || book.BookType == "comic" {
+		out.WriteString(`    <meta name="book-type" content="` + xmlEscape(book.BookType) + `"/>` + "\n")
+	}
+	if orientationLock != "none" {
+		if !generateEpub2 {
+			out.WriteString(`    <meta property="rendition:orientation">` + xmlEscape(orientationLock) + `</meta>` + "\n")
+		}
+		out.WriteString(`    <meta name="orientation-lock" content="` + xmlEscape(orientationLock) + `"/>` + "\n")
 	}
 	if book.OverrideKindleFonts {
 		out.WriteString(`    <meta name="Override-Kindle-Fonts" content="true"/>` + "\n")
