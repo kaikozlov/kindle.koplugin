@@ -8278,6 +8278,13 @@ func (r *storylineRenderer) registerAnchorElementNames(positionID int, offset in
 		seen[name] = true
 		r.anchorNamesByID[anchorID] = append(r.anchorNamesByID[anchorID], name)
 	}
+	// Python process_position consumes a successfully located (eid, offset) from
+	// position_anchors. Keep the copied name metadata above, but remove the pending
+	// position so report_missing_positions only reports genuinely unresolved anchors.
+	delete(offsets, offset)
+	if len(offsets) == 0 {
+		delete(r.positionAnchors, positionID)
+	}
 }
 
 func (r *storylineRenderer) headingLevelForPosition(positionID int, offset int) int {

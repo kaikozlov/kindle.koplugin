@@ -2209,3 +2209,21 @@ func TestRenderHTMLElementPreservesPythonAttributeOrder(t *testing.T) {
 		t.Fatalf("ol attribute order = %q", got)
 	}
 }
+
+func TestRegisterAnchorElementNamesConsumesLocatedPosition(t *testing.T) {
+	r := storylineRenderer{
+		positionAnchors: map[int]map[int][]string{42: {0: {"anchor-a"}, 7: {"anchor-b"}}},
+		anchorNamesByID: map[string][]string{},
+	}
+	r.registerAnchorElementNames(42, 0, "anchor-a")
+	if _, ok := r.positionAnchors[42][0]; ok {
+		t.Fatal("located position was not consumed")
+	}
+	if got := r.anchorNamesByID["anchor-a"]; len(got) != 1 || got[0] != "anchor-a" {
+		t.Fatalf("anchor names = %#v", got)
+	}
+	r.registerAnchorElementNames(42, 7, "anchor-b")
+	if _, ok := r.positionAnchors[42]; ok {
+		t.Fatal("empty position bucket was not removed")
+	}
+}
