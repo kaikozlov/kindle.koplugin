@@ -1659,18 +1659,35 @@ type ScribeNotebookContext struct {
 	// BookParts is the list of all book parts created so far.
 	// Port of Python: self.book_parts
 	BookParts []*ScribeBookPart
+
+	// RenderTemplateContent renders a notebook template page template through the
+	// standard content pipeline and returns the resulting SVG element.
+	// Port of Python yj_to_epub_notebook.py:165-171:
+	//
+	//	self.process_content(page_template, top_level_elem, book_part, self.writing_mode, is_section=True)
+	//	svg_elem = book_part.body().find(SVG)
+	//
+	// When nil (no renderer wired), template sections cannot locate an SVG and
+	// log the same error Python logs at yj_to_epub_notebook.py:201.
+	RenderTemplateContent func(pageTemplate map[string]interface{}) *svgElement
 }
 
 // ScribeBookPart represents a book part created during scribe notebook processing.
 // Port of Python's book_part object created by self.new_book_part().
 type ScribeBookPart struct {
-	Filename      string
-	IsFXL         bool   // book_part.is_fxl
-	Omit          bool   // book_part.omit (template sections set this to True)
+	Filename       string
+	IsFXL          bool   // book_part.is_fxl
+	Omit           bool   // book_part.omit (template sections set this to True)
 	NmdlTemplateID string // book_part.nmdl_template_id
-	HTML          *svgElement // book_part.html (root HTML element)
-	Head          *svgElement // book_part.head()
-	Body          *svgElement // book_part.body()
+	PageTitle      string // section name (used as XHTML <title> when materialized)
+	// ViewportWidth/ViewportHeight carry the viewport meta dimensions added by
+	// process_scribe_notebook_page_section (yj_to_epub_notebook.py:109-110).
+	// Go's EPUB writer emits the meta tag from renderedSection viewport fields.
+	ViewportWidth  int
+	ViewportHeight int
+	HTML           *svgElement // book_part.html (root HTML element)
+	Head           *svgElement // book_part.head()
+	Body           *svgElement // book_part.body()
 }
 
 // NewScribeBookPart creates a new ScribeBookPart with the given filename.
@@ -1743,6 +1760,9 @@ func processScribeNotebookPageSection(ctx *ScribeNotebookContext, section map[st
 		bookPart = NewScribeBookPart(sectionFilename)
 	}
 	bookPart.IsFXL = true
+	bookPart.PageTitle = sectionName
+	bookPart.ViewportWidth = canvasWidth
+	bookPart.ViewportHeight = canvasHeight
 
 	// Python L101-107: nmdl_template_id handling
 	if v, ok := section["nmdl.template_id"]; ok {
@@ -1908,10 +1928,12 @@ func sectionHasPositionKey(section map[string]interface{}) bool {
 	return false
 }
 
-// getReadingOrderCategory extracts the $178 category from a reading order.
-// Port of Python: self.reading_orders[1].get("$178", "")
+// getReadingOrderCategory extracts the $178 reading_order_name from a reading order.
+// Port of Python: self.reading_orders[1].get("$178", "") (yj_to_epub_notebook.py:104).
+// $178 = "reading_order_name" (the same field yj_structure.py:361 reads for the
+// ["$351", "note_template_collection"] validation at yj_structure.py:372).
 func getReadingOrderCategory(ro map[string]interface{}) string {
-	if v, ok := ro["category"]; ok {
+	if v, ok := ro["reading_order_name"]; ok {
 		s, _ := v.(string)
 		return s
 	}
@@ -1967,21 +1989,23 @@ func processScribeNotebookTemplateSection(ctx *ScribeNotebookContext, section ma
 		bookPart = NewScribeBookPart(sectionFilename)
 	}
 	bookPart.IsFXL = true
+	bookPart.PageTitle = sectionName
 
-	// Python L165-167: self.process_content(page_template, top_level_elem, book_part, self.writing_mode, is_section=True)
-	// In Go, process_content is the main content rendering pipeline. For notebook templates,
-	// we use the notebook content processing path instead.
-	topLevelElem := bookPart.HTML
-	if ctx.notebookContext != nil {
-		processNotebookContent(ctx.notebookContext, pageTemplate, topLevelElem)
+	// Python L165-167: self.process_content(page_template, top_level_elem, book_part,
+	// self.writing_mode, is_section=True) — the standard content pipeline. The
+	// template SVG it renders into the book part body is then extracted below
+	// (L170-171: svg_elem = book_part.body().find(SVG)).
+	var templateSVGElem *svgElement
+	if ctx.RenderTemplateContent != nil {
+		templateSVGElem = ctx.RenderTemplateContent(pageTemplate)
 	}
 	checkEmptyNotebookSafe(pageTemplate, fmt.Sprintf("Section %s page_template", sectionName))
 
 	// Python L169-217: CREATE_SVG_FILES_IN_EPUB path for templates
 	if CREATE_SVG_FILES_IN_EPUB {
 		// Python L170-171: Find SVG element in body
-		svgElem := findSVGElement(bookPart.Body)
-		if svgElem != nil {
+		if templateSVGElem != nil {
+			svgElem := templateSVGElem
 			// Python L172-175: Generate template SVG filename and serialize
 			templateSvgFilename := nmdlTemplateType + ".svg"
 			if ctx.ResourceLocationFilename != nil {
