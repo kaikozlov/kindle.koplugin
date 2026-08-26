@@ -237,10 +237,13 @@ User opens book in KOReader
 │   ├── export_yj_versions.py  ← Export KNOWN_FEATURES golden from Python
 │   ├── kfx_reference_snapshot.py ← Fragment analysis from Python pipeline
 │   ├── replace_symbol_names.py ← Mechanical $N → real name replacement tool
-│   ├── audit_parity.py        ← Function-level Python→Go parity audit
-│   ├── audit_branches.py      ← Branch-level parity audit within a function
+│   ├── audit_parity.py        ← Honest function-level Python→Go parity audit (name + substance)
+│   ├── parity_exclusions.json ← Reviewable exclusion manifest (categories, reasons, verified evidence)
+│   ├── gofuncinfo/            ← Go AST function-substance scanner used by the auditors
+│   ├── tests/                 ← unittest suite pinning auditor anti-cheat behavior
+│   ├── audit_branches.py      ← Branch-level parity audit (body-scoped, weak/strong provenance)
 │   ├── audit_branches_batch.py ← Batch branch audit across all files
-│   └── audit_missing_branches.py ← Count missing branches across core files
+│   └── audit_missing_branches.py ← Honest branch coverage across core files
 │
 ├── REFERENCE/                 ← NOT tracked in git — local reference only
 │   ├── kobo.koplugin/         ← Sister plugin (Kobo) — architectural reference
@@ -401,6 +404,9 @@ The plugin extends KOReader by monkey-patching core classes at runtime. Each `*_
 
 # Go tests
 go test ./...
+
+# Parity-auditor tests (anti-cheat pins for audit_parity/audit_branches)
+python3 -m unittest discover -s scripts/tests
 
 # Run a single spec file
 ./scripts/test spec/virtual_library_spec.lua
@@ -593,10 +599,13 @@ All development scripts live in `scripts/`. The main entry point for parity work
 | `export_yj_versions.py` | Export KNOWN_FEATURES to JSON for Go golden tests. |
 | `kfx_reference_snapshot.py` | Fragment analysis snapshot from Python pipeline. |
 | `replace_symbol_names.py` | Mechanical `$N` → real name replacement utility. |
-| `audit_parity.py` | Audit Python→Go function-level parity (function names, signatures). |
-| `audit_branches.py` | Audit branch-level parity within a single function. |
+| `audit_parity.py` | **Honest** function-level parity audit: a match needs a name AND Go body substance; one-line stubs count as gaps, not implementations. Exclusions come from `scripts/parity_exclusions.json` (validated: category enum + reason + evidence resolving to substantive Go functions). Generates `PARITY_REPORT.md` via `--report`. See `docs/parity_honesty.md`. |
+| `parity_exclusions.json` | Explicit, reviewable waivers for out-of-scope output modes / library replacements / alternate architecture. Never counted as implemented; invalid entries are rejected and ignored. |
+| `gofuncinfo` | Go AST scanner (`go run ./scripts/gofuncinfo internal cmd`) emitting per-function substance metadata used by both auditors. |
+| `audit_branches.py` | Branch audit scoped to the matched Go counterpart's body; universal-pattern matches report `weak` and are not coverage. |
 | `audit_branches_batch.py` | Run audit_branches.py across all core conversion files. |
-| `audit_missing_branches.py` | Count confirmed-missing branches across core files. |
+| `audit_missing_branches.py` | Branch coverage across core files: found/weak/missing/uncertain, strong coverage only. |
+| `tests/` (scripts) | `python3 -m unittest discover -s scripts/tests` — pins the auditors' anti-cheat behavior. |
 | `test` | Lua test runner (busted under luajit). |
 
 ---
