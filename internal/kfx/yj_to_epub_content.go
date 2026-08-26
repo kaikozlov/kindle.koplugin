@@ -5146,6 +5146,10 @@ func (r *storylineRenderer) renderSVGNode(node map[string]interface{}) htmlPart 
 	}
 	if hasWidth && hasHeight && width > 0 && height > 0 {
 		attrs["viewBox"] = fmt.Sprintf("0 0 %d %d", width, height)
+	} else {
+		// Python yj_to_epub_content.py:862-869 logs this whenever the KVG
+		// content cannot produce both fixed dimensions.
+		log.Printf("kfx: error: SVG is missing viewBox")
 	}
 	element := &htmlElement{
 		Tag:   "svg",
@@ -5161,13 +5165,26 @@ func (r *storylineRenderer) renderSVGNode(node map[string]interface{}) htmlPart 
 	//   for shape in content.pop("$250", []):
 	//       self.process_kvg_shape(content_elem, shape, content_list, book_part, writing_mode)
 	// $146 = content_list, $250 = shape_list.
+	if rawType, exists := node["kvg_content_type"]; exists {
+		kvgContentType, _ := asString(rawType)
+		if kvgContentType != "text" {
+			log.Printf("kfx: error: %s has unknown kvg_content_type: %s", r.contentContext(), kvgContentType)
+		}
+	}
+
 	contentList, _ := asSlice(node["content_list"])
 	if shapeList, ok := asSlice(node["shape_list"]); ok {
 		for _, shape := range shapeList {
 			if shapeMap, ok := asMap(shape); ok {
 				r.processKVGShape(element, shapeMap, &contentList, "")
+			} else {
+				log.Printf("kfx: error: unexpected KVG shape data type: %T", shape)
 			}
 		}
+	}
+	if len(contentList) != 0 {
+		log.Printf("kfx: error: KVG content_list has extra data: %v", contentList)
+		contentList = nil
 	}
 
 	return element

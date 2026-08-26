@@ -2227,3 +2227,47 @@ func TestRegisterAnchorElementNamesConsumesLocatedPosition(t *testing.T) {
 		t.Fatal("empty position bucket was not removed")
 	}
 }
+
+func TestRenderSVGNodeValidatesKVGEnvelope(t *testing.T) {
+	renderer := storylineRenderer{
+		positionAnchors:   map[int]map[int][]string{},
+		positionAnchorID:  map[int]map[int]string{},
+		emittedAnchorIDs:  map[string]bool{},
+		styleFragments:    map[string]map[string]interface{}{},
+		styles:            newStyleCatalog(),
+	}
+	gotLog := captureStderr(func() {
+		renderer.renderSVGNode(map[string]interface{}{
+			"type":             "kvg",
+			"fixed_width":      100,
+			"kvg_content_type": "container",
+			"content_list":     []interface{}{"unused"},
+			"shape_list":       []interface{}{42},
+		})
+	})
+	for _, want := range []string{"SVG is missing viewBox", "unknown kvg_content_type", "unexpected KVG shape data type", "KVG content_list has extra data"} {
+		if !strings.Contains(gotLog, want) {
+			t.Fatalf("KVG validation log missing %q: %s", want, gotLog)
+		}
+	}
+}
+
+func TestRenderSVGNodeAcceptsPythonKVGContentType(t *testing.T) {
+	renderer := storylineRenderer{
+		positionAnchors:  map[int]map[int][]string{},
+		positionAnchorID: map[int]map[int]string{},
+		styleFragments:   map[string]map[string]interface{}{},
+		styles:           newStyleCatalog(),
+	}
+	gotLog := captureStderr(func() {
+		renderer.renderSVGNode(map[string]interface{}{
+			"type":             "kvg",
+			"fixed_width":      100,
+			"fixed_height":     200,
+			"kvg_content_type": "text",
+		})
+	})
+	if strings.Contains(gotLog, "unknown kvg_content_type") || strings.Contains(gotLog, "missing viewBox") {
+		t.Fatalf("valid KVG envelope logged an error: %s", gotLog)
+	}
+}
