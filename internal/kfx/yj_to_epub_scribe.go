@@ -260,15 +260,7 @@ func buildScribeNotebookContext(
 			return getFragment(book, ftype, fid)
 		},
 		GetNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
-			if content == nil {
-				return nil
-			}
-			name, _ := asString(content[nameSymbol])
-			delete(content, nameSymbol)
-			if name == "" {
-				return nil
-			}
-			return getFragment(book, ftype, name)
+			return getNamedFragment(book, content, ftype, nameSymbol)
 		},
 		ReadingOrders: readingOrders,
 		notebookContext: &notebookContext{
@@ -276,18 +268,7 @@ func buildScribeNotebookContext(
 				return getFragment(book, ftype, fid)
 			},
 			getNamedFragment: func(content map[string]interface{}, ftype string, nameSymbol string) map[string]interface{} {
-				// Python get_named_fragment (yj_to_epub.py:345-346) pops the
-				// name and delegates to get_fragment with delete=True. Route through
-				// the shared helper so duplicate-use/missing-fragment semantics match.
-				if content == nil {
-					return nil
-				}
-				name, _ := asString(content[nameSymbol])
-				delete(content, nameSymbol)
-				if name == "" {
-					return nil
-				}
-				return getFragment(book, ftype, name)
+				return getNamedFragment(book, content, ftype, nameSymbol)
 			},
 			pathBundles: func() map[string]map[string]interface{} {
 				if renderer != nil {

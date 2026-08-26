@@ -823,10 +823,27 @@ func getFragment(book *decodedBook, ftype string, fid string) map[string]interfa
 	return data
 }
 
-// getNamedFragment retrieves a fragment by name.
-// Port of Python KFX_EPUB.get_named_fragment (yj_to_epub.py L330-331).
-func getNamedFragment(book *decodedBook, name string) map[string]interface{} {
-	return nil
+// getNamedFragment retrieves a named fragment by destructively consuming the
+// fragment-name field from the referring structure, then delegating to
+// getFragment. Port of Python KFX_EPUB.get_named_fragment
+// (yj_to_epub.py:345-346, kfxlib 20260822).
+//
+// Python's structure.pop(...) is mandatory. Callers that need to preserve the
+// resulting KeyError boundary validate the field before calling this helper.
+func getNamedFragment(book *decodedBook, structure map[string]interface{}, ftype, nameSymbol string) map[string]interface{} {
+	if structure == nil || nameSymbol == "" {
+		return nil
+	}
+	rawName, ok := structure[nameSymbol]
+	if !ok {
+		return nil
+	}
+	delete(structure, nameSymbol)
+	name, ok := asString(rawName)
+	if !ok || name == "" {
+		return nil
+	}
+	return getFragment(book, ftype, name)
 }
 
 // checkFragmentName validates a fragment name against expected type.

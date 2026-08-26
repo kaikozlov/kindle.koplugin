@@ -48,3 +48,27 @@ func TestGetFragmentMissingReturnsEmptyStruct(t *testing.T) {
 		t.Fatalf("missing fragment = %#v, want empty struct", got)
 	}
 }
+
+func TestGetNamedFragmentConsumesNameAndDelegates(t *testing.T) {
+	story := map[string]interface{}{"story_name": "story-1", "content_list": []interface{}{"x"}}
+	book := &decodedBook{
+		fragmentMaps: map[string]map[string]map[string]interface{}{
+			"storyline": {"story-1": story},
+		},
+		usedFragmentAccess: map[string]bool{},
+	}
+	ref := map[string]interface{}{"story_name": "story-1", "other": 7}
+	got := getNamedFragment(book, ref, "storyline", "story_name")
+	if got == nil || got["story_name"] != "story-1" {
+		t.Fatalf("getNamedFragment = %#v", got)
+	}
+	if _, remains := ref["story_name"]; remains {
+		t.Fatal("getNamedFragment did not pop the fragment-name field")
+	}
+	if ref["other"] != 7 {
+		t.Fatalf("getNamedFragment mutated unrelated referring data: %#v", ref)
+	}
+	if _, remains := book.fragmentMaps["storyline"]["story-1"]; remains {
+		t.Fatal("getNamedFragment did not delegate delete=True fragment access")
+	}
+}
