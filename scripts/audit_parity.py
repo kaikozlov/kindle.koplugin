@@ -100,6 +100,15 @@ class PyFunc:
     def key(self):
         return (self.class_name or "", self.name)
 
+    @property
+    def identity(self):
+        """Def-precise identity: (def line, class, name).
+
+        Python files legitimately contain multiple defs sharing a name
+        (e.g. @property getter + .setter pairs). An exclusion that does
+        not pin py_line would silently waive every def with that name."""
+        return (self.line_start, self.class_name, self.name)
+
 
 def snake_to_camel(name: str) -> str:
     parts = name.split("_")
@@ -419,6 +428,24 @@ def classify(py: PyFunc, go_fn: Optional[dict], excluded_entry: Optional[dict],
 # Exclusions manifest
 # ---------------------------------------------------------------------------
 
+def exclusion_matches(entry: dict, pf: PyFunc, py_file: str) -> bool:
+    """Does this exclusion entry apply to this specific Python def?
+
+    py_line (when set) pins the entry to exactly one def among
+    same-name duplicates; without it the entry applies to every def
+    sharing (file, class, name) — allowed only when the name is unique.
+    """
+    if entry.get("py_file") != py_file:
+        return False
+    if entry.get("py_name") != pf.name:
+        return False
+    if entry.get("py_class") not in (None, "", pf.class_name):
+        return False
+    if entry.get("py_line") not in (None, 0) and entry["py_line"] != pf.line_start:
+        return False
+    return True
+
+
 def load_exclusions(path: str) -> list[dict]:
     if not os.path.exists(path):
         return []
@@ -432,14 +459,13 @@ def validate_exclusions(entries: list[dict], pyfuncs_by_file: dict[str, list[PyF
                          go_index: dict) -> tuple[list[str], list[dict], set]:
     """Validate exclusion entries.
 
-    Returns (problems, valid_entries, valid_keys). Only valid entries may be
+    Returns (problems, valid_entries). Only valid entries may be applied —
     applied — an invalid entry (unknown category, lazy reason, unresolvable
     or trivial evidence, stale target) is IGNORED for classification and
     reported as a problem, so a manifest of junk exclusions can never green
     the metric.
     """
     problems = []
-    valid = set()
     valid_entries = []
     for i, e in enumerate(entries):
         where = f"exclusions[{i}]"
@@ -465,6 +491,22 @@ def validate_exclusions(entries: list[dict], pyfuncs_by_file: dict[str, list[PyF
                                   f"{py_file}:{e.get('py_class')}.{e.get('py_name')}")
             problems.extend(entry_problems)
             continue
+        # Duplicate-def disambiguation: a name may be defined more than once
+        # (getter/setter pairs, overloads). An exclusion that does not pin
+        # py_line would waive ALL of them — require an explicit line, and
+        # verify it points at a real def (not a decorator or off-by-one).
+        if len(matches) > 1 and not e.get("py_line"):
+            lines = sorted(pf.line_start for pf in matches)
+            entry_problems.append(
+                f"{where}: {py_file}:{e.get('py_class')}.{e.get('py_name')} has "
+                f"{len(matches)} defs (lines {lines}); py_line is required so "
+                f"the exclusion cannot silently waive multiple defs")
+        if e.get("py_line"):
+            if not any(pf.line_start == e["py_line"] for pf in matches):
+                lines = sorted(pf.line_start for pf in matches)
+                entry_problems.append(
+                    f"{where}: py_line {e['py_line']} does not match any def of "
+                    f"{py_file}:{e.get('py_class')}.{e.get('py_name')} (defs at {lines})")
         if e.get("category") in EVIDENCE_REQUIRED:
             ev = e.get("evidence") or []
             if not ev:
@@ -480,11 +522,7 @@ def validate_exclusions(entries: list[dict], pyfuncs_by_file: dict[str, list[PyF
         problems.extend(entry_problems)
         if not entry_problems:
             valid_entries.append(e)
-            for pf in matches:
-                valid.add((py_file, pf.class_name, pf.name))
-                if not e.get("py_class"):
-                    valid.add((py_file, None, pf.name))
-    return problems, valid_entries, valid
+    return problems, valid_entries
 
 
 def find_go_evidence(go_index: dict, target: dict) -> Optional[dict]:
@@ -525,10 +563,7 @@ def audit_file(py_name: str, go_funcs: dict = None,
 
     entries = []
     for pf in py_funcs:
-        excl = next((e for e in exclusions
-                     if e.get("py_file") == py_name
-                     and e.get("py_name") == pf.name
-                     and e.get("py_class") in (None, "", pf.class_name)), None)
+        excl = next((e for e in exclusions if exclusion_matches(e, pf, py_name)), None)
 
         go_fn = None
         same_file_match = True
@@ -596,7 +631,7 @@ def audit_all(exclusions_path: str = None, gofuncinfo_path: str = None) -> list[
         if os.path.exists(py_path):
             pyfuncs_by_file[py_name] = extract_python_functions(py_path)
 
-    problems, valid_exclusions, _valid_keys = validate_exclusions(
+    problems, valid_exclusions = validate_exclusions(
         exclusions, pyfuncs_by_file, go_index)
 
     results = []
@@ -752,7 +787,8 @@ def write_report_file(results, exclusions, problems, path):
         lines.append("")
     for e in exclusions:
         cls = f"{e.get('py_class')}." if e.get("py_class") else ""
-        lines.append(f"- **{e['py_file']} :: {cls}{e['py_name']}** — `{e.get('category')}`")
+        at = f"@L{e['py_line']}" if e.get("py_line") else ""
+        lines.append(f"- **{e['py_file']} :: {cls}{e['py_name']}{at}** — `{e.get('category')}`")
         lines.append(f"  - reason: {e.get('reason')}")
         for ev in e.get("evidence") or []:
             lines.append(f"  - evidence: `{ev.get('go_func')}` in `{ev.get('go_file')}`")
@@ -774,14 +810,21 @@ def init_exclusions(results, path):
                 k = (r["python_file"], e["py_class"], e["py_name"])
                 if k in have:
                     continue
-                skeleton.append({
+                # Duplicated names must be pinned per-def from the start.
+                dup = sum(1 for other in r["entries"]
+                          if other["py_name"] == e["py_name"]
+                          and (other["py_class"] or None) == (e["py_class"] or None))
+                entry = {
                     "py_file": r["python_file"],
                     "py_class": e["py_class"],
                     "py_name": e["py_name"],
                     "category": "TODO-FILL-CATEGORY",
                     "reason": "TODO: justify (>=10 chars) or implement",
                     "evidence": [],
-                })
+                }
+                if dup > 1:
+                    entry["py_line"] = e["py_line"]
+                skeleton.append(entry)
     doc = {"exclusions": existing + skeleton}
     with open(path, "w") as f:
         json.dump(doc, f, indent=2)
@@ -809,14 +852,29 @@ def main():
     if args.file:
         name = args.file.replace(".py", "").replace(".go", "")
         py_name = name + ".py"
-        exclusions = load_exclusions(args.exclusions)
+        py_path = os.path.join(PY_DIR, py_name)
+        if not os.path.exists(py_path):
+            print(f"ERROR: {py_path} not found", file=sys.stderr)
+            sys.exit(1)
+        exclusions = [e for e in load_exclusions(args.exclusions)
+                      if e.get("py_file") == py_name]
         go_index = gofuncinfo(args.gofuncinfo)
-        result = audit_file(py_name, go_index=go_index, exclusions=exclusions)
+        # Same validation as the full audit: an invalid/ambiguous exclusion
+        # must be reported (and ignored) in single-file mode too. Exclusions
+        # targeting other files are out of scope here, not invalid.
+        problems, valid_exclusions = validate_exclusions(
+            exclusions, {py_name: extract_python_functions(py_path)}, go_index)
+        result = audit_file(py_name, go_index=go_index, exclusions=valid_exclusions)
         if result:
             if args.json:
                 print(json.dumps(result, indent=2, default=str))
             else:
                 print_report(result, verbose=True)
+        if problems:
+            print("\n⚠ EXCLUSION VALIDATION PROBLEMS:")
+            for p in problems:
+                print(f"  - {p}")
+            sys.exit(1)
         return
 
     results, exclusions, problems = audit_all(args.exclusions, args.gofuncinfo)

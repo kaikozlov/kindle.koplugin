@@ -220,35 +220,35 @@ class Thing:
 
     def test_valid_entry_passes(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems, valid_entries, _ = ap.validate_exclusions([self.good_entry()], self.pyfuncs, go_index)
+        problems, valid_entries = ap.validate_exclusions([self.good_entry()], self.pyfuncs, go_index)
         self.assertEqual(problems, [])
 
     def test_unknown_category_rejected(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems, _, _ = ap.validate_exclusions(
+        problems, _valid = ap.validate_exclusions(
             [self.good_entry(category="because-i-said-so")], self.pyfuncs, go_index)
         self.assertTrue(any("category" in p for p in problems))
 
     def test_short_reason_rejected(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems, _, _ = ap.validate_exclusions(
+        problems, _valid = ap.validate_exclusions(
             [self.good_entry(reason="skip")], self.pyfuncs, go_index)
         self.assertTrue(any("reason" in p for p in problems))
 
     def test_missing_evidence_rejected_for_architecture_categories(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems, _, _ = ap.validate_exclusions(
+        problems, _valid = ap.validate_exclusions(
             [self.good_entry(evidence=[])], self.pyfuncs, go_index)
         self.assertTrue(any("requires evidence" in p for p in problems))
 
     def test_trivial_evidence_rejected(self):
         go_index = index(mkgo("realImpl", file="real.go", const_only=True))
-        problems, valid_entries, _ = ap.validate_exclusions([self.good_entry()], self.pyfuncs, go_index)
+        problems, valid_entries = ap.validate_exclusions([self.good_entry()], self.pyfuncs, go_index)
         self.assertTrue(any("itself trivial" in p for p in problems))
 
     def test_nonexistent_evidence_rejected(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems, _, _ = ap.validate_exclusions(
+        problems, _valid = ap.validate_exclusions(
             [self.good_entry(evidence=[{"go_file": "real.go",
                                         "go_func": "nope"}])],
             self.pyfuncs, go_index)
@@ -256,7 +256,7 @@ class Thing:
 
     def test_stale_exclusion_rejected(self):
         go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
-        problems, _, _ = ap.validate_exclusions(
+        problems, _valid = ap.validate_exclusions(
             [self.good_entry(py_name="does_not_exist")], self.pyfuncs, go_index)
         self.assertTrue(any("no audited Python function" in p for p in problems))
 
@@ -264,8 +264,127 @@ class Thing:
         e = self.good_entry(py_name="out_of_scope", category="output-mode-out-of-scope",
                             reason="Calibre output mode unused by KOReader",
                             evidence=[])
-        problems, _, _ = ap.validate_exclusions([e], self.pyfuncs, index())
+        problems, _valid = ap.validate_exclusions([e], self.pyfuncs, index())
         self.assertEqual(problems, [])
+
+
+class TestDuplicateDefIdentity(unittest.TestCase):
+    """A name defined twice (getter + setter) must not be waivable by one
+    exclusion; the entry must pin py_line and apply to exactly one def."""
+
+    PY_SRC = '''
+class OPFProps:
+    @property
+    def is_fxl(self):
+        return "rendition:layout-pre-paginated" in self.props
+
+    @is_fxl.setter
+    def is_fxl(self, value):
+        if value:
+            self.props.add("rendition:layout-pre-paginated")
+        else:
+            self.props.discard("rendition:layout-pre-paginated")
+
+    def single_def(self):
+        return 1
+'''
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.py_file = "dup.py"
+        path = os.path.join(self.tmp.name, self.py_file)
+        with open(path, "w") as f:
+            f.write(self.PY_SRC)
+        self.funcs = ap.extract_python_functions(path)
+        self.by_name = {}
+        for pf in self.funcs:
+            self.by_name.setdefault(pf.name, []).append(pf)
+        self.go_index = index(mkgo("realImpl", file="real.go", nstmt=50))
+        self.pyfuncs = {self.py_file: self.funcs}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def entry(self, **over):
+        e = {"py_file": self.py_file, "py_class": "OPFProps", "py_name": "is_fxl",
+             "category": "alternate-architecture",
+             "reason": "property state is a struct field in Go",
+             "evidence": [{"go_file": "real.go", "go_func": "realImpl"}]}
+        e.update(over)
+        return e
+
+    def test_duplicate_name_without_py_line_rejected(self):
+        problems, valid = ap.validate_exclusions([self.entry()], self.pyfuncs, self.go_index)
+        self.assertTrue(any("cannot silently waive multiple defs" in p for p in problems))
+        self.assertEqual(valid, [])
+
+    def test_pinned_py_line_validates(self):
+        getter_line = self.by_name["is_fxl"][0].line_start
+        problems, valid = ap.validate_exclusions([self.entry(py_line=getter_line)],
+                                                 self.pyfuncs, self.go_index)
+        self.assertEqual(problems, [])
+        self.assertEqual(len(valid), 1)
+
+    def test_wrong_py_line_rejected(self):
+        # decorator line or off-by-one must not pass
+        problems, _ = ap.validate_exclusions([self.entry(py_line=1)],
+                                             self.pyfuncs, self.go_index)
+        self.assertTrue(any("does not match any def" in p for p in problems))
+
+    def test_unique_name_needs_no_py_line(self):
+        e = self.entry(py_name="single_def")
+        problems, valid = ap.validate_exclusions([e], self.pyfuncs, self.go_index)
+        self.assertEqual(problems, [])
+        self.assertEqual(len(valid), 1)
+
+    def test_pinned_exclusion_waives_exactly_one_def(self):
+        # Audit-level: pinned entry must exclude the getter but leave the
+        # setter classified (here: missing, since no Go match for a setter).
+        getter = self.by_name["is_fxl"][0]
+        setter = self.by_name["is_fxl"][1]
+        pinned = self.entry(py_line=getter.line_start)
+        self.assertTrue(ap.exclusion_matches(pinned, getter, self.py_file))
+        self.assertFalse(ap.exclusion_matches(pinned, setter, self.py_file))
+
+    def test_unpinned_exclusion_would_waive_both_defs(self):
+        # Documents the pre-fix behavior the validator now forbids.
+        unpinned = self.entry()
+        getter = self.by_name["is_fxl"][0]
+        setter = self.by_name["is_fxl"][1]
+        self.assertTrue(ap.exclusion_matches(unpinned, getter, self.py_file))
+        self.assertTrue(ap.exclusion_matches(unpinned, setter, self.py_file))
+
+
+class TestFileModeExclusionValidation(unittest.TestCase):
+    """--file must apply the same exclusion validation as the full audit."""
+
+    def test_file_mode_reports_and_ignores_invalid_exclusions(self):
+        import shutil
+        import subprocess
+        repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        py_dir = os.path.join(repo, "REFERENCE/KFX_Input/kfxlib")
+        if not os.path.isdir(py_dir):
+            self.skipTest("REFERENCE/KFX_Input/kfxlib not present")
+        if not shutil.which("go"):
+            self.skipTest("go toolchain not available")
+        bad = {"exclusions": [{
+            "py_file": "epub_output.py", "py_class": "EPUB_Output",
+            "py_name": "generate_epub", "category": "because-i-said-so",
+            "reason": "skip",
+        }]}
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(bad, f)
+            manifest = f.name
+        try:
+            proc = subprocess.run(
+                [sys.executable, "scripts/audit_parity.py", "--file", "epub_output",
+                 "--exclusions", manifest],
+                capture_output=True, text=True, cwd=repo)
+        finally:
+            os.unlink(manifest)
+        self.assertIn("EXCLUSION VALIDATION PROBLEMS", proc.stdout)
+        self.assertIn("unknown category", proc.stdout)
+        self.assertEqual(proc.returncode, 1)
 
 
 class TestEndToEndHonestMetric(unittest.TestCase):

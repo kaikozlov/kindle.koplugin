@@ -1467,45 +1467,6 @@
     },
     {
       "py_file": "epub_output.py",
-      "py_class": "OPFProperties",
-      "py_name": "is_fxl",
-      "category": "alternate-architecture",
-      "reason": "fixed-layout flag is Book.FixedLayout consumed by contentOPF",
-      "evidence": [
-        {
-          "go_file": "internal/epub/epub.go",
-          "go_func": "contentOPF"
-        }
-      ]
-    },
-    {
-      "py_file": "epub_output.py",
-      "py_class": "OPFProperties",
-      "py_name": "is_nav",
-      "category": "alternate-architecture",
-      "reason": "nav property assignment happens in contentOPF manifest generation",
-      "evidence": [
-        {
-          "go_file": "internal/epub/epub.go",
-          "go_func": "contentOPF"
-        }
-      ]
-    },
-    {
-      "py_file": "epub_output.py",
-      "py_class": "OPFProperties",
-      "py_name": "is_cover_image",
-      "category": "alternate-architecture",
-      "reason": "cover-image property assignment happens in contentOPF manifest generation",
-      "evidence": [
-        {
-          "go_file": "internal/epub/epub.go",
-          "go_func": "contentOPF"
-        }
-      ]
-    },
-    {
-      "py_file": "epub_output.py",
       "py_class": "ManifestEntry",
       "py_name": "__init__",
       "category": "alternate-architecture",
@@ -2206,6 +2167,90 @@
         {
           "go_file": "internal/kfx/yj_symbol_catalog.go",
           "go_func": "parseYJSymbols"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_fxl",
+      "py_line": 126,
+      "category": "alternate-architecture",
+      "reason": "getter (def at L126); reads the rendition:layout-pre-paginated property; fixed-layout state is Book.FixedLayout consumed by contentOPF when it emits rendition:layout metadata",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_fxl",
+      "py_line": 130,
+      "category": "alternate-architecture",
+      "reason": "setter (def at L130); adds/discards rendition:layout-pre-paginated from the property set; Go sets Book.FixedLayout once when ConvertFile assembles the book \u2014 there is no runtime property-set mutation to port",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_nav",
+      "py_line": 137,
+      "category": "alternate-architecture",
+      "reason": "getter (def at L137); reads the nav property; the nav manifest property is assigned directly by contentOPF during manifest generation",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_nav",
+      "py_line": 141,
+      "category": "alternate-architecture",
+      "reason": "setter (def at L141); adds/discards the nav property; the nav manifest property is assigned directly by contentOPF during manifest generation \u2014 no runtime property-set mutation to port",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_cover_image",
+      "py_line": 148,
+      "category": "alternate-architecture",
+      "reason": "getter (def at L148); reads the cover-image property; the cover-image manifest property is assigned directly by contentOPF during manifest generation",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
+        }
+      ]
+    },
+    {
+      "py_file": "epub_output.py",
+      "py_class": "OPFProperties",
+      "py_name": "is_cover_image",
+      "py_line": 152,
+      "category": "alternate-architecture",
+      "reason": "setter (def at L152); adds/discards the cover-image property; the cover-image manifest property is assigned directly by contentOPF \u2014 no runtime property-set mutation to port",
+      "evidence": [
+        {
+          "go_file": "internal/epub/epub.go",
+          "go_func": "contentOPF"
         }
       ]
     }
