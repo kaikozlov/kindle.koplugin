@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"reflect"
 	"regexp"
@@ -3788,7 +3789,7 @@ func adjustPDFBackedPixelProperties(content map[string]interface{}) map[string]i
 		}
 		if numeric, ok := asFloat64(value); ok {
 			if numeric != 0 {
-				adjusted[name] = math.Round(numeric) / 100
+				adjusted[name] = math.RoundToEven(numeric) / 100
 			}
 			continue
 		}
@@ -3802,7 +3803,7 @@ func adjustPDFBackedPixelProperties(content map[string]interface{}) map[string]i
 				continue
 			}
 			lengthCopy := cloneMap(length)
-			lengthCopy["value"] = math.Round(magnitude) / 100
+			lengthCopy["value"] = math.RoundToEven(magnitude) / 100
 			adjusted[name] = lengthCopy
 		}
 	}
