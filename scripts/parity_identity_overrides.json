@@ -1,0 +1,34 @@
+{
+  "overrides": [
+    {
+      "py_file": "yj_to_epub_misc.py",
+      "py_class": "KFX_EPUB_Misc",
+      "py_name": "process_kvg_shape",
+      "mapping": {
+        "go_file": "yj_to_epub_misc.go",
+        "go_func": "processKVGShape"
+      },
+      "reason": "Direct process_kvg_shape port lives on storylineRenderer; the KVG acronym capitalization prevents the conservative name matcher from resolving it automatically."
+    },
+    {
+      "py_file": "yj_to_epub_misc.py",
+      "py_class": "KFX_EPUB_Misc",
+      "py_name": "process_dictionary_rules",
+      "mapping": {
+        "go_file": "yj_dictionary.go",
+        "go_func": "processDictionaryRules"
+      },
+      "reason": "Direct dictionary-rule parser port was split into yj_dictionary.go to isolate KFX Input 2.34 dictionary support; production renderBookState calls it before content rendering."
+    },
+    {
+      "py_file": "yj_to_epub_misc.py",
+      "py_class": "KFX_EPUB_Misc",
+      "py_name": "unapply_dictionary_rule",
+      "mapping": {
+        "go_file": "yj_dictionary.go",
+        "go_func": "unapplyDictionaryRule"
+      },
+      "reason": "Direct unapply_dictionary_rule port was split into yj_dictionary.go alongside the dictionary-rule parser and preserves Python Unicode slice behavior."
+    }
+  ]
+}

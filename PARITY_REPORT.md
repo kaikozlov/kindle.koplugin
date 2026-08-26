@@ -9,15 +9,15 @@ Regenerate after any Go or Python reference change.
 - In-scope defs audited: **807** (structural coverage only — name + body substance; NOT behavioral parity, see §Method limits)
 - Implemented (substantive): **118**
 - Implemented (delegation wrappers): **11**
-- Mapped via reviewed identity overrides: **0**
+- Mapped via reviewed identity overrides: **3**
 - Implemented (trivial↔trivial, value-equal): **0**
 - Stubs (silent name-only shims): **1**
 - Stubs (admitted not-implemented): **0**
 - Thin (suspiciously small): **3**
-- Missing (no name match): **304**
+- Missing (no name match): **303**
 - Excluded (explicit, per-def, validated): **167**
-- **In-scope structural coverage: 129/640 = 20.2%** (strict, counting explicit exclusions against coverage: 16.0%)
-- **Upstream structural coverage: 129/961 = 13.4%** — the denominator is EVERY upstream core def
+- **In-scope structural coverage: 132/640 = 20.6%** (strict, counting explicit exclusions against coverage: 16.4%)
+- **Upstream structural coverage: 132/961 = 13.7%** — the denominator is EVERY upstream core def
 
 ## Method limits — what this number is NOT
 
@@ -41,21 +41,21 @@ substantive Go implementation and no approved exclusion.
 
 | Python function | py nstmt | Go match | go nstmt | status |
 |---|---|---|---|---|
-| `KFX_EPUB_Content.process_content_list` (L403) | 4 | `processContentList` (yj_to_epub_content.go:L3978) | 4 | dead [dead] |
-| `KFX_EPUB_Content.process_content` (L411) | 753 | `processContent` (yj_to_epub_content.go:L4008) | 1 | dead [dead] |
-| `KFX_EPUB_Content.create_container` (L1531) | 8 | `createContainer` (yj_to_epub_content.go:L1842) | 11 | dead [dead] |
-| `KFX_EPUB_Content.fix_vertical_align_properties` (L1566) | 13 | `fixVerticalAlignProperties` (yj_to_epub_content.go:L1877) | 23 | dead [dead] |
-| `KFX_EPUB_Content.preformat_spaces` (L1747) | 15 | `preformatSpaces` (yj_to_epub_content.go:L2479) | 1 | dead [dead] |
-| `KFX_EPUB_Content.preformat_text` (L1776) | 22 | `preformatText` (yj_to_epub_content.go:L2487) | 6 | dead [dead] |
-| `KFX_EPUB_Content.replace_eol_with_br` (L1811) | 26 | `replaceEolWithBr` (yj_to_epub_content.go:L2503) | 1 | dead [dead] |
-| `KFX_EPUB_Content.add_kfx_style` (L1862) | 10 | `addKfxStyle` (yj_to_epub_content.go:L3954) | 10 | dead [dead] |
-| `KFX_EPUB_Content.replace_element_with_container` (L1887) | 7 | `replaceElementWithContainer` (yj_to_epub_content.go:L2682) | 11 | dead [dead] |
-| `KFX_EPUB_Content.create_element_content_container` (L1897) | 9 | `createElementContentContainer` (yj_to_epub_content.go:L2719) | 12 | dead [dead] |
-| `KFX_EPUB_Content.find_or_create_style_event_element` (L1910) | 48 | `findOrCreateStyleEventElement` (yj_to_epub_content.go:L3001) | 53 | dead [dead] |
+| `KFX_EPUB_Content.process_content_list` (L403) | 4 | `processContentList` (yj_to_epub_content.go:L4003) | 4 | dead [dead] |
+| `KFX_EPUB_Content.process_content` (L411) | 753 | `processContent` (yj_to_epub_content.go:L4033) | 1 | dead [dead] |
+| `KFX_EPUB_Content.create_container` (L1531) | 8 | `createContainer` (yj_to_epub_content.go:L1867) | 11 | dead [dead] |
+| `KFX_EPUB_Content.fix_vertical_align_properties` (L1566) | 13 | `fixVerticalAlignProperties` (yj_to_epub_content.go:L1902) | 23 | dead [dead] |
+| `KFX_EPUB_Content.preformat_spaces` (L1747) | 15 | `preformatSpaces` (yj_to_epub_content.go:L2504) | 1 | dead [dead] |
+| `KFX_EPUB_Content.preformat_text` (L1776) | 22 | `preformatText` (yj_to_epub_content.go:L2512) | 6 | dead [dead] |
+| `KFX_EPUB_Content.replace_eol_with_br` (L1811) | 26 | `replaceEolWithBr` (yj_to_epub_content.go:L2528) | 1 | dead [dead] |
+| `KFX_EPUB_Content.add_kfx_style` (L1862) | 10 | `addKfxStyle` (yj_to_epub_content.go:L3979) | 10 | dead [dead] |
+| `KFX_EPUB_Content.replace_element_with_container` (L1887) | 7 | `replaceElementWithContainer` (yj_to_epub_content.go:L2707) | 11 | dead [dead] |
+| `KFX_EPUB_Content.create_element_content_container` (L1897) | 9 | `createElementContentContainer` (yj_to_epub_content.go:L2744) | 12 | dead [dead] |
+| `KFX_EPUB_Content.find_or_create_style_event_element` (L1910) | 48 | `findOrCreateStyleEventElement` (yj_to_epub_content.go:L3026) | 53 | dead [dead] |
 | `KFX_EPUB_Content.get_px_value` (L701) | 10 | — | 0 | missing |
 | `KFX_EPUB_Content.check_crop_bleed_condition` (L1077) | 5 | — | 0 | missing |
 | `KFX_EPUB_Content.clean_text_for_lxml` (L1876) | 6 | — | 0 | missing |
-| `KFX_EPUB_Content.add_content` (L383) | 13 | `addContent` (yj_to_epub_content.go:L3997) | 1 | thin |
+| `KFX_EPUB_Content.add_content` (L383) | 13 | `addContent` (yj_to_epub_content.go:L4022) | 1 | thin |
 
 ### yj_to_epub_properties.py
 
@@ -107,10 +107,7 @@ substantive Go implementation and no approved exclusion.
 | `KFX_EPUB_Misc.process_path` (L345) | 25 | `processPath` (yj_to_epub_misc.go:L1552) | 1 | dead [dead] |
 | `KFX_EPUB_Misc.add_svg_wrapper_to_block_image` (L166) | 42 | — | 0 | missing |
 | `KFX_EPUB_Misc.horizontal_fxl_block_images` (L240) | 23 | — | 0 | missing |
-| `KFX_EPUB_Misc.process_kvg_shape` (L278) | 42 | — | 0 | missing |
 | `KFX_EPUB_Misc.process_plugin_uri` (L719) | 6 | — | 0 | missing |
-| `KFX_EPUB_Misc.process_dictionary_rules` (L492) | 10 | — | 0 | unresolved_match |
-| `KFX_EPUB_Misc.unapply_dictionary_rule` (L509) | 30 | — | 0 | unresolved_match |
 
 ### yj_to_epub_navigation.py
 
