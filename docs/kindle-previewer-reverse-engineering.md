@@ -1774,21 +1774,21 @@ The baseline failures above were used as targeted regression cases rather than a
 - current vendored KFX Input **20260822 / 2.34.0** as the Python reverse reference; and
 - the reviewed cumulative Go integration branch.
 
-The result is:
+The stable result across repeated runs is:
 
-| Fixture | Structural diffs | Image diffs | Other diffs | Timestamp-only |
-| --- | ---: | ---: | ---: | ---: |
-| `minimal` | 0 | 0 | 0 | 1 (`content.opf`) |
-| `footnote` | 0 | 0 | 0 | 1 (`content.opf`) |
-| `table` | 0 | 0 | 0 | 0 |
-| `fixed-layout` | 0 | 0 | 0 | 0 |
-| `vertical-ruby` | 0 | 0 | 0 | 0 |
-| `link` | 0 | 0 | 0 | 0 |
-| `bidi` | 0 | 0 | 0 | 0 |
-| `list` | 0 | 0 | 0 | 0 |
-| `svg` | 0 | 0 | 0 | 0 |
+| Fixture | Structural diffs | Image diffs | Other diffs |
+| --- | ---: | ---: | ---: |
+| `minimal` | 0 | 0 | 0 |
+| `footnote` | 0 | 0 | 0 |
+| `table` | 0 | 0 | 0 |
+| `fixed-layout` | 0 | 0 | 0 |
+| `vertical-ruby` | 0 | 0 | 0 |
+| `link` | 0 | 0 | 0 |
+| `bidi` | 0 | 0 | 0 |
+| `list` | 0 | 0 | 0 |
+| `svg` | 0 | 0 | 0 |
 
-Thus all nine current Amazon-generated semantic fixtures are structurally/content-equivalent to current Python KFX Input, with the only remaining differences being nondeterministic OPF timestamps in two fixtures.
+Thus all nine current Amazon-generated semantic fixtures are structurally/content-equivalent to current Python KFX Input. `content.opf` can still appear as a timestamp-only difference; which fixtures show that diff varies between runs because the two reverse conversions do not necessarily cross the same wall-clock second. Timestamp-only entries are therefore deliberately excluded from the stable matrix above rather than being assigned to particular fixtures.
 
 The fixes required to reach that state are instructive because they were not all local syntax mistakes. They included:
 
