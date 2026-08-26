@@ -926,7 +926,9 @@ const (
 // Port of Python's self.is_comic, self.is_pdf_backed, self.region_magnification, etc.
 type pageSpreadConfig struct {
 	BookType                 bookType
+	FixedLayout              bool
 	IsPdfBacked              bool
+	IsPDFBackedFixedLayout   bool
 	RegionMagnification      bool
 	VirtualPanelsAllowed     bool
 	VirtualPanels            bool // set to true when $434==$441 and VirtualPanelsAllowed
@@ -1462,9 +1464,13 @@ func processPageSpreadLeaf(
 	//   book_part = self.new_book_part(
 	//       filename=self.SECTION_TEXT_FILEPATH % unique_section_name if RETAIN_SECTION_FILENAMES else None,
 	//       opf_properties=set(page_spread.split()))
+	properties := pageSpread
+	if isSection && cfg.FixedLayout && asStringDefault(pageTemplate["layout"]) == "scale_fit" {
+		properties = mergeSectionProperties(properties, "rendition:layout-pre-paginated")
+	}
 	section := pageSpreadSection{
 		PageTitle:        uniqueName,
-		Properties:       pageSpread,
+		Properties:       properties,
 		PositionOffset:   0,
 		TemplateData:     pageTemplate,
 		HasCSSLink:       true, // self.link_css_file(book_part, self.STYLES_CSS_FILEPATH)

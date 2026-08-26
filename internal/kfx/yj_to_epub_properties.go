@@ -878,6 +878,7 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 
 	styleClassNames := map[string]string{}
 	classStyles := map[string]map[string]string{}
+	selectorClasses := map[string]bool{}
 	usedClassCounts := map[string]int{}
 	referencedClasses := map[string]bool{}
 
@@ -913,6 +914,7 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 				}
 			}
 			if len(selectorStyle) > 0 {
+				selectorClasses[className] = true
 				// Remove pseudo-selector properties from the main class style
 				for name := range selectorStyle {
 					delete(classStyles[className], ps.prefix+name)
@@ -929,11 +931,17 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 	}
 
 	for i := range book.RenderedSections {
+		isFXL := strings.Contains(book.RenderedSections[i].Properties, "rendition:layout-pre-paginated")
 		if style := strings.TrimSpace(book.RenderedSections[i].BodyStyle); style != "" {
 			if className := styleClassNames[style]; className != "" {
-				book.RenderedSections[i].BodyClass = prependClassName(book.RenderedSections[i].BodyClass, className)
-				book.RenderedSections[i].BodyStyle = ""
-				referencedClasses[className] = true
+				classStyle := classStyles[className]
+				if isFXL && !selectorClasses[className] && classStyle["-kfx-media-query"] == "" {
+					book.RenderedSections[i].BodyStyle = styleStringFromMap(classStyle)
+				} else {
+					book.RenderedSections[i].BodyClass = prependClassName(book.RenderedSections[i].BodyClass, className)
+					book.RenderedSections[i].BodyStyle = ""
+					referencedClasses[className] = true
+				}
 			}
 		}
 		walkHTMLElement(book.RenderedSections[i].Root, func(elem *htmlElement) {
@@ -946,9 +954,14 @@ func fixupStylesAndClasses(book *decodedBook, catalog *styleCatalog, fontFamilyA
 			}
 			className := styleClassNames[style]
 			if className != "" {
-				elem.Attrs["class"] = prependClassName(elem.Attrs["class"], className)
-				delete(elem.Attrs, "style")
-				referencedClasses[className] = true
+				classStyle := classStyles[className]
+				if isFXL && !selectorClasses[className] && classStyle["-kfx-media-query"] == "" {
+					elem.Attrs["style"] = styleStringFromMap(classStyle)
+				} else {
+					elem.Attrs["class"] = prependClassName(elem.Attrs["class"], className)
+					delete(elem.Attrs, "style")
+					referencedClasses[className] = true
+				}
 			}
 		})
 	}

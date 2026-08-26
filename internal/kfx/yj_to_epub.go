@@ -238,7 +238,9 @@ func renderBookState(state *bookState, trace *traceWriter) (*decodedBook, error)
 	if bt != bookTypeNone {
 		readingOrderCfg = &pageSpreadConfig{
 			BookType:                 bt,
+			FixedLayout:              book.FixedLayout,
 			IsPdfBacked:              book.IsPDFBacked,
+			IsPDFBackedFixedLayout:   book.IsPDFBackedFixedLayout,
 			RegionMagnification:      book.RegionMagnification,
 			VirtualPanelsAllowed:     book.VirtualPanelsAllowed,
 			PageProgressionDirection: book.PageProgressionDirection,

@@ -937,6 +937,30 @@ func TestRenderNodeSupportsInlineRenderContainers(t *testing.T) {
 	}
 }
 
+func TestFixupStylesKeepsFixedLayoutStylesInline(t *testing.T) {
+	book := &decodedBook{
+		Language: "en",
+		RenderedSections: []renderedSection{{
+			Filename:   "c0.xhtml",
+			Properties: "rendition:layout-pre-paginated",
+			BodyStyle:  "font-size: 0.16px",
+			Root: &htmlElement{Children: []htmlPart{&htmlElement{
+				Tag: "img", Attrs: map[string]string{"style": "height: 48px; width: 48px"},
+			}}},
+		}},
+	}
+	catalog := newStyleCatalog()
+	fixupStylesAndClasses(book, catalog, nil, "serif")
+	section := book.RenderedSections[0]
+	if section.BodyClass != "" || section.BodyStyle != "font-size: 0.16px" {
+		t.Fatalf("fixed-layout body style moved to class: class=%q style=%q", section.BodyClass, section.BodyStyle)
+	}
+	img := section.Root.Children[0].(*htmlElement)
+	if img.Attrs["class"] != "" || img.Attrs["style"] != "height: 48px; width: 48px" {
+		t.Fatalf("fixed-layout image style moved to class: %#v", img.Attrs)
+	}
+}
+
 func TestProcessContentPropsScalesPDFBackedPixelValues(t *testing.T) {
 	renderer := storylineRenderer{isPDFBacked: true}
 	css := renderer.processContentProps(map[string]interface{}{
