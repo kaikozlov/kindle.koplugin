@@ -3790,6 +3790,7 @@ type storylineRenderer struct {
 	conditionEvaluator  conditionEvaluator
 	resolveResource     ResourceResolver
 	storylines          map[string]map[string]interface{}
+	isPDFBacked         bool
 	// textCombineInUse is set to true when any text-combine-upright: all
 	// declaration is encountered during style processing (Python: self.text_combine_in_use).
 	// Port of Python yj_to_epub_properties.py L1127 and yj_to_epub_content.py L103.
@@ -5712,6 +5713,19 @@ func (r *storylineRenderer) renderImageNode(node map[string]interface{}) htmlPar
 	wrapperClass, imageClass := r.imageClasses(node)
 	if imageClass != "" {
 		image.Attrs["style"] = imageClass
+	}
+	// Python process_content image branch (yj_to_epub_content.py:470-481) pins
+	// PDF-backed images to the decoded resource dimensions. Any width/height carried
+	// by the KFX image node is only validated against 100%% in that branch; it does not
+	// replace the resource pixel dimensions.
+	if r.isPDFBacked {
+		resource := r.resourceFragments[resourceID]
+		if resource.Width > 0 && resource.Height > 0 {
+			style := parseDeclarationString(image.Attrs["style"])
+			style["height"] = fmt.Sprintf("%dpx", resource.Height)
+			style["width"] = fmt.Sprintf("%dpx", resource.Width)
+			image.Attrs["style"] = styleStringFromMap(style)
+		}
 	}
 	// Python process_content $283 (inline render) for <img> (yj_to_epub_content.py:1295-1298):
 	// render=="inline" adds -kfx-render:inline to style but does NOT create a container wrapper.

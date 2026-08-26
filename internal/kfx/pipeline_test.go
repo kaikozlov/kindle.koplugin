@@ -901,6 +901,27 @@ func TestRenderNodeSupportsInlineRenderContainers(t *testing.T) {
 	}
 }
 
+func TestRenderImageNodeUsesResourceDimensionsForPDFBackedBooks(t *testing.T) {
+	renderer := storylineRenderer{
+		isPDFBacked:       true,
+		resourceHrefByID:  map[string]string{"img1": "image_rsrc7.jpg"},
+		resourceFragments: map[string]resourceFragment{"img1": {ID: "img1", MediaType: "image/jpeg", Width: 48, Height: 32}},
+		positionAnchors:   map[int]map[int][]string{},
+		positionAnchorID:  map[int]map[int]string{},
+		emittedAnchorIDs:  map[string]bool{},
+		styleFragments:    map[string]map[string]interface{}{},
+		styles:            newStyleCatalog(),
+	}
+
+	got := renderHTMLPart(renderer.renderImageNode(map[string]interface{}{
+		"resource_name": "img1",
+		"alt_text":      "Probe",
+	}))
+	if !strings.Contains(got, `style="height: 32px; width: 48px"`) {
+		t.Fatalf("PDF-backed image dimensions missing: %q", got)
+	}
+}
+
 func TestRenderImageNodeFitTightDropsWidthHundredPercent(t *testing.T) {
 	renderer := storylineRenderer{
 		contentFragments: map[string][]string{},
