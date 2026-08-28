@@ -22,29 +22,30 @@ Artifacts covered:
 
 ## Executive answer
 
-**853 is a real native KFX container-info field; the current controlled KDF corpus does not exercise its producer.**
-The initial string-xref audit was insufficient: Previewer's native code often accesses YJ/KFX
-properties by numeric ID rather than by name (as the known `page_regions` consumer does). A
-follow-up exact-immediate audit found an explicit container-info parser branch for property 853.
+**853 is a real KFX container sequence field used by Previewer's native `BinaryStorage` to order competing containers.**
+The initial string-xref audit was insufficient: Previewer's native code accesses this field by numeric
+ID after parsing. A follow-up exact-immediate/data-flow audit recovered the parser, the corrected
+`BinaryContainer` layout, a storage-level sequence watermark, highest-sequence selection, and
+propagation of the value into `BinaryObjectStream` objects.
 
 | Artifact | Occurrences of the string | Nature |
 | --- | ---: | --- |
 | EpubToKFXConverter-4.0.jar | 1 class file | KAF property enum constant (declaration only) |
 | libshared.dylib | 1 per arch slice | shared-symbol-table registration + `PropertyNameUtil` map builder |
 | KindleImageProcessor | 1 string | shared-symbol-table registration; exact `0x355` immediates audited separately |
-| Kindle Previewer 3 (main) | 1 string | shared-symbol registration **plus numeric property-853 reader** |
+| Kindle Previewer 3 (main) | 1 string | registration + numeric parser + sequence-order consumers |
 | KFX Input 2.34.0 | 0 by name; `$853?` placeholder | numeric table extent only |
 
 In the 304 generated KDF instances swept in this investigation, every book declared the shared
 table through 853 but none used 853 in a **KDF fragment payload** (highest observed payload SID: 790).
-That negative result is now known to be orthogonal to the likely wire location: `bcSequenceNumber` belongs to
-KFX container-info, not the KDF application fragment graph. The native Previewer reader **does** recognize 853
-in the same container-info parser that consumes
-`bcContId`, compression/DRM/chunk metadata, document-symbol offsets, and format-capability offsets.
-It coerces the incoming numeric value to an integer and stores it in a dedicated 32-bit field.
-The live generic KAF property API also accepts/read-backs 853 in memory. `nativeSave` crashes even
-on an unmodified save-only control in the standalone harness, so KAF-save persistence remains
-untested, not negative.
+That negative result is orthogonal to the wire location: `bcSequenceNumber` belongs to KFX
+container-info, not the KDF application fragment graph. Previewer parses it into
+`BinaryContainer+0x44`; `BinaryStorage` compares it against a zero-initialized sequence watermark and
+uses strict unsigned `>` ordering once sequence tracking is active. The value is also copied into
+`BinaryObjectStream` and exposed through a virtual accessor; equivalent non-binary streams report
+zero. What remains unknown is the producer-side increment/scope/wrap policy. The live generic KAF
+property API also accepts/read-backs 853 in memory. `nativeSave` crashes even on an unmodified
+save-only control in the standalone harness, so KAF-save persistence remains untested, not negative.
 
 ## Evidence
 
@@ -119,52 +120,131 @@ bcDocSymbolOffset  bcDocSymbolLength  bcRawMedia  bcRawFont  bcFCapabilitiesOffs
 ```
 
 KFX Input decodes these as **KFX container storage fields** (`kfx_container.py`:
-`$409` id, `$410` compression, `$411` DRM scheme, `$412` chunk size, `$415/$416`
-document-symbol offset/length, `$417` raw media, `$418` raw font, `$422/$423`
-capabilities offset/length). `bcSequenceNumber` is appended at the end of this
-family. That is naming evidence for "book-container storage bookkeeping," not
-proof of semantics — see *Inference* below.
+`$409` id, `$410` compression, `$411` DRM scheme, `$412` chunk size, `$413/$414`
+index-table offset/length, `$415/$416` document-symbol offset/length, and `$594/$595`
+format-capabilities offset/length). `$417/$418` are `bcRawMedia`/`bcRawFont`; `$422/$423`
+are `resource_width`/`resource_height`, not capabilities offsets. `bcSequenceNumber`
+is appended at the end of the `bc*` family.
 
-### 3. Native numeric-ID audit: Previewer explicitly parses `bcSequenceNumber`
+### 3. Native numeric-ID audit: parse, storage layout, and sequence ordering
 
 A follow-up disassembly audit searched the x86-64 native binaries for exact immediate `0x355`
 (decimal 853), then classified every hit by function context. This was necessary because a
 string-only xref audit misses property accessors that pass or compare numeric IDs.
 
-The decisive hit is in the Previewer main binary at `FUN_10144b490`
-(`0x10144b490..0x10144b66e`; compare at `0x10144b51d`). Ghidra reconstructs the routine as a
-property-ID visitor over one container-info object. Its switch is not ambiguous: the handled IDs
-map exactly to the KFX `bc*` container header family:
+#### 3.1 `handler_FileMetadata` parses 853, then copies it into `BinaryContainer`
+
+The decisive parser branch is in `FUN_10144b490` (`0x10144b490..0x10144b66e`; compare at
+`0x10144b51d`). RTTI identifies the receiving functor as
+`yjsdk::handler_FileMetadata` (`N5yjsdk20handler_FileMetadataE`). The function visits the KFX
+container-info properties and stores them in a compact metadata block:
 
 ```text
-409  bcContId                -> object +0x10
-410  bcComprType             -> object +0x18
-411  bcDRMScheme             -> object +0x1c
-412  bcChunkSize             -> object +0x20
-413  bcIndexTabOffset        -> object +0x24
-414  bcIndexTabLength        -> object +0x28
-415  bcDocSymbolOffset       -> object +0x2c
-416  bcDocSymbolLength       -> object +0x30
-594  bcFCapabilitiesOffset   -> object +0x34
-595  bcFCapabilitiesLength   -> object +0x38
-853  bcSequenceNumber        -> object +0x3c
+SID  name                      handler_FileMetadata
+409  bcContId                  +0x10
+410  bcComprType               +0x18
+411  bcDRMScheme               +0x1c
+412  bcChunkSize               +0x20
+413  bcIndexTabOffset          +0x24
+414  bcIndexTabLength          +0x28
+415  bcDocSymbolOffset         +0x2c
+416  bcDocSymbolLength         +0x30
+594  bcFCapabilitiesOffset     +0x34
+595  bcFCapabilitiesLength     +0x38
+853  bcSequenceNumber          +0x3c
 ```
 
-For 853 the decompiled branch is:
+For 853 the branch accepts either the integer representation or converts a float-valued Ion number
+to an integer:
 
 ```c
-else if (param_3 == 0x355) {
-    if ((*(byte *)(param_4 + 1) & 1) == 0)
-        *(uint32_t *)(param_1 + 0x3c) = *(uint32_t *)(param_4 + 8);
+else if (property_id == 0x355) {
+    if ((value->flags & 1) == 0)
+        *(uint32_t *)(handler + 0x3c) = value->integer;
     else
-        *(int32_t *)(param_1 + 0x3c) = (int)*(float *)(param_4 + 8);
+        *(int32_t *)(handler + 0x3c) = (int)value->floating;
 }
 ```
 
-So **`bcSequenceNumber` is not declaration-only**. Previewer's native container reader recognizes
-it as a numeric container-info field and stores a 32-bit integer representation in a dedicated
-slot. What that integer sequences (container generations, chunks, revisions, etc.) is still not
-established by this path alone.
+`FUN_10144b6b0` then copies 48 bytes from `handler_FileMetadata+0x10..+0x3f` into
+`yjsdk::BinaryContainer+0x18..+0x47` (`0x10144b75f..0x10144b776`). The resulting
+`BinaryContainer` layout is therefore shifted by eight bytes. All three observed `BinaryContainer`
+constructor variants explicitly initialize `+0x44` to zero (`0x101449267`, `0x1014492ee`,
+`0x10144933e`), so an absent 853 field has a concrete reader default of zero:
+
+```text
+BinaryContainer +0x18  bcContId
+                +0x20  bcComprType
+                +0x24  bcDRMScheme
+                +0x28  bcChunkSize
+                +0x2c  bcIndexTabOffset
+                +0x30  bcIndexTabLength
+                +0x34  bcDocSymbolOffset
+                +0x38  bcDocSymbolLength
+                +0x3c  bcFCapabilitiesOffset
+                +0x40  bcFCapabilitiesLength
+                +0x44  bcSequenceNumber
+```
+
+This correction matters: the earlier audit incorrectly described `BinaryContainer+0x3c` as the
+sequence field. It is actually the **format-capabilities offset**. The surrounding code independently
+confirms the corrected layout: `FUN_10144a900` loads document symbols from `+0x34/+0x38`, while
+`FUN_10144a6a0` loads format capabilities from `+0x3c/+0x40` using a
+`yjsdk::FormatCapabilitiesCreator`. `bcChunkSize` also lands at `BinaryContainer+0x28`, matching the
+`0x1000` default initialized by the metadata handler and KFX Input's 4096-byte default.
+
+#### 3.2 `BinaryStorage` uses 853 as a monotonic container-selection sequence
+
+RTTI identifies the owning loader/manager as `yjsdk::BinaryStorage`
+(`N5yjsdk13BinaryStorageE`). Its constructor at `0x10144c150` initializes a 32-bit sequence
+watermark at `BinaryStorage+0xd8` to zero (`0x10144c1e4`). The container-open path at
+`0x10144e210` then consumes `BinaryContainer+0x44` directly:
+
+```text
+0x10144e317  incoming = container->bcSequenceNumber
+0x10144e31b  current  = storage->sequence_watermark
+0x10144e323  current_is_zero = (current == 0)
+0x10144e32a  compare incoming vs current
+0x10144e32c  incoming_is_newer = (incoming > current)   # unsigned, strict
+0x10144e349  newer = current_is_zero || incoming_is_newer
+0x10144e344  doc_symbols_ok = (load_doc_symbols(container) == 0)
+0x10144e356  install_doc_state = newer && doc_symbols_ok
+...
+0x10144e4de  if newer:
+0x10144e4e1      storage->sequence_watermark = incoming
+```
+
+So the meaning is no longer merely inferred from the name: **the field orders competing KFX
+containers, and larger unsigned sequence numbers supersede smaller ones once sequence tracking is
+active**. Equality does not satisfy the `>` comparison.
+
+A second `BinaryStorage` virtual method beginning at `0x10144d7d0` performs the same ordering while
+choosing among matching containers. For each candidate it reads `candidate+0x44`; if a current
+candidate exists, a strictly larger unsigned sequence replaces it (`0x10144db67..0x10144db72`).
+When `BinaryStorage+0xd8` is still zero, the routine has a fallback path that may replace the current
+candidate without requiring a larger sequence (`0x10144db74..0x10144db7f`). Thus zero is a special
+**uninitialized/sequence-order-not-established** state, not simply an ordinary oldest revision.
+
+#### 3.3 The sequence is propagated to every binary object stream
+
+The entity/object-stream creation path at `0x101449660` copies `BinaryContainer+0x44` into a newly
+allocated `yjsdk::BinaryObjectStream` at `+0x30` (`0x1014496ab`). RTTI confirms the class as
+`N5yjsdk18BinaryObjectStreamE`. Its virtual method at `0x10144c010` is simply:
+
+```c
+uint32_t BinaryObjectStream::vslot5() const {
+    return *(uint32_t *)(this + 0x30);
+}
+```
+
+The corresponding virtual slot in `yjsdk::StorageStream` and `yjsdk::YJTextObjectStream` points to
+`0x101467bf0`, which returns **0** unconditionally. That makes the role of the slot unusually clear:
+binary object streams carry their source container's sequence number; stream types without this
+container-revision concept report zero.
+
+What remains unknown is the **producer policy**: which packaging event increments the number, whether
+it is global to a book or scoped to a container family, and how wraparound is handled. The reader-side
+ordering semantics themselves are now directly established.
 
 Other exact `0x355` sites were classified separately:
 
@@ -197,6 +277,16 @@ numeric-ID audit is what exposes the real reader behavior.
   `853 -> "bcSequenceNumber"` (sourced earlier from the live native resolver),
   and `yj_symbol_catalog_test.go` pins it. No Go code reads or writes the
   property.
+
+This exposes a concrete **reader-arbitration gap** in both reverse implementations. Current KFX Input
+sorts its discovered container datafiles by name, deserializes every container, and appends every
+container's fragments; `organize_fragments_by_type` keeps the **first** duplicate fragment ID and logs
+an error. Current Go likewise sorts `containerSource` values by path and processes every source, but
+its typed fragment maps generally assign later values, so many duplicate IDs are effectively
+**last-write-wins** after logging. Neither implementation consults 853 or reproduces
+`BinaryStorage`'s highest-sequence selection. This is a demonstrated static behavior difference, but
+its practical book impact is still unmeasured because the local corpus has no real delivered CONT set
+with nonzero competing sequence numbers.
 
 ### 5. KDF declaration sweep: useful catalog evidence, not a container-info producer test
 
@@ -279,58 +369,73 @@ kfxlib's Ion round-trip) was started and deliberately abandoned: a fresh
 per the audit's direction the in-memory KAF result above already answers the
 "does KAF tolerate it" question without byte-level mutation.
 
-For anyone resuming that mutation: binary-Ion field SID 853 encodes as varuint
-`0xDA 0x55`, and each `fragments.payload_value` blob is the raw struct with a
-3-byte `\xe0\x01\x00\xea` IVM prefix inside the fingerprint-wrapped SQLite.
+For anyone resuming that mutation: binary-Ion field SID 853 encodes as VarUInt bytes
+`0x06 0xD5` (verified with KFX Input 2.34's Ion serializer), and each
+`fragments.payload_value` blob is the raw struct with a 3-byte
+`\xe0\x01\x00\xea` IVM prefix inside the fingerprint-wrapped SQLite.
 
 ## Confirmed facts
 
 1. Java converter code declares property 853 in the KAF enum but has no Java reader/writer for it;
    the other Java literal-853 hits are unrelated tables.
 2. `libshared.dylib`'s **string** references are property-table registration, not field consumption.
-3. Previewer's main native binary has an explicit numeric property visitor that handles the exact
-   `bc*` container-info family and stores **853 `bcSequenceNumber`** as a 32-bit integer at object
-   offset `+0x3c`.
-4. Other exact native `0x355` sites are table-boundary/YJSDK-extent behavior or unrelated third-party
-   library constants; no second field-specific reader was identified in KindleImageProcessor.
-5. KFX Input 2.34 knows 853 only as `$853?` and does not pop/interpret it from `container_info`; Go
-   carries the real name but no behavior.
-6. All 304 generated KDF instances in the local sweep declared the shared table through 853, while
-   none used 853 in KDF fragment payload data (highest observed payload SID 790). Because 853 is a KFX
-   container-info field, this does **not** test the delivery-container writer.
-7. The live runtime resolves 853 ↔ `bcSequenceNumber` bidirectionally, and KAF's generic property
+3. `yjsdk::handler_FileMetadata` parses 853 as a 32-bit numeric container-info field at handler
+   offset `+0x3c`; `FUN_10144b6b0` copies that metadata block into `yjsdk::BinaryContainer`, where
+   **`bcSequenceNumber` is at `+0x44`**. `BinaryContainer+0x3c/+0x40` are instead the
+   format-capabilities offset/length. `BinaryContainer` constructors initialize `+0x44` to zero.
+4. `yjsdk::BinaryStorage` initializes its sequence watermark (`+0xd8`) to zero and, on container
+   load, treats `(current == 0) || (incoming >u current)` as the sequence-newer condition. The
+   doc-symbol state install additionally requires successful document-symbol parsing, but the stored
+   sequence watermark follows the `newer` flag itself. Equality does not satisfy the strict comparison.
+5. A separate `BinaryStorage` lookup/selection path compares `BinaryContainer+0x44` values and, once
+   the watermark is nonzero, retains the candidate with the larger unsigned sequence. With a zero
+   watermark it uses a fallback path that does not require a larger sequence.
+6. Container sequence numbers are propagated into `yjsdk::BinaryObjectStream+0x30`; that class's
+   corresponding virtual accessor returns the value. `StorageStream` and `YJTextObjectStream`
+   implement the same slot by returning zero.
+7. KFX Input 2.34 knows 853 only as `$853?` and does not pop/interpret it from `container_info`; Go
+   carries the Amazon-provided name but no behavior. Both process multi-container inputs by sorted
+   file/path order rather than sequence arbitration; Python keeps the first duplicate fragment ID,
+   while many Go typed maps overwrite with the later duplicate.
+8. All 304 generated KDF instances in the local sweep declared the shared table through 853, while
+   none used 853 in KDF fragment payload data (highest observed payload SID 790). Because 853 is a
+   KFX container-info field, this does **not** test the delivery-container writer.
+9. The live runtime resolves 853 ↔ `bcSequenceNumber` bidirectionally, and KAF's generic property
    layer accepts an integer value in memory.
-8. `nativeSave` crashes identically with no modification (control), so persistence through that
-   standalone save harness is unknown.
+10. `nativeSave` crashes identically with no modification (control), so persistence through that
+    standalone save harness is unknown.
 
-## Inference (clearly separated)
+## Inference / remaining unknowns
 
-- **Format family is now high confidence:** the native parser handles 853 in the same routine and
-  object layout as `bcContId`, compression/DRM/chunk metadata, index/document-symbol offsets, and
-  format-capability offsets. `bcSequenceNumber` is therefore a KFX **container-info** field, not an
-  EPUB/YJ content property in any meaningful application-level sense.
-- **Exact semantics remain open:** the name and 32-bit storage strongly indicate a sequence number,
-  but the reader path alone does not establish what is sequenced or how the value changes.
-- **Producer remains unknown:** the controlled Previewer outputs stop at KDF and therefore do not exercise the
-  delivery-container writer where this field belongs. A packaging/delivery serializer is the primary place to inspect next;
-  current evidence does not establish whether Previewer 3.106 can emit it.
-- **Reader behavior is proven only for Previewer's native container parser.** Device readers may use
-  the field too, but that is not established by this bundle.
+- **Reader-side role is high confidence:** `bcSequenceNumber` is a container revision/order
+  discriminator. Previewer uses it to choose which of multiple matching binary containers is
+  authoritative and carries the selected container sequence into object streams.
+- **Zero is special:** reader code treats a zero storage watermark as sequence ordering not yet
+  established and enables fallback selection behavior. This does not prove that a serialized
+  `bcSequenceNumber=0` has a single universal producer meaning.
+- **Producer policy remains unknown:** current evidence does not establish which packaging event
+  increments the sequence, whether counters are global to the book or scoped to a container family,
+  whether values can skip, or how 32-bit wraparound is handled. The reader compares them as unsigned
+  integers without any wrap-aware arithmetic in the recovered paths.
+- **Producer location remains the next target:** controlled Previewer outputs stop at KDF and do not
+  exercise the delivered KFX/CONT writer where this field belongs. A real delivered container or a
+  recovered packaging serializer is needed to establish how 853 is emitted.
+- **Device behavior is still unproven:** the recovered semantics are Previewer 3.106/YJSDK behavior;
+  a Kindle device may implement the same policy, but this bundle alone does not establish that.
 
 ## Practical guidance
 
-- Keep Go's `853 -> bcSequenceNumber` name (correct, Amazon-provided).
-- Treat 853 as a **container-info integer field** in documentation/model naming. Do not invent its
-  sequencing semantics until a producer sample or downstream use is recovered.
+- Keep Go's `853 -> bcSequenceNumber` name; it is Amazon-provided and the recovered semantics now
+  support treating it explicitly as a container sequence field.
+- Do **not** invent a generation algorithm or default-increment policy in the converter yet. Preserve
+  the raw 32-bit value if support is added before a producer sample is available.
 - KFX Input currently leaves `$853?` as extra `container_info`; if a real retail sample carries it,
-  capture the value and container version before deciding whether to silently accept/store it.
-- A real-world delivered KFX/CONT container carrying 853 would settle the producer/version question immediately;
-  preserve its container version and `container_info` as a fixture.
-- On the next Previewer bump, re-run the two cheap checks first: the
-  `PropertyNameUtil` table extent and the `DigitalBook.nativeGetSymbolName`
-  tail (`scripts/kp3/run_probe.py --catalog` / `--symbol-range`) — a new entry
-  after `bcSequenceNumber` or a change in its enum position is the earliest
-  signal that the vocabulary grew again.
+  capture the container version, `bcContId`, sequence value, and sibling containers before deciding
+  how a reader should expose or normalize it.
+- A real book containing multiple same-purpose/same-id containers with differing 853 values is the
+  strongest next fixture: it can validate the recovered highest-sequence arbitration end-to-end.
+- On the next Previewer bump, re-run the `PropertyNameUtil`/native-symbol tail checks and this numeric
+  consumer audit; a changed comparison or additional field after 853 would be materially relevant.
 
 ## Reproduction
 
