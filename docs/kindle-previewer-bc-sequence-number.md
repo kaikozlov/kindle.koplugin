@@ -280,13 +280,32 @@ numeric-ID audit is what exposes the real reader behavior.
 
 This exposes a concrete **reader-arbitration gap** in both reverse implementations. Current KFX Input
 sorts its discovered container datafiles by name, deserializes every container, and appends every
-container's fragments; `organize_fragments_by_type` keeps the **first** duplicate fragment ID and logs
-an error. Current Go likewise sorts `containerSource` values by path and processes every source, but
-its typed fragment maps generally assign later values, so many duplicate IDs are effectively
-**last-write-wins** after logging. Neither implementation consults 853 or reproduces
-`BinaryStorage`'s highest-sequence selection. This is a demonstrated static behavior difference, but
-its practical book impact is still unmeasured because the local corpus has no real delivered CONT set
-with nonzero competing sequence numbers.
+container's fragments. With conflicting duplicates, its normal decode path fails consistency checks
+before EPUB generation (for example, duplicate singleton fragments and a duplicate section produce a
+`YJFragmentList get has multiple matches` exception); if fragments reach
+`organize_fragments_by_type`, that routine keeps the first duplicate ID and logs an error. Current Go
+sorts `containerSource` values by path and processes every source, but its typed fragment maps
+generally assign later values, so many duplicate IDs are effectively **last-write-wins** after
+logging. Neither implementation consults 853 or reproduces `BinaryStorage`'s highest-sequence
+selection.
+
+A controlled two-container experiment makes the Go difference observable rather than merely static.
+Two otherwise equivalent CONT v2 containers were built from the same long-text fixture, with the
+first content string changed to `LOW! text` / `HIGH text` and container-info sequence values 4096 /
+8192. In case A, the primary `book.kfx` carried **HIGH/8192** and alphabetically later
+`book.sdr/low.kfx` carried **LOW/4096**; Go emitted `LOW! text`. Reversing the pair (LOW primary,
+HIGH sidecar) emitted `HIGH text`. The result therefore follows source/path processing order, not
+`bcSequenceNumber`.
+
+The same synthetic pair does **not** yet provide an end-to-end native arbitration test. In the
+standalone KAF harness, `BookFactory.a(".../book.kfx")` successfully reads the synthetic CONT and its
+853 field, but it does not automatically discover the sibling `.sdr` container: case A returns the
+HIGH primary and case B returns the LOW primary. Passing the containing directory fails with KAF
+error 26, and a generic ZIP containing both CONT files fails with error 29. The §3 sequence-selection
+semantics are therefore directly established from native code, while the exact external packaging /
+storage-provider route that feeds multiple binary containers into one `BinaryStorage` remains open.
+Practical behavior on a real delivered book is still unmeasured because no retail multi-container
+sample carrying nonzero 853 values is present in the local corpus.
 
 ### 5. KDF declaration sweep: useful catalog evidence, not a container-info producer test
 
