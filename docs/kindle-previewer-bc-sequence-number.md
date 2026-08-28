@@ -22,16 +22,18 @@ Artifacts covered:
 
 ## Executive answer
 
-**853 is a real KFX container sequence field used by Previewer's native `BinaryStorage` to order competing containers.**
-The initial string-xref audit was insufficient: Previewer's native code accesses this field by numeric
-ID after parsing. A follow-up exact-immediate/data-flow audit recovered the parser, the corrected
-`BinaryContainer` layout, a storage-level sequence watermark, highest-sequence selection, and
-propagation of the value into `BinaryObjectStream` objects.
+**853 is a real KFX container sequence field used by Amazon's bundled KAF/YJSDK `BinaryStorage` to order competing containers.**
+The initial string-xref audit was insufficient: the field is consumed by numeric ID after parsing. A
+follow-up exact-immediate/data-flow audit recovered the parser, the corrected `BinaryContainer`
+layout, a storage-level sequence watermark, highest-sequence selection, and propagation of the value
+into `BinaryObjectStream` objects. The decisive code exists both in Previewer's main executable and
+in the x86_64 slice of `libshared.dylib` loaded by the standalone KAF JNI runtime, so this is not only
+a GUI-side behavior.
 
 | Artifact | Occurrences of the string | Nature |
 | --- | ---: | --- |
 | EpubToKFXConverter-4.0.jar | 1 class file | KAF property enum constant (declaration only) |
-| libshared.dylib | 1 per arch slice | shared-symbol-table registration + `PropertyNameUtil` map builder |
+| libshared.dylib | 1 string per arch slice | registration by name; x86_64 also contains numeric parser + `BinaryStorage` arbitration |
 | KindleImageProcessor | 1 string | shared-symbol-table registration; exact `0x355` immediates audited separately |
 | Kindle Previewer 3 (main) | 1 string | registration + numeric parser + sequence-order consumers |
 | KFX Input 2.34.0 | 0 by name; `$853?` placeholder | numeric table extent only |
@@ -108,8 +110,12 @@ references:
   ```
 
 Both **string** xrefs are declaration/registration. This does **not** imply that property 853 has
-no native behavior: shared properties are commonly accessed by numeric ID. The follow-up numeric
-immediate audit below is therefore the authoritative behavioral check.
+no native behavior: shared properties are commonly accessed by numeric ID. An exact-immediate audit
+of this same x86_64 `libshared.dylib` found only three `0x355` sites: `FUN_00186710`, the actual
+container-info parser for 853; `FUN_001cd6d0`, a YJSDK/shared-table extent construction path; and
+`FUN_00394220`, an unrelated OpenSSL source-line constant. The first site is the `libshared` copy of
+the parser described below, and the same library also contains the downstream `BinaryStorage`
+arbitration. The numeric/data-flow audit is therefore the authoritative behavioral check.
 
 **Naming family (contextual).** The same initializer reveals the neighbors
 853 lives among — a contiguous `bc*` block:
@@ -130,7 +136,23 @@ is appended at the end of the `bc*` family.
 
 A follow-up disassembly audit searched the x86-64 native binaries for exact immediate `0x355`
 (decimal 853), then classified every hit by function context. This was necessary because a
-string-only xref audit misses property accessors that pass or compare numeric IDs.
+string-only xref audit misses property accessors that pass or compare numeric IDs. The YJSDK code is
+present in two linked copies with matching structure: Previewer's main executable and
+`libshared.x86_64.dylib`. The address pairs below are useful for reproducing the result:
+
+```text
+role                              Previewer main       libshared.x86_64
+handler_FileMetadata parser       FUN_10144b490        FUN_00186710
+metadata -> BinaryContainer       FUN_10144b6b0        FUN_00186930
+BinaryContainer constructor       FUN_101449660-family FUN_001848d0-family
+BinaryStorage constructor         FUN_10144c150        FUN_001873d0
+BinaryStorage selection           FUN_10144d7d0        FUN_00188960
+BinaryStorage open/arbitration    FUN_10144e210        FUN_001893a0
+BinaryObjectStream seq accessor   FUN_10144c010        FUN_00187290
+```
+
+The independently decompiled `libshared` routines reproduce the same 853 parse, `+0x44` container
+field, zero-initialized `+0xd8` storage watermark, and unsigned sequence comparisons described below.
 
 #### 3.1 `handler_FileMetadata` parses 853, then copies it into `BinaryContainer`
 
@@ -245,6 +267,23 @@ container-revision concept report zero.
 What remains unknown is the **producer policy**: which packaging event increments the number, whether
 it is global to a book or scoped to a container family, and how wraparound is handled. The reader-side
 ordering semantics themselves are now directly established.
+
+#### 3.4 Standalone KAF `BookFactory` reaches this same `BinaryStorage`
+
+The JNI entry point in `libshared`,
+`BookFactory.nativeGetBook(String)` (`0x00005a90` in the analyzed x86_64 slice), converts the Java
+path and calls `FUN_0005b580`. The regular-file path then builds the native storage stack through
+`FUN_001e8ca0` / `FUN_00209c40`; `FUN_00209c40` calls `FUN_0018e290`, which constructs a
+`BinaryStorage` through `FUN_00187540`. That factory allocates the `0xe0`-byte storage object, calls
+`FUN_001873d0`, stores the backing provider at `BinaryStorage+0xd0`, and invokes the storage vtable
+slot `+0x60` for the initial input. That slot resolves to `FUN_001893a0`, the sequence-aware
+open/arbitration routine above.
+
+This call chain explains why the synthetic one-file KAF probes exercise the same code recovered from
+the Previewer executable. It does **not** yet explain how a retail/package storage provider supplies
+additional sibling containers to an already-created `BinaryStorage`: standalone
+`BookFactory.a("book.kfx")` opens only the explicit file in the controlled experiment. The mechanism
+for repeated/additional `+0x60` opens remains the next reader-side RE target.
 
 Other exact `0x355` sites were classified separately:
 
@@ -397,7 +436,10 @@ For anyone resuming that mutation: binary-Ion field SID 853 encodes as VarUInt b
 
 1. Java converter code declares property 853 in the KAF enum but has no Java reader/writer for it;
    the other Java literal-853 hits are unrelated tables.
-2. `libshared.dylib`'s **string** references are property-table registration, not field consumption.
+2. `libshared.dylib`'s **string** references are property-table registration, but its x86_64 code
+   also contains the numeric 853 parser and the same sequence-aware `BinaryStorage` implementation as
+   Previewer's main executable. `BookFactory.nativeGetBook(String)` reaches that storage stack through
+   the native KAF file-open path.
 3. `yjsdk::handler_FileMetadata` parses 853 as a 32-bit numeric container-info field at handler
    offset `+0x3c`; `FUN_10144b6b0` copies that metadata block into `yjsdk::BinaryContainer`, where
    **`bcSequenceNumber` is at `+0x44`**. `BinaryContainer+0x3c/+0x40` are instead the
@@ -427,8 +469,8 @@ For anyone resuming that mutation: binary-Ion field SID 853 encodes as VarUInt b
 ## Inference / remaining unknowns
 
 - **Reader-side role is high confidence:** `bcSequenceNumber` is a container revision/order
-  discriminator. Previewer uses it to choose which of multiple matching binary containers is
-  authoritative and carries the selected container sequence into object streams.
+  discriminator. The bundled KAF/YJSDK uses it to choose which of multiple matching binary containers
+  is authoritative and carries the selected container sequence into object streams.
 - **Zero is special:** reader code treats a zero storage watermark as sequence ordering not yet
   established and enables fallback selection behavior. This does not prove that a serialized
   `bcSequenceNumber=0` has a single universal producer meaning.
@@ -439,8 +481,9 @@ For anyone resuming that mutation: binary-Ion field SID 853 encodes as VarUInt b
 - **Producer location remains the next target:** controlled Previewer outputs stop at KDF and do not
   exercise the delivered KFX/CONT writer where this field belongs. A real delivered container or a
   recovered packaging serializer is needed to establish how 853 is emitted.
-- **Device behavior is still unproven:** the recovered semantics are Previewer 3.106/YJSDK behavior;
-  a Kindle device may implement the same policy, but this bundle alone does not establish that.
+- **Device behavior is still unproven:** the recovered semantics are Previewer 3.106's bundled
+  KAF/YJSDK behavior; a Kindle device may implement the same policy, but this bundle alone does not
+  establish that.
 
 ## Practical guidance
 
