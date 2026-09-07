@@ -34,9 +34,12 @@ A KOReader plugin that lets you browse and read your Kindle book library directl
 3. The first open takes a moment while the book is prepared — after that, it opens instantly
 
 **Syncing reading progress:**
-1. Go to **Menu → Kindle Library → Sync reading state with Kindle** to enable
-2. Under **Sync behavior**, enable automatic open/close sync and choose the
-   FROM/TO Kindle rules for newer and older progress
+1. Open **Menu → Tools → More tools → Kindle Library → Sync reading state
+   with Kindle** to enable it (works in the file browser and inside a book)
+2. Under **Sync behavior**, also enable **Enable sync FROM Kindle TO KOReader** —
+   it is off by default, and without it no pull (or pull prompt) ever happens.
+   Choose the FROM/TO Kindle rules for newer and older progress. Sync TO Kindle
+   is enabled by default and applies silently
 3. Exact reading position syncs whether the book is opened from Kindle Library,
    KOReader Bookshelf, Collections, or History; persisted cached EPUB paths are
    mapped back to their native source book automatically. If a derived EPUB was

@@ -773,7 +773,7 @@ function KindlePlugin:createBrowseLibraryMenuItem()
     return {
         text = _("Browse Kindle Library"),
         enabled_func = function()
-            return self.settings.enable_virtual_library ~= false and self.ui and not self.ui.document
+            return self.settings.enable_virtual_library ~= false and self.ui ~= nil
         end,
         callback = function()
             if self.ui and not self.ui.document then
@@ -790,13 +790,11 @@ end
 -- Main menu registration
 -- ---------------------------------------------------------------------------
 
---- Adds plugin menu items to the file manager main menu.
+--- Adds plugin menu items to the main menu (file manager and reader).
+--- Settings and sync controls stay reachable while a book is open;
+--- FileManager-only actions degrade to a hint instead of disappearing.
 --- @param menu_items table: Main menu items table to populate.
 function KindlePlugin:addToMainMenu(menu_items)
-    if self.ui.document then
-        return
-    end
-
     local sub_item_table = {
         self:createBrowseLibraryMenuItem(),
         self:createRefreshLibraryMenuItem(),

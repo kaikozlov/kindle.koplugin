@@ -209,7 +209,7 @@ describe("KindlePlugin", function()
         assert.is_false(menu_items.kindle_plugin.sub_item_table[2].enabled_func())
     end)
 
-    it("does not add FileManager-only menu items in ReaderUI", function()
+    it("keeps the menu and sync settings reachable inside ReaderUI", function()
         local instance = newPlugin(nil, {
             document = { file = "/tmp/book.epub" },
             doc_settings = {},
@@ -217,6 +217,12 @@ describe("KindlePlugin", function()
         })
         local menu_items = {}
         instance:addToMainMenu(menu_items)
-        assert.is_nil(menu_items.kindle_plugin)
+        assert.is_truthy(menu_items.kindle_plugin)
+        assert.is_truthy(menu_items.kindle_plugin.sub_item_table)
+        -- Browse stays tappable and explains that it needs the file browser.
+        assert.is_true(menu_items.kindle_plugin.sub_item_table[1].enabled_func())
+        menu_items.kindle_plugin.sub_item_table[1].callback()
+        local info = UIManager._shown_widgets[#UIManager._shown_widgets]
+        assert.is_truthy(info.text:match("file browser"))
     end)
 end)
