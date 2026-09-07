@@ -42,26 +42,39 @@ class NativeExtractorTests(unittest.TestCase):
 
         self.assertEqual(second, executable)
 
-    def test_find_executable_does_not_trust_fuse_access_check(self):
+    def test_find_executable_probes_without_execute_metadata(self):
+        # Regression for kaikozlov/kindle.koplugin#8: /mnt/us FUSE can make
+        # os.access(X_OK) lie while execve still succeeds.
         with tempfile.TemporaryDirectory() as native_dir:
             candidate = os.path.join(native_dir, native_extractor.CANDIDATE_NAMES[0])
             open(candidate, "wb").close()
 
-            with mock.patch.object(os, "access", return_value=False), \
-                    mock.patch.object(
-                        native_extractor.subprocess,
-                        "run",
-                        return_value=mock.Mock(returncode=0),
-                    ) as run:
+            with mock.patch.object(
+                native_extractor,
+                "_probe_native_binary",
+                return_value=mock.Mock(returncode=0),
+            ) as probe:
                 executable = native_extractor.find_executable(native_dir=native_dir)
 
         self.assertEqual(candidate, executable)
-        run.assert_called_once_with(
-            [candidate, "test"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
+        probe.assert_called_once_with(candidate)
+
+    def test_find_executable_probes_when_isfile_misreports_fuse_path(self):
+        with tempfile.TemporaryDirectory() as native_dir:
+            candidate = os.path.join(native_dir, native_extractor.CANDIDATE_NAMES[0])
+            open(candidate, "wb").close()
+
+            with mock.patch.object(os.path, "isfile", return_value=False), \
+                    mock.patch.object(os.path, "lexists", return_value=True), \
+                    mock.patch.object(
+                        native_extractor,
+                        "_probe_native_binary",
+                        return_value=mock.Mock(returncode=0),
+                    ) as probe:
+                executable = native_extractor.find_executable(native_dir=native_dir)
+
+        self.assertEqual(candidate, executable)
+        probe.assert_called_once_with(candidate)
 
     def test_extract_page_keys_removes_generated_keyfile(self):
         with tempfile.TemporaryDirectory() as tmpdir:

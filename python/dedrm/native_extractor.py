@@ -44,22 +44,37 @@ def _candidate_paths(plugin_dir=None, native_dir=None):
             yield os.path.join(directory, name)
 
 
+def _should_probe_native_binary(path):
+    """Return True when a candidate path should be runtime-probed.
+
+    Kindle firmware mounts /mnt/us over FUSE. Permission and file-type metadata
+    such as os.access(X_OK) or os.path.isfile() can be wrong for shipped
+    kfxdedrm binaries even though execve succeeds. Only skip obvious
+    directories; treat the extractor's own ``test`` command as authoritative.
+    """
+    if os.path.isdir(path):
+        return False
+    return os.path.isfile(path) or os.path.lexists(path)
+
+
+def _probe_native_binary(path):
+    """Run the native extractor compatibility self-test."""
+    return subprocess.run(
+        [path, "test"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+
 def find_executable(plugin_dir=None, native_dir=None):
     """Return the first ABI-compatible native extractor executable."""
     failures = []
     for path in _candidate_paths(plugin_dir, native_dir):
-        # /mnt/us is FUSE-mounted on Kindle firmware, and os.access(X_OK) can
-        # report false for binaries that the kernel can execute successfully.
-        # Treat the extractor's own `test` command as the compatibility probe.
-        if not os.path.isfile(path):
+        if not _should_probe_native_binary(path):
             continue
         try:
-            result = subprocess.run(
-                [path, "test"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
+            result = _probe_native_binary(path)
         except (OSError, subprocess.TimeoutExpired) as error:
             failures.append(f"{path}: {error}")
             continue
