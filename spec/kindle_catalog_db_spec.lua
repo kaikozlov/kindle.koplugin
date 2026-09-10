@@ -36,6 +36,15 @@ describe("KindleCatalogDb", function()
         }
     end
 
+    it("mirrors the firmware locale-prefix mapping table", function()
+        assert.equals("Lroot", CatalogDb._matching_locale_mapping("en_US_POSIX"))
+        assert.equals("Lroot", CatalogDb._matching_locale_mapping("en_US_POSIX.UTF-8"))
+        assert.equals("Lzh:Hani", CatalogDb._matching_locale_mapping("zh_CN.utf8"))
+        assert.equals("Lja_S4_HO:Hira,Kana,Hani", CatalogDb._matching_locale_mapping("ja_JP.utf8"))
+        assert.equals("Lru:y.Cyrl", CatalogDb._matching_locale_mapping("ru_RU.utf8"))
+        assert.is_nil(CatalogDb._matching_locale_mapping("en_US.utf8"))
+    end)
+
     it("does no compatibility work when the instantiated schema needs none", function()
         local q = CatalogDb._queries
         local callbacks = {}

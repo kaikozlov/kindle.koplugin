@@ -75,7 +75,7 @@ User selects a book
   → ReaderRolling writes final position during SaveSettings
   → plugin onSaveSettings writes KRDS in-process, then updates the Kindle shelf
     directly in cc.db through KOReader ljsqlite3 (No Framework compatible;
-    Amazon's exact ICU collator is bridged as UTF-8 when p_lastAccess is updated)
+    the firmware's ICU collation policy is reconstructed over generic system ICU when p_lastAccess is updated)
 ```
 
 **Do not patch** `lfs.attributes`, `ffiUtil.realpath`, `DocumentRegistry`, `ReaderUI:showReader`, `ReaderUI:onClose`, or `DocSettings` to emulate files. If a feature appears to require that, first re-read current `REFERENCE/koreader/` for a native lifecycle/UI seam.

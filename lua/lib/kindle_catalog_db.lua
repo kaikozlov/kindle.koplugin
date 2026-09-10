@@ -213,6 +213,23 @@ end
 
 local icu_cdefs = {}
 
+-- Reverse engineered from Kindle 5.19.6 libccat::localeMappings.  The first
+-- matching locale prefix is opened from ICU's short-string syntax; any suffix
+-- after ':' is translated into the same script reorder list used by ccat.
+local KINDLE_LOCALE_MAPPINGS = {
+    { prefix = "en_US_POSIX", short = "Lroot" },
+    { prefix = "zh", short = "Lzh:Hani" },
+    { prefix = "ja", short = "Lja_S4_HO:Hira,Kana,Hani" },
+    { prefix = "ru", short = "Lru:y.Cyrl" },
+}
+
+local U_ZERO_ERROR = 0
+local UCOL_NUMERIC_COLLATION = 7
+local UCOL_ON = 17
+local UCOL_REORDER_CODE_OTHERS = 0x1004
+local UCOL_DEFAULT = -1
+local SQLITE_UTF8 = 1
+
 local base_ffi_declared = false
 local function declareBaseFfi()
     if base_ffi_declared then
@@ -222,8 +239,6 @@ local function declareBaseFfi()
         ffi.cdef,
         [[
             typedef int (*kindle_sqlite_compare_cb)(void *, int, const void *, int, const void *);
-            int pthread_rwlock_init(void *rwlock, const void *attr);
-            int pthread_rwlock_destroy(void *rwlock);
             char *setlocale(int category, const char *locale);
             int sqlite3_create_collation(
                 void *db,
@@ -232,8 +247,6 @@ local function declareBaseFfi()
                 void *context,
                 kindle_sqlite_compare_cb compare
             );
-            void update_icu_collator(void *state, void *db);
-            const char *get_preference_collation(void);
         ]]
     )
     if not ok and not tostring(err):find("redef", 1, true) then
@@ -249,6 +262,16 @@ local function declareIcu(major)
     end
     local declaration = string.format(
         [[
+            void *ucol_open_%d(const char *locale, int32_t *status);
+            void *ucol_openFromShortString_%d(const char *definition, int force_defaults, void *parse_error, int32_t *status);
+            void *ucol_openRules_%d(
+                const uint16_t *rules,
+                int32_t rules_length,
+                int normalization_mode,
+                int strength,
+                void *parse_error,
+                int32_t *status
+            );
             void ucol_close_%d(void *collator);
             int ucol_strcollUTF8_%d(
                 const void *collator,
@@ -258,9 +281,45 @@ local function declareIcu(major)
                 int32_t right_length,
                 int32_t *status
             );
+            void ucol_setAttribute_%d(void *collator, int attribute, int value, int32_t *status);
+            int ucol_getAttribute_%d(const void *collator, int attribute, int32_t *status);
+            int ucol_getStrength_%d(const void *collator);
+            const uint16_t *ucol_getRules_%d(const void *collator, int32_t *length);
+            int32_t ucol_getReorderCodes_%d(const void *collator, int32_t *dest, int32_t dest_capacity, int32_t *status);
+            void ucol_setReorderCodes_%d(void *collator, const int32_t *reorder_codes, int32_t reorder_codes_length, int32_t *status);
             const char *uloc_getDefault_%d(void);
             void uloc_setDefault_%d(const char *locale_id, int32_t *status);
+            int32_t uloc_getLanguage_%d(const char *locale_id, char *language, int32_t language_capacity, int32_t *status);
+            int32_t uscript_getCode_%d(const char *name_or_abbr_or_locale, int32_t *fill_in, int32_t capacity, int32_t *status);
+            int32_t u_strlen_%d(const uint16_t *s);
+            uint16_t *u_strcpy_%d(uint16_t *dst, const uint16_t *src);
+            uint16_t *u_strcat_%d(uint16_t *dst, const uint16_t *src);
+            uint16_t *u_strstr_%d(const uint16_t *s, const uint16_t *substring);
+            int32_t u_strFromUTF8_%d(
+                uint16_t *dest,
+                int32_t dest_capacity,
+                int32_t *dest_length,
+                const char *src,
+                int32_t src_length,
+                int32_t *status
+            );
         ]],
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
+        major,
         major,
         major,
         major,
@@ -287,48 +346,41 @@ local function findIcuMajor()
     return ok and major or nil
 end
 
-local function loadFirmwareIcu()
+local function loadSystemIcu()
     local base_ok, base_error = declareBaseFfi()
     if not base_ok then
-        return nil, nil, nil, nil, "cannot declare Kindle catalog ABI: " .. tostring(base_error)
+        return nil, nil, nil, "cannot declare Kindle catalog ABI: " .. tostring(base_error)
     end
 
     local major = findIcuMajor()
     if not major then
-        return nil, nil, nil, nil, "cannot determine Kindle ICU version"
+        return nil, nil, nil, "cannot determine Kindle ICU version"
     end
     local declared, declaration_error = declareIcu(major)
     if not declared then
-        return nil, nil, nil, nil, "cannot declare Kindle ICU ABI: " .. tostring(declaration_error)
+        return nil, nil, nil, "cannot declare Kindle ICU ABI: " .. tostring(declaration_error)
     end
 
     if type(ffi.loadlib) ~= "function" then
         pcall(require, "ffi/loadlib")
     end
     if type(ffi.loadlib) ~= "function" then
-        return nil, nil, nil, nil, "KOReader SQLite loader is unavailable"
+        return nil, nil, nil, "KOReader SQLite loader is unavailable"
     end
 
     local sqlite_ok, sqlite = pcall(ffi.loadlib, "sqlite3", "0")
     if not sqlite_ok then
-        return nil, nil, nil, nil, "cannot load KOReader SQLite: " .. tostring(sqlite)
+        return nil, nil, nil, "cannot load KOReader SQLite: " .. tostring(sqlite)
     end
     local icui18n_ok, icui18n = pcall(ffi.load, "/usr/lib/libicui18n.so", true)
     if not icui18n_ok then
-        return nil, nil, nil, nil, "cannot load Kindle ICU i18n: " .. tostring(icui18n)
+        return nil, nil, nil, "cannot load Kindle ICU i18n: " .. tostring(icui18n)
     end
     local icuuc_ok, icuuc = pcall(ffi.load, "/usr/lib/libicuuc.so", true)
     if not icuuc_ok then
-        return nil, nil, nil, nil, "cannot load Kindle ICU core: " .. tostring(icuuc)
+        return nil, nil, nil, "cannot load Kindle ICU core: " .. tostring(icuuc)
     end
-    local ccat_ok, ccat = pcall(ffi.load, "/usr/lib/libccat.so.1", true)
-    if not ccat_ok then
-        ccat_ok, ccat = pcall(ffi.load, "/usr/lib/libccat.so", true)
-    end
-    if not ccat_ok then
-        return nil, nil, nil, nil, "cannot load Kindle libccat: " .. tostring(ccat)
-    end
-    return sqlite, icui18n, icuuc, ccat, major
+    return sqlite, icui18n, icuuc, major
 end
 
 local function restoreLocaleState(old_collate, old_icu, icuuc, major)
@@ -336,30 +388,195 @@ local function restoreLocaleState(old_collate, old_icu, icuuc, major)
         ffi.C.setlocale(3, old_collate) -- LC_COLLATE
     end
     if old_icu then
-        local status = ffi.new("int32_t[1]", 0)
+        local status = ffi.new("int32_t[1]", U_ZERO_ERROR)
         icuuc["uloc_setDefault_" .. major](old_icu, status)
     end
 end
 
-local function createAmazonCollatorState(conn, icuuc, ccat, major)
+local function matchingLocaleMapping(locale)
+    for _, mapping in ipairs(KINDLE_LOCALE_MAPPINGS) do
+        if locale:sub(1, #mapping.prefix) == mapping.prefix then
+            return mapping.short
+        end
+    end
+end
+
+local function applyShortStringReorder(collator, suffix, icui18n, icuuc, major)
+    if not suffix or suffix == "" then
+        return true
+    end
+
+    local mode, scripts = suffix:match("^(%a)%.(.+)$")
+    local others_first = mode == "y"
+    if not scripts then
+        scripts = suffix
+    end
+
+    local codes = ffi.new("int32_t[11]")
+    local count = 0
+    if others_first then
+        codes[count] = UCOL_REORDER_CODE_OTHERS
+        count = count + 1
+    end
+
+    for script in scripts:gmatch("[^,]+") do
+        local status = ffi.new("int32_t[1]", U_ZERO_ERROR)
+        local added = icuuc["uscript_getCode_" .. major](script, codes + count, 10 - count, status)
+        if tonumber(status[0]) > U_ZERO_ERROR or added < 1 then
+            return false, "cannot resolve Kindle ICU reorder script " .. script
+        end
+        count = count + tonumber(added)
+        if count >= 10 then
+            break
+        end
+    end
+
+    if not others_first then
+        codes[count] = UCOL_REORDER_CODE_OTHERS
+        count = count + 1
+    end
+
+    local status = ffi.new("int32_t[1]", U_ZERO_ERROR)
+    icui18n["ucol_setReorderCodes_" .. major](collator, codes, count, status)
+    if tonumber(status[0]) > U_ZERO_ERROR then
+        return false, "cannot apply Kindle ICU reorder codes"
+    end
+    return true
+end
+
+local function openBaseCollator(locale, icui18n, icuuc, major)
+    local mapped = matchingLocaleMapping(locale)
+    local status = ffi.new("int32_t[1]", U_ZERO_ERROR)
+    local collator
+    if mapped then
+        local definition, suffix = mapped:match("^([^:]+):?(.*)$")
+        collator = icui18n["ucol_openFromShortString_" .. major](definition, 0, nil, status)
+        if collator ~= nil and tonumber(status[0]) <= U_ZERO_ERROR then
+            local ok, err = applyShortStringReorder(collator, suffix, icui18n, icuuc, major)
+            if not ok then
+                icui18n["ucol_close_" .. major](collator)
+                return nil, err
+            end
+        end
+    else
+        collator = icui18n["ucol_open_" .. major](locale, status)
+    end
+    if collator == nil or tonumber(status[0]) > U_ZERO_ERROR then
+        if collator ~= nil then
+            icui18n["ucol_close_" .. major](collator)
+        end
+        return nil, "cannot open Kindle ICU collator for " .. locale
+    end
+
+    status[0] = U_ZERO_ERROR
+    icui18n["ucol_setAttribute_" .. major](collator, UCOL_NUMERIC_COLLATION, UCOL_ON, status)
+    if tonumber(status[0]) > U_ZERO_ERROR then
+        icui18n["ucol_close_" .. major](collator)
+        return nil, "cannot enable Kindle ICU numeric collation"
+    end
+    return collator
+end
+
+-- Kindle's append_collation_preference() appends the selected preference
+-- locale's ICU rules to the base collator while preserving base strength,
+-- reorder codes and numeric mode.  cc.db's Collation table records the value
+-- used when the instantiated index was last rebuilt, so it is the authoritative
+-- input for reproducing that index without querying Amazon's preference stack.
+local function appendStoredPreference(collator, preference, icui18n, icuuc, major)
+    if type(preference) ~= "string" or preference == "" then
+        return collator
+    end
+
+    local status = ffi.new("int32_t[1]", U_ZERO_ERROR)
+    local reorder_codes = ffi.new("int32_t[10]")
+    local reorder_count = icui18n["ucol_getReorderCodes_" .. major](collator, reorder_codes, 10, status)
+    if tonumber(status[0]) > U_ZERO_ERROR then
+        return nil, "cannot read Kindle ICU reorder codes"
+    end
+    if reorder_count > 10 then
+        return nil, "Kindle ICU reorder list exceeds supported firmware limit"
+    end
+
+    local strength = icui18n["ucol_getStrength_" .. major](collator)
+    status[0] = U_ZERO_ERROR
+    local numeric = icui18n["ucol_getAttribute_" .. major](collator, UCOL_NUMERIC_COLLATION, status)
+    if tonumber(status[0]) > U_ZERO_ERROR then
+        return nil, "cannot read Kindle ICU numeric-collation state"
+    end
+
+    status[0] = U_ZERO_ERROR
+    local preference_collator = icui18n["ucol_open_" .. major](preference, status)
+    if preference_collator == nil or tonumber(status[0]) > U_ZERO_ERROR then
+        if preference_collator ~= nil then
+            icui18n["ucol_close_" .. major](preference_collator)
+        end
+        return nil, "cannot open Kindle preference collation " .. preference
+    end
+
+    local preference_length = ffi.new("int32_t[1]")
+    local preference_rules = icui18n["ucol_getRules_" .. major](preference_collator, preference_length)
+
+    -- libccat contains one Chinese compatibility adjustment before appending
+    -- preference rules.  The marker is firmware policy, not an ICU primitive;
+    -- preserve it here verbatim from the 5.19.6 implementation.
+    local language = ffi.new("char[12]")
+    status[0] = U_ZERO_ERROR
+    icuuc["uloc_getLanguage_" .. major](preference, language, 12, status)
+    if tonumber(status[0]) <= U_ZERO_ERROR and ffi.string(language) == "zh" then
+        local marker_utf8 = "[import zh-u-co-private-pinyin]"
+        local marker = ffi.new("uint16_t[64]")
+        local marker_length = ffi.new("int32_t[1]")
+        status[0] = U_ZERO_ERROR
+        icuuc["u_strFromUTF8_" .. major](marker, 64, marker_length, marker_utf8, #marker_utf8, status)
+        if tonumber(status[0]) <= U_ZERO_ERROR then
+            local found = icuuc["u_strstr_" .. major](preference_rules, marker)
+            if found ~= nil then
+                preference_rules = found + marker_length[0]
+                preference_length[0] = icuuc["u_strlen_" .. major](preference_rules)
+            end
+        end
+    end
+
+    local base_length = ffi.new("int32_t[1]")
+    local base_rules = icui18n["ucol_getRules_" .. major](collator, base_length)
+    local total_length = tonumber(base_length[0] + preference_length[0])
+    local combined = ffi.new("uint16_t[?]", total_length + 1)
+    icuuc["u_strcpy_" .. major](combined, base_rules)
+    icuuc["u_strcat_" .. major](combined, preference_rules)
+
+    status[0] = U_ZERO_ERROR
+    local replacement = icui18n["ucol_openRules_" .. major](combined, -1, UCOL_DEFAULT, strength, nil, status)
+    if replacement == nil or tonumber(status[0]) > U_ZERO_ERROR then
+        if replacement ~= nil then
+            icui18n["ucol_close_" .. major](replacement)
+        end
+        icui18n["ucol_close_" .. major](preference_collator)
+        return nil, "cannot append Kindle preference collation rules"
+    end
+
+    status[0] = U_ZERO_ERROR
+    icui18n["ucol_setReorderCodes_" .. major](replacement, reorder_codes, reorder_count, status)
+    if tonumber(status[0]) <= U_ZERO_ERROR then
+        icui18n["ucol_setAttribute_" .. major](replacement, UCOL_NUMERIC_COLLATION, numeric, status)
+    end
+    icui18n["ucol_close_" .. major](preference_collator)
+    if tonumber(status[0]) > U_ZERO_ERROR then
+        icui18n["ucol_close_" .. major](replacement)
+        return nil, "cannot restore Kindle ICU collation attributes"
+    end
+
+    icui18n["ucol_close_" .. major](collator)
+    return replacement
+end
+
+local function createKindleCollator(conn, icui18n, icuuc, major)
     local locale_ok, locale = queryScalar(conn, LOCALE_SQL)
     if not locale_ok or type(locale) ~= "string" or locale == "" then
         return nil, "Kindle catalog locale is unavailable"
     end
-
-    -- update_icu_collator() may reindex cc.db when its process locale or the
-    -- user's preference collation differs from the values stored in cc.db.
-    -- We only need it as an exact collator constructor, so refuse that case
-    -- rather than allowing a helper call to mutate the catalog behind the
-    -- ljsqlite3 transaction that already owns the write lock.
     local collation_ok, stored_collation = queryScalar(conn, COLLATION_SQL)
     if not collation_ok then
-        stored_collation = nil
-    end
-    local preference_ptr = ccat.get_preference_collation()
-    local preference = preference_ptr ~= nil and ffi.string(preference_ptr) or nil
-    if preference and type(stored_collation) == "string" and preference ~= stored_collation then
-        return nil, "Kindle preference collation differs from the instantiated catalog"
+        return nil, "Kindle catalog preference collation is unavailable"
     end
 
     local old_collate_ptr = ffi.C.setlocale(3, nil) -- LC_COLLATE
@@ -370,44 +587,29 @@ local function createAmazonCollatorState(conn, icuuc, ccat, major)
     if ffi.C.setlocale(3, locale) == nil then
         return nil, "cannot activate Kindle catalog locale " .. locale
     end
-
-    -- libccat's own run_ccat() allocates 0x10c bytes, zeros the collator slot
-    -- at +4, initializes a pthread rwlock at +0xa8, then calls
-    -- update_icu_collator(state, NULL). Reproduce that exact constructor path.
-    local state = ffi.new("uint8_t[?]", 0x10c)
-    local lock = state + 0xa8
-    if ffi.C.pthread_rwlock_init(lock, nil) ~= 0 then
+    local status = ffi.new("int32_t[1]", U_ZERO_ERROR)
+    icuuc["uloc_setDefault_" .. major](locale, status)
+    if tonumber(status[0]) > U_ZERO_ERROR then
         restoreLocaleState(old_collate, old_icu, icuuc, major)
-        return nil, "cannot initialize Kindle ICU collation lock"
+        return nil, "cannot set Kindle ICU default locale " .. locale
     end
 
-    local ok, construction_error = pcall(ccat.update_icu_collator, state, nil)
+    local collator, open_error = openBaseCollator(locale, icui18n, icuuc, major)
+    if collator then
+        local base_collator = collator
+        collator, open_error = appendStoredPreference(base_collator, stored_collation, icui18n, icuuc, major)
+        if not collator then
+            icui18n["ucol_close_" .. major](base_collator)
+        end
+    end
     restoreLocaleState(old_collate, old_icu, icuuc, major)
-    if not ok then
-        ffi.C.pthread_rwlock_destroy(lock)
-        return nil, "Amazon ICU collator construction failed: " .. tostring(construction_error)
-    end
-
-    local collator = ffi.cast("void **", state + 4)[0]
-    if collator == nil then
-        ffi.C.pthread_rwlock_destroy(lock)
-        return nil, "Amazon ICU collator construction returned no collator"
-    end
-    return {
-        state = state,
-        lock = lock,
-        collator = collator,
-    }
+    return collator, open_error
 end
 
---- Install a collation with the exact semantics of Amazon's "icu" comparator
---- on KOReader's sqlite3 connection.
----
---- Amazon registers its comparator as SQLITE_UTF16 (4), but KOReader's bundled
---- SQLite is intentionally compiled with SQLITE_OMIT_UTF16. Registering the
---- firmware callback directly would therefore feed UTF-8 bytes to a callback
---- that interprets them as UTF-16. We instead keep Amazon's exact UCollator and
---- expose the same ordering through ICU's UTF-8 entry point.
+--- Install a self-contained collation with the firmware's "icu" semantics on
+--- KOReader's sqlite3 connection.  Kindle's SQLite registers this as UTF-16,
+--- but KOReader's bundled SQLite uses SQLITE_OMIT_UTF16, so the same UCollator
+--- is exposed through ICU's UTF-8 comparison entry point instead.
 function KindleCatalogDb.installIcuCollation(conn)
     if KindleCatalogDb._test_icu_installer then
         return KindleCatalogDb._test_icu_installer(conn)
@@ -416,20 +618,20 @@ function KindleCatalogDb.installIcuCollation(conn)
         return false, "SQLite connection does not expose sqlite3*"
     end
 
-    local sqlite, icui18n, icuuc, ccat, major_or_error = loadFirmwareIcu()
+    local sqlite, icui18n, icuuc, major_or_error = loadSystemIcu()
     if not sqlite then
         return false, major_or_error
     end
     local major = major_or_error
 
-    local amazon_state, state_error = createAmazonCollatorState(conn, icuuc, ccat, major)
-    if not amazon_state then
-        return false, state_error
+    local collator, collator_error = createKindleCollator(conn, icui18n, icuuc, major)
+    if not collator then
+        return false, collator_error
     end
 
     local callback
     callback = ffi.cast("kindle_sqlite_compare_cb", function(_, left_length, left, right_length, right)
-        -- Match libccat icuCompare() exactly for empty strings.
+        -- Match Kindle's icuCompare() empty-string ordering exactly.
         if left_length == 0 or right_length == 0 then
             if left_length == 0 and right_length == 0 then
                 return 0
@@ -439,39 +641,36 @@ function KindleCatalogDb.installIcuCollation(conn)
             return -1
         end
 
-        local status = ffi.new("int32_t[1]", 0)
+        local status = ffi.new("int32_t[1]", U_ZERO_ERROR)
         local result = icui18n["ucol_strcollUTF8_" .. major](
-            amazon_state.collator,
+            collator,
             ffi.cast("const char *", left),
             left_length,
             ffi.cast("const char *", right),
             right_length,
             status
         )
-        if tonumber(status[0]) > 0 then
-            -- A comparator cannot report an SQLite error. Treat an ICU failure
-            -- as equality; this is strictly a defensive path because valid
-            -- catalog UTF-8 must not reach it.
+        if tonumber(status[0]) > U_ZERO_ERROR then
             return 0
         end
         return result
     end)
 
-    local rc = sqlite.sqlite3_create_collation(conn._ptr, "icu", 1, amazon_state.state, callback) -- SQLITE_UTF8
+    local rc = sqlite.sqlite3_create_collation(conn._ptr, "icu", SQLITE_UTF8, nil, callback)
     if tonumber(rc) ~= 0 then
         callback:free()
-        icui18n["ucol_close_" .. major](amazon_state.collator)
-        ffi.C.pthread_rwlock_destroy(amazon_state.lock)
+        icui18n["ucol_close_" .. major](collator)
         return false, "KOReader ICU collation registration failed with SQLite code " .. tostring(tonumber(rc))
     end
 
-    return true,
-        function()
-            callback:free()
-            icui18n["ucol_close_" .. major](amazon_state.collator)
-            ffi.C.pthread_rwlock_destroy(amazon_state.lock)
-        end
+    return true, function()
+        callback:free()
+        icui18n["ucol_close_" .. major](collator)
+    end
 end
+
+KindleCatalogDb._locale_mappings = KINDLE_LOCALE_MAPPINGS
+KindleCatalogDb._matching_locale_mapping = matchingLocaleMapping
 
 --- Prepare an already write-locked cc.db connection for an Entries update.
 --- The caller must BEGIN IMMEDIATE first so Locale/Collation cannot be
