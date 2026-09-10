@@ -9,8 +9,10 @@ describe("KindlePlugin native KOReader lifecycle", function()
     local Dispatcher = require("dispatcher")
     local FileManager = require("apps/filemanager/filemanager")
     local KindleLibrary = require("lua/kindle_library")
+    local LibraryIndex = require("lua/library_index")
     local PluginLoader = require("pluginloader")
     local ReaderUI = require("apps/reader/readerui")
+    local ReadingStateSync = require("lua/reading_state_sync")
     local Screen = require("device").screen
     local ffiUtil = require("ffi/util")
     local util = require("util")
@@ -18,11 +20,17 @@ describe("KindlePlugin native KOReader lifecycle", function()
     local reader_file
     local original_lastfile
     local original_build_entries
+    local original_get_books
+    local original_pull
+    local original_push
 
     before_each(function()
         disable_plugins()
         original_lastfile = G_reader_settings:readSetting("lastfile")
         original_build_entries = KindleLibrary.buildEntries
+        original_get_books = LibraryIndex.getBooks
+        original_pull = ReadingStateSync.syncFromKindleAutomatic
+        original_push = ReadingStateSync.syncToKindleAutomatic
         G_reader_settings:saveSetting("kindle_plugin", {
             enable_virtual_library = false,
         })
@@ -30,6 +38,9 @@ describe("KindlePlugin native KOReader lifecycle", function()
 
     after_each(function()
         KindleLibrary.buildEntries = original_build_entries
+        LibraryIndex.getBooks = original_get_books
+        ReadingStateSync.syncFromKindleAutomatic = original_pull
+        ReadingStateSync.syncToKindleAutomatic = original_push
         local instance = PluginLoader:getPluginInstance("kindle")
         if instance and instance.stopPlugin then
             pcall(instance.stopPlugin, instance)
@@ -194,6 +205,84 @@ describe("KindlePlugin native KOReader lifecycle", function()
         assert.equals("Unknown item", Dispatcher:getNameFromItem("kindle_library", { kindle_library = true }))
         Dispatcher:execute({ kindle_library = true })
         assert.equals(1, build_count)
+    end)
+
+    it("survives consumed ReaderUI lifecycle events and auto-syncs on real close", function()
+        reader_file = DataStorage:getDataDir() .. "/kindle-consumed-docsettings.txt"
+        local file = assert(io.open(reader_file, "wb"))
+        file:write("A real KOReader document used to test consumed DocSettingsLoad.\n")
+        file:close()
+
+        G_reader_settings:saveSetting("kindle_plugin", {
+            enable_virtual_library = true,
+            cache_dir = DataStorage:getDataDir(),
+            sync_reading_state = true,
+            enable_auto_sync = true,
+            enable_sync_from_kindle = true,
+            enable_sync_to_kindle = true,
+            sync_from_kindle_newer = 1,
+            sync_from_kindle_older = 3,
+            sync_to_kindle_newer = 2,
+            sync_to_kindle_older = 3,
+        })
+        LibraryIndex.getBooks = function()
+            return {
+                {
+                    id = "cc:test",
+                    cde_key = "B000000001",
+                    source_path = reader_file,
+                    open_mode = "direct",
+                },
+            }
+        end
+
+        local pulls = 0
+        local pushed
+        ReadingStateSync.syncFromKindleAutomatic = function()
+            pulls = pulls + 1
+            return false
+        end
+        ReadingStateSync.syncToKindleAutomatic = function(_, cde_key, source_path, doc_settings, document_path)
+            pushed = {
+                cde_key = cde_key,
+                source_path = source_path,
+                percent = doc_settings:readSetting("percent_finished"),
+                document_path = document_path,
+            }
+            return true
+        end
+
+        -- This stock KOReader plugin loads before kindle.koplugin and
+        -- unconditionally consumes DocSettingsLoad. Also make it consume the
+        -- two close events to prove Kindle's direct post-ReaderReady and
+        -- CloseWidget recovery boundaries do not depend on plugin ordering.
+        load_plugin("docsettingtweak.koplugin")
+        for _, plugin in ipairs(PluginLoader.enabled_plugins) do
+            if plugin.name == "docsettingtweak" then
+                plugin.onCloseDocument = function()
+                    return true
+                end
+                plugin.onSaveSettings = function()
+                    return true
+                end
+                break
+            end
+        end
+        load_plugin("kindle.koplugin")
+
+        ReaderUI:doShowReader(reader_file)
+        local reader = assert(ReaderUI.instance)
+        local kindle = assert(reader.kindle)
+        assert.equals(1, pulls)
+        assert.equals(reader_file, kindle._automatic_sync_open_document)
+
+        reader:onClose(false)
+
+        assert.is_nil(ReaderUI.instance)
+        assert.is_truthy(pushed)
+        assert.equals("B000000001", pushed.cde_key)
+        assert.equals(reader_file, pushed.source_path)
+        assert.equals(reader_file, pushed.document_path)
     end)
 
     it("exits a real ReaderUI before showing the library in FileManager", function()

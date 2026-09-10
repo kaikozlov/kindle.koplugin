@@ -1406,8 +1406,8 @@ describe("ReadingStateSync", function()
                     calls.xpointer = xpointer
                     return { long = "ATwFAACbAAAA", pid = 442741 }
                 end,
-                saveNativeProgress = function(_, asin, native_path, position)
-                    calls.asin = asin
+                saveNativeProgress = function(_, content_key, native_path, position)
+                    calls.content_key = content_key
                     calls.native_path = native_path
                     calls.position = position
                     return true, nil, 36.8
@@ -1430,7 +1430,39 @@ describe("ReadingStateSync", function()
             )
             assert.equals("/cache/book.epub", calls.epub)
             assert.equals(442741, calls.position.pid)
-            assert.equals("B007N6JEII", calls.asin)
+            assert.equals("B007N6JEII", calls.content_key)
+        end)
+
+        it("should use exact KRDS sync for PDOC content keys", function()
+            local pdoc_key = "5AFAFAA13FFE43ECBE78F0FF3761814C"
+            local calls = {}
+            local client = {
+                nativeProgressAvailable = function(_, content_key, native_path)
+                    calls.available_key = content_key
+                    calls.available_path = native_path
+                    return true
+                end,
+                translatePosition = function()
+                    return { long = "ATwFAACbAAAA", pid = 442741, percent = 36.8 }
+                end,
+                saveNativeProgress = function(_, content_key, native_path, position)
+                    calls.saved_key = content_key
+                    calls.saved_path = native_path
+                    calls.position = position
+                    return true, nil, position.percent, position
+                end,
+            }
+            local sync = ReadingStateSync:new(client)
+            local source_path = "/mnt/us/documents/Martyr_" .. pdoc_key .. ".kfx"
+            local ds = createMockDocSettings("/cache/book.epub", {
+                last_xpointer = "/body/DocFragment/body/p/text().1",
+            })
+
+            assert.is_true(sync:canUseExactNativeProgress(pdoc_key, source_path, "/cache/book.epub"))
+            assert.equals(36.8, ReadingStateSync._realSaveAuthoritativeNativePosition(sync, pdoc_key, source_path, "/cache/book.epub", ds))
+            assert.equals(pdoc_key, calls.available_key)
+            assert.equals(pdoc_key, calls.saved_key)
+            assert.equals(source_path, calls.saved_path)
         end)
     end)
 

@@ -82,7 +82,15 @@ function KindleStateWriter.writeByCdeKey(cde_key, percent_read, timestamp, statu
     if not cde_key or cde_key == "" then
         return false
     end
-    return KindleStateWriter._write("p_cdeKey = ? AND p_isLatestItem = 1", cde_key, percent_read, timestamp, status)
+    -- Match the downloaded local-file row, not the hidden source/cloud row
+    -- that may share this cdeKey. This mirrors what the stock reader updates.
+    return KindleStateWriter._write(
+        "p_cdeKey = ? AND p_isLatestItem = 1 AND p_location IS NOT NULL AND p_location <> ''",
+        cde_key,
+        percent_read,
+        timestamp,
+        status
+    )
 end
 
 --- Writes reading state for a catalog entry identified by p_uuid.
@@ -92,7 +100,7 @@ function KindleStateWriter.writeByUuid(uuid, percent_read, timestamp, status)
     if not uuid or uuid == "" then
         return false
     end
-    return KindleStateWriter._write("p_uuid = (SELECT p_sourceUuid FROM Entries WHERE p_uuid = ?)", uuid, percent_read, timestamp, status)
+    return KindleStateWriter._write("p_uuid = ?", uuid, percent_read, timestamp, status)
 end
 
 ---

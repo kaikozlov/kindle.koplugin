@@ -319,21 +319,21 @@ local function writeSidecarPosition(path, long_position, pid, timestamp_ms)
     return true
 end
 
+local function validNativeContentKey(content_key)
+    return type(content_key) == "string"
+        and ((#content_key == 10 and content_key:match("^B[A-Z0-9]+$")) or (#content_key == 32 and content_key:match("^[A-F0-9]+$")))
+end
+
 --- Whether a readable Kindle Reader Data Store sidecar exists for this book.
-function HelperClient:nativeProgressAvailable(asin, native_path)
+function HelperClient:nativeProgressAvailable(content_key, native_path)
     local pattern = self.native_path_pattern or "^/mnt/us/documents/.+%.kfx$"
-    if
-        type(asin) ~= "string"
-        or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$")
-        or type(native_path) ~= "string"
-        or not native_path:match(pattern)
-    then
+    if not validNativeContentKey(content_key) or type(native_path) ~= "string" or not native_path:match(pattern) then
         return false
     end
 
     if self.native_progress_available ~= nil then
         if type(self.native_progress_available) == "function" then
-            return self.native_progress_available(asin, native_path) == true
+            return self.native_progress_available(content_key, native_path) == true
         end
         return self.native_progress_available == true
     end
@@ -350,9 +350,9 @@ function HelperClient:nativeProgressAvailable(asin, native_path)
 end
 
 --- Save an exact position through the Kindle Reader Data Store sidecars.
-function HelperClient:saveNativeProgress(asin, native_path, position)
-    if type(asin) ~= "string" or not asin:match("^B[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]$") then
-        return false, "invalid ASIN"
+function HelperClient:saveNativeProgress(content_key, native_path, position)
+    if not validNativeContentKey(content_key) then
+        return false, "invalid Kindle content key"
     end
     local pattern = self.native_path_pattern or "^/mnt/us/documents/.+%.kfx$"
     if type(native_path) ~= "string" or not native_path:match(pattern) then
@@ -362,7 +362,7 @@ function HelperClient:saveNativeProgress(asin, native_path, position)
         return false, "invalid native position"
     end
     if self.native_progress_runner then
-        return self.native_progress_runner(asin, native_path, position)
+        return self.native_progress_runner(content_key, native_path, position)
     end
 
     if type(position.percent) ~= "number" or position.percent < 0 or position.percent > 100 then
@@ -372,16 +372,22 @@ function HelperClient:saveNativeProgress(asin, native_path, position)
     local written_any = false
     local last_error
     for _, sidecar in ipairs(positionSidecars(native_path)) do
-        local ok, write_error = writeSidecarPosition(sidecar, position.long, position.pid)
-        if ok then
-            written_any = true
-        else
-            last_error = write_error
-            logger.warn("KindlePlugin: sidecar position write failed:", sidecar, write_error)
+        -- Only mutate KRDS files that actually expose a readable last-page
+        -- position. Kindle may keep sibling .yjr/.azw3r stores containing
+        -- highlights, preferences, metrics, etc.; those are not progress
+        -- authorities and must not be treated as failed position writes.
+        if readSidecarPosition(sidecar) then
+            local ok, write_error = writeSidecarPosition(sidecar, position.long, position.pid)
+            if ok then
+                written_any = true
+            else
+                last_error = write_error
+                logger.warn("KindlePlugin: sidecar position write failed:", sidecar, write_error)
+            end
         end
     end
     if written_any then
-        logger.info("KindlePlugin: exact sidecar position saved:", asin, position.pid)
+        logger.info("KindlePlugin: exact sidecar position saved:", content_key, position.pid)
         return true,
             nil,
             position.percent,
@@ -395,16 +401,16 @@ function HelperClient:saveNativeProgress(asin, native_path, position)
 end
 
 --- Read Kindle's authoritative local last-page-read position.
-function HelperClient:readNativeProgress(asin, native_path)
-    if type(asin) ~= "string" or #asin ~= 10 or not asin:match("^B[A-Z0-9]+$") then
-        return nil, "invalid ASIN"
+function HelperClient:readNativeProgress(content_key, native_path)
+    if not validNativeContentKey(content_key) then
+        return nil, "invalid Kindle content key"
     end
     local pattern = self.native_path_pattern or "^/mnt/us/documents/.+%.kfx$"
     if type(native_path) ~= "string" or not native_path:match(pattern) then
         return nil, "invalid native path"
     end
     if self.native_progress_reader then
-        return self.native_progress_reader(asin, native_path)
+        return self.native_progress_reader(content_key, native_path)
     end
 
     for _, sidecar in ipairs(positionSidecars(native_path)) do

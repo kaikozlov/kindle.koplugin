@@ -103,7 +103,10 @@ describe("KindleStateReader", function()
             assert.is_not_nil(state)
             assert.equals(67.035034, state.percent_read)
             assert.equals("B004XJRQUQ", state.cde_key)
-            assert.is_true(SQ3._getMock().prepared_sql[1]:match("p_cdeKey = %?") ~= nil)
+            local sql = SQ3._getMock().prepared_sql[1]
+            assert.is_true(sql:match("p_cdeKey = %?") ~= nil)
+            assert.is_true(sql:find("p_location IS NOT NULL", 1, true) ~= nil)
+            assert.is_true(sql:find("p_location <> ''", 1, true) ~= nil)
         end)
     end)
 
@@ -125,7 +128,8 @@ describe("KindleStateReader", function()
 
             assert.equals(47, state.percent_read)
             assert.equals("B0FLB24198", state.cde_key)
-            assert.is_true(SQ3._getMock().prepared_sql[1]:match("p_uuid = ") ~= nil)
+            assert.is_true(SQ3._getMock().prepared_sql[1]:match("p_uuid = %?") ~= nil)
+            assert.is_nil(SQ3._getMock().prepared_sql[1]:find("p_sourceUuid", 1, true))
         end)
     end)
 

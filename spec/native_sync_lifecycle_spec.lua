@@ -11,6 +11,8 @@ describe("native KOReader sync lifecycle", function()
     local original_verify
     local original_show
     local original_next_tick
+    local original_schedule_in
+    local post_reader_ready_callback
     local instance
 
     local SYNC_DIRECTION = {
@@ -30,11 +32,13 @@ describe("native KOReader sync lifecycle", function()
         original_verify = ReadingStateSync.verifyOpenedKOReaderPosition
         original_show = UIManager.show
         original_next_tick = UIManager.nextTick
+        original_schedule_in = UIManager.scheduleIn
     end)
 
     before_each(function()
         helper.before_each()
         package.loaded["main"] = nil
+        post_reader_ready_callback = nil
         instance = nil
     end)
 
@@ -50,6 +54,7 @@ describe("native KOReader sync lifecycle", function()
         ReadingStateSync.verifyOpenedKOReaderPosition = original_verify
         UIManager.show = original_show
         UIManager.nextTick = original_next_tick
+        UIManager.scheduleIn = original_schedule_in
     end)
 
     local function fakeSettings(initial)
@@ -92,14 +97,23 @@ describe("native KOReader sync lifecycle", function()
             document = { file = document_path },
             doc_settings = doc_settings,
             menu = { registerToMainMenu = function() end },
+            registerPostReaderReadyCallback = function(_, callback)
+                post_reader_ready_callback = callback
+            end,
         }
         -- Normal ReaderUI teardown has dialog == self. That is the path where
         -- final SaveSettings occurs after CloseDocument.
         ui.dialog = ui
         instance = KindlePlugin:new({ ui = ui })
         -- Close-focused tests model a reader session that entered with
-        -- automatic sync already active. DocSettingsLoad normally arms this.
+        -- automatic sync already active. DocSettingsLoad normally captures
+        -- both the path marker and immutable Kindle identity used at close.
         instance._automatic_sync_open_document = document_path
+        instance._automatic_sync_open_session = {
+            cde_key = book.cde_key,
+            source_path = book.source_path,
+            epub_path = document_path,
+        }
         return instance
     end
 
@@ -157,6 +171,37 @@ describe("native KOReader sync lifecycle", function()
 
         assert.equals(instance.ui, verified.reader)
         assert.equals("/cache/book.epub", verified.epub_path)
+    end)
+
+    it("backstops exact pull verification if ReaderReady is consumed", function()
+        local book = {
+            id = "book",
+            cde_key = "B000000001",
+            source_path = "/documents/book.kfx",
+            open_mode = "convert",
+        }
+        local settings = fakeSettings({ last_xpointer = "native-xpointer" })
+        local verify_count = 0
+        ReadingStateSync.syncFromKindleAutomatic = function()
+            return false
+        end
+        ReadingStateSync.verifyOpenedKOReaderPosition = function(_, reader, epub_path)
+            assert.equals(instance.ui, reader)
+            assert.equals("/cache/book.epub", epub_path)
+            verify_count = verify_count + 1
+            return true
+        end
+
+        buildReaderPlugin(book, "/cache/book.epub", settings)
+        instance:onDocSettingsLoad(settings, instance.ui.document)
+        assert.is_function(post_reader_ready_callback)
+
+        -- Model an earlier ReaderUI module consuming ReaderReady: Kindle's
+        -- event handler never runs, but the direct post-ReaderReady callback
+        -- still executes after ReaderUI has rendered the document.
+        post_reader_ready_callback()
+
+        assert.equals(1, verify_count)
     end)
 
     it("stages last_page for a silent pull into a paging document", function()
@@ -336,18 +381,46 @@ describe("native KOReader sync lifecycle", function()
         assert.equals(0, settings._flushes())
     end)
 
-    local function captureDeferredSync()
-        local scheduled
-        local original_schedule = UIManager.scheduleIn
-        UIManager.scheduleIn = function(_, _delay, callback)
-            scheduled = callback
+    it("pushes immediately when ReaderUI already saved before CloseDocument", function()
+        local book = {
+            id = "book",
+            cde_key = "B000000001",
+            source_path = "/documents/book.kfx",
+            open_mode = "convert",
+        }
+        local settings = fakeSettings({ last_xpointer = "stale", percent_finished = 0.2 })
+        local seen
+        ReadingStateSync.syncToKindleAutomatic = function(_, cde_key, source_path, ds, epub_path)
+            seen = {
+                cde_key = cde_key,
+                source_path = source_path,
+                xpointer = ds:readSetting("last_xpointer"),
+                percent = ds:readSetting("percent_finished"),
+                epub_path = epub_path,
+            }
+            return true
         end
-        return function()
-            assert.is_function(scheduled, "close sync must be deferred")
-            scheduled()
-            UIManager.scheduleIn = original_schedule
+        UIManager.scheduleIn = function()
+            error("save-before-close teardown must not defer the push")
         end
-    end
+
+        buildReaderPlugin(book, "/cache/book.epub", settings)
+        instance.ui.dialog = {}
+
+        -- ReaderUI:onClose() has already delivered its final SaveSettings on
+        -- this branch before it broadcasts CloseDocument.
+        settings:saveSetting("last_xpointer", "final-xpointer")
+        settings:saveSetting("percent_finished", 0.73)
+        instance:onSaveSettings()
+        assert.is_nil(seen)
+
+        instance:onCloseDocument()
+        assert.equals("B000000001", seen.cde_key)
+        assert.equals("/documents/book.kfx", seen.source_path)
+        assert.equals("final-xpointer", seen.xpointer)
+        assert.equals(0.73, seen.percent)
+        assert.equals("/cache/book.epub", seen.epub_path)
+    end)
 
     it("pushes only after ReaderRolling's final SaveSettings in normal teardown", function()
         local book = {
@@ -369,7 +442,9 @@ describe("native KOReader sync lifecycle", function()
             return true
         end
 
-        local run_deferred = captureDeferredSync()
+        UIManager.scheduleIn = function()
+            error("final SaveSettings must not defer the close push")
+        end
 
         buildReaderPlugin(book, "/cache/book.epub", settings)
         instance:onCloseDocument()
@@ -379,7 +454,6 @@ describe("native KOReader sync lifecycle", function()
         settings:saveSetting("last_xpointer", "final-xpointer")
         settings:saveSetting("percent_finished", 0.73)
         instance:onSaveSettings()
-        run_deferred()
         assert.equals("B000000001", seen.cde_key)
         assert.equals("/documents/book.kfx", seen.source_path)
         assert.equals("final-xpointer", seen.xpointer)
@@ -422,9 +496,7 @@ describe("native KOReader sync lifecycle", function()
         instance:onCloseDocument()
         settings:saveSetting("last_xpointer", "final-xpointer")
         settings:saveSetting("percent_finished", 0.73)
-        local run_deferred = captureDeferredSync()
         instance:onSaveSettings()
-        run_deferred()
 
         assert.is_nil(conflict_dialog)
         assert.is_function(next_tick)
@@ -467,9 +539,7 @@ describe("native KOReader sync lifecycle", function()
         })
         instance:onCloseDocument()
         settings:saveSetting("last_xpointer", "final-xpointer")
-        local run_deferred = captureDeferredSync()
         instance:onSaveSettings()
-        run_deferred()
 
         assert.is_nil(confirm)
         assert.is_function(next_tick)

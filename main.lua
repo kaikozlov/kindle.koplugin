@@ -101,6 +101,22 @@ function KindlePlugin:init()
     reading_state_sync:setPlugin(self, SYNC_DIRECTION)
     reading_state_sync:setEnabled(self.settings.sync_reading_state == true)
 
+    -- ReaderUI lifecycle events are consumable: an earlier module may return
+    -- true and prevent later plugins from seeing DocSettingsLoad or ReaderReady.
+    -- Keep those native events as the preferred path, but register one direct
+    -- post-ReaderReady callback that backstops both open reconciliation and the
+    -- exact-position readback/receipt acknowledgement.
+    if self.ui and self.ui.document and self.ui.doc_settings and self.ui.registerPostReaderReadyCallback then
+        local document = self.ui.document
+        local doc_settings = self.ui.doc_settings
+        self.ui:registerPostReaderReadyCallback(function()
+            self:recoverMissedDocSettingsLoad(doc_settings, document)
+            if self.ui and self.ui.document == document then
+                reading_state_sync:verifyOpenedKOReaderPosition(self.ui, document.file)
+            end
+        end)
+    end
+
     -- FileManager constructs its FileChooser after plugin instances are
     -- initialized, so installing this small reversible class hook here keeps
     -- PathChooser/ReaderUI/DocumentRegistry entirely native.
@@ -193,11 +209,14 @@ end
 --- would let ReadSettings continue before the user's answer. Their callback
 --- applies the accepted state to the already-live ReaderUI instead.
 function KindlePlugin:onDocSettingsLoad(doc_settings, document)
+    self._doc_settings_load_document = document and document.file or nil
+
     -- A close-time automatic push is only safe when this reader session was
     -- already participating in automatic sync at open. Enabling sync (or
     -- automatic sync) halfway through a book must not turn the eventual close
     -- into a first-time, unreconciled write to Kindle.
     self._automatic_sync_open_document = nil
+    self._automatic_sync_open_session = nil
     if not self.settings.sync_reading_state or not reading_state_sync:isAutomaticSyncEnabled() then
         return
     end
@@ -206,9 +225,15 @@ function KindlePlugin:onDocSettingsLoad(doc_settings, document)
     if not book or not book.source_path then
         return
     end
-    self._automatic_sync_open_document = document.file
 
     local cde_key = getBookCdeKey(book, doc_settings)
+    self._automatic_sync_open_document = document.file
+    self._automatic_sync_open_session = {
+        cde_key = cde_key,
+        source_path = book.source_path,
+        epub_path = document.file,
+    }
+
     local before_sync_percent = doc_settings:readSetting("percent_finished") or 0
     local approval_handler = function(plugin, sync_direction, is_pull_from_kindle, is_newer, sync_fn, sync_details)
         local setting = configuredDirection(self.settings, is_pull_from_kindle, is_newer)
@@ -243,6 +268,41 @@ function KindlePlugin:onDocSettingsLoad(doc_settings, document)
     end
 end
 
+--- Recover a DocSettingsLoad event consumed by an earlier ReaderUI module.
+--- At this direct post-ReaderReady boundary the document is already rendered,
+--- so state changed by the normal pre-load handler must also be applied to the
+--- live renderer before exact-position acknowledgement.
+function KindlePlugin:recoverMissedDocSettingsLoad(doc_settings, document)
+    if not document or self._automatic_sync_open_document == document.file then
+        return
+    end
+
+    if self._doc_settings_load_document == document.file then
+        logger.info("KindlePlugin: open sync was not armed during DocSettingsLoad; retrying after ReaderReady")
+    else
+        logger.info("KindlePlugin: DocSettingsLoad was consumed; reconciling after ReaderReady")
+    end
+    local before_xpointer = doc_settings:readSetting("last_xpointer")
+    local before_percent = doc_settings:readSetting("percent_finished") or 0
+
+    self:onDocSettingsLoad(doc_settings, document)
+    if self._automatic_sync_open_document ~= document.file or not self.ui or self.ui.document ~= document then
+        return
+    end
+
+    local after_xpointer = doc_settings:readSetting("last_xpointer")
+    local after_percent = doc_settings:readSetting("percent_finished") or 0
+    if self.ui.rolling then
+        if after_xpointer and after_xpointer ~= before_xpointer and self.ui.rolling.onGotoXPointer then
+            self.ui.rolling:onGotoXPointer(after_xpointer)
+        elseif after_percent ~= before_percent and self.ui.rolling.onGotoPercent then
+            self.ui.rolling:onGotoPercent(after_percent * 100)
+        end
+    elseif self.ui.paging and after_percent ~= before_percent and self.ui.paging.onGotoPercent then
+        self.ui.paging:onGotoPercent(after_percent * 100)
+    end
+end
+
 --- ReaderReady runs after ReaderRolling has restored and rendered last_xpointer.
 --- This is the earliest native lifecycle point where an automatic exact pull can
 --- be acknowledged without confusing "requested" with "actually displayed".
@@ -253,16 +313,6 @@ function KindlePlugin:onReaderReady()
 end
 
 local function runPendingCloseSync(pending)
-    -- The same document may have been reopened before the deferred push ran
-    -- (fast back-to-back open). That session owns its position now; its own
-    -- close will push, and receipt reconciliation covers the gap.
-    local ReaderUI = require("apps/reader/readerui")
-    local active = ReaderUI.instance and ReaderUI.instance.document
-    if active and active.file == pending.epub_path then
-        logger.info("KindlePlugin: skipping deferred close sync; document reopened")
-        return
-    end
-
     local approval_handler = function(plugin, sync_direction, is_pull_from_kindle, is_newer, sync_fn, sync_details)
         local is_prompt = configuredDirection(plugin.settings, is_pull_from_kindle, is_newer) == SYNC_DIRECTION.PROMPT
         if is_prompt then
@@ -293,8 +343,25 @@ local function runPendingCloseSync(pending)
         )
     end)
     if not ok then
-        logger.warn("KindlePlugin: deferred close sync failed:", err)
+        logger.warn("KindlePlugin: close sync failed:", err)
     end
+end
+
+function KindlePlugin:capturePendingCloseSync()
+    if self._pending_close_sync then
+        return true
+    end
+    local session = self._automatic_sync_open_session
+    if not session or not self.ui or not self.ui.doc_settings then
+        return false
+    end
+    self._pending_close_sync = {
+        cde_key = session.cde_key,
+        source_path = session.source_path,
+        doc_settings = self.ui.doc_settings,
+        epub_path = session.epub_path,
+    }
+    return true
 end
 
 function KindlePlugin:syncPendingClose()
@@ -303,13 +370,15 @@ function KindlePlugin:syncPendingClose()
         return
     end
     self._pending_close_sync = nil
+    self._automatic_sync_open_document = nil
+    self._automatic_sync_open_session = nil
 
-    -- Run the push after the reader widget has closed so the exit gesture
-    -- returns to the library immediately. An interrupted run is recovered by
-    -- the receipt system on the next open.
-    UIManager:scheduleIn(0.1, function()
-        runPendingCloseSync(pending)
-    end)
+    -- This is called only after ReaderRolling/ReaderPaging has saved the final
+    -- position on the normal top-level ReaderUI path, or from CloseDocument on
+    -- the alternate path where ReaderUI already saved first. Finish the
+    -- in-process KRDS write synchronously: scheduling beyond this boundary can
+    -- let UIManager remove its last widget and discard the pending task.
+    runPendingCloseSync(pending)
 end
 
 --- CloseDocument happens before the final UIManager-driven SaveSettings in the
@@ -328,17 +397,9 @@ function KindlePlugin:onCloseDocument()
         return
     end
 
-    local book = getMappedBook(self.ui.document)
-    if not book or not book.source_path then
+    if not self:capturePendingCloseSync() then
         return
     end
-
-    self._pending_close_sync = {
-        cde_key = getBookCdeKey(book, self.ui.doc_settings),
-        source_path = book.source_path,
-        doc_settings = self.ui.doc_settings,
-        epub_path = self.ui.document.file,
-    }
 
     if self.ui.dialog ~= self.ui then
         self:syncPendingClose()
@@ -347,7 +408,25 @@ end
 
 --- ReaderRolling is registered before plugins, so its onSaveSettings handler has
 --- already captured the final reading position when this plugin sees the event.
+--- If CloseDocument was consumed before reaching us on the normal top-level
+--- path, ReaderUI has already cleared ui.document by this point; reconstruct the
+--- pending close from the identity captured at open.
 function KindlePlugin:onSaveSettings()
+    if not self._pending_close_sync and self.ui and not self.ui.document then
+        self:capturePendingCloseSync()
+    end
+    self:syncPendingClose()
+end
+
+--- Final recovery boundary for consumable ReaderUI lifecycle events. UIManager
+--- sends CloseWidget only after FlushSettings has completed, so ReaderRolling's
+--- final persisted position is available here even if an earlier plugin swallowed
+--- CloseDocument or SaveSettings. A normal close has already cleared the session
+--- in syncPendingClose(), making this a no-op.
+function KindlePlugin:onCloseWidget()
+    if not self._pending_close_sync then
+        self:capturePendingCloseSync()
+    end
     self:syncPendingClose()
 end
 

@@ -45,7 +45,10 @@ function KindleStateReader.readByCdeKey(cde_key)
     if not cde_key or cde_key == "" then
         return nil
     end
-    return KindleStateReader._read("p_cdeKey = ? AND p_isLatestItem = 1", cde_key)
+    -- Downloaded Kindle books may have both a hidden source/cloud row and a
+    -- visible local-file row with the same cdeKey. The native reader updates
+    -- the local row, so use that row as the catalog view of device-local state.
+    return KindleStateReader._read("p_cdeKey = ? AND p_isLatestItem = 1 AND p_location IS NOT NULL AND p_location <> ''", cde_key)
 end
 
 --- Reads reading state for a catalog entry identified by p_uuid.
@@ -55,7 +58,7 @@ function KindleStateReader.readByUuid(uuid)
     if not uuid or uuid == "" then
         return nil
     end
-    return KindleStateReader._read("p_uuid = (SELECT p_sourceUuid FROM Entries WHERE p_uuid = ?)", uuid)
+    return KindleStateReader._read("p_uuid = ?", uuid)
 end
 
 ---

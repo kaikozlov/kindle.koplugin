@@ -91,13 +91,18 @@ function ReadingStateSync:setVirtualLibrary(virtual_library)
     self.virtual_library = virtual_library
 end
 
-local function receiptAsin(cde_key, source_path)
-    local asin = cde_key
-    if not asin or not asin:match("^B[A-Z0-9]+$") then
-        asin = extractCdeKeyFromPath(source_path)
+local function validNativeContentKey(content_key)
+    return type(content_key) == "string"
+        and ((#content_key == 10 and content_key:match("^B[A-Z0-9]+$")) or (#content_key == 32 and content_key:match("^[A-F0-9]+$")))
+end
+
+local function receiptKey(cde_key, source_path)
+    local content_key = cde_key
+    if not validNativeContentKey(content_key) then
+        content_key = extractCdeKeyFromPath(source_path)
     end
-    if asin and #asin == 10 and asin:match("^B[A-Z0-9]+$") then
-        return asin
+    if validNativeContentKey(content_key) then
+        return content_key
     end
     return nil
 end
@@ -146,9 +151,9 @@ end
 --- Coordinates contain no book text and are stored in KOReader's atomic
 --- settings file, so they survive restarts without creating another sidecar.
 function ReadingStateSync:getPositionReceipt(cde_key, source_path)
-    local asin = receiptAsin(cde_key, source_path)
+    local content_key = receiptKey(cde_key, source_path)
     local receipts = self.plugin and self.plugin.settings and self.plugin.settings.position_sync_receipts
-    local receipt = asin and type(receipts) == "table" and receipts[asin]
+    local receipt = content_key and type(receipts) == "table" and receipts[content_key]
     if not validNativePosition(receipt) then
         return nil
     end
@@ -158,15 +163,15 @@ end
 --- Record an exact position only after both the authoritative LPR operation
 --- and its corresponding KOReader/native state update have succeeded.
 function ReadingStateSync:recordPositionReceipt(cde_key, source_path, position, direction)
-    local asin = receiptAsin(cde_key, source_path)
-    if not asin or not validNativePosition(position) or not self.plugin then
+    local content_key = receiptKey(cde_key, source_path)
+    if not content_key or not validNativePosition(position) or not self.plugin then
         return false
     end
     local settings = self.plugin.settings
     if type(settings.position_sync_receipts) ~= "table" then
         settings.position_sync_receipts = {}
     end
-    settings.position_sync_receipts[asin] = {
+    settings.position_sync_receipts[content_key] = {
         long = position.long,
         pid = position.pid,
         percent = position.percent,
@@ -337,7 +342,7 @@ end
 
 --- Return whether this book can use exact Kindle coordinate synchronization.
 --- Converted EPUBs require plugin-owned data-kfx-* anchors; the bundled
---- HelperClient performs the device, sidecar, and ASIN capability checks.
+--- HelperClient performs the device, sidecar, and Kindle content-key checks.
 function ReadingStateSync:canUseExactNativeProgress(cde_key, source_path, document_path)
     -- Exact translation is defined only for converted EPUBs carrying the
     -- plugin-owned data-kfx-* anchors. Direct PDFs/MOBI/etc. use catalog
@@ -348,11 +353,11 @@ function ReadingStateSync:canUseExactNativeProgress(cde_key, source_path, docume
     if not self.helper_client or type(self.helper_client.nativeProgressAvailable) ~= "function" then
         return true
     end
-    local asin = receiptAsin(cde_key, source_path)
-    if not asin then
+    local content_key = receiptKey(cde_key, source_path)
+    if not content_key then
         return false
     end
-    return self.helper_client:nativeProgressAvailable(asin, source_path)
+    return self.helper_client:nativeProgressAvailable(content_key, source_path)
 end
 
 function ReadingStateSync:writeApproximateKindleState(cde_key, source_path, percent, timestamp, status)
@@ -363,12 +368,9 @@ end
 --- The visible catalog must only be advanced after this succeeds; otherwise
 --- the native reader would reopen its older LPR and overwrite the shelf value.
 function ReadingStateSync:saveAuthoritativeNativePosition(cde_key, source_path, epub_path, doc_settings, pretranslated)
-    local asin = cde_key
-    if not asin or not asin:match("^B[A-Z0-9]+$") then
-        asin = extractCdeKeyFromPath(source_path)
-    end
-    if not asin or not asin:match("^B[A-Z0-9]+$") or #asin ~= 10 then
-        logger.warn("KindlePlugin: exact native progress requires a Kindle ASIN")
+    local content_key = receiptKey(cde_key, source_path)
+    if not content_key then
+        logger.warn("KindlePlugin: exact native progress requires a Kindle content key")
         return false
     end
     if not epub_path or not epub_path:match("%.epub$") then
@@ -391,7 +393,7 @@ function ReadingStateSync:saveAuthoritativeNativePosition(cde_key, source_path, 
         end
         position = translated
     end
-    local saved, save_error, native_percent, native_position = self.helper_client:saveNativeProgress(asin, source_path, position)
+    local saved, save_error, native_percent, native_position = self.helper_client:saveNativeProgress(content_key, source_path, position)
     if not saved then
         logger.warn("KindlePlugin: exact native progress save failed:", save_error)
         return false
@@ -436,14 +438,11 @@ end
 
 --- Resolve Kindle's exact local LPR back to a KOReader XPointer.
 function ReadingStateSync:getAuthoritativeKindleXPointer(cde_key, source_path, epub_path)
-    local asin = cde_key
-    if not asin or not asin:match("^B[A-Z0-9]+$") then
-        asin = extractCdeKeyFromPath(source_path)
-    end
-    if not asin or #asin ~= 10 or not epub_path or not epub_path:match("%.epub$") then
+    local content_key = receiptKey(cde_key, source_path)
+    if not content_key or not epub_path or not epub_path:match("%.epub$") then
         return nil, "exact native position is unavailable for this book"
     end
-    local native, read_error = self.helper_client:readNativeProgress(asin, source_path)
+    local native, read_error = self.helper_client:readNativeProgress(content_key, source_path)
     if not native then
         return nil, read_error
     end

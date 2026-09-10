@@ -77,7 +77,10 @@ describe("KindleStateWriter", function()
             local ok = KindleStateWriter.writeByCdeKey("B007N6JEII", 1, 1776640914, "reading")
 
             assert.is_true(ok)
-            assert.is_not_nil(SQ3._getMock().prepared_sql[1]:match("p_cdeKey = %? AND p_isLatestItem = 1"))
+            local sql = SQ3._getMock().prepared_sql[1]
+            assert.is_not_nil(sql:match("p_cdeKey = %? AND p_isLatestItem = 1"))
+            assert.is_true(sql:find("p_location IS NOT NULL", 1, true) ~= nil)
+            assert.is_true(sql:find("p_location <> ''", 1, true) ~= nil)
             assert.equals("B007N6JEII", SQ3._getMock().bound_values[3])
         end)
     end)
@@ -89,7 +92,9 @@ describe("KindleStateWriter", function()
             local ok = KindleStateWriter.writeByUuid("f82913d4-094a-43c6-8166-e330d40c1d7c", 48, 1776640914, "reading")
 
             assert.is_true(ok)
-            assert.is_not_nil(SQ3._getMock().prepared_sql[1]:match("p_uuid = %(SELECT p_sourceUuid"))
+            local sql = SQ3._getMock().prepared_sql[1]
+            assert.is_not_nil(sql:match("p_uuid = %?"))
+            assert.is_nil(sql:find("p_sourceUuid", 1, true))
             assert.equals("f82913d4-094a-43c6-8166-e330d40c1d7c", SQ3._getMock().bound_values[3])
         end)
     end)

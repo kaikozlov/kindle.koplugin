@@ -51,6 +51,13 @@ local function sidecar_store()
     end))
 end
 
+local function non_position_sidecar_store()
+    -- Keep a byte-valid KRDS container with the same child values, but rename
+    -- the position-bearing objects to unknown names. This mirrors Kindle .yjr
+    -- stores that contain preferences/annotations/metrics but no LPR authority.
+    return sidecar_store():gsub("updated_lpr", "abcdefghijk"):gsub("lpr", "foo")
+end
+
 describe("HelperClient", function()
     local HelperClient
     local tmpdir
@@ -175,6 +182,55 @@ describe("HelperClient", function()
             local reread = assert(client:readNativeProgress("B007N6JEII", kfx_path))
             assert.equals("ATwFAACbAAAA", reread.long)
             assert.equals(442741, reread.pid)
+        end)
+
+        it("supports exact sidecar progress for PDOC content keys", function()
+            local client = HelperClient:new(client_opts)
+            local pdoc_key = "5AFAFAA13FFE43ECBE78F0FF3761814C"
+            local position = {
+                long = "ATwFAACbAAAA",
+                pid = 442741,
+                percent = 75.5,
+            }
+
+            assert.is_true(client:nativeProgressAvailable(pdoc_key, kfx_path))
+            local ok, err = client:saveNativeProgress(pdoc_key, kfx_path, position)
+            assert.is_true(ok, err)
+
+            local reread = assert(client:readNativeProgress(pdoc_key, kfx_path))
+            assert.equals("ATwFAACbAAAA", reread.long)
+            assert.equals(442741, reread.pid)
+        end)
+
+        it("ignores sibling KRDS stores with no readable last-page position", function()
+            local yjr_path = tmpdir .. "/book.sdr/book.yjr"
+            local yjr_data = non_position_sidecar_store()
+            local yjr = assert(io.open(yjr_path, "wb"))
+            yjr:write(yjr_data)
+            yjr:close()
+
+            local logger = require("logger")
+            local original_warn = logger.warn
+            local warnings = 0
+            logger.warn = function(...)
+                warnings = warnings + 1
+                return original_warn(...)
+            end
+
+            local client = HelperClient:new(client_opts)
+            local ok, err = client:saveNativeProgress("B007N6JEII", kfx_path, {
+                long = "ATwFAACbAAAA",
+                pid = 442741,
+                percent = 75.5,
+            })
+            logger.warn = original_warn
+
+            assert.is_true(ok, err)
+            assert.equals(0, warnings)
+            local unchanged = assert(io.open(yjr_path, "rb"))
+            assert.equals(yjr_data, unchanged:read("*a"))
+            unchanged:close()
+            os.remove(yjr_path)
         end)
 
         it("should expose a native progress runner seam", function()
