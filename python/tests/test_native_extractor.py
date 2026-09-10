@@ -5,12 +5,11 @@ import tempfile
 import unittest
 from unittest import mock
 
-
 PYTHON_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PYTHON_DIR not in sys.path:
     sys.path.insert(0, PYTHON_DIR)
 
-from dedrm import native_extractor  # noqa: E402
+from dedrm import native_extractor
 
 
 class NativeExtractorTests(unittest.TestCase):
@@ -58,9 +57,11 @@ class NativeExtractorTests(unittest.TestCase):
         self.assertEqual(candidate, executable)
         run.assert_called_once_with(
             [candidate, "test"],
+            env=mock.ANY,
             capture_output=True,
             text=True,
             timeout=15,
+            check=False,
         )
 
     def test_extract_page_keys_removes_generated_keyfile(self):
@@ -128,10 +129,63 @@ class NativeExtractorTests(unittest.TestCase):
         )
         run.assert_called_once_with(
             [executable, "test"],
+            env=mock.ANY,
             capture_output=True,
             text=True,
             timeout=15,
+            check=False,
         )
+
+    def test_native_env_strips_bundled_runtime_loader_settings(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "LD_PRELOAD": "/plugin/libsyscall_wrapper.so",
+                "LD_LIBRARY_PATH": "/plugin/dist/lib/runtime:/plugin/dist/lib/external",
+                "KEEP_ME": "yes",
+            },
+            clear=True,
+        ):
+            env = native_extractor._native_env()
+
+        self.assertNotIn("LD_PRELOAD", env)
+        self.assertNotIn("LD_LIBRARY_PATH", env)
+        self.assertEqual("yes", env["KEEP_ME"])
+
+    def test_probe_and_keyfile_use_clean_native_environment(self):
+        with tempfile.TemporaryDirectory() as native_dir:
+            candidate = os.path.join(native_dir, native_extractor.CANDIDATE_NAMES[0])
+            key_file = os.path.join(native_dir, "keyfile.txt")
+            open(candidate, "wb").close()
+
+            def run_extractor(args, **kwargs):
+                self.assertNotIn("LD_PRELOAD", kwargs["env"])
+                self.assertNotIn("LD_LIBRARY_PATH", kwargs["env"])
+                if args[1] == "keyfile":
+                    with open(key_file, "w") as output:
+                        output.write("key-one$secret_key:" + "33" * 16 + "\n")
+                return mock.Mock(returncode=0, stdout="", stderr="")
+
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "LD_PRELOAD": "/plugin/libsyscall_wrapper.so",
+                    "LD_LIBRARY_PATH": "/plugin/dist/lib/runtime:/plugin/dist/lib/external",
+                },
+                clear=True,
+            ), mock.patch.object(
+                native_extractor.subprocess,
+                "run",
+                side_effect=run_extractor,
+            ):
+                executable = native_extractor.find_executable(native_dir=native_dir)
+                keys = native_extractor.extract_page_keys(
+                    native_dir=native_dir,
+                    key_file=key_file,
+                )
+
+        self.assertEqual(candidate, executable)
+        self.assertEqual(bytes.fromhex("33" * 16), keys["key-one"])
 
 
 if __name__ == "__main__":

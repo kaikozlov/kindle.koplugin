@@ -10,7 +10,6 @@ and remove the temporary plaintext keyfile afterward.
 import os
 import subprocess
 
-
 DEFAULT_NATIVE_DIRS = (
     # Original KUAL extension layout.
     "/mnt/us/extensions/kfxdedrm/bin",
@@ -28,6 +27,20 @@ CANDIDATE_NAMES = (
 
 class NativeExtractorUnavailable(RuntimeError):
     pass
+
+
+def _native_env():
+    """Return an environment suitable for firmware-native extractor binaries.
+
+    kindle-helper runs its bundled Python with a private dynamic loader,
+    LD_LIBRARY_PATH, and LD_PRELOAD shim.  Those settings are required by the
+    bundled Python runtime but must not leak into Satsuoni's executables, which
+    deliberately use the Kindle firmware's own loader and libraries.
+    """
+    env = os.environ.copy()
+    env.pop("LD_PRELOAD", None)
+    env.pop("LD_LIBRARY_PATH", None)
+    return env
 
 
 def _candidate_paths(plugin_dir=None, native_dir=None):
@@ -56,9 +69,11 @@ def find_executable(plugin_dir=None, native_dir=None):
         try:
             result = subprocess.run(
                 [path, "test"],
+                env=_native_env(),
                 capture_output=True,
                 text=True,
                 timeout=15,
+                check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             failures.append(f"{path}: {error}")
@@ -107,9 +122,11 @@ def extract_page_keys(plugin_dir=None, native_dir=None, key_file=None):
 
         result = subprocess.run(
             [executable, "keyfile"],
+            env=_native_env(),
             capture_output=True,
             text=True,
             timeout=300,
+            check=False,
         )
         if result.returncode != 0:
             # The native tool's verbose output may include the device serial,
