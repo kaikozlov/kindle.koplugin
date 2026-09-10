@@ -5,6 +5,7 @@
 local DataStorage = require("datastorage")
 local Device = require("device")
 local ConfirmBox = require("ui/widget/confirmbox")
+local Dispatcher = require("dispatcher")
 local InfoMessage = require("ui/widget/infomessage")
 local PathChooser = require("ui/widget/pathchooser")
 local UIManager = require("ui/uimanager")
@@ -29,6 +30,10 @@ local SYNC_DIRECTION = {
     SILENT = 2,
     NEVER = 3,
 }
+
+--- Dispatcher action key for opening the Kindle Library from any
+--- Dispatcher-driven surface (gestures, profiles, launcher buttons).
+local KINDLE_LIBRARY_ACTION = "kindle_library"
 
 --- Gets localized name for a sync direction.
 --- @param direction number: SYNC_DIRECTION constant.
@@ -91,6 +96,7 @@ end
 function KindlePlugin:init()
     self:loadSettings()
     self.ui.menu:registerToMainMenu(self)
+    self:onDispatcherRegisterActions()
 
     reading_state_sync:setPlugin(self, SYNC_DIRECTION)
     reading_state_sync:setEnabled(self.settings.sync_reading_state == true)
@@ -338,10 +344,65 @@ function KindlePlugin:onSaveSettings()
     self:syncPendingClose()
 end
 
+--- Registers the "Kindle Library" dispatcher action so gestures, profiles,
+--- quick menus, and launcher integrations (e.g. ZenOS custom buttons) can
+--- open the library from any context. KOReader rebroadcasts
+--- "DispatcherRegisterActions" after Dispatcher:init(); registering from
+--- init() as well covers contexts where that broadcast already ran, and
+--- registerAction() is idempotent.
+function KindlePlugin:onDispatcherRegisterActions()
+    Dispatcher:registerAction(KINDLE_LIBRARY_ACTION, {
+        category = "none",
+        event = "ShowKindleLibrary",
+        title = _("Kindle Library"),
+        general = true,
+    })
+end
+
+--- Opens the native Kindle Library from any KOReader context.
+---
+--- Backs both the "Browse Kindle Library" menu item and the
+--- "ShowKindleLibrary" dispatcher action. With a book open, exits through
+--- the normal ReaderUI teardown (final SaveSettings still runs, so the
+--- reading-state push to the Kindle shelf fires as usual) and reopens the
+--- file browser at the book's folder before showing the library.
+--- @return boolean: true when the library view was shown.
+function KindlePlugin:onShowKindleLibrary()
+    if self.settings.enable_virtual_library == false then
+        self:showInfo(_("The Kindle library is disabled in the Kindle Library menu."))
+        return false
+    end
+
+    local FileManager = require("apps/filemanager/filemanager")
+    if not FileManager.instance then
+        local ReaderUI = require("apps/reader/readerui")
+        local reader = ReaderUI.instance
+        if reader then
+            local file = reader.document and reader.document.file
+            -- A pending return-to-library request is superseded by this
+            -- explicit open; consume it so the fresh FileManager does not
+            -- re-show the library a tick later.
+            kindle_library:takeReturnToLibraryRequest()
+            reader:onClose()
+            reader:showFileManager(file)
+        end
+    end
+
+    local filemanager = FileManager.instance
+    if not filemanager then
+        self:showInfo(_("Open the file browser to access Kindle Library."))
+        return false
+    end
+
+    kindle_library:setUI(filemanager)
+    return kindle_library:show(filemanager, true)
+end
+
 function KindlePlugin:stopPlugin()
     local FileChooser = require("ui/widget/filechooser")
     FileChooserExt:unapply(FileChooser)
     OpenFileExt:unapply()
+    Dispatcher:removeAction(KINDLE_LIBRARY_ACTION)
     kindle_library:close()
     if self.ui and self.ui.file_chooser and self.ui.file_chooser.refreshPath then
         self.ui.file_chooser:refreshPath()
@@ -773,15 +834,10 @@ function KindlePlugin:createBrowseLibraryMenuItem()
     return {
         text = _("Browse Kindle Library"),
         enabled_func = function()
-            return self.settings.enable_virtual_library ~= false and self.ui ~= nil
+            return self.settings.enable_virtual_library ~= false
         end,
         callback = function()
-            if self.ui and not self.ui.document then
-                kindle_library:setUI(self.ui)
-                kindle_library:show(self.ui, true)
-                return
-            end
-            self:showInfo(_("Open the file browser to access Kindle Library."))
+            self:onShowKindleLibrary()
         end,
     }
 end
@@ -792,7 +848,8 @@ end
 
 --- Adds plugin menu items to the main menu (file manager and reader).
 --- Settings and sync controls stay reachable while a book is open;
---- FileManager-only actions degrade to a hint instead of disappearing.
+--- browsing exits the book through the dispatcher handler so it works
+--- from either context.
 --- @param menu_items table: Main menu items table to populate.
 function KindlePlugin:addToMainMenu(menu_items)
     local sub_item_table = {

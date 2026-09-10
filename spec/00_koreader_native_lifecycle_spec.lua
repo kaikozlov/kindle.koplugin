@@ -6,28 +6,52 @@ require("busted.runner")()
 describe("KindlePlugin native KOReader lifecycle", function()
     local UIManager = require("ui/uimanager")
     local DataStorage = require("datastorage")
+    local Dispatcher = require("dispatcher")
     local FileManager = require("apps/filemanager/filemanager")
+    local KindleLibrary = require("lua/kindle_library")
     local PluginLoader = require("pluginloader")
+    local ReaderUI = require("apps/reader/readerui")
     local Screen = require("device").screen
+    local ffiUtil = require("ffi/util")
+    local util = require("util")
     local filemanager
+    local reader_file
+    local original_lastfile
+    local original_build_entries
 
     before_each(function()
         disable_plugins()
+        original_lastfile = G_reader_settings:readSetting("lastfile")
+        original_build_entries = KindleLibrary.buildEntries
         G_reader_settings:saveSetting("kindle_plugin", {
             enable_virtual_library = false,
         })
     end)
 
     after_each(function()
+        KindleLibrary.buildEntries = original_build_entries
         local instance = PluginLoader:getPluginInstance("kindle")
         if instance and instance.stopPlugin then
             pcall(instance.stopPlugin, instance)
         end
-        if filemanager then
-            filemanager:onClose()
-            filemanager = nil
+        if ReaderUI.instance then
+            ReaderUI.instance:onClose()
+        end
+        if FileManager.instance then
+            FileManager.instance:onClose()
+        end
+        filemanager = nil
+        if reader_file then
+            require("docsettings"):open(reader_file):purge()
+            os.remove(reader_file)
+            reader_file = nil
         end
         G_reader_settings:delSetting("kindle_plugin")
+        if original_lastfile == nil then
+            G_reader_settings:delSetting("lastfile")
+        else
+            G_reader_settings:saveSetting("lastfile", original_lastfile)
+        end
         UIManager:quit()
     end)
 
@@ -94,12 +118,10 @@ describe("KindlePlugin native KOReader lifecycle", function()
         G_reader_settings:saveSetting("home_dir", DataStorage:getDataDir())
         load_plugin("kindle.koplugin")
 
-        local KindleLibrary = require("lua/kindle_library")
-        local original_show = KindleLibrary.show
-        local shown = false
-        KindleLibrary.show = function()
-            shown = true
-            return true
+        local build_count = 0
+        KindleLibrary.buildEntries = function()
+            build_count = build_count + 1
+            return { { text = "Test Kindle book", kindle_book_id = "test-book" } }
         end
 
         filemanager = FileManager:new({
@@ -120,7 +142,8 @@ describe("KindlePlugin native KOReader lifecycle", function()
         assert.is_truthy(kindle_entry)
         assert.equals(original_path, kindle_entry.path)
         assert.is_true(filemanager.file_chooser:onMenuSelect(kindle_entry))
-        assert.is_true(shown)
+        assert.equals(1, build_count)
+        assert.is_truthy(require("lua/filechooser_ext").kindle_library.booklist_menu)
         assert.equals(original_path, filemanager.file_chooser.path)
 
         local instance = PluginLoader:getPluginInstance("kindle")
@@ -135,7 +158,75 @@ describe("KindlePlugin native KOReader lifecycle", function()
         end
         assert.is_false(still_present)
         assert.equals(original_path, filemanager.file_chooser.path)
+    end)
 
-        KindleLibrary.show = original_show
+    it("executes the dispatcher action through a real FileManager", function()
+        G_reader_settings:saveSetting("kindle_plugin", {
+            enable_virtual_library = true,
+        })
+        load_plugin("kindle.koplugin")
+
+        local build_force
+        local build_count = 0
+        KindleLibrary.buildEntries = function(_, force)
+            build_force = force
+            build_count = build_count + 1
+            return { { text = "Test Kindle book", kindle_book_id = "test-book" } }
+        end
+
+        filemanager = FileManager:new({
+            dimen = Screen:getSize(),
+            root_path = DataStorage:getDataDir(),
+        })
+        UIManager:show(filemanager)
+        fastforward_ui_events()
+
+        assert.equals("Kindle Library", Dispatcher:getNameFromItem("kindle_library", { kindle_library = true }))
+        Dispatcher:execute({ kindle_library = true })
+        local library = require("lua/filechooser_ext").kindle_library
+        assert.equals(filemanager, library.ui)
+        assert.is_truthy(library.booklist_menu)
+        assert.is_true(build_force)
+        assert.equals(1, build_count)
+
+        local instance = assert(PluginLoader:getPluginInstance("kindle"))
+        assert.is_true(instance:stopPlugin())
+        assert.equals("Unknown item", Dispatcher:getNameFromItem("kindle_library", { kindle_library = true }))
+        Dispatcher:execute({ kindle_library = true })
+        assert.equals(1, build_count)
+    end)
+
+    it("exits a real ReaderUI before showing the library in FileManager", function()
+        reader_file = DataStorage:getDataDir() .. "/kindle-dispatcher-reader.txt"
+        local file = assert(io.open(reader_file, "wb"))
+        file:write("A real KOReader document used to test the dispatcher lifecycle.\n")
+        file:close()
+        G_reader_settings:saveSetting("kindle_plugin", {
+            enable_virtual_library = true,
+        })
+        load_plugin("kindle.koplugin")
+
+        local build_force
+        KindleLibrary.buildEntries = function(_, force)
+            build_force = force
+            return { { text = "Test Kindle book", kindle_book_id = "test-book" } }
+        end
+
+        ReaderUI:doShowReader(reader_file)
+        local reader = assert(ReaderUI.instance)
+        assert.equals(reader_file, reader.document.file)
+        G_reader_settings:saveSetting("lastfile", "/tmp/not-the-open-book.epub")
+
+        Dispatcher:execute({ kindle_library = true })
+
+        filemanager = assert(FileManager.instance)
+        assert.is_nil(reader.document)
+        assert.is_nil(ReaderUI.instance)
+        local library = require("lua/filechooser_ext").kindle_library
+        assert.equals(filemanager, library.ui)
+        assert.is_truthy(library.booklist_menu)
+        assert.is_true(build_force)
+        local book_dir = util.splitFilePathName(reader_file)
+        assert.equals(ffiUtil.realpath(book_dir), filemanager.file_chooser.path)
     end)
 end)
