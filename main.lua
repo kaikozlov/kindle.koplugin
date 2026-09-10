@@ -193,6 +193,11 @@ end
 --- would let ReadSettings continue before the user's answer. Their callback
 --- applies the accepted state to the already-live ReaderUI instead.
 function KindlePlugin:onDocSettingsLoad(doc_settings, document)
+    -- A close-time automatic push is only safe when this reader session was
+    -- already participating in automatic sync at open. Enabling sync (or
+    -- automatic sync) halfway through a book must not turn the eventual close
+    -- into a first-time, unreconciled write to Kindle.
+    self._automatic_sync_open_document = nil
     if not self.settings.sync_reading_state or not reading_state_sync:isAutomaticSyncEnabled() then
         return
     end
@@ -201,6 +206,7 @@ function KindlePlugin:onDocSettingsLoad(doc_settings, document)
     if not book or not book.source_path then
         return
     end
+    self._automatic_sync_open_document = document.file
 
     local cde_key = getBookCdeKey(book, doc_settings)
     local before_sync_percent = doc_settings:readSetting("percent_finished") or 0
@@ -317,6 +323,7 @@ function KindlePlugin:onCloseDocument()
         or not self.ui
         or not self.ui.document
         or not self.ui.doc_settings
+        or self._automatic_sync_open_document ~= self.ui.document.file
     then
         return
     end
@@ -513,11 +520,20 @@ function KindlePlugin:createSyncToggleMenuItem()
             self.settings.sync_reading_state = enabled
             reading_state_sync:setEnabled(enabled)
             self:saveSettings()
-            self:showInfo(
-                enabled and _("Reading state sync enabled\n\nKOReader and Kindle reading positions will be synced.")
-                    or _("Reading state sync disabled"),
-                4
-            )
+
+            local message
+            if enabled then
+                message = _("Reading state sync enabled\n\nKOReader and Kindle reading positions will be synced.")
+                if self.ui and self.ui.document and getMappedBook(self.ui.document) then
+                    message = message
+                        .. _(
+                            "\n\nFor the current Kindle book, sync will start the next time you open it so this session cannot write back without first reconciling its opening state."
+                        )
+                end
+            else
+                message = _("Reading state sync disabled")
+            end
+            self:showInfo(message, 4)
         end,
         separator = true,
     }
@@ -528,8 +544,9 @@ end
 function KindlePlugin:createManualSyncMenuItem()
     return {
         text = _("Sync all books now"),
+        help_text = _("Bulk sync uses persisted book settings. Close the current book first so it cannot race with KOReader's live reading state."),
         enabled_func = function()
-            return self.settings.sync_reading_state == true
+            return self.settings.sync_reading_state == true and not (self.ui and self.ui.document)
         end,
         callback = function()
             if not reading_state_sync:isEnabled() then
@@ -719,8 +736,12 @@ function KindlePlugin:createClearCacheMenuItem()
     return {
         text = _("Clear Kindle Cache"),
         help_text = _(
-            "Removes cached converted EPUBs and position metadata. Book access keys are preserved. " .. "Books will be re-converted on next access."
+            "Removes cached converted EPUBs and position metadata. Book access keys are preserved. "
+                .. "Books will be re-converted on next access. Close the current book before clearing the cache."
         ),
+        enabled_func = function()
+            return not (self.ui and self.ui.document)
+        end,
         callback = function()
             local stats = cache_manager:getCacheStats()
 

@@ -97,6 +97,9 @@ describe("native KOReader sync lifecycle", function()
         -- final SaveSettings occurs after CloseDocument.
         ui.dialog = ui
         instance = KindlePlugin:new({ ui = ui })
+        -- Close-focused tests model a reader session that entered with
+        -- automatic sync already active. DocSettingsLoad normally arms this.
+        instance._automatic_sync_open_document = document_path
         return instance
     end
 

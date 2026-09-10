@@ -209,8 +209,8 @@ describe("KindlePlugin", function()
         assert.is_false(menu_items.kindle_plugin.sub_item_table[2].enabled_func())
     end)
 
-    it("keeps the menu and sync settings reachable inside ReaderUI", function()
-        local instance = newPlugin(nil, {
+    it("keeps safe menu actions reachable inside ReaderUI and gates live-state hazards", function()
+        local instance = newPlugin({ sync_reading_state = true }, {
             document = { file = "/tmp/book.epub" },
             doc_settings = {},
             menu = { registerToMainMenu = function() end },
@@ -218,11 +218,38 @@ describe("KindlePlugin", function()
         local menu_items = {}
         instance:addToMainMenu(menu_items)
         assert.is_truthy(menu_items.kindle_plugin)
-        assert.is_truthy(menu_items.kindle_plugin.sub_item_table)
-        -- Browse stays tappable and explains that it needs the file browser.
-        assert.is_true(menu_items.kindle_plugin.sub_item_table[1].enabled_func())
-        menu_items.kindle_plugin.sub_item_table[1].callback()
+        local items = assert(menu_items.kindle_plugin.sub_item_table)
+
+        -- Browsing is safe because its handler performs normal ReaderUI
+        -- teardown first. Read-only/index and settings actions stay available.
+        assert.is_true(items[1].enabled_func()) -- Browse Kindle Library
+        assert.is_true(items[2].enabled_func()) -- Refresh Kindle Index
+        assert.is_nil(items[3].enabled_func) -- Clear Book Keys
+        assert.is_true(items[7].checked_func()) -- Sync reading state with Kindle
+        assert.is_true(items[9].enabled_func()) -- Sync behavior
+
+        -- These operate on persisted cache/DocSettings state and must not race
+        -- the live document.
+        assert.is_false(items[4].enabled_func()) -- Clear Kindle Cache
+        assert.is_false(items[8].enabled_func()) -- Sync all books now
+
+        items[1].callback()
         local info = UIManager._shown_widgets[#UIManager._shown_widgets]
         assert.is_truthy(info.text:match("file browser"))
+    end)
+
+    it("does not arm an unreconciled close push when sync is enabled mid-book", function()
+        local instance = newPlugin({ sync_reading_state = false }, {
+            document = { file = "/tmp/book.epub" },
+            doc_settings = {},
+            menu = { registerToMainMenu = function() end },
+        })
+
+        instance:createSyncToggleMenuItem().callback()
+        assert.is_true(instance.settings.sync_reading_state)
+        assert.is_nil(instance._automatic_sync_open_document)
+
+        instance:onCloseDocument()
+        assert.is_nil(instance._pending_close_sync)
     end)
 end)

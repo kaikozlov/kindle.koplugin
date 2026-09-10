@@ -39,7 +39,10 @@ A KOReader plugin that lets you browse and read your Kindle book library directl
 2. Under **Sync behavior**, also enable **Enable sync FROM Kindle TO KOReader** —
    it is off by default, and without it no pull (or pull prompt) ever happens.
    Choose the FROM/TO Kindle rules for newer and older progress. Sync TO Kindle
-   is enabled by default and applies silently
+   is enabled by default and applies silently. If sync or automatic sync is first
+   enabled while a Kindle book is already open, that reader session will not
+   write back on close; reopen the book once so its opening state can be
+   reconciled before automatic close sync begins.
 3. Exact reading position syncs whether the book is opened from Kindle Library,
    KOReader Bookshelf, Collections, or History; persisted cached EPUB paths are
    mapped back to their native source book automatically. If a derived EPUB was
@@ -52,6 +55,9 @@ KOReader cold-starts directly into a cached Kindle EPUB from History,
 Collections, or `lastfile`. On close, `CloseDocument` captures the mapped
 Kindle identity and the actual push runs from the following `SaveSettings`
 event, after ReaderRolling has stored the final XPointer and percentage.
+The Kindle Library submenu remains available inside ReaderUI, but **Clear Kindle
+Cache** and **Sync all books now** are disabled until the current book is closed
+because they operate on persisted files/state that must not race the live reader.
 **Ask me** is shown asynchronously after the reader is on-screen (for pulls) or
 teardown completes (for pushes); **Always sync** applies silently, and **Never**
 leaves the destination unchanged. A genuine two-sided exact-position conflict
