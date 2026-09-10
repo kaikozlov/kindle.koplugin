@@ -865,7 +865,7 @@ function KindlePlugin:createAboutMenuItem()
     return {
         text = _("About Kindle Library"),
         callback = function()
-            local books, _ = library_index:getBooks(false)
+            local books = library_index:getBooks(false)
             local total = books and #books or 0
             local convert_count = 0
             local direct_count = 0
@@ -918,9 +918,9 @@ function KindlePlugin:createRefreshLibraryMenuItem()
             return self.settings.enable_virtual_library ~= false
         end,
         callback = function()
-            local _, err = virtual_library:refresh(true)
-            if err then
-                self:showInfo(_("Failed to refresh Kindle library:\n") .. err)
+            local books, err = virtual_library:refresh(true)
+            if not books then
+                self:showInfo(_("Failed to refresh Kindle library:\n") .. (err or _("unknown error")))
                 return
             end
             self:showInfo(_("Kindle library refreshed."), 2)

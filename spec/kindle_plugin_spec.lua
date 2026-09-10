@@ -4,10 +4,14 @@ local helper = require("spec/test_helper")
 describe("KindlePlugin", function()
     local FileManager
     local KindleLibrary
+    local LibraryIndex
+    local VirtualLibrary
     local UIManager
     local instances
     local original_filemanager_instance
     local original_library_show
+    local original_library_get_books
+    local original_virtual_library_refresh
     local original_next_tick
 
     setup(function()
@@ -15,8 +19,12 @@ describe("KindlePlugin", function()
         UIManager = require("ui/uimanager")
         FileManager = require("apps/filemanager/filemanager")
         KindleLibrary = require("lua/kindle_library")
+        LibraryIndex = require("lua/library_index")
+        VirtualLibrary = require("lua/virtual_library")
         original_filemanager_instance = FileManager.instance
         original_library_show = KindleLibrary.show
+        original_library_get_books = LibraryIndex.getBooks
+        original_virtual_library_refresh = VirtualLibrary.refresh
         original_next_tick = UIManager.nextTick
     end)
 
@@ -35,6 +43,8 @@ describe("KindlePlugin", function()
         end
         FileManager.instance = original_filemanager_instance
         KindleLibrary.show = original_library_show
+        LibraryIndex.getBooks = original_library_get_books
+        VirtualLibrary.refresh = original_virtual_library_refresh
         UIManager.nextTick = original_next_tick
     end)
 
@@ -197,6 +207,46 @@ describe("KindlePlugin", function()
         assert.is_truthy(info.text:match("Failed to clear book keys"))
         assert.is_truthy(info.text:match("permission denied"))
         os.execute("rm -rf " .. cache_dir)
+    end)
+
+    it("opens About Kindle Library without shadowing gettext", function()
+        LibraryIndex.getBooks = function()
+            return {
+                { open_mode = "convert" },
+                { open_mode = "direct" },
+                { open_mode = "blocked" },
+            }
+        end
+
+        local instance = newPlugin()
+        UIManager:_reset()
+        instance:createAboutMenuItem().callback()
+
+        local info = UIManager._shown_widgets[#UIManager._shown_widgets]
+        assert.is_truthy(info)
+        assert.is_truthy(info.text:match("Kindle Virtual Library"))
+        assert.is_truthy(info.text:match("Total books: 3"))
+    end)
+
+    it("refreshes the Kindle index without shadowing gettext", function()
+        local instance = newPlugin()
+
+        VirtualLibrary.refresh = function()
+            return {}, nil
+        end
+        UIManager:_reset()
+        instance:createRefreshLibraryMenuItem().callback()
+        local info = UIManager._shown_widgets[#UIManager._shown_widgets]
+        assert.is_truthy(info.text:match("Kindle library refreshed"))
+
+        VirtualLibrary.refresh = function()
+            return nil, "refresh failed"
+        end
+        UIManager:_reset()
+        instance:createRefreshLibraryMenuItem().callback()
+        info = UIManager._shown_widgets[#UIManager._shown_widgets]
+        assert.is_truthy(info.text:match("Failed to refresh Kindle library"))
+        assert.is_truthy(info.text:match("refresh failed"))
     end)
 
     it("keeps the menu available while the library view is disabled", function()
