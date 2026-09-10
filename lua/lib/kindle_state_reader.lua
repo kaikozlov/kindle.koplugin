@@ -34,7 +34,7 @@ function KindleStateReader.readByPath(book_path)
     if not book_path or book_path == "" then
         return nil
     end
-    return KindleStateReader._read("p_location = ?", book_path)
+    return KindleStateReader._read("p_location = ? AND COALESCE(p_isArchived, 0) = 0", book_path)
 end
 
 ---
@@ -48,7 +48,10 @@ function KindleStateReader.readByCdeKey(cde_key)
     -- Downloaded Kindle books may have both a hidden source/cloud row and a
     -- visible local-file row with the same cdeKey. The native reader updates
     -- the local row, so use that row as the catalog view of device-local state.
-    return KindleStateReader._read("p_cdeKey = ? AND p_isLatestItem = 1 AND p_location IS NOT NULL AND p_location <> ''", cde_key)
+    return KindleStateReader._read(
+        "p_cdeKey = ? AND p_isLatestItem = 1 AND COALESCE(p_isArchived, 0) = 0 AND p_location IS NOT NULL AND p_location <> ''",
+        cde_key
+    )
 end
 
 --- Reads reading state for a catalog entry identified by p_uuid.
@@ -58,7 +61,7 @@ function KindleStateReader.readByUuid(uuid)
     if not uuid or uuid == "" then
         return nil
     end
-    return KindleStateReader._read("p_uuid = ?", uuid)
+    return KindleStateReader._read("p_uuid = ? AND COALESCE(p_isArchived, 0) = 0 AND p_location IS NOT NULL AND p_location <> ''", uuid)
 end
 
 ---
@@ -161,7 +164,7 @@ function KindleStateReader._readAllWithSQ3(SQ3)
         local stmt = conn:prepare(
             "SELECT p_cdeKey, p_cdeType, p_titles_0_nominal, p_percentFinished, p_lastAccess, p_location "
                 .. "FROM Entries WHERE p_cdeType IN ('EBOK','PDOC') AND p_isLatestItem = 1 "
-                .. "AND p_location IS NOT NULL AND p_type NOT LIKE '%Dictionary%'"
+                .. "AND COALESCE(p_isArchived, 0) = 0 AND p_location IS NOT NULL AND p_type NOT LIKE '%Dictionary%'"
         )
         if not stmt then
             return nil

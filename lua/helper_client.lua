@@ -159,7 +159,9 @@ function HelperClient:translateNativePosition(epub_path, long_position)
     return PositionMap.translate_native(map, long_position)
 end
 
---- Find every KRDS reading-position sidecar next to a Kindle book.
+--- Find Kindle Reader Data Store frequent-state files next to a KFX book.
+--- Current Kindle firmware explicitly reparses *.yjf on book open; .yjr is the
+--- rare-state store and is not a KFX last-page authority.
 local function positionSidecars(native_path)
     local stem = native_path:gsub("%.%w+$", "")
     local sidecar_dir = stem .. ".sdr"
@@ -173,7 +175,7 @@ local function positionSidecars(native_path)
     end
     for name in lfs.dir(sidecar_dir) do
         local extension = name:match("%.(%w+)$")
-        if extension == "yjf" or extension == "yjr" or extension == "azw3f" or extension == "azw3r" then
+        if extension == "yjf" then
             local path = sidecar_dir .. "/" .. name
             if lfs.attributes(path, "mode") == "file" then
                 table.insert(candidates, path)
@@ -372,10 +374,9 @@ function HelperClient:saveNativeProgress(content_key, native_path, position)
     local written_any = false
     local last_error
     for _, sidecar in ipairs(positionSidecars(native_path)) do
-        -- Only mutate KRDS files that actually expose a readable last-page
-        -- position. Kindle may keep sibling .yjr/.azw3r stores containing
-        -- highlights, preferences, metrics, etc.; those are not progress
-        -- authorities and must not be treated as failed position writes.
+        -- Only mutate a KFX frequent-state file that actually exposes a
+        -- readable last-page position. Rare-state .yjr files are never
+        -- candidates here, even if they happen to contain similar objects.
         if readSidecarPosition(sidecar) then
             local ok, write_error = writeSidecarPosition(sidecar, position.long, position.pid)
             if ok then

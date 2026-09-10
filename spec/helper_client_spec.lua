@@ -233,6 +233,48 @@ describe("HelperClient", function()
             os.remove(yjr_path)
         end)
 
+        it("ignores a position-bearing rare-state .yjr for KFX", function()
+            local yjr_path = tmpdir .. "/book.sdr/book.yjr"
+            local yjr_data = sidecar_store()
+            local yjr = assert(io.open(yjr_path, "wb"))
+            yjr:write(yjr_data)
+            yjr:close()
+
+            local client = HelperClient:new(client_opts)
+            local ok, err = client:saveNativeProgress("B007N6JEII", kfx_path, {
+                long = "ATwFAACbAAAA",
+                pid = 442741,
+                percent = 75.5,
+            })
+
+            assert.is_true(ok, err)
+            local unchanged = assert(io.open(yjr_path, "rb"))
+            assert.equals(yjr_data, unchanged:read("*a"))
+            unchanged:close()
+            os.remove(yjr_path)
+        end)
+
+        it("does not use .yjr as a KFX progress authority when .yjf is unavailable", function()
+            local yjr_path = tmpdir .. "/book.sdr/book.yjr"
+            local yjr = assert(io.open(yjr_path, "wb"))
+            yjr:write(sidecar_store())
+            yjr:close()
+            os.remove(tmpdir .. "/book.sdr/book.yjf")
+
+            local client = HelperClient:new(client_opts)
+            local native, err = client:readNativeProgress("B007N6JEII", kfx_path)
+
+            assert.is_nil(native)
+            assert.is_string(err)
+            assert.is_false(client:nativeProgressAvailable("B007N6JEII", kfx_path))
+
+            os.remove(yjr_path)
+            -- Recreate the normal fixture for after_each.
+            local sidecar = assert(io.open(tmpdir .. "/book.sdr/book.yjf", "wb"))
+            sidecar:write(sidecar_store())
+            sidecar:close()
+        end)
+
         it("should expose a native progress runner seam", function()
             local client = HelperClient:new({
                 native_progress_runner = function(asin, path, position)
