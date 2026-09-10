@@ -4,10 +4,10 @@
 -- stops Amazon's content-catalog service.  This module keeps that one direct
 -- SQLite path aligned with the firmware contract where writes need more than
 -- stock SQLite provides:
---   * install Amazon's real "icu" comparator on KOReader's sqlite3* before
---     changing p_lastAccess (the EntriesLastAccessIndex depends on it), and
---   * register the current firmware's audit-trigger scalar functions only when
---     the instantiated cc.db actually has Entries triggers.
+--   * reconstruct Kindle's firmware-defined "icu" collation with generic system
+--     ICU before changing p_lastAccess (EntriesLastAccessIndex depends on it), and
+--   * register the current firmware's audit-trigger scalar functions so
+--     trigger-bearing schemas can prepare the same UPDATE without Amazon ccat.
 
 local ffi = require("ffi")
 local json = require("json")
@@ -16,19 +16,11 @@ local logger = require("logger")
 
 local KindleCatalogDb = {}
 
-local LAST_ACCESS_INDEX_SQL = "SELECT sql FROM sqlite_master WHERE type='index' AND name='EntriesLastAccessIndex'"
-local ENTRY_TRIGGER_COUNT_SQL = "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND tbl_name='Entries'"
-local ENTRIES_TABLE_SQL = "SELECT sql FROM sqlite_master WHERE type='table' AND name='Entries'"
-local COLLATION_SQL = "SELECT collation FROM Collation LIMIT 1"
-local LOCALE_SQL = "SELECT locale FROM Locale LIMIT 1"
-
-local function queryScalar(conn, sql)
-    local ok, value = pcall(conn.rowexec, conn, sql)
-    if not ok then
-        return false, value
-    end
-    return true, value
-end
+local COLLATION_STATE_SQL = [[
+SELECT
+    (SELECT locale FROM Locale LIMIT 1),
+    (SELECT collation FROM Collation LIMIT 1)
+]]
 
 local function jsonString(value)
     return json.encode(tostring(value))
@@ -67,8 +59,9 @@ local function encodeFlatObject(fields)
 end
 
 -- These callbacks mirror the functions installed by 5.19.6
--- /usr/lib/ccat/sql_functions.lua.  They are registered only when Entries
--- triggers exist, so the ordinary schema pays no compatibility cost.
+-- /usr/lib/ccat/sql_functions.lua. Registering them is cheaper than scanning
+-- sqlite_master for trigger-bearing schema variants, and unused functions are
+-- inert on schemas without those triggers.
 local firmwareSqlFunctions = {
     get_entry_external_id = function(p_type, p_uuid, p_cde_key, p_cde_type, p_cde_group)
         if not p_type then
@@ -194,24 +187,16 @@ local firmwareSqlFunctions = {
 }
 
 local function registerEntryTriggerFunctions(conn)
-    local ok, trigger_count = queryScalar(conn, ENTRY_TRIGGER_COUNT_SQL)
-    if not ok then
-        return false, "cannot inspect Kindle catalog triggers: " .. tostring(trigger_count)
-    end
-    if (tonumber(trigger_count) or 0) == 0 then
-        return true
-    end
     if type(conn.setscalar) ~= "function" then
-        return false, "Kindle catalog has Entries triggers but SQLite scalar registration is unavailable"
+        return
     end
-
     for name, callback in pairs(firmwareSqlFunctions) do
         conn:setscalar(name, callback)
     end
-    return true
 end
 
 local icu_cdefs = {}
+local loaded_icu_runtime
 
 -- Reverse engineered from Kindle 5.19.6 libccat::localeMappings.  The first
 -- matching locale prefix is opened from ICU's short-string syntax; any suffix
@@ -239,7 +224,6 @@ local function declareBaseFfi()
         ffi.cdef,
         [[
             typedef int (*kindle_sqlite_compare_cb)(void *, int, const void *, int, const void *);
-            char *setlocale(int category, const char *locale);
             int sqlite3_create_collation(
                 void *db,
                 const char *name,
@@ -287,8 +271,6 @@ local function declareIcu(major)
             const uint16_t *ucol_getRules_%d(const void *collator, int32_t *length);
             int32_t ucol_getReorderCodes_%d(const void *collator, int32_t *dest, int32_t dest_capacity, int32_t *status);
             void ucol_setReorderCodes_%d(void *collator, const int32_t *reorder_codes, int32_t reorder_codes_length, int32_t *status);
-            const char *uloc_getDefault_%d(void);
-            void uloc_setDefault_%d(const char *locale_id, int32_t *status);
             int32_t uloc_getLanguage_%d(const char *locale_id, char *language, int32_t language_capacity, int32_t *status);
             int32_t uscript_getCode_%d(const char *name_or_abbr_or_locale, int32_t *fill_in, int32_t capacity, int32_t *status);
             int32_t u_strlen_%d(const uint16_t *s);
@@ -321,8 +303,6 @@ local function declareIcu(major)
         major,
         major,
         major,
-        major,
-        major,
         major
     )
     local ok, err = pcall(ffi.cdef, declaration)
@@ -333,32 +313,98 @@ local function declareIcu(major)
     return true
 end
 
-local function findIcuMajor()
-    local major
+local function buildIcuCandidates(names)
+    local majors = {}
+
+    local function record(kind, name)
+        local stem = kind == "i18n" and "libicui18n" or "libicuuc"
+        local major = tonumber(name:match("^" .. stem .. "%.so%.(%d+)$") or name:match("^" .. stem .. "%.so%.(%d+)%..+$"))
+        if not major then
+            return
+        end
+
+        local entry = majors[major] or { major = major }
+        local exact_major_name = stem .. ".so." .. major
+        if not entry[kind] or name == exact_major_name then
+            entry[kind] = "/usr/lib/" .. name
+        end
+        majors[major] = entry
+    end
+
+    for _, name in ipairs(names) do
+        record("i18n", name)
+        record("uc", name)
+    end
+
+    local candidates = {}
+    for _, entry in pairs(majors) do
+        if entry.i18n and entry.uc then
+            table.insert(candidates, entry)
+        end
+    end
+    table.sort(candidates, function(a, b)
+        return a.major > b.major
+    end)
+    return candidates
+end
+
+local function findIcuCandidates()
+    local names = {}
     local ok = pcall(function()
         for name in lfs.dir("/usr/lib") do
-            local candidate = tonumber(name:match("^libicui18n%.so%.(%d+)$") or name:match("^libicui18n%.so%.(%d+)%..*$"))
-            if candidate and (not major or candidate > major) then
-                major = candidate
-            end
+            table.insert(names, name)
         end
     end)
-    return ok and major or nil
+    if not ok then
+        return {}
+    end
+    return buildIcuCandidates(names)
+end
+
+local REQUIRED_I18N_SYMBOLS = {
+    "ucol_open",
+    "ucol_openFromShortString",
+    "ucol_openRules",
+    "ucol_close",
+    "ucol_strcollUTF8",
+    "ucol_setAttribute",
+    "ucol_getAttribute",
+    "ucol_getStrength",
+    "ucol_getRules",
+    "ucol_getReorderCodes",
+    "ucol_setReorderCodes",
+}
+
+local REQUIRED_UC_SYMBOLS = {
+    "uloc_getLanguage",
+    "uscript_getCode",
+    "u_strlen",
+    "u_strcpy",
+    "u_strcat",
+    "u_strstr",
+    "u_strFromUTF8",
+}
+
+local function hasVersionedSymbols(handle, names, major)
+    for _, name in ipairs(names) do
+        local ok = pcall(function()
+            return handle[name .. "_" .. major]
+        end)
+        if not ok then
+            return false, name .. "_" .. major
+        end
+    end
+    return true
 end
 
 local function loadSystemIcu()
+    if loaded_icu_runtime then
+        return loaded_icu_runtime.sqlite, loaded_icu_runtime.i18n, loaded_icu_runtime.uc, loaded_icu_runtime.major
+    end
+
     local base_ok, base_error = declareBaseFfi()
     if not base_ok then
         return nil, nil, nil, "cannot declare Kindle catalog ABI: " .. tostring(base_error)
-    end
-
-    local major = findIcuMajor()
-    if not major then
-        return nil, nil, nil, "cannot determine Kindle ICU version"
-    end
-    local declared, declaration_error = declareIcu(major)
-    if not declared then
-        return nil, nil, nil, "cannot declare Kindle ICU ABI: " .. tostring(declaration_error)
     end
 
     if type(ffi.loadlib) ~= "function" then
@@ -372,25 +418,39 @@ local function loadSystemIcu()
     if not sqlite_ok then
         return nil, nil, nil, "cannot load KOReader SQLite: " .. tostring(sqlite)
     end
-    local icui18n_ok, icui18n = pcall(ffi.load, "/usr/lib/libicui18n.so", true)
-    if not icui18n_ok then
-        return nil, nil, nil, "cannot load Kindle ICU i18n: " .. tostring(icui18n)
-    end
-    local icuuc_ok, icuuc = pcall(ffi.load, "/usr/lib/libicuuc.so", true)
-    if not icuuc_ok then
-        return nil, nil, nil, "cannot load Kindle ICU core: " .. tostring(icuuc)
-    end
-    return sqlite, icui18n, icuuc, major
-end
 
-local function restoreLocaleState(old_collate, old_icu, icuuc, major)
-    if old_collate then
-        ffi.C.setlocale(3, old_collate) -- LC_COLLATE
+    local failures = {}
+    for _, candidate in ipairs(findIcuCandidates()) do
+        local major = candidate.major
+        local declared, declaration_error = declareIcu(major)
+        if declared then
+            local i18n_ok, icui18n = pcall(ffi.load, candidate.i18n)
+            local uc_ok, icuuc = pcall(ffi.load, candidate.uc)
+            if i18n_ok and uc_ok then
+                local i18n_symbols_ok, missing_i18n = hasVersionedSymbols(icui18n, REQUIRED_I18N_SYMBOLS, major)
+                local uc_symbols_ok, missing_uc = hasVersionedSymbols(icuuc, REQUIRED_UC_SYMBOLS, major)
+                if i18n_symbols_ok and uc_symbols_ok then
+                    loaded_icu_runtime = {
+                        sqlite = sqlite,
+                        i18n = icui18n,
+                        uc = icuuc,
+                        major = major,
+                    }
+                    return sqlite, icui18n, icuuc, major
+                end
+                table.insert(failures, "ICU " .. major .. " missing " .. tostring(missing_i18n or missing_uc))
+            else
+                table.insert(failures, "ICU " .. major .. " load failed")
+            end
+        else
+            table.insert(failures, "ICU " .. major .. " ABI declaration failed: " .. tostring(declaration_error))
+        end
     end
-    if old_icu then
-        local status = ffi.new("int32_t[1]", U_ZERO_ERROR)
-        icuuc["uloc_setDefault_" .. major](old_icu, status)
+
+    if #failures == 0 then
+        return nil, nil, nil, "cannot find a matched Kindle ICU i18n/core library pair"
     end
+    return nil, nil, nil, table.concat(failures, "; ")
 end
 
 local function matchingLocaleMapping(locale)
@@ -439,7 +499,12 @@ local function applyShortStringReorder(collator, suffix, icui18n, icuuc, major)
     local status = ffi.new("int32_t[1]", U_ZERO_ERROR)
     icui18n["ucol_setReorderCodes_" .. major](collator, codes, count, status)
     if tonumber(status[0]) > U_ZERO_ERROR then
-        return false, "cannot apply Kindle ICU reorder codes"
+        -- Kindle 5.19.6 treats a reorder failure as non-fatal and keeps the
+        -- collator produced by ucol_openFromShortString(). This is observable
+        -- for Lja_S4_HO:Hira,Kana,Hani: ICU rejects the explicit vector, while
+        -- the short-string collator already contains the intended Japanese
+        -- ordering. Match that behavior instead of disabling p_lastAccess.
+        return true
     end
     return true
 end
@@ -570,30 +635,15 @@ local function appendStoredPreference(collator, preference, icui18n, icuuc, majo
 end
 
 local function createKindleCollator(conn, icui18n, icuuc, major)
-    local locale_ok, locale = queryScalar(conn, LOCALE_SQL)
-    if not locale_ok or type(locale) ~= "string" or locale == "" then
-        return nil, "Kindle catalog locale is unavailable"
-    end
-    local collation_ok, stored_collation = queryScalar(conn, COLLATION_SQL)
-    if not collation_ok then
-        return nil, "Kindle catalog preference collation is unavailable"
+    local state_ok, locale, stored_collation = pcall(conn.rowexec, conn, COLLATION_STATE_SQL)
+    if not state_ok or type(locale) ~= "string" or locale == "" then
+        return nil, "Kindle catalog locale/collation state is unavailable"
     end
 
-    local old_collate_ptr = ffi.C.setlocale(3, nil) -- LC_COLLATE
-    local old_collate = old_collate_ptr ~= nil and ffi.string(old_collate_ptr) or nil
-    local old_icu_ptr = icuuc["uloc_getDefault_" .. major]()
-    local old_icu = old_icu_ptr ~= nil and ffi.string(old_icu_ptr) or nil
-
-    if ffi.C.setlocale(3, locale) == nil then
-        return nil, "cannot activate Kindle catalog locale " .. locale
-    end
-    local status = ffi.new("int32_t[1]", U_ZERO_ERROR)
-    icuuc["uloc_setDefault_" .. major](locale, status)
-    if tonumber(status[0]) > U_ZERO_ERROR then
-        restoreLocaleState(old_collate, old_icu, icuuc, major)
-        return nil, "cannot set Kindle ICU default locale " .. locale
-    end
-
+    -- Every constructor input is explicit: the catalog's stored locale, the
+    -- firmware-derived locale mapping, and its stored preference collation.
+    -- Do not mutate libc's process locale or ICU's process-global default;
+    -- doing so is unnecessary and could race unrelated KOReader/native work.
     local collator, open_error = openBaseCollator(locale, icui18n, icuuc, major)
     if collator then
         local base_collator = collator
@@ -602,7 +652,6 @@ local function createKindleCollator(conn, icui18n, icuuc, major)
             icui18n["ucol_close_" .. major](base_collator)
         end
     end
-    restoreLocaleState(old_collate, old_icu, icuuc, major)
     return collator, open_error
 end
 
@@ -671,45 +720,30 @@ end
 
 KindleCatalogDb._locale_mappings = KINDLE_LOCALE_MAPPINGS
 KindleCatalogDb._matching_locale_mapping = matchingLocaleMapping
+KindleCatalogDb._build_icu_candidates = buildIcuCandidates
+KindleCatalogDb._apply_short_string_reorder = applyShortStringReorder
 
 --- Prepare an already write-locked cc.db connection for an Entries update.
---- The caller must BEGIN IMMEDIATE first so Locale/Collation cannot be
---- reindexed between inspection and the update.
+--- The caller must BEGIN IMMEDIATE first so Locale/Collation cannot change
+--- between comparator construction and the update.
 ---
 --- Returns a context with write_last_access and close(), or nil + error when
 --- trigger semantics cannot be preserved.
 function KindleCatalogDb.prepareWriteConnection(conn)
-    local triggers_ok, trigger_error = registerEntryTriggerFunctions(conn)
-    if not triggers_ok then
-        return nil, trigger_error
-    end
-
-    local index_ok, index_sql = queryScalar(conn, LAST_ACCESS_INDEX_SQL)
-    if not index_ok then
-        return nil, "cannot inspect EntriesLastAccessIndex: " .. tostring(index_sql)
-    end
+    -- Register directly; unused functions are inert and this avoids a schema scan.
+    -- On schemas without these triggers the functions are simply unused; on a
+    -- schema that needs them, SQLite has the exact firmware callbacks available.
+    registerEntryTriggerFunctions(conn)
 
     local cleanup
-    local write_last_access = true
-    if type(index_sql) == "string" and index_sql ~= "" then
-        local table_ok, table_sql = queryScalar(conn, ENTRIES_TABLE_SQL)
-        if not table_ok then
-            return nil, "cannot inspect Entries schema: " .. tostring(table_sql)
-        end
-        local index_lower = index_sql:lower()
-        local table_lower = type(table_sql) == "string" and table_sql:lower() or ""
-        local inherited_icu = index_lower:find("p_titles_0_collation", 1, true) and table_lower:match("p_titles_0_collation%s+collate%s+icu")
-        local explicit_icu = index_lower:find("collate icu", 1, true)
-        if inherited_icu or explicit_icu then
-            local call_ok, installed, result = pcall(KindleCatalogDb.installIcuCollation, conn)
-            if call_ok and installed then
-                cleanup = result
-            else
-                write_last_access = false
-                local reason = call_ok and result or installed
-                logger.warn("KindlePlugin: Kindle ICU collation unavailable; leaving p_lastAccess unchanged:", reason)
-            end
-        end
+    local write_last_access = false
+    local call_ok, installed, result = pcall(KindleCatalogDb.installIcuCollation, conn)
+    if call_ok and installed then
+        cleanup = result
+        write_last_access = true
+    else
+        local reason = call_ok and result or installed
+        logger.warn("KindlePlugin: Kindle ICU collation unavailable; leaving p_lastAccess unchanged:", reason)
     end
 
     return {
@@ -724,12 +758,5 @@ function KindleCatalogDb.prepareWriteConnection(conn)
 end
 
 KindleCatalogDb._firmware_sql_functions = firmwareSqlFunctions
-KindleCatalogDb._queries = {
-    entry_trigger_count = ENTRY_TRIGGER_COUNT_SQL,
-    last_access_index = LAST_ACCESS_INDEX_SQL,
-    entries_table = ENTRIES_TABLE_SQL,
-    collation = COLLATION_SQL,
-    locale = LOCALE_SQL,
-}
 
 return KindleCatalogDb

@@ -6,6 +6,7 @@ local helper = require("spec/test_helper")
 
 describe("KindleStateWriter", function()
     local KindleStateWriter
+    local CatalogDb
     local SQ3
 
     setup(function()
@@ -15,11 +16,19 @@ describe("KindleStateWriter", function()
     before_each(function()
         helper.before_each()
         SQ3 = helper.install_sqlite_mock()
+        package.loaded["lua/lib/kindle_catalog_db"] = nil
+        CatalogDb = require("lua/lib/kindle_catalog_db")
+        CatalogDb._test_icu_installer = function()
+            return true, function() end
+        end
         package.loaded["lua/lib/kindle_state_writer"] = nil
         KindleStateWriter = require("lua/lib/kindle_state_writer")
     end)
 
     after_each(function()
+        if CatalogDb then
+            CatalogDb._test_icu_installer = nil
+        end
         helper.reset_state()
     end)
 
@@ -118,7 +127,6 @@ describe("KindleStateWriter", function()
 
     describe("firmware-aware connection setup", function()
         it("falls back to progress-only fields when Amazon ICU cannot be attached", function()
-            local CatalogDb = require("lua/lib/kindle_catalog_db")
             local original = CatalogDb.prepareWriteConnection
             CatalogDb.prepareWriteConnection = function()
                 return { write_last_access = false, close = function() end }
@@ -135,7 +143,6 @@ describe("KindleStateWriter", function()
         end)
 
         it("rolls back when catalog connection semantics cannot be preserved", function()
-            local CatalogDb = require("lua/lib/kindle_catalog_db")
             local original = CatalogDb.prepareWriteConnection
             CatalogDb.prepareWriteConnection = function()
                 return nil, "unsupported trigger contract"

@@ -45,24 +45,58 @@ describe("KindleCatalogDb", function()
         assert.is_nil(CatalogDb._matching_locale_mapping("en_US.utf8"))
     end)
 
-    it("does no compatibility work when the instantiated schema needs none", function()
-        local q = CatalogDb._queries
-        local callbacks = {}
-        local conn = fakeConnection({
-            [q.entry_trigger_count] = 0,
-            [q.last_access_index] = nil,
-        }, callbacks)
+    it("pairs ICU i18n/core libraries by major instead of trusting the highest filename", function()
+        local candidates = CatalogDb._build_icu_candidates({
+            "libicui18n.so.72",
+            "libicuuc.so.71",
+            "libicui18n.so.65.1",
+            "libicui18n.so.65",
+            "libicuuc.so.65.1",
+            "libicuuc.so.65",
+            "libicui18n.so.60.2",
+            "libicuuc.so.60.3",
+        })
 
-        local context, err = CatalogDb.prepareWriteConnection(conn)
-
-        assert.is_nil(err)
-        assert.is_true(context.write_last_access)
-        assert.same({}, callbacks)
-        context.close()
+        assert.equals(2, #candidates)
+        assert.same({
+            major = 65,
+            i18n = "/usr/lib/libicui18n.so.65",
+            uc = "/usr/lib/libicuuc.so.65",
+        }, candidates[1])
+        assert.same({
+            major = 60,
+            i18n = "/usr/lib/libicui18n.so.60.2",
+            uc = "/usr/lib/libicuuc.so.60.3",
+        }, candidates[2])
     end)
 
-    it("detects ICU inherited by EntriesLastAccessIndex from the column schema", function()
-        local q = CatalogDb._queries
+    it("matches firmware behavior when Japanese explicit reorder codes are rejected", function()
+        local script_codes = { Hira = 20, Kana = 22, Hani = 17 }
+        local applied
+        local icuuc = {
+            uscript_getCode_65 = function(name, output, _, status)
+                output[0] = assert(script_codes[name])
+                status[0] = 0
+                return 1
+            end,
+        }
+        local icui18n = {
+            ucol_setReorderCodes_65 = function(_, codes, count, status)
+                applied = {}
+                for i = 0, count - 1 do
+                    table.insert(applied, tonumber(codes[i]))
+                end
+                status[0] = 1 -- U_ILLEGAL_ARGUMENT_ERROR on ICU 65 for this vector.
+            end,
+        }
+
+        local ok, err = CatalogDb._apply_short_string_reorder({}, "Hira,Kana,Hani", icui18n, icuuc, 65)
+
+        assert.is_true(ok, err)
+        assert.same({ 20, 22, 17, 0x1004 }, applied)
+    end)
+
+    it("installs ICU directly without scanning catalog indexes", function()
         local installed = false
         local cleaned = false
         CatalogDb._test_icu_installer = function()
@@ -71,30 +105,31 @@ describe("KindleCatalogDb", function()
                 cleaned = true
             end
         end
-        local conn = fakeConnection({
-            [q.entry_trigger_count] = 0,
-            [q.last_access_index] = "CREATE INDEX EntriesLastAccessIndex ON Entries (p_lastAccess DESC, p_titles_0_collation)",
-            [q.entries_table] = "CREATE TABLE Entries (p_titles_0_collation COLLATE icu, p_lastAccess)",
-        })
+        local callbacks = {}
+        local conn = fakeConnection({}, callbacks)
+        conn.rowexec = function()
+            error("unexpected catalog scan")
+        end
 
-        local context = assert(CatalogDb.prepareWriteConnection(conn))
+        local context, err = CatalogDb.prepareWriteConnection(conn)
 
+        assert.is_nil(err)
         assert.is_true(installed)
         assert.is_true(context.write_last_access)
+        assert.is_function(callbacks.get_entry_external_id)
+        assert.is_function(callbacks.get_entry_change_type)
+        assert.is_function(callbacks.get_companion_relation_external_id)
+        assert.is_function(callbacks.build_merge_changes)
+        assert.is_function(callbacks.build_merge_changes_delta)
         context.close()
         assert.is_true(cleaned)
     end)
 
     it("falls back to progress-only writes if native ICU setup raises", function()
-        local q = CatalogDb._queries
         CatalogDb._test_icu_installer = function()
             error("missing firmware symbol")
         end
-        local conn = fakeConnection({
-            [q.entry_trigger_count] = 0,
-            [q.last_access_index] = "CREATE INDEX EntriesLastAccessIndex ON Entries (p_lastAccess DESC, p_titles_0_collation)",
-            [q.entries_table] = "CREATE TABLE Entries (p_titles_0_collation COLLATE icu, p_lastAccess)",
-        })
+        local conn = fakeConnection({})
 
         local context = assert(CatalogDb.prepareWriteConnection(conn))
 
@@ -102,28 +137,22 @@ describe("KindleCatalogDb", function()
     end)
 
     it("leaves p_lastAccess untouched instead of faking ICU when native registration fails", function()
-        local q = CatalogDb._queries
         CatalogDb._test_icu_installer = function()
             return false, "native ICU unavailable"
         end
-        local conn = fakeConnection({
-            [q.entry_trigger_count] = 0,
-            [q.last_access_index] = "CREATE INDEX EntriesLastAccessIndex ON Entries (p_lastAccess DESC, p_titles_0_collation)",
-            [q.entries_table] = "CREATE TABLE Entries (p_titles_0_collation COLLATE icu, p_lastAccess)",
-        })
+        local conn = fakeConnection({})
 
         local context = assert(CatalogDb.prepareWriteConnection(conn))
 
         assert.is_false(context.write_last_access)
     end)
 
-    it("registers real firmware audit functions only when Entries triggers exist", function()
-        local q = CatalogDb._queries
+    it("registers the firmware trigger functions without a schema scan", function()
+        CatalogDb._test_icu_installer = function()
+            return true, function() end
+        end
         local callbacks = {}
-        local conn = fakeConnection({
-            [q.entry_trigger_count] = 1,
-            [q.last_access_index] = nil,
-        }, callbacks)
+        local conn = fakeConnection({}, callbacks)
 
         assert(CatalogDb.prepareWriteConnection(conn))
 
@@ -141,31 +170,5 @@ describe("KindleCatalogDb", function()
         assert.equals(200, delta.p_lastAccess)
         assert.equals(6, delta.p_readState)
         assert.is_nil(delta.p_conversionStatus)
-    end)
-
-    it("fails closed when trigger semantics cannot be installed", function()
-        local q = CatalogDb._queries
-        local conn = fakeConnection({
-            [q.entry_trigger_count] = 1,
-            [q.last_access_index] = nil,
-        })
-
-        local context, err = CatalogDb.prepareWriteConnection(conn)
-
-        assert.is_nil(context)
-        assert.is_string(err)
-        assert.is_truthy(err:find("scalar registration", 1, true))
-    end)
-
-    it("fails closed when the catalog schema cannot be inspected", function()
-        local q = CatalogDb._queries
-        local conn = fakeConnection({
-            [q.entry_trigger_count] = { error = "schema unavailable" },
-        })
-
-        local context, err = CatalogDb.prepareWriteConnection(conn)
-
-        assert.is_nil(context)
-        assert.is_truthy(err:find("cannot inspect Kindle catalog triggers", 1, true))
     end)
 end)

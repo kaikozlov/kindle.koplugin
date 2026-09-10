@@ -91,7 +91,7 @@ end
 
 --- Write state using ljsqlite3 while preserving the instantiated firmware
 --- schema's collation and trigger requirements. p_lastAccess is included when
---- the real Amazon ICU comparator can be attached; otherwise only the two
+--- the firmware-equivalent ICU comparator can be registered; otherwise only the two
 --- fields that do not touch the ICU-backed index are changed.
 function KindleStateWriter._writeWithSQ3(SQ3, where_clause, where_value, percent_read, read_state, timestamp)
     local conn = SQ3.open(CC_DB_PATH)
