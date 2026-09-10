@@ -126,7 +126,6 @@ User selects a book
 │       ├── kindle_catalog_db.lua    ← firmware-aware SQLite/ICU connection setup
 │       ├── kindle_state_reader.lua
 │       ├── kindle_state_writer.lua
-│       ├── status_converter.lua
 │       └── sync_decision_maker.lua
 │
 ├── python/

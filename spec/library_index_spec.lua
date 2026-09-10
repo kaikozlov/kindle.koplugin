@@ -5,12 +5,14 @@ local helper = require("spec/test_helper")
 
 describe("LibraryIndex", function()
     local LibraryIndex
+    local CatalogDb
     local lfs
     local SQ3
 
     setup(function()
         helper.setup_complete()
         LibraryIndex = require("lua/library_index")
+        CatalogDb = require("lua/lib/kindle_catalog_db")
         lfs = require("libs/libkoreader-lfs")
     end)
 
@@ -19,11 +21,15 @@ describe("LibraryIndex", function()
         LibraryIndex = require("lua/library_index")
         helper.before_each()
         SQ3 = helper.install_sqlite_mock()
+        CatalogDb._test_icu_installer = function()
+            return true, function() end
+        end
         -- cc.db present by default; individual tests opt out.
         lfs._setFileState("/var/local/cc.db", { exists = true, mode = "file" })
     end)
 
     after_each(function()
+        CatalogDb._test_icu_installer = nil
         lfs._clearFileStates()
         SQ3._reset()
     end)
@@ -51,7 +57,7 @@ describe("LibraryIndex", function()
 
     describe("refresh", function()
         it("scans visible catalog entries through cc.db", function()
-            SQ3._setMockResults(mockCatalogRows({ "Beta Book", "Alpha Book" }))
+            SQ3._setMockResults(mockCatalogRows({ "Alpha Book", "Beta Book" }))
 
             local idx = LibraryIndex:new()
             idx:setSettings({ index_ttl_seconds = 0 })
@@ -62,6 +68,25 @@ describe("LibraryIndex", function()
             assert.equals(2, #books)
             assert.equals("Alpha Book", books[1].display_name)
             assert.equals("Beta Book", books[2].display_name)
+        end)
+
+        it("preserves Kindle catalog order instead of re-sorting display titles", function()
+            local idx = LibraryIndex:new({
+                isAvailable = function()
+                    return true
+                end,
+                scan = function()
+                    return {
+                        { display_name = "The Familiars", sort_key = "Familiars The" },
+                        { display_name = "Elvis and the Underdogs", sort_key = "Elvis and the Underdogs" },
+                    }
+                end,
+            })
+
+            local books = assert(idx:refresh(true))
+
+            assert.equals("The Familiars", books[1].display_name)
+            assert.equals("Elvis and the Underdogs", books[2].display_name)
         end)
 
         it("should return cached books when within TTL", function()

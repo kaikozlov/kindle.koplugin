@@ -40,9 +40,9 @@ describe("SyncDecisionMaker", function()
             assert.is_true(SyncDecisionMaker.areBothSidesComplete(kindle_state, 1.0, nil))
         end)
 
-        it("should return true when kr status is finished even with lower percent", function()
+        it("requires Kindle completion percentage regardless of unrelated read-state status", function()
             local kindle_state = { status = "complete", percent_read = 95 }
-            assert.is_true(SyncDecisionMaker.areBothSidesComplete(kindle_state, 0.9, "finished"))
+            assert.is_false(SyncDecisionMaker.areBothSidesComplete(kindle_state, 0.9, "finished"))
         end)
 
         it("should return false when only one side is complete", function()

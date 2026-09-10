@@ -3,6 +3,7 @@
 --- Provides the catalog identity, metadata, DRM status, and local source paths
 --- that the Kindle's own scanner has already indexed.
 
+local KindleCatalogDb = require("lua/lib/kindle_catalog_db")
 local logger = require("logger")
 
 local CcDbScanner = {}
@@ -18,6 +19,7 @@ SELECT
     p_uuid,
     p_location,
     p_titles_0_nominal,
+    p_titles_0_collation,
     j_credits,
     p_mimeType,
     p_cdeKey,
@@ -29,7 +31,7 @@ WHERE p_type = 'Entry:Item'
     AND p_mimeType IN ('application/x-kfx-ebook', 'application/x-mobipocket-ebook')
     AND p_isVisibleInHome = 1
     AND COALESCE(p_isArchived, 0) = 0
-ORDER BY p_titles_0_nominal
+ORDER BY p_titles_0_collation, p_credits_0_name_collation, p_publicationDate DESC
 ]]
 
 function CcDbScanner:new()
@@ -103,11 +105,20 @@ function CcDbScanner:scan()
     end
 
     local results, nrow
+    local collation_cleanup
     local ok, db_err = pcall(function()
+        local installed, result = KindleCatalogDb.installIcuCollation(conn)
+        if not installed then
+            error("Kindle ICU collation unavailable: " .. tostring(result))
+        end
+        collation_cleanup = result
         results, nrow = conn:exec(QUERY)
     end)
 
     conn:close()
+    if collation_cleanup then
+        pcall(collation_cleanup)
+    end
 
     if not ok then
         return nil, "cc.db query failed: " .. tostring(db_err)
@@ -124,6 +135,7 @@ function CcDbScanner:scan()
         local uuid = results.p_uuid[i]
         local location = results.p_location[i]
         local title = results.p_titles_0_nominal[i] or "Untitled"
+        local sort_key = results.p_titles_0_collation and results.p_titles_0_collation[i] or title
         local mime_type = results.p_mimeType[i] or ""
         local cde_key = results.p_cdeKey[i] or ""
         local is_drm = results.p_isDRMProtected[i]
@@ -146,6 +158,7 @@ function CcDbScanner:scan()
             title = title,
             authors = authors,
             display_name = title,
+            sort_key = sort_key,
             cde_key = cde_key,
             open_mode = open_mode,
             source_size = tonumber(disk_usage) or tonumber(content_size) or 0,

@@ -1,11 +1,14 @@
--- Kindle cc.db state reader.
+-- Kindle cc.db progress reader.
 -- Reads reading progress from Kindle's content catalog SQLite database
 -- through KOReader's bundled lua-ljsqlite3.
 -- DB location: /var/local/cc.db
 -- Key table: Entries
--- Key columns: p_percentFinished, p_lastAccess, p_readState, p_cdeKey, p_location
+-- Key columns: p_percentFinished, p_lastAccess, p_cdeKey, p_location
+--
+-- p_readState is intentionally excluded. Kindle read/unread state is an
+-- independent state machine; KOReader's coarse summary status is derived from
+-- progress only so it cannot distort position synchronization.
 
-local StatusConverter = require("lua/lib/status_converter")
 local logger = require("logger")
 
 local KindleStateReader = {}
@@ -26,10 +29,18 @@ local function openSqlite()
     return nil
 end
 
----
---- Reads reading state from Kindle cc.db for a book identified by file path.
+local function progressStatus(percent_finished)
+    if percent_finished <= 0 then
+        return ""
+    elseif percent_finished >= 100 then
+        return "complete"
+    end
+    return "reading"
+end
+
+--- Reads progress from cc.db for a book identified by file path.
 --- @param book_path string: File path on device (matched against p_location).
---- @return table|nil: State table with percent_read, timestamp, status, kindle_status, title; or nil on error.
+--- @return table|nil: State table with percent_read, timestamp, status, title; or nil on error.
 function KindleStateReader.readByPath(book_path)
     if not book_path or book_path == "" then
         return nil
@@ -37,10 +48,9 @@ function KindleStateReader.readByPath(book_path)
     return KindleStateReader._read("p_location = ? AND COALESCE(p_isArchived, 0) = 0", book_path)
 end
 
----
---- Reads reading state from Kindle cc.db for a book identified by ASIN/cdeKey.
+--- Reads progress from cc.db for a book identified by ASIN/cdeKey.
 --- @param cde_key string: Kindle ASIN (e.g., "B007N6JEII") or PDOC hash.
---- @return table|nil: State table with percent_read, timestamp, status, kindle_status, title; or nil on error.
+--- @return table|nil: State table with percent_read, timestamp, status, title; or nil on error.
 function KindleStateReader.readByCdeKey(cde_key)
     if not cde_key or cde_key == "" then
         return nil
@@ -54,7 +64,7 @@ function KindleStateReader.readByCdeKey(cde_key)
     )
 end
 
---- Reads reading state for a catalog entry identified by p_uuid.
+--- Reads progress for a catalog entry identified by p_uuid.
 --- Virtual-library IDs use the form cc:<uuid>; p_cdeKey contains the ASIN on
 --- current firmware, so treating that virtual ID as a cdeKey cannot match.
 function KindleStateReader.readByUuid(uuid)
@@ -64,8 +74,7 @@ function KindleStateReader.readByUuid(uuid)
     return KindleStateReader._read("p_uuid = ? AND COALESCE(p_isArchived, 0) = 0 AND p_location IS NOT NULL AND p_location <> ''", uuid)
 end
 
----
---- Internal: reads reading state from cc.db via lua-ljsqlite3.
+--- Internal: reads reading progress from cc.db via lua-ljsqlite3.
 --- @param where_clause string: WHERE clause with placeholder.
 --- @param where_value string: Value to bind.
 --- @return table|nil: State table or nil.
@@ -82,7 +91,6 @@ function KindleStateReader._read(where_clause, where_value)
     return result
 end
 
----
 --- Reads state using ljsqlite3.
 function KindleStateReader._readWithSQ3(SQ3, where_clause, where_value)
     local conn, err = SQ3.open(CC_DB_PATH)
@@ -92,9 +100,8 @@ function KindleStateReader._readWithSQ3(SQ3, where_clause, where_value)
     end
 
     local ok, result = pcall(function()
-        local stmt = conn:prepare(
-            string.format("SELECT p_percentFinished, p_lastAccess, p_readState, p_titles_0_nominal, p_cdeKey FROM Entries WHERE %s", where_clause)
-        )
+        local stmt =
+            conn:prepare(string.format("SELECT p_percentFinished, p_lastAccess, p_titles_0_nominal, p_cdeKey FROM Entries WHERE %s", where_clause))
         if not stmt then
             return nil
         end
@@ -105,22 +112,15 @@ function KindleStateReader._readWithSQ3(SQ3, where_clause, where_value)
             return nil
         end
 
-        local percent_finished = tonumber(res[1][1])
+        local percent_finished = tonumber(res[1][1]) or 0
         local last_access = tonumber(res[2][1]) or 0
-        local read_state = tonumber(res[3][1]) or 0
-        local title = res[4][1] or ""
-        local cde_key = res[5][1] or ""
-
-        -- NULL percent_finished means never opened
-        if percent_finished == nil then
-            percent_finished = 0
-        end
+        local title = res[3][1] or ""
+        local cde_key = res[4][1] or ""
 
         return {
             percent_read = percent_finished,
             timestamp = last_access,
-            status = StatusConverter.kindleToKoreader(read_state),
-            kindle_status = read_state,
+            status = progressStatus(percent_finished),
             title = title,
             cde_key = cde_key,
         }
@@ -138,7 +138,6 @@ function KindleStateReader._readWithSQ3(SQ3, where_clause, where_value)
     return true, result
 end
 
----
 --- Reads all books with reading progress from cc.db.
 --- @return table|nil: Array of {cde_key, title, percent_read, last_access, location}, or nil on error.
 function KindleStateReader.readAllProgress()

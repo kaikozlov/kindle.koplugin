@@ -34,29 +34,28 @@ describe("KindleStateWriter", function()
 
     describe("writeByPath", function()
         it("should return false for nil path", function()
-            assert.is_false(KindleStateWriter.writeByPath(nil, 50, os.time(), "reading"))
+            assert.is_false(KindleStateWriter.writeByPath(nil, 50, os.time()))
         end)
 
         it("should return false for empty path", function()
-            assert.is_false(KindleStateWriter.writeByPath("", 50, os.time(), "reading"))
+            assert.is_false(KindleStateWriter.writeByPath("", 50, os.time()))
         end)
 
-        it("should update progress, read state, and last access when the schema permits it", function()
+        it("should update progress and last access without touching read state", function()
             SQ3._getMock().rowexec_results["SELECT changes()"] = "1"
 
-            local ok = KindleStateWriter.writeByPath("/mnt/us/documents/test.kfx", 56, 1775769644, "reading")
+            local ok = KindleStateWriter.writeByPath("/mnt/us/documents/test.kfx", 56, 1775769644)
 
             local mock = SQ3._getMock()
             assert.is_true(ok)
             assert.is_not_nil(mock.prepared_sql[1]:match("UPDATE Entries"))
             assert.is_not_nil(mock.prepared_sql[1]:match("p_percentFinished"))
-            assert.is_not_nil(mock.prepared_sql[1]:match("p_readState"))
+            assert.is_nil(mock.prepared_sql[1]:match("p_readState"))
             assert.is_not_nil(mock.prepared_sql[1]:match("p_lastAccess"))
             assert.equals(56, mock.bound_values[1])
-            assert.equals(6, mock.bound_values[2])
-            assert.equals(1775769644, tonumber(mock.bound_values[3]))
-            assert.is_truthy(tostring(require("ffi").typeof(mock.bound_values[3])):find("int64_t", 1, true))
-            assert.equals("/mnt/us/documents/test.kfx", mock.bound_values[4])
+            assert.equals(1775769644, tonumber(mock.bound_values[2]))
+            assert.is_truthy(tostring(require("ffi").typeof(mock.bound_values[2])):find("int64_t", 1, true))
+            assert.equals("/mnt/us/documents/test.kfx", mock.bound_values[3])
             assert.is_true(mock.prepared_sql[1]:find("COALESCE(p_isArchived, 0) = 0", 1, true) ~= nil)
             assert.is_not_nil(table.concat(mock.executed, "\n"):find("COMMIT", 1, true))
         end)
@@ -64,7 +63,7 @@ describe("KindleStateWriter", function()
         it("should return false when no catalog row matches", function()
             SQ3._getMock().rowexec_results["SELECT changes()"] = "0"
 
-            local ok = KindleStateWriter.writeByPath("/mnt/us/documents/test.kfx", 56, 1775769644, "reading")
+            local ok = KindleStateWriter.writeByPath("/mnt/us/documents/test.kfx", 56, 1775769644)
 
             assert.is_false(ok)
             assert.is_nil(table.concat(SQ3._getMock().executed, "\n"):find("COMMIT", 1, true))
@@ -75,19 +74,19 @@ describe("KindleStateWriter", function()
             package.loaded["lua/lib/kindle_state_writer"] = nil
             local Writer = require("lua/lib/kindle_state_writer")
 
-            assert.is_false(Writer.writeByPath("/mnt/us/documents/test.kfx", 56, 0, "reading"))
+            assert.is_false(Writer.writeByPath("/mnt/us/documents/test.kfx", 56, 0))
         end)
     end)
 
     describe("writeByCdeKey", function()
         it("should return false for nil key", function()
-            assert.is_false(KindleStateWriter.writeByCdeKey(nil, 50, os.time(), "reading"))
+            assert.is_false(KindleStateWriter.writeByCdeKey(nil, 50, os.time()))
         end)
 
         it("should write by ASIN with the latest-item guard", function()
             SQ3._getMock().rowexec_results["SELECT changes()"] = "1"
 
-            local ok = KindleStateWriter.writeByCdeKey("B007N6JEII", 1, 1776640914, "reading")
+            local ok = KindleStateWriter.writeByCdeKey("B007N6JEII", 1, 1776640914)
 
             assert.is_true(ok)
             local sql = SQ3._getMock().prepared_sql[1]
@@ -95,7 +94,7 @@ describe("KindleStateWriter", function()
             assert.is_true(sql:find("p_location IS NOT NULL", 1, true) ~= nil)
             assert.is_true(sql:find("p_location <> ''", 1, true) ~= nil)
             assert.is_true(sql:find("COALESCE(p_isArchived, 0) = 0", 1, true) ~= nil)
-            assert.equals("B007N6JEII", SQ3._getMock().bound_values[4])
+            assert.equals("B007N6JEII", SQ3._getMock().bound_values[3])
         end)
     end)
 
@@ -103,21 +102,21 @@ describe("KindleStateWriter", function()
         it("should write a virtual-library catalog row by p_uuid", function()
             SQ3._getMock().rowexec_results["SELECT changes()"] = "1"
 
-            local ok = KindleStateWriter.writeByUuid("f82913d4-094a-43c6-8166-e330d40c1d7c", 48, 1776640914, "reading")
+            local ok = KindleStateWriter.writeByUuid("f82913d4-094a-43c6-8166-e330d40c1d7c", 48, 1776640914)
 
             assert.is_true(ok)
             local sql = SQ3._getMock().prepared_sql[1]
             assert.is_not_nil(sql:match("p_uuid = %?"))
             assert.is_nil(sql:find("p_sourceUuid", 1, true))
             assert.is_true(sql:find("COALESCE(p_isArchived, 0) = 0", 1, true) ~= nil)
-            assert.equals("f82913d4-094a-43c6-8166-e330d40c1d7c", SQ3._getMock().bound_values[4])
+            assert.equals("f82913d4-094a-43c6-8166-e330d40c1d7c", SQ3._getMock().bound_values[3])
         end)
     end)
     describe("percent handling", function()
         it("should bind the caller-supplied percent value unchanged", function()
             SQ3._getMock().rowexec_results["SELECT changes()"] = "1"
 
-            KindleStateWriter.writeByPath("/mnt/us/documents/test.kfx", 56.7, os.time(), "reading")
+            KindleStateWriter.writeByPath("/mnt/us/documents/test.kfx", 56.7, os.time())
 
             -- Callers floor whole-number percents; exact pushes keep Kindle's
             -- own fractional renderer percentage. The writer binds verbatim.
@@ -133,13 +132,14 @@ describe("KindleStateWriter", function()
             end
             SQ3._getMock().rowexec_results["SELECT changes()"] = "1"
 
-            local ok = KindleStateWriter.writeByPath("/mnt/us/documents/test.kfx", 48, 1776640914, "reading")
+            local ok = KindleStateWriter.writeByPath("/mnt/us/documents/test.kfx", 48, 1776640914)
             CatalogDb.prepareWriteConnection = original
 
             assert.is_true(ok)
             local mock = SQ3._getMock()
             assert.is_nil(mock.prepared_sql[1]:match("p_lastAccess"))
-            assert.same({ 48, 6, "/mnt/us/documents/test.kfx" }, mock.bound_values)
+            assert.is_nil(mock.prepared_sql[1]:match("p_readState"))
+            assert.same({ 48, "/mnt/us/documents/test.kfx" }, mock.bound_values)
         end)
 
         it("rolls back when catalog connection semantics cannot be preserved", function()
@@ -149,7 +149,7 @@ describe("KindleStateWriter", function()
             end
             SQ3._getMock().rowexec_results["SELECT changes()"] = "1"
 
-            local ok = KindleStateWriter.writeByPath("/mnt/us/documents/test.kfx", 48, 1776640914, "reading")
+            local ok = KindleStateWriter.writeByPath("/mnt/us/documents/test.kfx", 48, 1776640914)
             CatalogDb.prepareWriteConnection = original
 
             assert.is_false(ok)

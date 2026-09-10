@@ -36,7 +36,6 @@ describe("KindleStateReader", function()
             SQ3._setMockResults({
                 { "56.477375" },
                 { "1775769644" },
-                { "" },
                 { "Floors #2: 3 Below" },
                 { "B008PL1YQ0" },
             }, 1)
@@ -46,8 +45,10 @@ describe("KindleStateReader", function()
             assert.is_not_nil(state)
             assert.equals(56.477375, state.percent_read)
             assert.equals(1775769644, state.timestamp)
+            assert.equals("reading", state.status)
             assert.equals("Floors #2: 3 Below", state.title)
             assert.equals("B008PL1YQ0", state.cde_key)
+            assert.is_nil(SQ3._getMock().prepared_sql[1]:find("p_readState", 1, true))
             assert.is_true(SQ3._getMock().prepared_sql[1]:match("p_location = %?") ~= nil)
             assert.is_true(SQ3._getMock().prepared_sql[1]:find("COALESCE(p_isArchived, 0) = 0", 1, true) ~= nil)
             assert.equals("/mnt/us/documents/test.kfx", SQ3._getMock().bound_values[1])
@@ -55,7 +56,6 @@ describe("KindleStateReader", function()
 
         it("should handle NULL percent_finished as 0", function()
             SQ3._setMockResults({
-                { "" },
                 { "" },
                 { "" },
                 { "Some Book" },
@@ -66,6 +66,21 @@ describe("KindleStateReader", function()
 
             assert.is_not_nil(state)
             assert.equals(0, state.percent_read)
+            assert.equals("", state.status)
+        end)
+
+        it("derives completion from percentage rather than p_readState", function()
+            SQ3._setMockResults({
+                { "100" },
+                { "1775769644" },
+                { "Finished Book" },
+                { "B001" },
+            }, 1)
+
+            local state = KindleStateReader.readByPath("/mnt/us/documents/test.kfx")
+
+            assert.equals("complete", state.status)
+            assert.is_nil(SQ3._getMock().prepared_sql[1]:find("p_readState", 1, true))
         end)
 
         it("should return nil when no row matches", function()
@@ -94,7 +109,6 @@ describe("KindleStateReader", function()
             SQ3._setMockResults({
                 { "67.035034" },
                 { "1775770105" },
-                { "" },
                 { "The Hunger Games Trilogy" },
                 { "B004XJRQUQ" },
             }, 1)
@@ -121,7 +135,6 @@ describe("KindleStateReader", function()
             SQ3._setMockResults({
                 { "47" },
                 { "1775770105" },
-                { "6" },
                 { "The Almighty Dollar" },
                 { "B0FLB24198" },
             }, 1)

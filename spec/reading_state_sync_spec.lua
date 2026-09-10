@@ -80,13 +80,12 @@ local function mockWriteKindleState(sync)
     local calls = {}
     sync._mock_write_calls = calls
     local original = sync.writeKindleState
-    sync.writeKindleState = function(self, cde_key, source_path, percent, timestamp, status)
+    sync.writeKindleState = function(self, cde_key, source_path, percent, timestamp)
         table.insert(calls, {
             cde_key = cde_key,
             source_path = source_path,
             percent = percent,
             timestamp = timestamp,
-            status = status,
         })
         return true
     end
@@ -128,7 +127,6 @@ describe("ReadingStateSync", function()
         helper.before_each()
         package.loaded["lua/reading_state_sync"] = nil
         package.loaded["lua/lib/sync_decision_maker"] = nil
-        package.loaded["lua/lib/status_converter"] = nil
 
         local reader_data = {}
         local reader_data_by_key = {}
@@ -166,16 +164,16 @@ describe("ReadingStateSync", function()
         end
 
         local write_log = {}
-        KindleStateWriter.writeByCdeKey = function(cde_key, percent, timestamp, status)
-            table.insert(write_log, { method = "cdeKey", key = cde_key, percent = percent, timestamp = timestamp, status = status })
+        KindleStateWriter.writeByCdeKey = function(cde_key, percent, timestamp)
+            table.insert(write_log, { method = "cdeKey", key = cde_key, percent = percent, timestamp = timestamp })
             return true
         end
-        KindleStateWriter.writeByUuid = function(uuid, percent, timestamp, status)
-            table.insert(write_log, { method = "uuid", uuid = uuid, percent = percent, timestamp = timestamp, status = status })
+        KindleStateWriter.writeByUuid = function(uuid, percent, timestamp)
+            table.insert(write_log, { method = "uuid", uuid = uuid, percent = percent, timestamp = timestamp })
             return true
         end
-        KindleStateWriter.writeByPath = function(path, percent, timestamp, status)
-            table.insert(write_log, { method = "path", path = path, percent = percent, timestamp = timestamp, status = status })
+        KindleStateWriter.writeByPath = function(path, percent, timestamp)
+            table.insert(write_log, { method = "path", path = path, percent = percent, timestamp = timestamp })
             return true
         end
         KindleStateWriter._getWriteLog = function()
@@ -461,6 +459,33 @@ describe("ReadingStateSync", function()
             assert.is_true(sync:syncFromKindleAutomatic("B007N6JEII", history_path, ds))
             assert.equals(0.8, ds:readSetting("percent_finished"))
             assert.equals("/body/DocFragment/body/p/text().30", ds:readSetting("last_xpointer"))
+
+            restoreReadKindleState(sync, original)
+            RealDocSettings:_clearSidecars()
+        end)
+
+        it("does not let Kindle readState gate valid progress", function()
+            local sync = ReadingStateSync:new({
+                nativeProgressAvailable = function()
+                    return false
+                end,
+            })
+            sync:setEnabled(true)
+            setupPluginSettings(sync)
+            RealDocSettings:_setSidecarFile(history_path, true)
+            local original = mockReadKindleState(sync, {
+                percent_read = 80,
+                timestamp = 1762700000,
+                status = "",
+                kindle_status = 0, -- deliberately contradictory legacy field; must be ignored
+            })
+            local ds = createMockDocSettings(history_path, {
+                percent_finished = 0.3,
+                summary = { status = "reading" },
+            })
+
+            assert.is_true(sync:syncFromKindleAutomatic("B007N6JEII", history_path, ds))
+            assert.equals(0.8, ds:readSetting("percent_finished"))
 
             restoreReadKindleState(sync, original)
             RealDocSettings:_clearSidecars()
@@ -1732,8 +1757,8 @@ describe("ReadingStateSync", function()
     -- ========================================================================
     -- syncBidirectional — status sync
     -- ========================================================================
-    describe("syncBidirectional — status sync", function()
-        it("should sync Kindle status to KOReader in PULL", function()
+    describe("syncBidirectional — progress-derived summary status", function()
+        it("derives KOReader status from Kindle progress rather than read state", function()
             local sync = ReadingStateSync:new()
             sync:setEnabled(true)
             setupPluginSettings(sync)
@@ -1741,8 +1766,8 @@ describe("ReadingStateSync", function()
             local orig = mockReadKindleState(sync, {
                 percent_read = 60,
                 timestamp = 1762700000,
-                status = "reading",
-                kindle_status = 1,
+                status = "complete", -- legacy/read-state-derived value must be ignored
+                kindle_status = 2,
             })
 
             local ds = createMockDocSettings("/path/book.kfx", {
@@ -1756,7 +1781,7 @@ describe("ReadingStateSync", function()
             restoreReadKindleState(sync, orig)
         end)
 
-        it("should sync KOReader status to Kindle in PUSH", function()
+        it("should sync KOReader progress without writing Kindle read state", function()
             local sync = ReadingStateSync:new()
             sync:setEnabled(true)
             setupPluginSettings(sync)
@@ -1780,7 +1805,7 @@ describe("ReadingStateSync", function()
 
             sync:syncBidirectional("B007N6JEII", "/mnt/us/documents/Throne of Glass_B007N6JEII.kfx", ds)
             assert.equals(1, #write_log)
-            assert.equals("complete", write_log[1].status)
+            assert.equals(90, write_log[1].percent)
 
             restoreReadKindleState(sync, orig_read)
             restoreWriteKindleState(sync, orig_write)
@@ -1819,7 +1844,7 @@ describe("ReadingStateSync", function()
     -- syncBidirectional — unopened books
     -- ========================================================================
     describe("syncBidirectional — unopened books", function()
-        it("should NOT sync FROM Kindle when book is unopened (readState=0, 0%)", function()
+        it("should NOT sync FROM Kindle when catalog progress is 0%", function()
             local sync = ReadingStateSync:new()
             sync:setEnabled(true)
             setupPluginSettings(sync)
@@ -1836,7 +1861,7 @@ describe("ReadingStateSync", function()
                 summary = { status = "reading" },
             })
 
-            -- Kindle is unopened → executePullFromKindle returns false
+            -- Zero catalog progress is not a useful percentage-only pull source.
             -- executePushToKindle may run if kr_timestamp > 0
             sync:syncBidirectional("B001", "/path/book.kfx", ds)
             -- Either way, we should NOT overwrite KOReader with Kindle's 0%

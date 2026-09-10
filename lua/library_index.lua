@@ -18,17 +18,6 @@ function LibraryIndex:setSettings(settings)
     self.settings = settings or {}
 end
 
-local function sortBooks(books)
-    table.sort(books, function(left, right)
-        local left_name = (left.display_name or left.title or left.source_path or ""):lower()
-        local right_name = (right.display_name or right.title or right.source_path or ""):lower()
-        if left_name == right_name then
-            return (left.source_path or "") < (right.source_path or "")
-        end
-        return left_name < right_name
-    end)
-end
-
 --- Scan the Kindle content catalog.
 ---
 --- cc.db is the single library authority: it owns the stable p_uuid identity
@@ -59,7 +48,8 @@ function LibraryIndex:scan()
         logger.warn("KindlePlugin: cc.db scan failed:", err)
         return nil, err
     end
-    sortBooks(books)
+    -- cc.db already returned Kindle's locale-aware catalog order using the
+    -- stored p_titles_0_collation key. Preserve that order verbatim.
     return books
 end
 

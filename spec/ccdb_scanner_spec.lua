@@ -5,12 +5,14 @@ local helper = require("spec/test_helper")
 
 describe("CcDbScanner", function()
     local CcDbScanner
+    local CatalogDb
     local SQ3
     local lfs
 
     setup(function()
         helper.setup_complete()
         CcDbScanner = require("lua/ccdb_scanner")
+        CatalogDb = require("lua/lib/kindle_catalog_db")
         lfs = require("libs/libkoreader-lfs")
     end)
 
@@ -18,7 +20,14 @@ describe("CcDbScanner", function()
         helper.before_each()
         package.loaded["lua/ccdb_scanner"] = nil
         SQ3 = helper.install_sqlite_mock()
+        CatalogDb._test_icu_installer = function()
+            return true, function() end
+        end
         CcDbScanner = require("lua/ccdb_scanner")
+    end)
+
+    after_each(function()
+        CatalogDb._test_icu_installer = nil
     end)
 
     describe("initialization", function()
@@ -54,6 +63,7 @@ describe("CcDbScanner", function()
                 p_uuid = { "abc-123" },
                 p_location = { "/mnt/us/documents/Downloads/Items01/Book_B00TEST.kfx" },
                 p_titles_0_nominal = { "The Test Book" },
+                p_titles_0_collation = { "Test Book The" },
                 j_credits = { '[{"name":{"display":"Test Author"},"kind":"Author"}]' },
                 p_mimeType = { "application/x-kfx-ebook" },
                 p_cdeKey = { "B00TEST" },
@@ -73,10 +83,12 @@ describe("CcDbScanner", function()
             assert.equals("cc:abc-123", book.id)
             assert.equals("/mnt/us/documents/Downloads/Items01/Book_B00TEST.kfx", book.source_path)
             assert.equals("The Test Book", book.title)
+            assert.equals("Test Book The", book.sort_key)
             assert.same({ "Test Author" }, book.authors)
             assert.equals("convert", book.open_mode)
             assert.equals("B00TEST", book.cde_key)
             assert.is_nil(book.block_reason)
+            assert.is_truthy(SQ3._getMock().executed[1]:find("ORDER BY p_titles_0_collation", 1, true))
         end)
 
         it("should block books without a local file (cloud-only)", function()

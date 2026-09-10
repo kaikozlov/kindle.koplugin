@@ -77,23 +77,23 @@ end
 
 ---
 --- Checks if both KOReader and Kindle have a book marked as complete.
---- @param kindle_state table: Kindle state with status and percent_read fields.
+--- @param kindle_state table: Kindle state with percent_read.
 --- @param kr_percent number: KOReader progress (0-1).
 --- @param kr_status string|nil: KOReader status string (complete/finished/reading/etc).
 --- @return boolean: True if both sides are marked as complete.
-function SyncDecisionMaker.areBothSidesComplete(kobo_state, kr_percent, kr_status)
-    if not kobo_state then
+function SyncDecisionMaker.areBothSidesComplete(kindle_state, kr_percent, kr_status)
+    if not kindle_state then
         return false
     end
 
-    local kobo_is_complete = kobo_state.status == "complete" or kobo_state.percent_read >= 100
+    local kindle_is_complete = kindle_state.percent_read >= 100
     local kr_is_complete = kr_percent >= 1.0
 
     if kr_status == "complete" or kr_status == "finished" then
         kr_is_complete = true
     end
 
-    return kobo_is_complete and kr_is_complete
+    return kindle_is_complete and kr_is_complete
 end
 
 ---
