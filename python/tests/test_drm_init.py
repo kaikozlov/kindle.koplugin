@@ -120,6 +120,52 @@ class MultiSecretHookIterationTests(unittest.TestCase):
         calls = self.run_hook([])
         self.assertEqual([None], self.cvm_secrets(calls))
 
+    def test_prefers_legacy_cvm_when_available(self):
+        calls = self.run_hook(["secret-one"])
+        cmd = calls[0].args[0]
+        env = calls[0].kwargs["env"]
+        self.assertEqual("/usr/java/bin/cvm", cmd[0])
+        self.assertEqual(
+            "/plugin/lib/crypto_hook.so:/usr/java/lib/arm/libdlopen_global.so",
+            env["LD_PRELOAD"],
+        )
+
+    def test_uses_openjdk_java_when_cvm_is_absent(self):
+        def isfile(path):
+            return path in {
+                "/plugin/lib/crypto_hook.so",
+                "/plugin/lib/KFXVoucherExtractor.jar",
+                "/usr/java/bin/java",
+            }
+
+        result = mock.Mock(returncode=0, stdout="All vouchers attached", stderr="")
+        with mock.patch.object(drm_init.os.path, "isfile", side_effect=isfile), \
+                mock.patch.object(drm_init.subprocess, "run", return_value=result) as run:
+            drm_init._extract_keys_with_hook(
+                "SERIAL", ["/book.sdr/assets/voucher"], "/plugin", ["secret-one"]
+            )
+
+        cmd = run.call_args.args[0]
+        env = run.call_args.kwargs["env"]
+        self.assertEqual("/usr/java/bin/java", cmd[0])
+        self.assertEqual("/plugin/lib/crypto_hook.so", env["LD_PRELOAD"])
+        self.assertEqual("/usr/lib:/usr/java/lib", env["LD_LIBRARY_PATH"])
+
+    def test_missing_all_java_launchers_is_explicit(self):
+        def isfile(path):
+            return path in {
+                "/plugin/lib/crypto_hook.so",
+                "/plugin/lib/KFXVoucherExtractor.jar",
+            }
+
+        with mock.patch.object(drm_init.os.path, "isfile", side_effect=isfile), \
+                self.assertRaisesRegex(
+                    drm_init.JavaRuntimeUnavailable, "no supported Kindle Java launcher"
+                ):
+            drm_init._extract_keys_with_hook(
+                "SERIAL", ["/book.sdr/assets/voucher"], "/plugin", ["secret-one"]
+            )
+
     def test_probe_stops_iteration_once_satisfied(self):
         probe_state = {"calls": 0}
 
@@ -364,8 +410,10 @@ class NativeFallbackTests(unittest.TestCase):
             self.assertEqual("70" * 16, cache["keys"]["key-id"]["page_key_128"])
             self.assertEqual("", cache["books"][result["book_id"]]["voucher_key_256"])
 
-    def test_missing_cvm_and_native_extractor_returns_actionable_code(self):
-        primary_error = FileNotFoundError(2, "No such file or directory", "/usr/java/bin/cvm")
+    def test_missing_java_runtime_and_native_extractor_returns_actionable_code(self):
+        primary_error = drm_init.JavaRuntimeUnavailable(
+            "no supported Kindle Java launcher found"
+        )
         with tempfile.TemporaryDirectory() as tmpdir, mock.patch.object(
             drm_init.native_extractor,
             "extract_page_keys",
@@ -384,8 +432,8 @@ class NativeFallbackTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual("drm_extractor_unavailable", result["code"])
-        self.assertIn("does not provide the Java DRM runtime", result["message"])
-        self.assertIn("/usr/java/bin/cvm", result["detail"])
+        self.assertIn("does not provide a supported Java DRM runtime", result["message"])
+        self.assertIn("no supported Kindle Java launcher", result["detail"])
         self.assertIn("no native extractor binaries found", result["detail"])
 
     def test_other_native_fallback_failure_is_sanitized(self):

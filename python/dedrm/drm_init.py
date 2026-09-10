@@ -26,6 +26,24 @@ _AES_KEY_RE = re.compile(r"^EVP_256_KEY:([0-9a-f]+)\s+IV:([0-9a-f]+)")
 
 _ACSR_PATH = "/var/local/java/prefs/acsr"
 _KEY_LOG_PATH = "/mnt/us/crypto_keys.log"
+_JAVA_LAUNCHERS = ("/usr/java/bin/cvm", "/usr/java/bin/java")
+_CVM_DLOPEN_GLOBAL = "/usr/java/lib/arm/libdlopen_global.so"
+
+
+class JavaRuntimeUnavailable(RuntimeError):
+    """No supported Kindle Java launcher is installed."""
+
+
+def _find_java_launcher():
+    """Return the Kindle JVM launcher, preserving the proven cvm path first."""
+    for launcher in _JAVA_LAUNCHERS:
+        if os.path.isfile(launcher):
+            return launcher
+    raise JavaRuntimeUnavailable(
+        "no supported Kindle Java launcher found (tried "
+        + ", ".join(_JAVA_LAUNCHERS)
+        + ")"
+    )
 
 
 @contextlib.contextmanager
@@ -45,7 +63,7 @@ def _read_account_secrets():
 
     Newer Kindle firmware can store several comma-separated account secrets
     in one file, while the SDK accepts a single ACCOUNT_SECRET lock parameter
-    per JVM run. Callers iterate the returned list with one cvm run each.
+    per JVM run. Callers iterate the returned list with one JVM run each.
     Returns an empty list when the file is missing or empty; older firmware
     legitimately has no ACSR and derives keys from the device serial alone.
     """
@@ -231,19 +249,16 @@ def _native_book_fallback(kfx_path, voucher_path, plugin_dir, cache_dir, serial,
         }
     except Exception as native_error:
         detail = f"{primary_error}; native fallback failed: {native_error}"
-        cvm_missing = (
-            isinstance(primary_error, FileNotFoundError)
-            and getattr(primary_error, "filename", None) == "/usr/java/bin/cvm"
-        )
+        java_missing = isinstance(primary_error, JavaRuntimeUnavailable)
         native_missing = isinstance(
             native_error, native_extractor.NativeExtractorUnavailable
         )
-        if cvm_missing and native_missing:
+        if java_missing and native_missing:
             return {
                 "ok": False,
                 "code": "drm_extractor_unavailable",
                 "message": (
-                    "This Kindle firmware does not provide the Java DRM runtime, "
+                    "This Kindle firmware does not provide a supported Java DRM runtime, "
                     "and no compatible kfxdedrm native extractor was found."
                 ),
                 "detail": detail,
@@ -391,7 +406,7 @@ def _read_device_serial():
 
 
 def _extract_keys_with_hook(serial, vouchers, plugin_dir, secrets, probe=None):
-    """Run the device's cvm JVM with LD_PRELOAD hook to capture AES keys.
+    """Run the Kindle JVM with LD_PRELOAD hook to capture AES keys.
 
     Newer firmware may hold several account secrets; each gets its own JVM
     run because the SDK binds a single ACCOUNT_SECRET per run. The hook
@@ -414,15 +429,22 @@ def _extract_keys_with_hook(serial, vouchers, plugin_dir, secrets, probe=None):
     except OSError:
         pass
 
+    java_launcher = _find_java_launcher()
+
     env = os.environ.copy()
-    env["LD_PRELOAD"] = hook_path + ":/usr/java/lib/arm/libdlopen_global.so"
+    preloads = [hook_path]
+    # Legacy phoneME/cvm needed this helper for JNI libraries loaded with dlopen.
+    # Corretto/OpenJDK (Java 21 on PW6/Bellatrix4) does not ship or need it.
+    if java_launcher.endswith("/cvm") and os.path.isfile(_CVM_DLOPEN_GLOBAL):
+        preloads.append(_CVM_DLOPEN_GLOBAL)
+    env["LD_PRELOAD"] = ":".join(preloads)
     env["LD_LIBRARY_PATH"] = "/usr/lib:/usr/java/lib"
 
     last_error = None
     succeeded = False
     for secret in secrets or [None]:
         cmd = [
-            "/usr/java/bin/cvm",
+            java_launcher,
             "-Djava.library.path=/usr/lib:/usr/java/lib",
             "-cp", jar_path + ":/opt/amazon/ebook/lib/YJReader-impl.jar",
             "KFXVoucherExtractor",
@@ -449,7 +471,8 @@ def _extract_keys_with_hook(serial, vouchers, plugin_dir, secrets, probe=None):
                     "This feature only works on Kindle devices."
                 )
             last_error = RuntimeError(
-                f"cvm failed (exit {result.returncode}): {result.stderr}\n{result.stdout}"
+                f"Java DRM runtime failed (exit {result.returncode}): "
+                f"{result.stderr}\n{result.stdout}"
             )
             continue
 
