@@ -3,8 +3,9 @@
  *
  * Allocates an OpenSSL cipher context and initializes an AES-256-CBC decrypt
  * operation with fixed key bytes 00..1f and IV bytes a0..af. When run with
- * LD_PRELOAD=crypto_hook.so, the hook must intercept EVP_DecryptInit_ex via
- * dlsym(RTLD_NEXT), recognize the EVP_aes_256_cbc() cipher pointer, capture
+ * LD_PRELOAD=crypto_hook.so, the hook must intercept EVP_DecryptInit_ex,
+ * resolve the real function directly from libcrypto, recognize the
+ * EVP_aes_256_cbc() cipher pointer, and capture
  * the 32-byte key and 16-byte IV, and append the exact record
  *
  *   EVP_256_KEY:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
