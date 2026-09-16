@@ -10,11 +10,30 @@
 --     trigger-bearing schemas can prepare the same UPDATE without Amazon ccat.
 
 local ffi = require("ffi")
+local jit = require("jit")
 local json = require("json")
 local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 
 local KindleCatalogDb = {}
+
+-- SQLite may invoke Lua callbacks from sqlite3_step(). If that FFI call is
+-- JIT-compiled, LuaJIT can panic with "bad callback" when SQLite re-enters Lua.
+-- lua-ljsqlite3 already disables JIT for its shared statement stepper before
+-- registering scalar/aggregate callbacks; our collation registration bypasses
+-- those helpers, so apply the same guard explicitly.
+local function disableSqliteStepJit(conn)
+    local stmt = conn:prepare("SELECT 1")
+    local step = stmt._step
+    stmt:close()
+
+    if type(step) ~= "function" then
+        return false, "SQLite statement step function is unavailable"
+    end
+
+    jit.off(step)
+    return true
+end
 
 local COLLATION_STATE_SQL = [[
 SELECT
@@ -673,6 +692,12 @@ function KindleCatalogDb.installIcuCollation(conn)
     end
     local major = major_or_error
 
+    local guard_ok, guard_result, guard_error = pcall(disableSqliteStepJit, conn)
+    if not guard_ok or not guard_result then
+        local reason = guard_ok and guard_error or guard_result
+        return false, "cannot disable JIT for SQLite callback path: " .. tostring(reason)
+    end
+
     local collator, collator_error = createKindleCollator(conn, icui18n, icuuc, major)
     if not collator then
         return false, collator_error
@@ -722,6 +747,7 @@ KindleCatalogDb._locale_mappings = KINDLE_LOCALE_MAPPINGS
 KindleCatalogDb._matching_locale_mapping = matchingLocaleMapping
 KindleCatalogDb._build_icu_candidates = buildIcuCandidates
 KindleCatalogDb._apply_short_string_reorder = applyShortStringReorder
+KindleCatalogDb._disable_sqlite_step_jit = disableSqliteStepJit
 
 --- Prepare an already write-locked cc.db connection for an Entries update.
 --- The caller must BEGIN IMMEDIATE first so Locale/Collation cannot change

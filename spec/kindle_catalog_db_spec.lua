@@ -36,6 +36,36 @@ describe("KindleCatalogDb", function()
         }
     end
 
+    it("disables JIT on ljsqlite3's shared step function before installing callbacks", function()
+        local jit = require("jit")
+        local original_jit_off = jit.off
+        local guarded_step
+        local statement_closed = false
+        local step = function() end
+        local conn = {
+            prepare = function(_, sql)
+                assert.equals("SELECT 1", sql)
+                return {
+                    _step = step,
+                    close = function()
+                        statement_closed = true
+                    end,
+                }
+            end,
+        }
+
+        jit.off = function(func)
+            guarded_step = func
+        end
+        local ok, result, err = pcall(CatalogDb._disable_sqlite_step_jit, conn)
+        jit.off = original_jit_off
+
+        assert.is_true(ok, result)
+        assert.is_true(result, err)
+        assert.equals(step, guarded_step)
+        assert.is_true(statement_closed)
+    end)
+
     it("mirrors the firmware locale-prefix mapping table", function()
         assert.equals("Lroot", CatalogDb._matching_locale_mapping("en_US_POSIX"))
         assert.equals("Lroot", CatalogDb._matching_locale_mapping("en_US_POSIX.UTF-8"))
