@@ -39,11 +39,15 @@ describe("KindleCatalogDb", function()
     it("disables JIT on ljsqlite3's shared step function before installing callbacks", function()
         local jit = require("jit")
         local original_jit_off = jit.off
+        local original_jit_flush = jit.flush
         local guarded_step
+        local flush_count = 0
+        local prepare_count = 0
         local statement_closed = false
         local step = function() end
         local conn = {
             prepare = function(_, sql)
+                prepare_count = prepare_count + 1
                 assert.equals("SELECT 1", sql)
                 return {
                     _step = step,
@@ -57,12 +61,21 @@ describe("KindleCatalogDb", function()
         jit.off = function(func)
             guarded_step = func
         end
+        jit.flush = function()
+            flush_count = flush_count + 1
+        end
         local ok, result, err = pcall(CatalogDb._disable_sqlite_step_jit, conn)
+        local ok_second, result_second, err_second = pcall(CatalogDb._disable_sqlite_step_jit, conn)
         jit.off = original_jit_off
+        jit.flush = original_jit_flush
 
         assert.is_true(ok, result)
         assert.is_true(result, err)
+        assert.is_true(ok_second, result_second)
+        assert.is_true(result_second, err_second)
         assert.equals(step, guarded_step)
+        assert.equals(1, flush_count)
+        assert.equals(1, prepare_count)
         assert.is_true(statement_closed)
     end)
 

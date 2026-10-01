@@ -22,7 +22,13 @@ local KindleCatalogDb = {}
 -- lua-ljsqlite3 already disables JIT for its shared statement stepper before
 -- registering scalar/aggregate callbacks; our collation registration bypasses
 -- those helpers, so apply the same guard explicitly.
+local sqliteStepJitGuarded = false
+
 local function disableSqliteStepJit(conn)
+    if sqliteStepJitGuarded then
+        return true
+    end
+
     local stmt = conn:prepare("SELECT 1")
     local step = stmt._step
     stmt:close()
@@ -31,7 +37,13 @@ local function disableSqliteStepJit(conn)
         return false, "SQLite statement step function is unavailable"
     end
 
+    -- Prevent future traces from compiling through sqlite3_step(), then discard
+    -- any already-compiled outer traces that may have inlined this function.
+    -- LuaJIT cannot safely re-enter Lua from such a compiled FFI call when
+    -- SQLite invokes our ICU collation callback.
     jit.off(step)
+    jit.flush()
+    sqliteStepJitGuarded = true
     return true
 end
 
