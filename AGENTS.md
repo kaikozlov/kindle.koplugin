@@ -8,7 +8,7 @@
 2. **Decrypting** DRM-protected books using on-device key extraction
 3. **Converting** KFX → EPUB via a bundled ARM CPython runtime and Python helper
 4. **Caching** converted EPUBs for fast re-opening
-5. **Presenting** a native `BookList` Kindle Library launched from one synthetic file-browser entry
+5. **Presenting** the Kindle catalog through the existing FileManager `FileChooser`, launched from one synthetic entry and rendered by the user's active browser
 
 KOReader itself is the architectural source of truth for UI/lifecycle behavior. `REFERENCE/kobo.koplugin/` may provide ideas, but do not copy its virtualization shims when current KOReader has a native extension point.
 
@@ -23,10 +23,10 @@ KOReader only sees **real document paths**. The historical `KINDLE_VIRTUAL://` s
 │ KOReader (Lua)                                       │
 │ main.lua                                             │
 │   FileManager plugin init                            │
-│     └─ minimal FileChooser hook → Kindle Library/    │
+│     └─ FileChooser catalog hook → Kindle Library/    │
 │                            │                         │
 │                            ▼                         │
-│                    native BookList                   │
+│               existing native FileChooser           │
 │                            │                         │
 │                select book / explicit open           │
 │                            ▼                         │
@@ -61,8 +61,9 @@ KOReader only sees **real document paths**. The historical `KINDLE_VIRTUAL://` s
 
 ```
 User opens Kindle Library
-  → FileChooser synthetic folder launches KindleLibrary BookList
-  → browsing uses cc.db metadata only (NO conversion or DRM side effects)
+  → FileChooser synthetic entry activates the catalog data source in the same chooser
+  → native getListItem builds real source/fresh-cache rows; the active browser renders them
+  → browsing has NO conversion, DRM extraction, or key-refresh side effects
 User selects a book
   → virtual_library model resolves the Kindle entry
   → filemanagerutil.openFile(real source/cache path)
@@ -90,7 +91,7 @@ User selects a book
 | DRM key extraction orchestration | Python | Shells out to device JVM with LD_PRELOAD hook |
 | DRM voucher extraction | Java (tiny) | ~30 lines, runs on device's `cvm` JVM |
 | AES key interception | C (tiny) | ~60 lines, LD_PRELOAD hook, pre-compiled as static asset |
-| KOReader integration | Lua | Native `BookList` + `DocSettingsLoad` + close-capture/final-`SaveSettings`; narrow reversible FileChooser discovery + real-path open resolver hooks |
+| KOReader integration | Lua | Existing FileManager `FileChooser` + `DocSettingsLoad` + close-capture/final-`SaveSettings`; reversible catalog/navigation + real-path open resolver hooks |
 | Exact-position sync | Lua | Conversion-time position map + byte-exact KRDS sidecar codec; no subprocess |
 
 ---
@@ -111,8 +112,8 @@ User selects a book
 ├── python_build.sh
 │
 ├── lua/
-│   ├── kindle_library.lua         ← native BookList UI; opens only real paths
-│   ├── filechooser_ext.lua        ← minimal synthetic-folder hook
+│   ├── kindle_library.lua         ← native FileChooser catalog controller + Kindle actions
+│   ├── filechooser_ext.lua        ← reversible discovery, catalog data, and navigation hooks
 │   ├── open_file_ext.lua          ← refresh stale/missing known cached EPUBs before native open
 │   ├── virtual_library.lua        ← Kindle book model + real-path mappings
 │   ├── cache_manager.lua
@@ -221,7 +222,8 @@ KOReader plugins live in a `<name>.koplugin/` directory with `_meta.lua` and a `
 ### Native integration rules
 
 - **Real paths are the document identity.** History, Collections, provider selection, sidecars, BookList caches, and ReaderUI must see the actual source file or cached EPUB path.
-- **Library UI is a `BookList`, not a fake directory.** The FileManager hook may add one synthetic folder entry, but must never assign a URI to `FileChooser.path`.
+- **Use the active file browser, not a parallel library renderer.** Kindle Library supplies catalog rows to the existing FileManager `FileChooser` (a native `BookList` subclass). Keep `FileChooser.path` at its real origin directory; never assign a URI, invent file attributes, or manufacture document paths. Back/Home restore normal browsing. Cloud-only or vanished books are information actions, not fake files.
+- **Row layout and display modes belong to the browser.** Build local book rows with the active chooser's `getListItem()` and native sorting/filtering. Do not put arbitrary authors or preparation messages into `mandatory`, copy CoverBrowser builder methods, or select a separate renderer. Attach catalog data dispatch at the chooser instance so directory-cache wrappers never cache catalog rows as the contents of the origin directory; ordinary listings delegate dynamically to the active class method. Insert the transient launcher after that delegation into a shallow copy, never into the browser's cached array.
 - **Pull sync in `onDocSettingsLoad`, acknowledge at live readback.** KOReader emits `DocSettingsLoad` after plugin instantiation and before `ReadSettings`; an exact pull may stage only the translated XPointer there. Do not copy Kindle's percentage into KOReader or advance the reconciliation receipt yet. Confirm the destination from the live renderer at `ReaderReady` (or immediately after an approved live prompt), then persist KOReader's own rendered percentage and advance the receipt.
 - **Push sync after the final `SaveSettings`.** In normal ReaderUI teardown, `CloseDocument` occurs before the UIManager-driven final save. Capture Kindle identity in `onCloseDocument`, then push from plugin `onSaveSettings`, which is registered after ReaderRolling and therefore sees its final XPointer/percent. An exact push advances the receipt only after atomic KRDS readback confirms the requested native coordinate and the Kindle shelf update succeeds. The uncommon ReaderUI branch that saves before `CloseDocument` may push immediately.
 - **Exact reconciliation has only two authorities and one receipt.** The Kindle KRDS coordinate and KOReader's translated XPointer are authoritative; shelf percentages are display metadata. Compare both current exact coordinates to the single last-agreed receipt: propagate a one-sided change, recover an interrupted one-sided write, and acknowledge matching coordinates after readback. If both sides moved independently and disagree, always prompt with both renderer-specific percentages and explicit **Use Kindle / Use KOReader / Cancel** choices, regardless of ordinary newer/older sync policy. Cancel preserves both sides so the next sync attempt asks again. Do not introduce event journals, session histories, or display-only sources into exact-position authority without a demonstrated requirement.
@@ -230,11 +232,12 @@ KOReader plugins live in a `<name>.koplugin/` directory with `_meta.lua` and a `
 - **Provider selection is KOReader-owned.** The open resolver may substitute a refreshed real cache path, then must delegate to `filemanagerutil.openFile()` without forcing CREngine; direct PDFs must naturally resolve to MuPDF.
 - **PathChooser is untouched.** The synthetic Kindle Library entry is injected only when `FileChooser.name == "filemanager"`.
 - **Browsing must be side-effect free.** Listing a book or rendering metadata must not run KFX conversion, DRM extraction, or key refresh. Preparation begins only on explicit open.
-- **Runtime hooks must unwind.** `stopPlugin()` must restore both the FileChooser methods and `filemanagerutil.openFile` so live disable/delete works without a restart.
+- **Runtime hooks must unwind.** `stopPlugin()` must remove the catalog view and Kindle dialog actions, restore FileChooser class/instance hooks and `filemanagerutil.openFile`, and clear pending library returns. Preserve subsequently installed browser hooks rather than overwriting them.
 - **Current `REFERENCE/koreader/` wins over old plugin precedent.** If Kobo code and current KOReader disagree, follow current KOReader unless there is a Kindle-specific necessity with a behavioral test.
 
 Key KOReader APIs:
-- `BookList` — Kindle Library UI
+- `FileChooser:getListItem()` / `genItemTable()` — native catalog rows and sorting in the active FileManager
+- `FileManager:addFileDialogButtons()` / `removeFileDialogButtons()` — additive Kindle cache/info actions
 - `filemanagerutil.openFile()` — native document-open boundary
 - `DocSettingsLoad` / `CloseDocument` / `SaveSettings` — reading-state lifecycle
 - `DocSettings` — sidecar storage and migration

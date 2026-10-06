@@ -117,9 +117,9 @@ function KindlePlugin:init()
         end)
     end
 
-    -- FileManager constructs its FileChooser after plugin instances are
-    -- initialized, so installing this small reversible class hook here keeps
-    -- PathChooser/ReaderUI/DocumentRegistry entirely native.
+    -- FileManager creates/recreates its FileChooser after plugin initialization.
+    -- Supply catalog rows there without replacing its renderer or filesystem
+    -- identity. PathChooser and document/provider lifecycles stay native.
     if self.settings.enable_virtual_library ~= false or self.settings.sync_reading_state then
         OpenFileExt:init(virtual_library, cache_manager)
         OpenFileExt:apply()
@@ -489,7 +489,7 @@ function KindlePlugin:stopPlugin()
     FileChooserExt:unapply(FileChooser)
     OpenFileExt:unapply()
     Dispatcher:removeAction(KINDLE_LIBRARY_ACTION)
-    kindle_library:close()
+    kindle_library:takeReturnToLibraryRequest()
     if self.ui and self.ui.file_chooser and self.ui.file_chooser.refreshPath then
         self.ui.file_chooser:refreshPath()
     end
@@ -838,6 +838,9 @@ function KindlePlugin:createClearCacheMenuItem()
                         self:showInfo(_("Failed to clear cache:\n") .. (err or _("unknown error")))
                         return
                     end
+                    if self.ui and kindle_library:isBrowsing(self.ui.file_chooser) then
+                        self.ui.file_chooser:refreshPath()
+                    end
                     self:showInfo(T(_("Cleared %1 books from cache."), stats.count), 3)
                 end,
             }))
@@ -922,6 +925,9 @@ function KindlePlugin:createRefreshLibraryMenuItem()
             if not books then
                 self:showInfo(_("Failed to refresh Kindle library:\n") .. (err or _("unknown error")))
                 return
+            end
+            if self.ui and kindle_library:isBrowsing(self.ui.file_chooser) then
+                self.ui.file_chooser:refreshPath()
             end
             self:showInfo(_("Kindle library refreshed."), 2)
         end,

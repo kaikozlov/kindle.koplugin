@@ -1,5 +1,6 @@
 local BD = require("ui/bidi")
 local Device = require("device")
+local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 local util = require("util")
 local _ = require("gettext")
@@ -202,34 +203,67 @@ function VirtualLibrary:createVirtualFolderEntry(parent_path)
     return entry
 end
 
-function VirtualLibrary:getBookEntries(force)
+-- Real file (and attributes) a catalog row is listed at: the fresh cached
+-- EPUB when one exists, else the Kindle source. Returns nil when neither
+-- exists on disk; such books become unavailable action rows, not fake files.
+local function resolveListedFile(vlib, book)
+    if book.open_mode ~= "blocked" and book.open_mode ~= "direct" and vlib.cache_manager and vlib:isBookPrepared(book) then
+        local cached_path = vlib.cache_manager:getCachePaths(book)
+        local cached_attr = cached_path and lfs.attributes(cached_path) or nil
+        if cached_attr and cached_attr.mode == "file" then
+            return cached_path, cached_attr
+        end
+    end
+    if book.source_path then
+        local attr = lfs.attributes(book.source_path)
+        if attr and attr.mode == "file" then
+            return book.source_path, attr
+        end
+    end
+    return nil
+end
+
+--- Native file rows plus generic action rows for cloud-only or lost books.
+--- Row construction, collation and mandatory text stay native: no custom
+--- author/status assembly, and listing never converts anything.
+function VirtualLibrary:getBookEntries(file_chooser, force)
     local books, err = self:buildMappings(force)
     if not books then
         return nil, err
     end
 
-    local entries = {}
+    local files = {}
+    local unavailable = {}
+    local collate = file_chooser:getCollate()
+    local source_filter
     for _, book in ipairs(books) do
         local title = sanitizeDisplayName(book.display_name or book.title or book.id)
-        local authors = book.authors and table.concat(book.authors, ", ") or ""
-        local mandatory = authors ~= "" and authors or util.getFriendlySize(book.source_size or 0)
-        -- A fresh cached EPUB gives CoverBrowser a real provider-backed path
-        -- for cover/metadata extraction; unprepared books keep the Kindle
-        -- source path and render the placeholder cover.
-        local entry_file = book.source_path or ""
-        if book.open_mode ~= "blocked" and book.open_mode ~= "direct" and self.cache_manager and self:isBookPrepared(book) then
-            entry_file = self.cache_manager:getCachePaths(book) or entry_file
+        local list_path, attr = resolveListedFile(self, book)
+        if not list_path then
+            table.insert(unavailable, {
+                text = title,
+                path = file_chooser.path,
+                kindle_book_id = book.id,
+                kindle_unavailable = true,
+                dim = true,
+            })
+        else
+            local filter = file_chooser
+            if list_path == book.source_path and book.open_mode == "convert" and isKindleSourcePath(list_path) then
+                -- The catalog can prepare known Kindle sources even without a
+                -- native provider. Retain the browser's other visibility rules.
+                source_filter = source_filter or setmetatable({ show_unsupported = true }, { __index = file_chooser })
+                filter = source_filter
+            end
+            local _, filename = util.splitFilePathName(list_path)
+            if filter:show_file(filename, list_path) then
+                local item = file_chooser:getListItem(nil, title, list_path, attr, collate)
+                item.kindle_book_id = book.id
+                table.insert(files, item)
+            end
         end
-        table.insert(entries, {
-            text = title,
-            file = entry_file,
-            path = book.source_path or "",
-            attr = { mode = "file", size = book.source_size or 0 },
-            mandatory = mandatory,
-            kindle_book_id = book.id,
-        })
     end
-    return entries
+    return files, nil, unavailable
 end
 
 return VirtualLibrary

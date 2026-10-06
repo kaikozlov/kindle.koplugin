@@ -1,11 +1,9 @@
-local BookList = require("ui/widget/booklist")
-local ButtonDialog = require("ui/widget/buttondialog")
+local BD = require("ui/bidi")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local filemanagerutil = require("apps/filemanager/filemanagerutil")
 local logger = require("logger")
 local _ = require("gettext")
-local CoverBrowserExt = require("lua/coverbrowser_ext")
 local T = require("ffi/util").template
 
 local KindleLibrary = {}
@@ -16,13 +14,16 @@ function KindleLibrary:new(virtual_library, cache_manager)
         virtual_library = virtual_library,
         cache_manager = cache_manager,
         ui = nil,
-        booklist_menu = nil,
+        browsing = false,
         return_to_library_request = nil,
     }, self)
 end
 
 function KindleLibrary:setUI(ui)
-    self.ui = ui
+    if self.ui ~= ui then
+        self:leave()
+        self.ui = ui
+    end
 end
 
 function KindleLibrary:requestReturnToLibrary(origin_path)
@@ -41,80 +42,79 @@ local function showInfo(text, timeout)
     UIManager:show(InfoMessage:new({ text = text, timeout = timeout or 4 }))
 end
 
+function KindleLibrary:isBrowsing(file_chooser)
+    return self.browsing
+        and file_chooser
+        and file_chooser.name == "filemanager"
+        and file_chooser.ui == self.ui
+        and file_chooser.path == self.origin_path
+end
+
+-- Stop supplying catalog rows without repainting a FileManager being torn down.
+function KindleLibrary:leave()
+    self.browsing = false
+    self.origin_path = nil
+    self.book_count = nil
+end
+
 function KindleLibrary:close()
-    if self.booklist_menu then
-        UIManager:close(self.booklist_menu)
-        self.booklist_menu = nil
+    local was_browsing = self.browsing
+    self:leave()
+    if was_browsing and self.ui and self.ui.file_chooser then
+        self.ui.file_chooser:refreshPath()
+        self.ui:updateTitleBarPath()
     end
 end
 
-function KindleLibrary:buildEntries(force)
-    local entries, err = self.virtual_library:getBookEntries(force)
-    if not entries then
-        return nil, err
+function KindleLibrary:updateTitle(file_chooser)
+    if self:isBrowsing(file_chooser) then
+        self.ui.title_bar:setSubTitle(T(_("Kindle Library (%1)"), self.book_count or 0))
     end
-    for _, item in ipairs(entries) do
-        local book = self.virtual_library:getBook(item.kindle_book_id)
-        if book and book.open_mode == "blocked" then
-            item.text = item.text .. " [blocked]"
-            item.mandatory = self.virtual_library:getBlockedReasonText(book)
-        elseif book and book.open_mode == "convert" then
-            local cache_state = self.virtual_library:isBookPrepared(book) and " · cached" or " · prepare on open"
-            item.mandatory = item.mandatory .. cache_state
-        end
+end
+
+function KindleLibrary:buildEntries(file_chooser, force)
+    local files, err, unavailable = self.virtual_library:getBookEntries(file_chooser, force)
+    if not files then
+        showInfo(_("Failed to build Kindle library:\n") .. (err or _("unknown error")))
+        return nil
     end
+    -- Keep native collation and item construction, but do not claim that this
+    -- catalog is the filesystem contents of FileChooser.path.
+    local entries = file_chooser:genItemTable({}, files)
+    for _, item in ipairs(unavailable) do
+        entries[#entries + 1] = item
+    end
+    self.book_count = #entries
+    table.insert(entries, 1, {
+        text = _("Back to file browser"),
+        path = self.origin_path,
+        is_go_up = true,
+        is_kindle_library_return = true,
+    })
     return entries
 end
 
 function KindleLibrary:show(ui, force)
-    self.ui = ui or self.ui
-    if not self.ui then
+    self:setUI(ui or self.ui)
+    local file_chooser = self.ui and self.ui.file_chooser
+    if not file_chooser then
         return false
     end
-    if self.booklist_menu then
-        UIManager:close(self.booklist_menu)
-        self.booklist_menu = nil
-    end
 
-    local entries, err = self:buildEntries(force ~= false)
-    if not entries then
+    local books, err = self.virtual_library:refresh(force ~= false)
+    if not books then
         showInfo(_("Failed to build Kindle library:\n") .. (err or _("unknown error")))
         return false
     end
-    if #entries == 0 then
+    if #books == 0 then
         showInfo(_("No Kindle books were found in the Kindle content catalog."))
         return false
     end
 
-    local manager = self
-    self.booklist_menu = BookList:new({
-        name = "kindle_library",
-        title = self.virtual_library.VIRTUAL_LIBRARY_NAME,
-        title_bar_left_icon = "appbar.menu",
-        onLeftButtonTap = function()
-            manager:close()
-        end,
-        onMenuSelect = function(_, item)
-            return manager:openItem(item)
-        end,
-        onMenuHold = function(_, item)
-            return manager:showBookDialog(item)
-        end,
-        ui = self.ui,
-        _manager = self,
-        _recreate_func = function()
-            manager:show(manager.ui, true)
-        end,
-    })
-    if CoverBrowserExt.apply(self.booklist_menu) then
-        logger.info("KindlePlugin: Kindle Library uses a CoverBrowser display mode")
-    end
-    self.booklist_menu.close_callback = function()
-        manager:close()
-    end
-    self.booklist_menu:switchItemTable(T(_("Kindle Library (%1)"), #entries), entries, -1)
-    UIManager:show(self.booklist_menu)
-    return true
+    self.origin_path = file_chooser.path
+    self.browsing = true
+    file_chooser:refreshPath()
+    return self.browsing
 end
 
 function KindleLibrary:openItem(item)
@@ -128,7 +128,7 @@ function KindleLibrary:openItem(item)
         return true
     end
 
-    if not book.source_path then
+    if not book.source_path or item.kindle_unavailable then
         showInfo(self.virtual_library:getBlockedReasonText({ block_reason = "missing_source" }))
         return true
     end
@@ -137,80 +137,68 @@ function KindleLibrary:openItem(item)
     -- books to their real cached EPUB only after KOReader's optional open
     -- confirmation has been accepted.
     logger.info("KindlePlugin: requesting native open for:", book.source_path)
-    local close_callback = self.booklist_menu and self.booklist_menu.close_callback or nil
     filemanagerutil.openFile(self.ui, book.source_path, function()
-        -- This callback runs only after confirmation and cache preparation
-        -- succeed, immediately before KOReader opens the real document.
-        local file_chooser = self.ui and self.ui.file_chooser
-        self:requestReturnToLibrary(file_chooser and file_chooser.path or nil)
-        if close_callback then
-            close_callback()
+        -- Confirmation and preparation have succeeded. A cancelled or failed
+        -- open must leave the catalog visible and must not schedule a return.
+        if self.browsing then
+            self:requestReturnToLibrary(self.origin_path)
+            self:leave()
         end
     end)
     return true
 end
 
-function KindleLibrary:showBookDialog(item)
-    local book = item and self.virtual_library:getBook(item.kindle_book_id)
+function KindleLibrary:showBookInfo(book)
     if not book then
         return true
     end
-
-    local details = book.source_path or _("Cloud-only Kindle entry")
+    local details = BD.auto(book.display_name or book.title or book.id)
+    details = details .. "\n\n" .. (book.source_path and BD.filepath(book.source_path) or _("Cloud-only Kindle entry"))
     if book.open_mode == "blocked" then
         details = details .. "\n\n" .. self.virtual_library:getBlockedReasonText(book)
     end
-
-    local dialog
-    dialog = ButtonDialog:new({
-        title = details,
-        buttons = {
-            {
-                {
-                    text = _("Open"),
-                    callback = function()
-                        UIManager:close(dialog)
-                        self:openItem(item)
-                    end,
-                    enabled = book.open_mode ~= "blocked",
-                },
-                {
-                    text = _("Refresh"),
-                    callback = function()
-                        UIManager:close(dialog)
-                        self.virtual_library:refresh(true)
-                        self:show(self.ui, false)
-                    end,
-                },
-            },
-            {
-                {
-                    text = _("Clear Cache"),
-                    callback = function()
-                        UIManager:close(dialog)
-                        if self.cache_manager then
-                            local ok, err = self.cache_manager:clearBookCache(book)
-                            if not ok then
-                                showInfo(_("Failed to clear cache:\n") .. (err or _("unknown error")))
-                                return
-                            end
-                        end
-                        self:show(self.ui, false)
-                    end,
-                    enabled = book.open_mode ~= "direct",
-                },
-                {
-                    text = _("Show Info"),
-                    callback = function()
-                        UIManager:close(dialog)
-                        showInfo(details)
-                    end,
-                },
-            },
-        },
-    })
-    UIManager:show(dialog)
+    showInfo(details)
     return true
+end
+
+function KindleLibrary:fileDialogButtons(file, is_file)
+    local book = is_file and self.virtual_library:getBook(file)
+    if not book then
+        return nil
+    end
+    local file_chooser = self.ui.file_chooser
+    local function closeDialog()
+        UIManager:close(file_chooser.file_dialog)
+    end
+    return {
+        {
+            text = _("Kindle information"),
+            callback = function()
+                closeDialog()
+                self:showBookInfo(book)
+            end,
+        },
+        {
+            text = _("Clear Kindle cache"),
+            enabled = book.open_mode ~= "direct",
+            callback = function()
+                closeDialog()
+                local ok, err = self.cache_manager:clearBookCache(book)
+                if not ok then
+                    showInfo(_("Failed to clear cache:\n") .. (err or _("unknown error")))
+                    return
+                end
+                file_chooser:refreshPath()
+            end,
+        },
+        {
+            text = _("Refresh Kindle library"),
+            callback = function()
+                closeDialog()
+                self:show(self.ui, true)
+            end,
+        },
+    }
 end
 
 return KindleLibrary

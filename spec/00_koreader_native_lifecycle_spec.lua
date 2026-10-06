@@ -1,33 +1,100 @@
 require("busted.runner")()
 
---- Smoke-test the plugin through KOReader's real PluginLoader and FileManager.
---- Keep the virtual library disabled here so the test verifies widget lifecycle
---- without leaving global monkey patches installed for the remaining specs.
+--- Smoke-test the plugin through KOReader's real PluginLoader, FileManager,
+--- FileChooser, and ReaderUI. The Kindle content catalog is reduced to the
+--- narrow LibraryIndex.getBooks boundary; everything else (row building,
+--- dialogs, document opening, close lifecycle) is the real native stack.
+---
+--- Keep the tests free of spec helper stubs and restore every mutated global,
+--- setting, and temporary document so the whole suite can run together.
 describe("KindlePlugin native KOReader lifecycle", function()
     local UIManager = require("ui/uimanager")
     local DataStorage = require("datastorage")
     local Dispatcher = require("dispatcher")
     local FileManager = require("apps/filemanager/filemanager")
-    local KindleLibrary = require("lua/kindle_library")
+    local FileChooserExt = require("lua/filechooser_ext")
+    local OpenFileExt = require("lua/open_file_ext")
     local LibraryIndex = require("lua/library_index")
     local PluginLoader = require("pluginloader")
     local ReaderUI = require("apps/reader/readerui")
     local ReadingStateSync = require("lua/reading_state_sync")
     local Screen = require("device").screen
     local ffiUtil = require("ffi/util")
-    local util = require("util")
+    local lfs = require("libs/libkoreader-lfs")
     local filemanager
     local reader_file
     local original_lastfile
-    local original_build_entries
+    local original_home_dir
+    local original_lastdir
     local original_get_books
     local original_pull
     local original_push
+    local temp_dirs = {}
+
+    local function snapshot_settings()
+        original_lastfile = G_reader_settings:readSetting("lastfile")
+        original_home_dir = G_reader_settings:readSetting("home_dir")
+        original_lastdir = G_reader_settings:readSetting("lastdir")
+    end
+
+    local function restore_settings()
+        local keys = { "kindle_plugin", "home_dir", "lastdir", "lastfile" }
+        local originals = {
+            kindle_plugin = nil,
+            home_dir = original_home_dir,
+            lastdir = original_lastdir,
+            lastfile = original_lastfile,
+        }
+        for _, key in ipairs(keys) do
+            local value = originals[key]
+            if value == nil then
+                G_reader_settings:delSetting(key)
+            else
+                G_reader_settings:saveSetting(key, value)
+            end
+        end
+    end
+
+    local function make_temp_dir()
+        local dir = os.tmpname()
+        os.remove(dir)
+        assert(lfs.mkdir(dir))
+        table.insert(temp_dirs, dir)
+        return ffiUtil.realpath(dir)
+    end
+
+    local function write_file(path, content)
+        local file = assert(io.open(path, "wb"))
+        file:write(content or "A real KOReader document used by the native lifecycle spec.\n")
+        file:close()
+    end
+
+    local function stub_catalog(book_dir, book_file)
+        LibraryIndex.getBooks = function()
+            return {
+                {
+                    id = "direct",
+                    cde_key = "B000000001",
+                    source_path = book_file,
+                    open_mode = "direct",
+                    display_name = "Native Open Book",
+                },
+            }
+        end
+        return book_dir, book_file
+    end
+
+    local function find_item(file_chooser, predicate)
+        for _, item in ipairs(file_chooser.item_table) do
+            if predicate(item) then
+                return item
+            end
+        end
+    end
 
     before_each(function()
         disable_plugins()
-        original_lastfile = G_reader_settings:readSetting("lastfile")
-        original_build_entries = KindleLibrary.buildEntries
+        snapshot_settings()
         original_get_books = LibraryIndex.getBooks
         original_pull = ReadingStateSync.syncFromKindleAutomatic
         original_push = ReadingStateSync.syncToKindleAutomatic
@@ -37,7 +104,6 @@ describe("KindlePlugin native KOReader lifecycle", function()
     end)
 
     after_each(function()
-        KindleLibrary.buildEntries = original_build_entries
         LibraryIndex.getBooks = original_get_books
         ReadingStateSync.syncFromKindleAutomatic = original_pull
         ReadingStateSync.syncToKindleAutomatic = original_push
@@ -45,11 +111,16 @@ describe("KindlePlugin native KOReader lifecycle", function()
         if instance and instance.stopPlugin then
             pcall(instance.stopPlugin, instance)
         end
+        -- ReaderUI closes clear PluginLoader bookkeeping before stopPlugin
+        -- can run, so unwind the module hooks directly as well.
+        pcall(OpenFileExt.unapply, OpenFileExt)
+        pcall(FileChooserExt.unapply, FileChooserExt, require("ui/widget/filechooser"))
+        pcall(Dispatcher.removeAction, Dispatcher, "kindle_library")
         if ReaderUI.instance then
-            ReaderUI.instance:onClose()
+            pcall(ReaderUI.instance.onClose, ReaderUI.instance)
         end
         if FileManager.instance then
-            FileManager.instance:onClose()
+            pcall(FileManager.instance.onClose, FileManager.instance)
         end
         filemanager = nil
         if reader_file then
@@ -57,12 +128,11 @@ describe("KindlePlugin native KOReader lifecycle", function()
             os.remove(reader_file)
             reader_file = nil
         end
-        G_reader_settings:delSetting("kindle_plugin")
-        if original_lastfile == nil then
-            G_reader_settings:delSetting("lastfile")
-        else
-            G_reader_settings:saveSetting("lastfile", original_lastfile)
+        for _, dir in ipairs(temp_dirs) do
+            ffiUtil.purgeDir(dir)
         end
+        temp_dirs = {}
+        restore_settings()
         UIManager:quit()
     end)
 
@@ -122,18 +192,17 @@ describe("KindlePlugin native KOReader lifecycle", function()
         assert.are.equal("/tmp/recreated-kindle-cache", recreated.settings.cache_dir)
     end)
 
-    it("adds a native Kindle Library entry without replacing FileChooser.path", function()
+    it("activates the catalog view from the native entry in the real FileChooser", function()
+        local book_dir = make_temp_dir()
+        local book_file = book_dir .. "/entry-catalog-book.txt"
+        write_file(book_file)
+        stub_catalog(book_dir, book_file)
+
         G_reader_settings:saveSetting("kindle_plugin", {
             enable_virtual_library = true,
         })
         G_reader_settings:saveSetting("home_dir", DataStorage:getDataDir())
         load_plugin("kindle.koplugin")
-
-        local build_count = 0
-        KindleLibrary.buildEntries = function()
-            build_count = build_count + 1
-            return { { text = "Test Kindle book", kindle_book_id = "test-book" } }
-        end
 
         filemanager = FileManager:new({
             dimen = Screen:getSize(),
@@ -142,48 +211,47 @@ describe("KindlePlugin native KOReader lifecycle", function()
         UIManager:show(filemanager)
         fastforward_ui_events()
 
-        local original_path = filemanager.file_chooser.path
-        local kindle_entry
-        for _, item in ipairs(filemanager.file_chooser.item_table) do
-            if item.is_kindle_library_folder then
-                kindle_entry = item
-                break
-            end
-        end
+        local library = require("lua/filechooser_ext").kindle_library
+        local file_chooser = filemanager.file_chooser
+        local original_path = file_chooser.path
+        local kindle_entry = find_item(file_chooser, function(item)
+            return item.is_kindle_library_folder
+        end)
         assert.is_truthy(kindle_entry)
         assert.equals(original_path, kindle_entry.path)
-        assert.is_true(filemanager.file_chooser:onMenuSelect(kindle_entry))
-        assert.equals(1, build_count)
-        assert.is_truthy(require("lua/filechooser_ext").kindle_library.booklist_menu)
-        assert.equals(original_path, filemanager.file_chooser.path)
 
-        local instance = PluginLoader:getPluginInstance("kindle")
-        assert.is_truthy(instance)
+        assert.is_true(file_chooser:onMenuSelect(kindle_entry))
+        assert.is_truthy(library:isBrowsing(file_chooser))
+        assert.equals(original_path, file_chooser.path)
+        local rows = file_chooser.item_table
+        assert.is_truthy(rows[1].is_kindle_library_return)
+        assert.is_true(rows[1].is_go_up)
+        local book_row = find_item(file_chooser, function(item)
+            return item.kindle_book_id == "direct"
+        end)
+        assert.is_truthy(book_row)
+        assert.equals("file", lfs.attributes(book_row.path, "mode"))
+        assert.equals(book_file, book_row.path)
+
+        local instance = assert(PluginLoader:getPluginInstance("kindle"))
         assert.is_true(instance:stopPlugin())
-        local still_present = false
-        for _, item in ipairs(filemanager.file_chooser.item_table) do
-            if item.is_kindle_library_folder then
-                still_present = true
-                break
-            end
-        end
-        assert.is_false(still_present)
-        assert.equals(original_path, filemanager.file_chooser.path)
+        assert.is_falsy(library:isBrowsing(file_chooser))
+        assert.equals(original_path, file_chooser.path)
+        assert.is_nil(find_item(file_chooser, function(item)
+            return item.is_kindle_library_folder or item.is_kindle_library_return or item.kindle_book_id
+        end))
     end)
 
     it("executes the dispatcher action through a real FileManager", function()
+        local book_dir = make_temp_dir()
+        local book_file = book_dir .. "/dispatcher-book.txt"
+        write_file(book_file)
+        stub_catalog(book_dir, book_file)
+
         G_reader_settings:saveSetting("kindle_plugin", {
             enable_virtual_library = true,
         })
         load_plugin("kindle.koplugin")
-
-        local build_force
-        local build_count = 0
-        KindleLibrary.buildEntries = function(_, force)
-            build_force = force
-            build_count = build_count + 1
-            return { { text = "Test Kindle book", kindle_book_id = "test-book" } }
-        end
 
         filemanager = FileManager:new({
             dimen = Screen:getSize(),
@@ -195,16 +263,28 @@ describe("KindlePlugin native KOReader lifecycle", function()
         assert.equals("Kindle Library", Dispatcher:getNameFromItem("kindle_library", { kindle_library = true }))
         Dispatcher:execute({ kindle_library = true })
         local library = require("lua/filechooser_ext").kindle_library
+        local file_chooser = filemanager.file_chooser
         assert.equals(filemanager, library.ui)
-        assert.is_truthy(library.booklist_menu)
-        assert.is_true(build_force)
-        assert.equals(1, build_count)
+        assert.is_truthy(library:isBrowsing(file_chooser))
+        assert.is_truthy(find_item(file_chooser, function(item)
+            return item.kindle_book_id == "direct"
+        end))
+        assert.is_truthy(
+            FileManager.file_dialog_added_buttons
+                and FileManager.file_dialog_added_buttons.index
+                and FileManager.file_dialog_added_buttons.index.kindle_library
+        )
 
         local instance = assert(PluginLoader:getPluginInstance("kindle"))
         assert.is_true(instance:stopPlugin())
         assert.equals("Unknown item", Dispatcher:getNameFromItem("kindle_library", { kindle_library = true }))
         Dispatcher:execute({ kindle_library = true })
-        assert.equals(1, build_count)
+        assert.is_falsy(library:isBrowsing(file_chooser))
+        assert.is_falsy(
+            FileManager.file_dialog_added_buttons
+                and FileManager.file_dialog_added_buttons.index
+                and FileManager.file_dialog_added_buttons.index.kindle_library
+        )
     end)
 
     it("survives consumed ReaderUI lifecycle events and auto-syncs on real close", function()
@@ -286,25 +366,18 @@ describe("KindlePlugin native KOReader lifecycle", function()
     end)
 
     it("exits a real ReaderUI before showing the library in FileManager", function()
-        reader_file = DataStorage:getDataDir() .. "/kindle-dispatcher-reader.txt"
-        local file = assert(io.open(reader_file, "wb"))
-        file:write("A real KOReader document used to test the dispatcher lifecycle.\n")
-        file:close()
+        local book_dir = make_temp_dir()
+        reader_file = book_dir .. "/kindle-dispatcher-reader.txt"
+        write_file(reader_file)
+        stub_catalog(book_dir, reader_file)
         G_reader_settings:saveSetting("kindle_plugin", {
             enable_virtual_library = true,
         })
         load_plugin("kindle.koplugin")
 
-        local build_force
-        KindleLibrary.buildEntries = function(_, force)
-            build_force = force
-            return { { text = "Test Kindle book", kindle_book_id = "test-book" } }
-        end
-
         ReaderUI:doShowReader(reader_file)
         local reader = assert(ReaderUI.instance)
         assert.equals(reader_file, reader.document.file)
-        G_reader_settings:saveSetting("lastfile", "/tmp/not-the-open-book.epub")
 
         Dispatcher:execute({ kindle_library = true })
 
@@ -312,10 +385,127 @@ describe("KindlePlugin native KOReader lifecycle", function()
         assert.is_nil(reader.document)
         assert.is_nil(ReaderUI.instance)
         local library = require("lua/filechooser_ext").kindle_library
-        assert.equals(filemanager, library.ui)
-        assert.is_truthy(library.booklist_menu)
-        assert.is_true(build_force)
-        local book_dir = util.splitFilePathName(reader_file)
+        assert.is_truthy(library:isBrowsing(filemanager.file_chooser))
         assert.equals(ffiUtil.realpath(book_dir), filemanager.file_chooser.path)
+    end)
+
+    it("opens a catalog row into a real ReaderUI and returns to the catalog on close", function()
+        local book_dir = make_temp_dir()
+        local book_file = book_dir .. "/native-open-book.txt"
+        write_file(book_file)
+        stub_catalog(book_dir, book_file)
+
+        G_reader_settings:saveSetting("kindle_plugin", {
+            enable_virtual_library = true,
+        })
+        G_reader_settings:saveSetting("home_dir", book_dir)
+        load_plugin("kindle.koplugin")
+
+        filemanager = FileManager:new({
+            dimen = Screen:getSize(),
+            root_path = book_dir,
+        })
+        UIManager:show(filemanager)
+        fastforward_ui_events()
+
+        local library = require("lua/filechooser_ext").kindle_library
+        local file_chooser = filemanager.file_chooser
+        local kindle_entry = find_item(file_chooser, function(item)
+            return item.is_kindle_library_folder
+        end)
+        assert.is_truthy(kindle_entry)
+        assert.is_true(file_chooser:onMenuSelect(kindle_entry))
+        assert.is_truthy(library:isBrowsing(file_chooser))
+
+        local book_row = find_item(file_chooser, function(item)
+            return item.kindle_book_id == "direct"
+        end)
+        assert.is_truthy(book_row)
+        assert.is_true(file_chooser:onMenuSelect(book_row))
+        fastforward_ui_events()
+
+        -- The real native open chain ran: FileManager closed, ReaderUI owns
+        -- the document, the catalog was left without a repaint, and exactly
+        -- one return receipt is pending for the origin directory.
+        local reader = assert(ReaderUI.instance)
+        assert.equals(book_file, reader.document.file)
+        assert.is_nil(FileManager.instance)
+        assert.is_falsy(library:isBrowsing(file_chooser))
+        assert.is_truthy(library.return_to_library_request)
+        assert.equals(ffiUtil.realpath(book_dir), library.return_to_library_request.origin_path)
+
+        -- Closing the reader through the native Home gesture rebuilds the
+        -- file browser, restores the origin, and re-enters the catalog.
+        reader:onHome()
+        fastforward_ui_events()
+
+        local returned = assert(FileManager.instance)
+        assert.are_not_equal(filemanager, returned)
+        assert.is_nil(ReaderUI.instance)
+        local returned_chooser = returned.file_chooser
+        assert.equals(ffiUtil.realpath(book_dir), returned_chooser.path)
+        assert.is_nil(library.return_to_library_request)
+        assert.is_truthy(library:isBrowsing(returned_chooser))
+        assert.is_truthy(returned_chooser.item_table[1].is_kindle_library_return)
+        assert.is_truthy(find_item(returned_chooser, function(item)
+            return item.kindle_book_id == "direct"
+        end))
+    end)
+
+    it("live stop while browsing restores the directory, navigation, and hooks", function()
+        local book_dir = make_temp_dir()
+        local book_file = book_dir .. "/stop-book.txt"
+        write_file(book_file)
+        local subdir = book_dir .. "/plain"
+        assert(lfs.mkdir(subdir))
+        stub_catalog(book_dir, book_file)
+
+        G_reader_settings:saveSetting("kindle_plugin", {
+            enable_virtual_library = true,
+        })
+        G_reader_settings:saveSetting("home_dir", book_dir)
+        load_plugin("kindle.koplugin")
+
+        filemanager = FileManager:new({
+            dimen = Screen:getSize(),
+            root_path = book_dir,
+        })
+        UIManager:show(filemanager)
+        fastforward_ui_events()
+
+        local library = require("lua/filechooser_ext").kindle_library
+        local file_chooser = filemanager.file_chooser
+        local kindle_entry = find_item(file_chooser, function(item)
+            return item.is_kindle_library_folder
+        end)
+        assert.is_truthy(kindle_entry)
+        assert.is_true(file_chooser:onMenuSelect(kindle_entry))
+        assert.is_truthy(library:isBrowsing(file_chooser))
+
+        local instance = assert(PluginLoader:getPluginInstance("kindle"))
+        assert.is_true(instance:stopPlugin())
+
+        assert.is_falsy(library:isBrowsing(file_chooser))
+        assert.equals(ffiUtil.realpath(book_dir), file_chooser.path)
+        assert.is_truthy(find_item(file_chooser, function(item)
+            return item.path == book_file and item.is_file
+        end))
+        assert.is_nil(find_item(file_chooser, function(item)
+            return item.is_kindle_library_folder or item.is_kindle_library_return or item.kindle_book_id
+        end))
+
+        -- Native navigation works again without the catalog dispatch.
+        file_chooser:changeToPath(subdir)
+        assert.equals(ffiUtil.realpath(subdir), file_chooser.path)
+        assert.is_truthy(find_item(file_chooser, function(item)
+            return item.is_go_up
+        end))
+
+        assert.equals("Unknown item", Dispatcher:getNameFromItem("kindle_library", { kindle_library = true }))
+        assert.is_falsy(
+            FileManager.file_dialog_added_buttons
+                and FileManager.file_dialog_added_buttons.index
+                and FileManager.file_dialog_added_buttons.index.kindle_library
+        )
     end)
 end)
