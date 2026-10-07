@@ -13,7 +13,17 @@
 # dlopen(..., RTLD_LOCAL). The latter reproduces the Bellatrix3 loader topology
 # where forwarding through dlsym(RTLD_NEXT) cannot see the real OpenSSL symbol.
 
-FROM arm32v7/debian:bullseye AS hook-build
+# Bullseye is archived, but its glibc 2.31 / OpenSSL 1.1 ABI is still required.
+# Share the archived sources between the artifact build and OpenSSL 1.1 tests.
+# Replacing the source list also drops the obsolete bullseye-updates suite.
+FROM arm32v7/debian:bullseye AS bullseye-base
+
+RUN printf '%s\n' \
+        'deb http://archive.debian.org/debian bullseye main' \
+        'deb http://archive.debian.org/debian-security bullseye-security main' \
+        > /etc/apt/sources.list
+
+FROM bullseye-base AS hook-build
 
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 
@@ -25,7 +35,7 @@ RUN gcc -shared -fPIC -O2 -o /build/crypto_hook.so /build/crypto_hook.c -ldl -lp
 
 # --- Hermetic executable tests -------------------------------------------------
 
-FROM arm32v7/debian:bullseye AS test-openssl11
+FROM bullseye-base AS test-openssl11
 
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libssl-dev && \
     rm -rf /var/lib/apt/lists/*
