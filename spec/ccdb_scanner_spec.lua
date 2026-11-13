@@ -65,6 +65,7 @@ describe("CcDbScanner", function()
                 p_titles_0_nominal = { "The Test Book" },
                 p_titles_0_collation = { "Test Book The" },
                 j_credits = { '[{"name":{"display":"Test Author"},"kind":"Author"}]' },
+                p_thumbnail = { "/mnt/us/system/thumbnails/test.jpg" },
                 p_mimeType = { "application/x-kfx-ebook" },
                 p_cdeKey = { "B00TEST" },
                 p_isDRMProtected = { "1" },
@@ -85,6 +86,7 @@ describe("CcDbScanner", function()
             assert.equals("The Test Book", book.title)
             assert.equals("Test Book The", book.sort_key)
             assert.same({ "Test Author" }, book.authors)
+            assert.equals("/mnt/us/system/thumbnails/test.jpg", book.thumbnail)
             assert.equals("convert", book.open_mode)
             assert.equals("B00TEST", book.cde_key)
             assert.is_nil(book.block_reason)

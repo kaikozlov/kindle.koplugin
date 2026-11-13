@@ -16,6 +16,7 @@ local T = require("ffi/util").template
 local util = require("util")
 
 local CacheManager = require("lua/cache_manager")
+local CoverBrowserMetadata = require("lua/coverbrowser_metadata")
 local FileChooserExt = require("lua/filechooser_ext")
 local HelperClient = require("lua/helper_client")
 local KindleLibrary = require("lua/kindle_library")
@@ -125,6 +126,7 @@ function KindlePlugin:init()
         OpenFileExt:apply()
     end
     if self.settings.enable_virtual_library ~= false then
+        CoverBrowserMetadata:apply(virtual_library)
         if self.ui and not self.ui.document then
             kindle_library:setUI(self.ui)
             local FileChooser = require("ui/widget/filechooser")
@@ -487,6 +489,7 @@ end
 function KindlePlugin:stopPlugin()
     local FileChooser = require("ui/widget/filechooser")
     FileChooserExt:unapply(FileChooser)
+    CoverBrowserMetadata:unapply()
     OpenFileExt:unapply()
     Dispatcher:removeAction(KINDLE_LIBRARY_ACTION)
     kindle_library:takeReturnToLibraryRequest()
