@@ -94,7 +94,7 @@ end
 
 local function validNativeContentKey(content_key)
     return type(content_key) == "string"
-        and ((#content_key == 10 and content_key:match("^B[A-Z0-9]+$")) or (#content_key == 32 and content_key:match("^[A-F0-9]+$")))
+        and ((#content_key == 10 and content_key:match("^B[A-Z0-9]+$")) or (#content_key == 32 and content_key:match("^[A-Z0-9]+$")))
 end
 
 local function receiptKey(cde_key, source_path)
