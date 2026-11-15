@@ -184,23 +184,24 @@ describe("HelperClient", function()
             assert.equals(442741, reread.pid)
         end)
 
-        it("supports exact sidecar progress for PDOC content keys", function()
-            local client = HelperClient:new(client_opts)
-            local pdoc_key = "5AFAFAA13FFE43ECBE78F0FF3761814C"
-            local position = {
-                long = "ATwFAACbAAAA",
-                pid = 442741,
-                percent = 75.5,
-            }
+        for _, pdoc_key in ipairs({ "5AFAFAA13FFE43ECBE78F0FF3761814C", "ABCDEFGHIJKLMNOP234567QRSTUVWXYZ" }) do
+            it("supports exact sidecar progress for PDOC content key " .. pdoc_key, function()
+                local client = HelperClient:new(client_opts)
+                local position = {
+                    long = "ATwFAACbAAAA",
+                    pid = 442741,
+                    percent = 75.5,
+                }
 
-            assert.is_true(client:nativeProgressAvailable(pdoc_key, kfx_path))
-            local ok, err = client:saveNativeProgress(pdoc_key, kfx_path, position)
-            assert.is_true(ok, err)
+                assert.is_true(client:nativeProgressAvailable(pdoc_key, kfx_path))
+                local ok, err = client:saveNativeProgress(pdoc_key, kfx_path, position)
+                assert.is_true(ok, err)
 
-            local reread = assert(client:readNativeProgress(pdoc_key, kfx_path))
-            assert.equals("ATwFAACbAAAA", reread.long)
-            assert.equals(442741, reread.pid)
-        end)
+                local reread = assert(client:readNativeProgress(pdoc_key, kfx_path))
+                assert.equals("ATwFAACbAAAA", reread.long)
+                assert.equals(442741, reread.pid)
+            end)
+        end
 
         it("ignores sibling KRDS stores with no readable last-page position", function()
             local yjr_path = tmpdir .. "/book.sdr/book.yjr"
